@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from quantgram.audit import Audit
-from quantgram.bridge import Bridge, Stopped
-from quantgram.heartbeat import Heartbeat
-from quantgram.notices import Expiries, is_quiet, parse_quiet
+from quantbot.audit import Audit
+from quantbot.bridge import Bridge, Stopped
+from quantbot.heartbeat import Heartbeat
+from quantbot.notices import Expiries, is_quiet, parse_quiet
 
 
 def test_commands_run_on_the_thread_that_sleeps() -> None:

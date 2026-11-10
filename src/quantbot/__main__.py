@@ -1,11 +1,11 @@
-"""python -m quantgram"""
+"""python -m quantbot"""
 
 from __future__ import annotations
 
 import logging
 import sys
 
-from quantgram.config import ConfigError, load
+from quantbot.config import ConfigError, load
 
 
 def main() -> int:
@@ -16,11 +16,11 @@ def main() -> int:
     try:
         settings = load()
     except ConfigError as exc:
-        print(f"QuantGram config error: {exc}", file=sys.stderr)
+        print(f"QuantBot config error: {exc}", file=sys.stderr)
         return 2
-    from quantgram.bot import QuantGram
+    from quantbot.bot import QuantBot
 
-    QuantGram(settings).run()
+    QuantBot(settings).run()
     return 0
 
 

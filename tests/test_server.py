@@ -12,9 +12,9 @@ from typing import Any
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from quantgram.config import ConfigError, StrategyConfig, load, load_strategies
-from quantgram.hub import Hub
-from quantgram.server import make_app
+from quantbot.config import ConfigError, StrategyConfig, load, load_strategies
+from quantbot.hub import Hub
+from quantbot.server import make_app
 
 A = StrategyConfig("momentum", "动量策略", "a" * 20)
 B = StrategyConfig("grid", "网格策略", "b" * 20)
@@ -167,14 +167,14 @@ def test_config_loading(tmp_path: Path) -> None:
     path = tmp_path / "strategies.yaml"
     path.write_text(
         "strategies:\n"
-        "  - {id: momentum, name: 动量策略, token_env: QG_TOKEN_MOMENTUM}\n"
+        "  - {id: momentum, name: 动量策略, token_env: QB_TOKEN_MOMENTUM}\n"
         "  - {id: grid, token: '" + "g" * 16 + "'}\n"
     )
     env = {
         "TG_TOKEN": "123:abc",
         "TG_OWNER_ID": "42",
-        "QG_CONFIG": str(path),
-        "QG_TOKEN_MOMENTUM": "m" * 16,
+        "QB_CONFIG": str(path),
+        "QB_TOKEN_MOMENTUM": "m" * 16,
         "TG_QUIET_HOURS": "23-07",
     }
     settings = load(env)
@@ -184,8 +184,8 @@ def test_config_loading(tmp_path: Path) -> None:
     ]
     assert settings.quiet_hours == (23, 7) and settings.port == 8080
     assert "m" * 16 not in repr(settings)
-    with pytest.raises(ConfigError, match="QG_TOKEN_MOMENTUM"):
-        load({**env, "QG_TOKEN_MOMENTUM": ""})
+    with pytest.raises(ConfigError, match="QB_TOKEN_MOMENTUM"):
+        load({**env, "QB_TOKEN_MOMENTUM": ""})
     with pytest.raises(ConfigError, match="TG_OWNER_ID"):
         load({**env, "TG_OWNER_ID": "me"})
     path.write_text("strategies:\n  - {id: Bad!, token: '" + "x" * 16 + "'}\n")

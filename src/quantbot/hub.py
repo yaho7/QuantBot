@@ -1,4 +1,4 @@
-"""Everything QuantGram knows about each strategy, and the commands waiting for it.
+"""Everything QuantBot knows about each strategy, and the commands waiting for it.
 
 All of this lives on the bot's asyncio loop: the HTTP server and the Telegram
 handlers run there, so no locks are needed. Nothing is saved: after a restart
@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from quantgram.config import StrategyConfig
-from quantgram.notices import Connections, Expiries
+from quantbot.config import StrategyConfig
+from quantbot.notices import Connections, Expiries
 
 COMMANDS = (
     "status", "pause", "resume", "positions", "orders", "cancel", "flatten",

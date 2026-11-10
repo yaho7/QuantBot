@@ -8,9 +8,9 @@ from typing import Any
 
 from aiohttp import web
 
-from quantgram.hub import EventError, Hub, Strategy
+from quantbot.hub import EventError, Hub, Strategy
 
-log = logging.getLogger("quantgram.server")
+log = logging.getLogger("quantbot.server")
 
 MAX_BODY = 6 * 1024 * 1024
 MAX_WAIT = 30.0

@@ -17,8 +17,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from quantgram.audit import Audit
-from quantgram.hub import Hub, Result, Strategy
+from quantbot.audit import Audit
+from quantbot.hub import Hub, Result, Strategy
 
 Buttons = list[list[tuple[str, str]]]  # rows of (label, callback data)
 
@@ -232,7 +232,7 @@ class Core:
             lines.append("")
             lines.append(s.status_text)
         elif not s.said_hello:
-            lines.append("还没有连上过 QuantGram。")
+            lines.append("还没有连上过 QuantBot。")
         return "\n".join(lines)
 
     async def open(self, sid: str) -> Reply:

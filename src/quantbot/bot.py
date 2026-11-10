@@ -19,15 +19,15 @@ from telegram.ext import (
     filters,
 )
 
-from quantgram.audit import Audit
-from quantgram.config import Settings
-from quantgram.core import Buttons, Core, Reply
-from quantgram.heartbeat import Heartbeat
-from quantgram.hub import Hub, Strategy
-from quantgram.notices import LOUD, is_quiet
-from quantgram.server import make_app
+from quantbot.audit import Audit
+from quantbot.config import Settings
+from quantbot.core import Buttons, Core, Reply
+from quantbot.heartbeat import Heartbeat
+from quantbot.hub import Hub, Strategy
+from quantbot.notices import LOUD, is_quiet
+from quantbot.server import make_app
 
-log = logging.getLogger("quantgram")
+log = logging.getLogger("quantbot")
 
 MAX_MESSAGE = 4000
 MAX_CAPTION = 1000
@@ -78,7 +78,7 @@ def silent(kind: str, quiet: tuple[int, int] | None, now: datetime) -> bool:
     return kind not in LOUD and is_quiet(now.hour, quiet)
 
 
-class QuantGram:
+class QuantBot:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.tz = ZoneInfo(settings.timezone)
@@ -125,7 +125,7 @@ class QuantGram:
         self.app.add_error_handler(self._error)
 
     def run(self) -> None:
-        # Taps sent while QuantGram was down are dropped instead of run late.
+        # Taps sent while QuantBot was down are dropped instead of run late.
         self.app.run_polling(
             drop_pending_updates=True, allowed_updates=["message", "callback_query"]
         )
@@ -141,7 +141,7 @@ class QuantGram:
         await app.bot.set_my_commands([BotCommand(n, d) for n, d in COMMANDS])
         self._upkeep = asyncio.create_task(self._upkeep_loop())
         names = "、".join(s.name for s in self.hub.strategies.values())
-        await self._send(f"🟢 QuantGram 已启动。策略：{names}", "info")
+        await self._send(f"🟢 QuantBot 已启动。策略：{names}", "info")
 
     async def _stopped(self, app: Application) -> None:
         if self._upkeep:

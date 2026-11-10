@@ -7,8 +7,8 @@ from pathlib import Path
 
 from telegram.ext import CallbackQueryHandler, CommandHandler
 
-from quantgram.bot import COMMANDS, QuantGram, markup, silent
-from quantgram.config import Settings, StrategyConfig
+from quantbot.bot import COMMANDS, QuantBot, markup, silent
+from quantbot.config import Settings, StrategyConfig
 
 
 def test_markup_and_quiet_hours() -> None:
@@ -30,7 +30,7 @@ def test_app_wires_owner_only_commands(tmp_path: Path) -> None:
         strategies=(StrategyConfig("a", "A", "a" * 20),),
         data_dir=tmp_path,
     )
-    qg = QuantGram(settings)
+    qg = QuantBot(settings)
     handlers = [h for group in qg.app.handlers.values() for h in group]
     names = {c for h in handlers if isinstance(h, CommandHandler) for c in h.commands}
     assert {name for name, _ in COMMANDS} <= names | {"start"}

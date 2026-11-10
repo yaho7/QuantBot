@@ -1,6 +1,6 @@
-# QuantGram 接入协议 v1
+# QuantBot 接入协议 v1
 
-策略向 QuantGram 发 HTTP 请求。所有请求都带：
+策略向 QuantBot 发 HTTP 请求。所有请求都带：
 
 ```http
 Authorization: Bearer <这个策略的 token>
@@ -19,7 +19,7 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 
 | `type` | 其他字段 | 说明 |
 |---|---|---|
-| `hello` | `commands`: 支持的命令名列表 | 启动时发一次；QuantGram 说 `need_hello` 时再发 |
+| `hello` | `commands`: 支持的命令名列表 | 启动时发一次；QuantBot 说 `need_hello` 时再发 |
 | `status` | `text`, `paused` | 状态快照；随时可以发，建议每轮发一次 |
 | `fill` | `message` | 成交 |
 | `info` | `message` | 普通消息 |
@@ -48,7 +48,7 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 
 没有命令时，到时间返回 `"commands": []`。每次请求都算一次在线；45 秒没来取，策略就算离线。
 
-`need_hello` 为 `true` 时，说明 QuantGram 刚重启、还不知道你的能力，请再发一次 `hello`。
+`need_hello` 为 `true` 时，说明 QuantBot 刚重启、还不知道你的能力，请再发一次 `hello`。
 
 **同一个命令可能收到两次**：结果没回报的命令，20 秒后会重发。请按 `id` 去重，执行过的只回报上次的结果。
 
@@ -77,8 +77,8 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 ## 最小例子（curl）
 
 ```bash
-H="Authorization: Bearer $QG_TOKEN"
+H="Authorization: Bearer $QB_TOKEN"
 curl -s -H "$H" -H 'Content-Type: application/json' \
-  -d '{"type":"hello","commands":["status","pause","resume"]}' http://quantgram:8080/v1/events
-curl -s -H "$H" 'http://quantgram:8080/v1/commands?wait=25'
+  -d '{"type":"hello","commands":["status","pause","resume"]}' http://quantbot:8080/v1/events
+curl -s -H "$H" 'http://quantbot:8080/v1/commands?wait=25'
 ```

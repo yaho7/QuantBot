@@ -10,7 +10,7 @@ from pathlib import Path
 
 import yaml
 
-from quantgram.notices import parse_quiet
+from quantbot.notices import parse_quiet
 
 STRATEGY_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 MIN_TOKEN = 16
@@ -83,10 +83,10 @@ def load(env: Mapping[str, str] | None = None) -> Settings:
         raise ConfigError("TG_TOKEN is not set")
     if not owner.lstrip("-").isdigit():
         raise ConfigError("TG_OWNER_ID must be your numeric Telegram id")
-    listen = env.get("QG_LISTEN", "0.0.0.0:8080")  # noqa: S104
+    listen = env.get("QB_LISTEN", "0.0.0.0:8080")  # noqa: S104
     host, _, port = listen.rpartition(":")
     if not host or not port.isdigit():
-        raise ConfigError("QG_LISTEN must look like 0.0.0.0:8080")
+        raise ConfigError("QB_LISTEN must look like 0.0.0.0:8080")
     try:
         quiet = parse_quiet(env.get("TG_QUIET_HOURS"))
     except ValueError as exc:
@@ -94,8 +94,8 @@ def load(env: Mapping[str, str] | None = None) -> Settings:
     return Settings(
         tg_token=token,
         owner_id=int(owner),
-        strategies=load_strategies(Path(env.get("QG_CONFIG", "/config/strategies.yaml")), env),
-        data_dir=Path(env.get("QG_DATA_DIR", "/data")),
+        strategies=load_strategies(Path(env.get("QB_CONFIG", "/config/strategies.yaml")), env),
+        data_dir=Path(env.get("QB_DATA_DIR", "/data")),
         host=host,
         port=int(port),
         quiet_hours=quiet,

@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 
-log = logging.getLogger("quantgram.heartbeat")
+log = logging.getLogger("quantbot.heartbeat")
 
 Opener = Callable[[urllib.request.Request, float], object]
 

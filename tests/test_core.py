@@ -11,10 +11,10 @@ from typing import Any
 
 import pytest
 
-from quantgram.audit import Audit
-from quantgram.config import StrategyConfig
-from quantgram.core import Core, Reply, ago, check_type, parse_value
-from quantgram.hub import Hub, Strategy
+from quantbot.audit import Audit
+from quantbot.config import StrategyConfig
+from quantbot.core import Core, Reply, ago, check_type, parse_value
+from quantbot.hub import Hub, Strategy
 
 OWNER = 42
 ALL = ["status", "pause", "resume", "positions", "orders", "cancel", "flatten",
