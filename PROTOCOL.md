@@ -76,6 +76,8 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 
 ## 最小例子（curl）
 
+`QB_URL` 是 `http://` 加 `quantbot list` 里的监听地址，`QB_TOKEN` 用 `quantbot token <id>` 查看。
+
 ```bash
 H="Authorization: Bearer $QB_TOKEN"
 curl -s -H "$H" -H 'Content-Type: application/json' \

@@ -7,10 +7,14 @@
 # `quantbot` command, asks the setup questions the first time, and runs
 # QuantBot in the background (systemd on Linux, launchd on macOS).
 # Running it again updates QuantBot. QUANTBOT_REF picks a tag or branch.
+# QuantBot listens on a random free port on 127.0.0.1 unless QUANTBOT_PORT is set:
+#
+#   curl -fsSL .../install.sh | QUANTBOT_PORT=23456 bash
 set -euo pipefail
 
 REPO="${QUANTBOT_REPO:-https://github.com/yaho7/QuantBot}"
 REF="${QUANTBOT_REF:-main}"
+PORT="${QUANTBOT_PORT:-}"
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 die() { printf '✗ %s\n' "$*" >&2; exit 1; }
@@ -70,7 +74,7 @@ else
   say "没有终端，跳过设置。之后请运行：quantbot setup"
 fi
 
-if ! quantbot service install; then
+if ! quantbot service install ${PORT:+--port "$PORT"}; then
   say "没能装成后台服务。可以先用 quantbot run 在前台运行。"
 fi
 

@@ -130,7 +130,8 @@ def test_add_list_token_rename_remove(tmp_path: Path) -> None:
     code, io = run(store, ["add", "momentum", "--name", "动量策略"])
     assert code == 0
     token = next(line for line in io.out if "QB_TOKEN=" in line).split("=", 1)[1]
-    assert len(token) >= 32 and "QB_URL=http://127.0.0.1:8080" in io.text()
+    listen = store.read()["listen"]
+    assert len(token) >= 32 and f"QB_URL=http://{listen}" in io.text()
     assert "还没配置 Telegram" in io.text()
     assert run(store, ["add", "momentum"])[0] == 1
     assert run(store, ["add", "Bad!"])[0] == 1
@@ -160,7 +161,7 @@ def test_settings_say_what_is_missing(tmp_path: Path) -> None:
         store.settings({})
     run(store_ok := Store(tmp_path / "ok"), ["setup"], [BOT, "", "", "-", "", "-"])
     assert store_ok.settings({"QB_LISTEN": "127.0.0.1:9000"}).port == 9000
-    with pytest.raises(ConfigError, match="QB_LISTEN"):
+    with pytest.raises(ConfigError, match="监听地址"):
         store_ok.settings({"QB_LISTEN": "9000"})
 
 
@@ -224,3 +225,16 @@ def test_link_writes_requirements(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 def test_link_needs_setup_first(tmp_path: Path) -> None:
     code, io = run(Store(tmp_path), ["link", str(tmp_path)])
     assert code == 1 and "quantbot setup" in io.text()
+
+
+def test_random_port_is_picked_once_and_env_wins(tmp_path: Path) -> None:
+    from quantbot.config import PORT_RANGE
+
+    store = Store(tmp_path)
+    first = store.ensure_listen({})
+    host, _, port = first.rpartition(":")
+    assert host == "127.0.0.1" and PORT_RANGE[0] <= int(port) <= PORT_RANGE[1]
+    assert store.ensure_listen({}) == first == store.read()["listen"]
+    assert store.ensure_listen({"QB_LISTEN": "127.0.0.1:30001"}) == "127.0.0.1:30001"
+    with pytest.raises(ConfigError):
+        store.ensure_listen({"QB_LISTEN": "nope"})

@@ -59,7 +59,6 @@ _WAKE = object()
 
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
-DEFAULT_LISTEN = "127.0.0.1:8080"
 
 
 def _config_path() -> Path:
@@ -110,7 +109,9 @@ def connect_locally(name: str, display_name: str | None = None) -> tuple[str, st
             if os.path.exists(tmp):
                 os.unlink(tmp)
         log.info("Added %s to QuantBot", name)
-    listen = os.environ.get("QB_LISTEN") or data.get("listen") or DEFAULT_LISTEN
+    listen = os.environ.get("QB_LISTEN") or data.get("listen")
+    if not listen:
+        raise RuntimeError("QuantBot has not picked its port yet. Run `quantbot setup` first.")
     return _url_from(str(listen)), str(found["token"])
 
 
@@ -140,7 +141,6 @@ class QuantBot:
                 raise ValueError("Strategy name: lowercase letters, digits, - and _, e.g. momentum")
             local_url, token = connect_locally(name, display_name)
             url = url or local_url
-        url = url or _url_from(DEFAULT_LISTEN)
         if not url.startswith(("http://", "https://")):
             raise ValueError("QB_URL must start with http:// or https://")
         self.name = name

@@ -2,8 +2,8 @@
 
 Nothing has to be passed through the environment. Two optional variables
 change where things are: QB_DATA_DIR (default ~/.config/quantbot) and
-QB_LISTEN (default: `listen` in the file, else 127.0.0.1:8080, so only programs
-on this machine can connect).
+QB_LISTEN (default: `listen` in the file, a random free port on 127.0.0.1 picked
+the first time, so only programs on this machine can connect).
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import json
 import os
 import re
 import secrets
+import socket
 import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -25,7 +26,33 @@ STRATEGY_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 BOT_TOKEN = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
 MIN_TOKEN = 16
 FILE_NAME = "quantbot.json"
-DEFAULT_LISTEN = "127.0.0.1:8080"
+LOCALHOST = "127.0.0.1"
+PORT_RANGE = (20000, 39999)  # below most systems' range for outgoing connections
+
+
+def port_free(port: int, host: str = LOCALHOST) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind((host, port))
+        except OSError:
+            return False
+    return True
+
+
+def free_port(tries: int = 100) -> int:
+    """A random free port in PORT_RANGE."""
+    for _ in range(tries):
+        port = secrets.choice(range(PORT_RANGE[0], PORT_RANGE[1] + 1))
+        if port_free(port):
+            return port
+    raise ConfigError("找不到空闲端口，请用 --port 指定一个")
+
+
+def check_listen(listen: str) -> str:
+    host, _, port = listen.strip().rpartition(":")
+    if not host or not port.isdigit() or not 1 <= int(port) <= 65535:
+        raise ConfigError(f"监听地址 {listen!r} 不对，要像 127.0.0.1:23456")
+    return f"{host}:{int(port)}"
 
 
 class ConfigError(ValueError):
@@ -130,6 +157,18 @@ class Store:
 
     # ------------------------------------------------------------ settings
 
+    def ensure_listen(self, env: Mapping[str, str] | None = None) -> str:
+        """The address QuantBot listens on. The first time, pick a free random port and save it."""
+        env = os.environ if env is None else env
+        if env.get("QB_LISTEN"):
+            return check_listen(env["QB_LISTEN"])
+        data = self.read()
+        if data.get("listen"):
+            return check_listen(str(data["listen"]))
+        data["listen"] = f"{LOCALHOST}:{free_port()}"
+        self.write(data)
+        return str(data["listen"])
+
     def strategies(self, data: dict[str, Any] | None = None) -> tuple[StrategyConfig, ...]:
         data = self.read() if data is None else data
         found = []
@@ -148,10 +187,7 @@ class Store:
         token, owner = str(telegram.get("token") or ""), telegram.get("owner_id")
         if not token or not isinstance(owner, int):
             raise ConfigError("还没配置 Telegram。运行：quantbot setup")
-        listen = env.get("QB_LISTEN") or str(data.get("listen") or DEFAULT_LISTEN)
-        host, _, port = listen.rpartition(":")
-        if not host or not port.isdigit():
-            raise ConfigError("QB_LISTEN 要像 127.0.0.1:8080")
+        host, _, port = self.ensure_listen(env).rpartition(":")
         try:
             quiet = parse_quiet(data.get("quiet_hours"))
         except ValueError as exc:

@@ -12,7 +12,6 @@ import argparse
 import getpass
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
@@ -29,15 +28,17 @@ from typing import Any
 from quantbot import __version__
 from quantbot.config import (
     BOT_TOKEN,
-    DEFAULT_LISTEN,
+    LOCALHOST,
     STRATEGY_ID,
     ConfigError,
     Store,
+    check_listen,
     check_strategy_id,
     check_timezone,
     check_url,
     data_dir,
     new_token,
+    port_free,
 )
 from quantbot.notices import parse_quiet
 from quantbot.service import Service, ServiceError, executable
@@ -115,9 +116,8 @@ Api = Callable[..., Any]
 # ----------------------------------------------------------------- commands
 
 
-def api_url(data: dict[str, Any] | None = None) -> str:
-    listen = os.environ.get("QB_LISTEN") or (data or {}).get("listen") or DEFAULT_LISTEN
-    host, _, port = str(listen).rpartition(":")
+def api_url(store: Store) -> str:
+    host, _, port = store.ensure_listen().rpartition(":")
     return f"http://{'127.0.0.1' if host in {'0.0.0.0', '::', ''} else host}:{port}"  # noqa: S104
 
 
@@ -190,8 +190,11 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         sent = "已给你发了一条测试消息。"
     except TelegramError as exc:
         sent = f"测试消息没发出去：{exc}"
+    listen = store.ensure_listen()
     io.say()
     io.say(f"✓ 已保存。{sent}")
+    io.say(f"  QuantBot 的地址：http://{listen}")
+    io.say("  换端口：quantbot service install --port <端口>")
     if changed:
         io.say("  正在运行的 QuantBot 会在几秒内自动重启，用上新设置。")
     if not args.if_needed:
@@ -262,7 +265,7 @@ def cmd_add(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
     store.write(data)
     io.say(f"✓ 已添加 {name}（{sid}）。把下面两行交给这个策略程序：")
     io.say()
-    io.say(f"  QB_URL={api_url(data)}")
+    io.say(f"  QB_URL={api_url(store)}")
     io.say(f"  QB_TOKEN={token}")
     io.say()
     io.say("QuantBot 几秒内就会认出它，不用重启。")
@@ -276,6 +279,8 @@ def cmd_list(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
     telegram_set = data.get("telegram") or {}
     owner = telegram_set.get("owner_name") or telegram_set.get("owner_id")
     io.say(f"Telegram：{'主人 ' + str(owner) if owner else '还没配置，运行 quantbot setup'}")
+    if data.get("listen"):
+        io.say(f"监听：{data['listen']}")
     items = store.strategies(data)
     if not items:
         io.say("还没有策略。添加：quantbot add <id> --name <名字>")
@@ -336,15 +341,12 @@ detect_service: Callable[[], Service] = Service.detect
 def cmd_service(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     service = detect_service()
     if args.action == "install":
-        if args.listen:
-            host, _, port = args.listen.rpartition(":")
-            if not host or not port.isdigit():
-                raise Abort("--listen 要像 127.0.0.1:8080")
-            data = store.read()
-            data["listen"] = args.listen
-            store.write(data)
+        if args.port is not None or args.listen:
+            _set_listen(store, io, args.port, args.listen)
+        listen = store.ensure_listen()
         notes = service.install(executable(), store.dir)
         io.say(f"✓ QuantBot 已在后台运行，开机自动启动。服务文件：{service.path}")
+        io.say(f"  监听：{listen}")
         for note in notes:
             io.say(f"  {note}")
         io.say("  看日志：quantbot logs -f")
@@ -359,6 +361,25 @@ def cmd_service(store: Store, io: Console, api: Api, args: argparse.Namespace) -
     else:
         io.say(service.status() or "没有安装服务。安装：quantbot service install")
     return 0
+
+
+def _set_listen(store: Store, io: Console, port: int | None, listen: str | None) -> None:
+    if port is not None:
+        if not 1024 <= port <= 65535:
+            raise Abort("端口要在 1024 到 65535 之间")
+        host = (listen or LOCALHOST).rpartition(":")[0] if listen else LOCALHOST
+        listen = f"{host}:{port}"
+    new = check_listen(str(listen))
+    data = store.read()
+    if data.get("listen") == new:
+        return
+    host, _, port_text = new.rpartition(":")
+    if not port_free(int(port_text), "0.0.0.0" if host == "0.0.0.0" else LOCALHOST):  # noqa: S104
+        raise Abort(f"端口 {port_text} 已经被别的程序占用，换一个")
+    data["listen"] = new
+    store.write(data)
+    if data.get("strategies"):
+        io.say("  改了端口：已经在跑的策略要重启一下，才会连到新端口。")
 
 
 def cmd_logs(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
@@ -428,6 +449,8 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
     data = store.read()
     if not data:
         raise Abort("这台机器上的 QuantBot 还没设置。先运行：quantbot setup")
+    store.ensure_listen()
+    data = store.read()
     io.say(f"把 {project} 连接到 QuantBot。直接回车会用方括号里的值。")
     io.say()
 
@@ -534,7 +557,8 @@ def parser() -> argparse.ArgumentParser:
     setup.set_defaults(fn=cmd_setup)
     service = sub.add_parser("service", help="后台服务：install、uninstall、restart、status")
     service.add_argument("action", choices=["install", "uninstall", "restart", "status"])
-    service.add_argument("--listen", help="监听地址，默认 127.0.0.1:8080，只有本机能连")
+    service.add_argument("--port", type=int, help="端口，默认第一次安装时随机选一个空闲的")
+    service.add_argument("--listen", help="完整监听地址，例如 0.0.0.0:23456（让别的机器也能连）")
     link = sub.add_parser("link", help="把你的策略项目连接到 QuantBot（交互式）")
     link.add_argument("path", nargs="?", default=".", help="项目文件夹，默认当前文件夹")
     link.add_argument("--name", help="策略 id，默认用文件夹名")

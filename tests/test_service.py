@@ -90,4 +90,26 @@ def test_service_command_saves_listen(tmp_path: Path, monkeypatch: pytest.Monkey
     assert store.read()["listen"] == "0.0.0.0:9000"
     assert "还没设置 Telegram" not in io.text() and "开机自动启动" in io.text()
     assert main(["service", "install", "--listen", "9000"], io=Script([]), store=store) == 1
-    assert cli.api_url(store.read()) == "http://127.0.0.1:9000"
+    assert cli.api_url(store) == "http://127.0.0.1:9000"
+
+
+def test_service_install_port_choice(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import socket
+
+    service = Service("launchd", tmp_path, Recorder())
+    monkeypatch.setattr(cli, "detect_service", lambda: service)
+    store = Store(tmp_path / "data")
+    io = Script([])
+    assert main(["service", "install"], io=io, store=store) == 0  # random port
+    picked = store.read()["listen"]
+    assert f"监听：{picked}" in io.text()
+    assert main(["service", "install", "--port", "31234"], io=Script([]), store=store) == 0
+    assert store.read()["listen"] == "127.0.0.1:31234"
+    assert main(["service", "install", "--port", "80"], io=Script([]), store=store) == 1
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        port = busy.getsockname()[1]
+        io = Script([])
+        assert main(["service", "install", "--port", str(port)], io=io, store=store) == 1
+        assert "占用" in io.text()
+    assert store.read()["listen"] == "127.0.0.1:31234"
