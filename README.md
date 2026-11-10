@@ -45,10 +45,19 @@ Telegram ⇄ QuantBot 容器（long polling，不开公网端口）
 
    ```bash
    docker compose up -d
-   docker compose --profile demo up -d   # 可选：一个不连券商的示例策略
    ```
 
 6. 在 Telegram 里给你的 bot 发 `/menu`。
+
+想先试一试，可以跑不连券商的示例策略：
+
+```bash
+docker run --rm --network quant -e QB_URL=http://quantbot:8080 -e QB_TOKEN=<demo 的 token> \
+  -v "$PWD/client/quantbot_client.py:/app/quantbot_client.py:ro" \
+  -v "$PWD/examples/demo.py:/app/demo.py:ro" -w /app python:3.12-slim python demo.py
+```
+
+镜像由 GitHub Actions 构建：推送到 `main` 发布 `latest`，推送 `v1.2.3` 这样的 tag 发布同名版本。
 
 ## 接入一个策略
 
