@@ -152,7 +152,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 | `quantbot link` | 策略的 id、名字、token |
 | `quantbot rename/remove` | 改名、删除 |
 | `quantbot token <id> --new` | 换 token |
-| `quantbot service install --listen` | 监听地址，默认 `127.0.0.1:8080` |
+| `quantbot service install --port/--listen` | 监听地址。没指定时，第一次 `setup` 或 `service install` 在 127.0.0.1 上随机选一个 20000 到 39999 之间的空闲端口 |
 
 `setup` 认主人的方法：用户给 bot 发一条消息，`setup` 用 `getUpdates` 读到发件人。QuantBot 已经在收消息时 Telegram 会报冲突，这时改为手动输入 id。
 

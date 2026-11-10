@@ -6,7 +6,7 @@
 
 ```text
 Telegram ⇄ QuantBot（装在 VPS 上，后台运行）
-              ▲  http://127.0.0.1:8080，只有本机能连
+              ▲  http://127.0.0.1:<随机端口>，只有本机能连
    ┌──────────┴──────────┐
 策略 A（uv）          策略 B（conda）
 ```
@@ -30,6 +30,15 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
    - 你的账号：给 bot 发一条消息，它自己认出你。
    - 静音时段、时区、心跳地址，都可以跳过。
 4. 让 QuantBot 在后台运行，开机自启。Linux 用 systemd，macOS 用 launchd。
+5. 第一次安装时随机选一个空闲端口（20000 到 39999 之间）。策略会自己找到它，你不用记。
+
+想指定端口：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | QUANTBOT_PORT=23456 bash
+```
+
+装好后再换：`quantbot service install --port 23456`。换完要重启已经在跑的策略。
 
 装好后，在 Telegram 里发 `/menu`。
 
@@ -114,7 +123,7 @@ with qb:                               # 出错会推送报错，再抛出
 | `quantbot rename <id> <名字>` | 改显示名称 |
 | `quantbot remove <id>` | 删除策略 |
 | `quantbot token <id> [--new]` | 看或换 token |
-| `quantbot service install/uninstall/restart/status` | 后台服务 |
+| `quantbot service install/uninstall/restart/status` | 后台服务；`install --port` 换端口 |
 | `quantbot logs -f` | 看日志 |
 | `quantbot update` | 更新 |
 
@@ -125,7 +134,7 @@ with qb:                               # 出错会推送报错，再抛出
 - 只有 `setup` 里认出的账号能用命令和按钮。
 - 每个策略一个 token，不能冒充别的策略。
 - `~/.config/quantbot/quantbot.json` 里有 bot token 和策略 token，只有你自己的账号能读。
-- QuantBot 默认只监听 `127.0.0.1`，外网连不进来。要让别的机器连，用 `quantbot service install --listen 0.0.0.0:8080`，并走 Tailscale 或 HTTPS。
+- QuantBot 只监听 `127.0.0.1`，外网连不进来。要让别的机器连，用 `quantbot service install --listen 0.0.0.0:<端口>`，并走 Tailscale 或 HTTPS。
 - QuantBot 不连券商，不启停你的策略。实盘策略崩了不要自动重启，先在券商端核对订单和持仓。
 - QuantBot 自己挂了怎么办：在 `setup` 里填心跳地址，由 [Healthchecks.io](https://healthchecks.io) 报警。
 
