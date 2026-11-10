@@ -1,164 +1,152 @@
-# tgctl 设计
+# QuantGram 设计
 
-`tgctl` 是一个小模块：给任何 Python 量化程序加上 Telegram 控制。它不是交易框架。程序怎么写、用什么库、接哪家券商，全由程序自己决定，比如用 Schwab 取行情、用 Alpaca 下单。
+QuantGram 是一个 Telegram 远程控制中心。一个 bot 管理你所有的量化程序。每个程序用自己的券商、策略和框架，比如一个用 LumiBot 加 Schwab 和 Alpaca，另一个是普通 Python 脚本。
 
-`tgctl` 只做三件事：回答查询、转发按钮、推送消息。它不认识任何券商，不知道净值和交易日历，也不替程序做交易决定。不需要开放端口：bot 主动向 Telegram 拉取消息（long polling）。
-
-它放在 AntQuant 仓库的 `tgctl/` 目录里，有自己的 `pyproject.toml`，可以直接 `pip install`，以后也可以整个目录搬成单独的仓库。
+它不是交易框架。它不连接券商，不计算净值，不判断交易日，也不替程序做决定。它只做四件事：列出程序、转发按钮、显示程序报上来的状态、推送程序发来的消息。
 
 ## 结构
 
 ```text
-Telegram ⇄ Bot（主线程，python-telegram-bot，asyncio）
-              │ 命令 ──▶ 命令队列 ──▶ 交易线程在安全的时候执行
-              │ 推送 ◀── notify() ◀── 交易线程
-              ▼
-           策略对象（交易线程，非 daemon）
-              ├─ 行情：随便哪家，比如 schwab-py
-              └─ 下单：随便哪家，比如 alpaca-py
+Telegram ⇄ QuantGram 容器（long polling，不开公网端口）
+              ▲  HTTP，只在 Docker 内网
+              │
+   ┌──────────┴──────────┐
+策略容器 A             策略容器 B
+LumiBot                原生 Python
+Schwab 行情 + Alpaca    其他券商
 ```
 
-| 部分 | 运行位置 | 说明 |
-|---|---|---|
-| Bot | 主线程 | `run_polling()` 占住主线程，处理 `Ctrl+C` 和 `SIGTERM` |
-| 交易循环 | 普通线程（非 daemon） | 退出要走明确的流程，见“退出” |
-| 命令队列 | 两边之间 | 会读写策略状态的操作都排进队列，由交易线程执行，不和交易循环抢 |
-| 推送 | `notify()` | 线程安全；bot 还没连上时先缓存 |
+策略找 QuantGram，QuantGram 不去找策略。策略不开端口，只发三种请求：
 
-### 命令队列和“睡觉”
+| 请求 | 用途 |
+|---|---|
+| `POST /v1/events` | 发成交、报错、提醒、状态快照 |
+| `GET /v1/commands?wait=25` | 长轮询：挂着等命令，有命令马上返回 |
+| `POST /v1/commands/{id}/result` | 回报命令执行结果 |
 
-按钮不直接调用策略方法。`tgctl` 把操作排进队列，交易线程在自己觉得安全的时候执行，再把结果交回 bot。
+协议细节见 [PROTOCOL.md](PROTOCOL.md)。任何语言，会发 HTTP 请求就能接入。
 
-交易循环里的 `time.sleep()` 要换成 `tg.sleep(秒数)`。它一边等，一边执行排进来的命令；收到停止请求就马上返回 `False`。这样用日线的程序睡几个小时，点了按钮也能马上响应。
+| 好处 | 原因 |
+|---|---|
+| 接入简单 | 策略不用写服务端 |
+| 哪里都能跑 | Docker 内网、本机、别的机器（走 HTTPS 或 Tailscale） |
+| 互不影响 | QuantGram 更新、重启、崩溃，策略照常交易；命令只是暂时发不出去 |
+| 离线看得出 | 45 秒没来取命令，就标成离线，并推送提醒 |
+| 状态不冒充实时 | 显示的是快照，旁边写“12 秒前” |
 
-```python
-def run(tg):
-    while not tg.stopping:
-        do_one_round()
-        tg.heartbeat()               # 一轮正常跑完才报心跳
-        if not tg.sleep(60):         # 等的时候也在执行命令
-            break
+QuantGram 不挂载 `docker.sock`，不启停容器。容器的启动、停止和重启交给 Docker Compose 或 1Panel。它只发命令，暂停、平仓、退出由策略自己决定怎么做。
+
+## 组成
+
+| 模块 | 作用 |
+|---|---|
+| `config.py` | 读 `strategies.yaml` 和环境变量 |
+| `hub.py` | 每个策略的在线状态、快照、能力、命令队列、等待结果 |
+| `server.py` | 内网 HTTP 接口，按策略 token 认证 |
+| `core.py` | 菜单、按钮、二次确认、审计，不含 Telegram 类型 |
+| `bot.py` | 把 Telegram 消息和按钮接到 `core.py` |
+| `notices.py` | 静音时段、授权到期提醒 |
+| `heartbeat.py` | QuantGram 自己向外部监控报心跳 |
+| `client/quantgram_client.py` | 给 Python 策略用的单文件客户端，只用标准库 |
+
+没有数据库、消息队列或 Web 框架页面。命令只存在内存里，审计写进一个 JSONL 文件。
+
+## 策略注册
+
+```yaml
+# config/strategies.yaml
+strategies:
+  - id: momentum            # 小写字母、数字、- 和 _
+    name: 动量策略
+    token_env: QG_TOKEN_MOMENTUM   # token 放在环境变量里，不写进文件
+  - id: grid
+    name: 网格策略
+    token_env: QG_TOKEN_GRID
 ```
 
-如果命令在 15 秒内没被执行，bot 回复“程序正忙”。命令仍在排队，执行完会再推送结果。
+每个策略一个 token。token 认出是哪个策略，所以一个策略不能冒充另一个。
 
-## 策略对象的接口
+## 能力和菜单
 
-不用继承任何类。策略实现了哪些方法，Telegram 上就出现哪些功能。这些方法都在交易线程里被调用。
+策略启动时发一个 `hello` 事件，列出它支持的命令。QuantGram 按这个生成菜单，不支持的按钮不显示。
 
-| 方法 | 返回 | 用途 |
+| 命令 | 参数 | 按钮 |
 |---|---|---|
-| `status()` | 文本 | `/status` 和菜单上方的文字 |
-| `positions()` | 文本 | `/positions` |
-| `orders()` | `[{"id": ..., "text": ...}]` | `/orders`，每个挂单一个撤单按钮 |
-| `cancel(order_id)` | 文本 | 撤一个挂单 |
-| `flatten()` | 文本 | 平掉本程序的仓位，见“平仓” |
-| `params()` | `dict` | `/set` 用来检查名字和类型 |
-| `set_param(name, value)` | 文本 | 运行中改参数 |
-| `manual_order(side, symbol, qty)` | 文本 | `/buy` `/sell` |
-| `chart()` | PNG 字节 | `/chart` |
-| `shutdown()` | 无 | 停止时在交易线程里调用，做收尾 |
+| `status` | 无 | 刷新 |
+| `pause` / `resume` | 无 | 暂停开仓 / 恢复开仓 |
+| `positions` | 无 | 持仓 |
+| `orders` | 无 | 挂单 |
+| `cancel` | `order_id` | 撤单（确认） |
+| `flatten` | 无 | 平仓（确认） |
+| `params` | 无 | `/set` 先用它检查名字和类型 |
+| `set_param` | `name`, `value` | `/set`（确认） |
+| `manual_order` | `side`, `symbol`, `qty` | `/buy` `/sell`（确认） |
+| `chart` | 无 | 净值图 |
+| `stop` | 无 | 停止程序（确认） |
 
-方法里抛出的异常会作为失败结果回给你，不会让程序停下。
+## Telegram 里怎么用
 
-`tgctl` 提供给策略的：
+- `/menu` 列出所有策略：🟢 在线或 🔴 离线、状态第一行、快照多久以前。只注册了一个策略时，直接打开它。
+- 点一个策略，看它的状态和按钮。它也会成为“当前策略”，`/set`、`/buy`、`/positions` 这些命令都作用在它上面。`/use <id>` 也能切换。
+- 列表页有“⏸ 全部暂停开仓”，一次发给所有在线策略。
+- 策略离线时，按钮仍然显示，但命令会排队，回复里写明“离线，命令已排队”。命令 2 分钟后作废，不会在很久以后突然执行。
 
-| 名字 | 用途 |
+## 安全
+
+| 规则 | 做法 |
 |---|---|
-| `tg.sleep(秒)` | 代替 `time.sleep`，同时执行命令 |
-| `tg.stopping` | 是否已请求停止 |
-| `tg.can_open()` | 下开仓单前最后检查一次；暂停时返回 `False` |
-| `tg.paused` | 是否暂停开仓 |
-| `tg.notify(text, kind="info")` | 推送；`kind` 是 `info`、`trade`、`error` |
-| `tg.trade(text)` | 成交推送 |
-| `tg.error(text)` | 报错推送 |
-| `tg.daily_summary(text, chart=None)` | 每日总结，什么时候发由程序决定 |
-| `tg.risk_triggered(reason)` | 暂停开仓并推送原因 |
-| `tg.connection(name, ok, detail="")` | 连接断开、恢复时推送，状态不变不重复推送 |
-| `tg.watch_expiry(name, expires_at)` | 授权快过期时提醒，比如 Schwab 的 7 天授权 |
-| `tg.heartbeat()` | 一轮正常跑完后调用，去 ping 外部心跳地址 |
+| 只认主人 | 命令和按钮都检查 `TG_OWNER_ID` |
+| 二次确认 | 平仓、停止、撤单、改参数、手动下单，第二次点击的票据 30 秒内有效，只能用一次 |
+| 幂等 | 每个命令有 id。没收到结果的命令 20 秒后会重发；策略按 id 去重，不会执行两次 |
+| 超时 | 15 秒没结果，先回复“已发出，还没回报”；结果到了再推送 |
+| 审计 | 每次操作和结果写进 `audit.jsonl` |
+| 内网认证 | 每个策略一个 token，比较时用常量时间 |
+| 大小限制 | 请求体最大 6 MB（净值图） |
+| 平仓归属 | 策略只能平自己能确认归属的仓位，分不清就拒绝 |
+| 停止 | `stop` 只请求策略退出，保护性止损单留着 |
+| 不自动重启实盘 | 实盘容器用 `restart: "no"`；Docker 的健康检查只标记 unhealthy，不会重启 |
 
-风控上限和交易日历归程序管。程序自己算净值、判断今天开不开市、决定收盘后什么时候发总结。`tgctl` 只负责显示和推送。
+风险：内网 HTTP 是明文的。策略在别的机器上时，要走 HTTPS 或 Tailscale。
 
-## 功能
+## 推送
 
-| 批次 | 功能 | 形式 |
+| 策略事件 | 推送样子 | 静音时段 |
 |---|---|---|
-| 一 | 主菜单 | `/menu`，状态文字加按钮，点完原地更新 |
-| 一 | 状态 | `/status`，带刷新按钮 |
-| 一 | 暂停开仓 / 恢复 | 按钮；状态写进文件，重启后还记得 |
-| 一 | 平仓 | 按钮或 `/flatten`，点两次确认 |
-| 一 | 停止程序 | `/stop`，点两次确认 |
-| 一 | 成交、报错推送 | `tg.trade()` `tg.error()` |
-| 一 | 线程故障 | 交易线程出错退出时推送报错，整个程序退出 |
-| 一 | 外部心跳 | `tg.heartbeat()` ping Healthchecks.io |
-| 一 | 只认主人 | 命令和按钮都检查用户 id |
-| 一 | 操作记录 | 每次操作写进 `audit.jsonl` |
-| 二 | 持仓、挂单、撤单 | `/positions` `/orders` |
-| 二 | 改参数 | `/set rsi_len 10`，检查名字和类型，回显改前改后 |
-| 二 | 每日总结 | `tg.daily_summary()` |
-| 二 | 风控触发 | `tg.risk_triggered()` |
-| 二 | 连接状态 | `tg.connection()` |
-| 二 | 授权到期提醒 | `tg.watch_expiry()`，到期前 48 小时和 12 小时各提醒一次 |
-| 三 | 净值图 | `/chart`，或随每日总结发送 |
-| 三 | 手动下单 | `/buy QQQ 10`，点两次确认 |
-| 三 | 静音时段 | 时段内只有报错会响，其他消息静默送达 |
+| `fill` | `[动量策略] 🟢 AAPL BUY 10 @ 280.50` | 静默送达 |
+| `info`、`summary` | 普通消息，`summary` 可带一张图 | 静默送达 |
+| `alert` | `⚠️` 开头 | 响铃 |
+| `error` | `❌` 开头 | 响铃 |
+| `connection` | 只在断开、恢复时推送 | 断开响铃 |
+| `expiry` | 到期前 48 小时、12 小时、过期时提醒 | 响铃 |
+| 离线 / 恢复在线 | QuantGram 自己发 | 离线响铃 |
 
-不做“一个 bot 管几个程序”：那需要几个进程之间互相通信，超出这个模块的范围。每个程序用自己的 bot token。
-
-## 交易安全
-
-### 二次确认
-
-平仓、停止、撤单、改参数、手动下单都要点两次。第一次点击生成一个一次性的确认 id，30 秒内有效。第二次点击时检查它没过期、没用过，然后才排进命令队列。旧消息里的按钮点了只会提示“已失效”。确认 id 同时是操作 id，写进操作记录，同一个 id 不会执行两次。
-
-执行时的检查由策略在自己的方法里做，因为只有策略知道当前的持仓和订单。
-
-### 平仓
-
-`flatten()` 只能平掉确定属于本程序的仓位。建议下单时给 `client_order_id` 加上程序自己的前缀，按成交记账。几个策略共用一个账户、又分不清仓位时，`flatten()` 应该拒绝并说明原因，不要按账户持仓去猜。
-
-### 停止和撤单分开
-
-- `/stop`：请求停止。交易线程执行完手上的命令，`tg.sleep()` 返回 `False`，循环退出，`shutdown()` 做收尾。止损这类保护单留着，不撤。
-- `/flatten`：平仓，并按需要撤掉相关挂单。
-
-### 退出
-
-| 情况 | 结果 |
-|---|---|
-| `/stop`、`Ctrl+C`、`docker stop` | 设置停止标志，最多等交易线程 30 秒 |
-| 30 秒内没退出 | 记录日志并推送，进程强制退出 |
-| 交易线程出错退出 | 推送报错和最后几行日志，向心跳地址报失败，bot 停止，进程以非 0 退出 |
-| Bot 自己出错 | 同样先请求交易线程停止，再退出 |
-
-实盘程序不要自动重启。重启前要先在券商端核对订单和持仓，否则可能重复下单。Docker 用 `restart: "no"`。Docker 的健康检查只会把容器标成 unhealthy，不会因此重启它，所以不能靠它恢复。
+风控上限和交易日历归策略管：策略自己暂停，再发一条 `alert`。
 
 ## 心跳
 
-程序卡死时，它自己发不出提醒，所以心跳放在外面检查：
+| 谁 | 怎么报 |
+|---|---|
+| QuantGram | 每 60 秒 ping 一次 `HEARTBEAT_URL`，证明 bot 还活着 |
+| 每个策略 | 一轮正常跑完后 ping 自己的监控地址，客户端里有 `heartbeat()` |
 
-- 交易循环每次正常跑完一轮，调用 `tg.heartbeat()`。它在后台去 GET `HEARTBEAT_URL`，最多 30 秒一次，不会卡住循环。
-- 交易线程出错时，`tgctl` 会请求 `HEARTBEAT_URL/fail`（Healthchecks.io 的失败地址）。
-- 超时没收到心跳，由 [Healthchecks.io](https://healthchecks.io) 自己的 Telegram 集成发提醒。这样即使程序和 bot 都挂了，也能收到。
+超时没收到心跳，由 [Healthchecks.io](https://healthchecks.io) 自己的 Telegram 集成报警。这样 QuantGram 挂了也能知道。
 
 ## 配置
 
-都放在环境变量里，用 `.env` 文件传给容器。`.env` 不提交到 git。
-
 | 变量 | 必填 | 说明 |
 |---|---|---|
-| `TG_TOKEN` | 是 | bot token，在 [@BotFather](https://t.me/BotFather) 创建，每个程序一个 |
-| `TG_OWNER_ID` | 是 | 你的 Telegram 数字 id，可以向 [@userinfobot](https://t.me/userinfobot) 查询 |
-| `TG_STATE_DIR` | 否 | 暂停状态和操作记录放在哪里，默认 `./tgctl-state` |
+| `TG_TOKEN` | 是 | bot token，在 [@BotFather](https://t.me/BotFather) 创建 |
+| `TG_OWNER_ID` | 是 | 你的 Telegram 数字 id |
+| `QG_CONFIG` | 否 | 策略清单，默认 `/config/strategies.yaml` |
+| `QG_DATA_DIR` | 否 | 审计记录放哪里，默认 `/data` |
+| `QG_LISTEN` | 否 | 内网监听地址，默认 `0.0.0.0:8080` |
+| `QG_TOKEN_<ID>` | 是 | 每个策略的 token，名字由 `token_env` 决定 |
 | `TG_QUIET_HOURS` | 否 | 静音时段，例如 `23-07` |
-| `TG_TIMEZONE` | 否 | 静音时段用的时区，默认 `Asia/Shanghai` |
-| `HEARTBEAT_URL` | 否 | 心跳地址 |
-
-多个程序共用一个 token 时，几个进程同时拉取消息会互相抢，Telegram 会报冲突。
+| `TG_TIMEZONE` | 否 | 默认 `Asia/Shanghai` |
+| `HEARTBEAT_URL` | 否 | QuantGram 自己的心跳地址 |
 
 ## 不做的事
 
-- 不连接任何券商，不计算净值，不判断交易日。
-- 不用 Web 框架、消息队列或数据库。状态只是一个 JSON 文件和一个 JSONL 记录文件。
-- 不在多个进程之间通信。以后如果要求 bot 重启时交易不中断，再把 bot 拆成单独的进程。
+- 不连接券商，不存行情和成交。
+- 不启停容器，不挂载 `docker.sock`。
+- 不保存命令：QuantGram 重启时，还没执行的命令会丢掉，这比重启后突然执行更安全。

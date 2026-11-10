@@ -16,8 +16,8 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from typing import Any
 
-from tgctl.bridge import Bridge, Stopped
-from tgctl.state import State
+from quantgram.bridge import Bridge, Stopped
+from quantgram.state import State
 
 Buttons = list[list[tuple[str, str]]]  # rows of (label, callback data)
 

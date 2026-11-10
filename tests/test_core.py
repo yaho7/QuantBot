@@ -9,9 +9,9 @@ from typing import Any
 
 import pytest
 
-from tgctl.bridge import Bridge
-from tgctl.core import Core, Reply, check_type, parse_value
-from tgctl.state import State
+from quantgram.bridge import Bridge
+from quantgram.core import Core, Reply, check_type, parse_value
+from quantgram.state import State
 
 OWNER = 42
 

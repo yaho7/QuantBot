@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from tgctl.bridge import Bridge, Stopped
-from tgctl.heartbeat import Heartbeat
-from tgctl.state import State
+from quantgram.bridge import Bridge, Stopped
+from quantgram.heartbeat import Heartbeat
+from quantgram.state import State
 
 
 def test_commands_run_on_the_thread_that_sleeps() -> None:
