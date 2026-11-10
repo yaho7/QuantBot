@@ -80,7 +80,15 @@ class Settings:
 
     def telegram_key(self) -> tuple[Any, ...]:
         """Everything that needs a restart to change. Strategies reload on their own."""
-        return (self.tg_token, self.owner_id, self.quiet_hours, self.timezone, self.heartbeat_url)
+        return (
+            self.tg_token,
+            self.owner_id,
+            self.host,
+            self.port,
+            self.quiet_hours,
+            self.timezone,
+            self.heartbeat_url,
+        )
 
 
 def data_dir(env: Mapping[str, str] | None = None) -> Path:

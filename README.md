@@ -21,28 +21,24 @@ Telegram ⇄ QuantBot（装在 VPS 上，后台运行）
 curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash
 ```
 
-它会：
+它先装好缺的依赖：git、curl、[uv](https://docs.astral.sh/uv/)，以及 QuantBot 用的 Python 3.12。不会动你的系统 Python 和策略环境。
 
-1. 装好缺的依赖：git、curl、[uv](https://docs.astral.sh/uv/)，以及 QuantBot 用的 Python 3.12。不会动你的系统 Python 和策略环境。
-2. 装好 `quantbot` 命令。
-3. 第一次运行时问你几个问题：
-   - Bot token：先在 [@BotFather](https://t.me/BotFather) 发 `/newbot` 创建。
-   - 你的账号：给 bot 发一条消息，它自己认出你。
-   - 静音时段、时区、心跳地址，都可以跳过。
-4. 让 QuantBot 在后台运行，开机自启。Linux 用 systemd，macOS 用 launchd。
-5. 第一次安装时随机选一个空闲端口（20000 到 39999 之间）。策略会自己找到它，你不用记。
+然后一步步问你：
 
-想指定端口：
+| 步骤 | 问什么 | 直接回车 |
+|---|---|---|
+| 1 | Bot token：先在 [@BotFather](https://t.me/BotFather) 发 `/newbot` 创建 | 必填 |
+| 2 | 你的账号：给 bot 发一条消息，它自己认出你；也能直接输入数字 id | 必填 |
+| 3 | 端口：策略通过它连 QuantBot | 用随机选好的空闲端口（20000 到 39999） |
+| 4 | 静音时段和时区 | 不设静音，时区 `Asia/Shanghai` |
+| 5 | 心跳地址（Healthchecks.io） | 不设 |
+| 6 | 要不要在后台运行：开机自启，挂了自动重启 | 要 |
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | QUANTBOT_PORT=23456 bash
-```
+最后列出你的选择，确认后才保存，并给你发一条测试消息。在 Telegram 里发 `/menu` 就能用了。
 
-装好后再换：`quantbot service install --port 23456`。换完要重启已经在跑的策略。
+想改设置，运行 `quantbot setup`，会用现在的值当默认。
 
-装好后，在 Telegram 里发 `/menu`。
-
-更新：再运行一次安装命令，或者运行 `quantbot update`。
+更新：再运行一次安装命令，它不会再问问题，只更新并重启后台服务。也可以运行 `quantbot update`。
 
 ## 连接你的策略
 

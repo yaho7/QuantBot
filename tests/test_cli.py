@@ -12,8 +12,21 @@ import pytest
 from quantbot.cli import Console, TelegramError, main
 from quantbot.config import ConfigError, Store, StrategyConfig
 from quantbot.hub import Hub
+from quantbot.service import ServiceError
 
 BOT = "123456789:" + "A" * 35
+# token, wait for a message, confirm owner, port, quiet hours, time zone, heartbeat, save
+SETUP = [BOT, "", "", "", "-", "", "-", ""]
+
+
+@pytest.fixture(autouse=True)
+def no_service_manager(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never touch the real systemd or launchd from tests."""
+
+    def missing() -> Any:
+        raise ServiceError("no service manager in tests")
+
+    monkeypatch.setattr("quantbot.cli.detect_service", missing)
 
 
 class Script(Console):
@@ -75,49 +88,91 @@ def run(
 def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
     store = Store(tmp_path)
     api = FakeTelegram([message()])
-    # bad token, good token, wait for message, confirm, quiet, tz, heartbeat
-    code, io = run(store, ["setup"], ["nope", BOT, "", "", "23-07", "", ""], api=api)
+    # bad token, good token, wait, confirm owner, port, quiet, tz, heartbeat, save
+    code, io = run(store, ["setup"], ["nope", BOT, "", "", "", "23-07", "", "", ""], api=api)
     assert code == 0, io.text()
     assert "✓ 连上了 @my_quant_bot" in io.text() and "收到 Ya @ya（id 42）" in io.text()
+    assert "就这样设置" in io.text() and "后台运行" not in io.text()  # no service manager
     settings = store.settings({})
     assert (settings.owner_id, settings.quiet_hours, settings.timezone) == (
         42,
         (23, 7),
         "Asia/Shanghai",
     )
+    assert settings.host == "127.0.0.1" and 20000 <= settings.port <= 39999
     assert (
         "sendMessage",
         {"chat_id": 42, "text": "✅ QuantBot 配置好了。发 /menu 看所有策略。"},
     ) in api.calls
     assert stat.S_IMODE(os.stat(store.path).st_mode) == 0o600
-    assert "quantbot add" in io.text()
+    assert "quantbot link" in io.text()
 
 
 def test_setup_again_keeps_values_and_typed_id_works(tmp_path: Path) -> None:
     store = Store(tmp_path)
-    run(store, ["setup"], [BOT, "", "", "23-07", "", ""])
-    # keep token (empty), not the same owner, type id, keep quiet, new tz, bad url, no url
+    run(store, ["setup"], [BOT, "", "", "", "23-07", "", "", ""])
+    port = store.settings({}).port
+    # keep token, not the same owner, type id, keep port, keep quiet, new tz, bad url, none, save
     code, io = run(
         store,
         ["setup"],
-        ["", "n", "99", "", "America/New_York", "ftp://x", "-"],
+        ["", "n", "99", "", "", "America/New_York", "ftp://x", "-", ""],
         api=FakeTelegram(conflict=True),
     )
     assert code == 0, io.text()
     settings = store.settings({})
-    assert (settings.owner_id, settings.quiet_hours, settings.timezone) == (
+    assert (settings.owner_id, settings.port, settings.quiet_hours, settings.timezone) == (
         99,
+        port,
         (23, 7),
         "America/New_York",
     )
-    assert "自动重启" in io.text()
 
 
 def test_setup_while_running_asks_for_the_id(tmp_path: Path) -> None:
     code, io = run(
-        Store(tmp_path), ["setup"], [BOT, "", "42", "-", "", "-"], api=FakeTelegram(conflict=True)
+        Store(tmp_path),
+        ["setup"],
+        [BOT, "", "42", "", "-", "", "-", ""],
+        api=FakeTelegram(conflict=True),
     )
     assert code == 0 and "没法自动识别" in io.text()
+
+
+def test_setup_port_choice_and_cancel(tmp_path: Path) -> None:
+    import socket
+
+    store = Store(tmp_path)
+    with socket.socket() as busy:
+        busy.bind(("127.0.0.1", 0))
+        taken = str(busy.getsockname()[1])
+        # token, wait, owner, bad port, taken port, good port, quiet, tz, hb, do not save
+        answers = [BOT, "", "", "80", taken, "31555", "-", "", "-", "n"]
+        code, io = run(store, ["setup"], answers)
+    assert code == 1 and "已取消" in io.text() and not store.exists()
+    assert "1024 到 65535" in io.text() and "占用" in io.text()
+    code, io = run(store, ["setup"], [BOT, "", "", "31555", "-", "", "-", ""])
+    assert code == 0 and store.read()["listen"] == "127.0.0.1:31555"
+
+
+def test_setup_installs_the_background_service(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from quantbot.service import Service
+    from tests.test_service import Recorder
+
+    calls = Recorder()
+    service = Service("launchd", tmp_path, calls)
+    monkeypatch.setattr("quantbot.cli.detect_service", lambda: service)
+    store = Store(tmp_path / "data")
+    code, io = run(store, ["setup"], [*SETUP[:-1], "", ""])  # yes to background, save
+    assert code == 0, io.text()
+    assert "6/6  后台运行" in io.text() and service.installed()
+    assert "QuantBot 已在后台运行" in io.text()
+    calls.calls.clear()
+    code, io = run(store, ["setup", "--if-needed"])  # the installer, run again
+    assert code == 0 and "已重启" in io.text()
+    assert calls.calls[0][:2] == ["launchctl", "kickstart"]
 
 
 def test_setup_needs_a_terminal(tmp_path: Path) -> None:
@@ -159,7 +214,7 @@ def test_settings_say_what_is_missing(tmp_path: Path) -> None:
     store.path.write_text("{broken")
     with pytest.raises(ConfigError, match="读不出来"):
         store.settings({})
-    run(store_ok := Store(tmp_path / "ok"), ["setup"], [BOT, "", "", "-", "", "-"])
+    run(store_ok := Store(tmp_path / "ok"), ["setup"], SETUP)
     assert store_ok.settings({"QB_LISTEN": "127.0.0.1:9000"}).port == 9000
     with pytest.raises(ConfigError, match="监听地址"):
         store_ok.settings({"QB_LISTEN": "9000"})
@@ -189,7 +244,7 @@ def test_link_copies_the_client_and_registers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store = Store(tmp_path / "data")
-    run(store, ["setup"], [BOT, "", "", "-", "", "-"])
+    run(store, ["setup"], SETUP)
     project = tmp_path / "My Momentum"
     project.mkdir()
     (project / "main.py").write_text("print('hi')\n")
@@ -207,7 +262,7 @@ def test_link_copies_the_client_and_registers(
 
 def test_link_writes_requirements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = Store(tmp_path / "data")
-    run(store, ["setup"], [BOT, "", "", "-", "", "-"])
+    run(store, ["setup"], SETUP)
     project = tmp_path / "grid"
     project.mkdir()
     (project / "requirements.txt").write_text("pandas")

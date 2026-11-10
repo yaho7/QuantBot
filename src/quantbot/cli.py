@@ -12,6 +12,7 @@ import argparse
 import getpass
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -37,6 +38,7 @@ from quantbot.config import (
     check_timezone,
     check_url,
     data_dir,
+    free_port,
     new_token,
     port_free,
 )
@@ -121,18 +123,49 @@ def api_url(store: Store) -> str:
     return f"http://{'127.0.0.1' if host in {'0.0.0.0', '::', ''} else host}:{port}"  # noqa: S104
 
 
+def _service_or_none() -> Service | None:
+    try:
+        return detect_service()
+    except ServiceError:
+        return None
+
+
+def _ask_port(io: Console, data: dict[str, Any]) -> str:
+    """Ask for the port. The default is the current one, QUANTBOT_PORT, or a free random one."""
+    current = str(data.get("listen") or "")
+    host = current.rpartition(":")[0] if current else LOCALHOST
+    current_port = current.rpartition(":")[2] if current else ""
+    default = current_port or os.environ.get("QUANTBOT_PORT") or str(free_port())
+    while True:
+        typed = io.ask("     端口（只有本机能连，回车用这个）", default)
+        if not typed.isdigit() or not 1024 <= int(typed) <= 65535:
+            io.say("     ✗ 端口是 1024 到 65535 之间的数字")
+            continue
+        if typed != current_port and not port_free(int(typed)):
+            io.say(f"     ✗ 端口 {typed} 已经被别的程序占用，换一个")
+            continue
+        return f"{host}:{int(typed)}"
+
+
 def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     data = store.read()
+    service = _service_or_none()
     if args.if_needed and (data.get("telegram") or {}).get("token"):
-        io.say("✓ 已经设置过了。要改设置，运行 quantbot setup")
+        if service is not None and service.installed():
+            service.restart()
+            io.say("✓ 已经设置过了，后台服务已重启，用上新版本。要改设置，运行 quantbot setup")
+        else:
+            io.say("✓ 已经设置过了。要改设置，运行 quantbot setup")
         return 0
     if not io.interactive():
         raise Abort("setup 要在终端里交互运行：quantbot setup")
     old = data.get("telegram") or {}
+    ask_service = service is not None and not service.installed()
+    steps = 6 if ask_service else 5
     io.say("QuantBot 设置。直接回车会用方括号里的值。")
     io.say()
 
-    io.say("1/4  Bot token：在 Telegram 里找 @BotFather，发 /newbot 创建一个 bot。")
+    io.say(f"1/{steps}  Bot token：在 Telegram 里找 @BotFather，发 /newbot 创建一个 bot。")
     while True:
         token = io.secret("     粘贴 token" + ("（回车保留现在的）" if old.get("token") else ""))
         token = token or str(old.get("token") or "")
@@ -149,11 +182,15 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         break
 
     io.say()
-    io.say("2/4  你的 Telegram 账号：只有这个账号能控制 QuantBot。")
+    io.say(f"2/{steps}  你的 Telegram 账号：只有这个账号能控制 QuantBot。")
     owner, owner_name = _find_owner(io, api, token, username, old)
 
     io.say()
-    io.say("3/4  静音时段：这段时间里只有提醒和报错会响。")
+    io.say(f"3/{steps}  端口：你的策略通过它连 QuantBot，策略会自己找到，不用记。")
+    listen = _ask_port(io, data)
+
+    io.say()
+    io.say(f"4/{steps}  静音时段：这段时间里只有提醒和报错会响。")
     while True:
         quiet = io.ask("     时段，例如 23-07，输入 - 不设", str(data.get("quiet_hours") or "-"))
         quiet = "" if quiet == "-" else quiet
@@ -167,7 +204,7 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
             io.say(f"     ✗ {exc}")
 
     io.say()
-    io.say("4/4  QuantBot 自己的心跳：填 Healthchecks.io 的 ping 地址，挂了会报警。")
+    io.say(f"5/{steps}  QuantBot 自己的心跳：填 Healthchecks.io 的 ping 地址，挂了会报警。")
     while True:
         heartbeat = io.ask("     地址，输入 - 不设", str(data.get("heartbeat_url") or "-"))
         try:
@@ -176,9 +213,36 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         except ConfigError as exc:
             io.say(f"     ✗ {exc}")
 
-    changed = old.get("token") and (old.get("token"), old.get("owner_id")) != (token, owner)
+    background = False
+    if ask_service:
+        io.say()
+        io.say(f"6/{steps}  后台运行：开机自动启动，挂了自动重启。")
+        background = io.confirm("     要在后台运行 QuantBot 吗？")
+
+    io.say()
+    io.say("就这样设置：")
+    rows = [
+        ("Bot", f"@{username}"),
+        ("主人", f"{owner_name or owner}（id {owner}）"),
+        ("地址", f"http://{listen}"),
+        ("静音时段", f"{quiet} {timezone}" if quiet else "不设"),
+        ("心跳", "已设" if heartbeat else "不设"),
+    ]
+    if ask_service:
+        rows.append(("后台运行", "是" if background else "否"))
+    for label, value in rows:
+        io.say(f"  {label}\t{value}")
+    if not io.confirm("保存吗？"):
+        io.say("已取消，什么都没改。")
+        return 1
+
+    port_changed = bool(data.get("listen")) and data.get("listen") != listen
+    restart = bool(old.get("token")) and (
+        port_changed or (old.get("token"), old.get("owner_id")) != (token, owner)
+    )
     data.update(
         telegram={"token": token, "owner_id": owner, "owner_name": owner_name},
+        listen=listen,
         quiet_hours=quiet or None,
         timezone=timezone,
         heartbeat_url=heartbeat,
@@ -190,17 +254,24 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         sent = "已给你发了一条测试消息。"
     except TelegramError as exc:
         sent = f"测试消息没发出去：{exc}"
-    listen = store.ensure_listen()
     io.say()
     io.say(f"✓ 已保存。{sent}")
-    io.say(f"  QuantBot 的地址：http://{listen}")
-    io.say("  换端口：quantbot service install --port <端口>")
-    if changed:
+    if background and service is not None:
+        try:
+            for note in service.install(executable(), store.dir):
+                io.say(f"  {note}")
+            io.say("✓ QuantBot 已在后台运行。看日志：quantbot logs -f")
+        except ServiceError as exc:
+            io.say(f"✗ 后台服务没装成：{exc}")
+            io.say("  可以先用 quantbot run 在前台运行。")
+    elif restart and service is not None and service.installed():
         io.say("  正在运行的 QuantBot 会在几秒内自动重启，用上新设置。")
-    if not args.if_needed:
-        io.say("  后台运行：quantbot service install")
+    if port_changed and data["strategies"]:
+        io.say("  端口变了：已经在跑的策略要重启一下，才会连到新端口。")
+    elif not (service is not None and service.installed()):
+        io.say("  运行：quantbot run，或 quantbot service install 放到后台")
     if not data["strategies"]:
-        io.say("  添加策略：quantbot add <id> --name <名字>")
+        io.say("  连接一个策略：cd 你的策略项目 && quantbot link")
     return 0
 
 
