@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -20,7 +21,7 @@ from telegram.ext import (
 )
 
 from quantbot.audit import Audit
-from quantbot.config import Settings
+from quantbot.config import ConfigError, Settings, Store
 from quantbot.core import Buttons, Core, Reply
 from quantbot.heartbeat import Heartbeat
 from quantbot.hub import Hub, Strategy
@@ -78,9 +79,29 @@ def silent(kind: str, quiet: tuple[int, int] | None, now: datetime) -> bool:
     return kind not in LOUD and is_quiet(now.hour, quiet)
 
 
+def serve(store: Store, wait_every: float = 3.0) -> int:
+    """Run until stopped. Before `quantbot setup` has run, wait for it."""
+    told = False
+    while True:
+        try:
+            settings = store.settings()
+            break
+        except ConfigError as exc:
+            if not told:
+                log.warning("%s", exc)
+                told = True
+            time.sleep(wait_every)
+    log.info("Starting QuantBot with %d strategies", len(settings.strategies))
+    bot = QuantBot(settings, store)
+    bot.run()
+    return 0
+
+
 class QuantBot:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, store: Store | None = None) -> None:
         self.settings = settings
+        self.store = store
+        self._config_mtime = store.mtime() if store else None
         self.tz = ZoneInfo(settings.timezone)
         self.hub = Hub(settings.strategies, self._hub_notice)
         self.core = Core(
@@ -140,7 +161,7 @@ class QuantBot:
         log.info("Strategy API on %s:%s", self.settings.host, self.settings.port)
         await app.bot.set_my_commands([BotCommand(n, d) for n, d in COMMANDS])
         self._upkeep = asyncio.create_task(self._upkeep_loop())
-        names = "、".join(s.name for s in self.hub.strategies.values())
+        names = "、".join(s.name for s in self.hub.strategies.values()) or "还没有"
         await self._send(f"🟢 QuantBot 已启动。策略：{names}", "info")
 
     async def _stopped(self, app: Application) -> None:
@@ -152,11 +173,33 @@ class QuantBot:
     async def _upkeep_loop(self) -> None:
         while True:
             try:
+                self.reload()
                 self.hub.sweep()
                 self.heartbeat.ping()
             except Exception:  # noqa: BLE001 - upkeep must keep going
                 log.exception("Upkeep failed")
             await asyncio.sleep(SWEEP_EVERY)
+
+    def reload(self) -> None:
+        """Pick up `quantbot add/remove/...` at once; restart for new Telegram settings."""
+        if self.store is None:
+            return
+        mtime = self.store.mtime()
+        if mtime == self._config_mtime:
+            return
+        self._config_mtime = mtime
+        try:
+            fresh = self.store.settings()
+        except ConfigError as exc:
+            log.error("Ignoring the changed settings file: %s", exc)
+            return
+        if fresh.telegram_key() != self.settings.telegram_key():
+            log.info("Telegram settings changed; stopping so the container restarts with them")
+            self.app.stop_running()
+            return
+        for change in self.hub.sync(fresh.strategies):
+            log.info("Strategies: %s", change)
+        self.settings = fresh
 
     # ------------------------------------------------------------- sending
 

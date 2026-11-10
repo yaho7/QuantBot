@@ -177,6 +177,8 @@ class Core:
 
     async def home(self) -> Reply:
         strategies = list(self.hub.strategies.values())
+        if not strategies:
+            return Reply("还没有策略。在服务器上运行：\nquantbot add <id> --name <名字>")
         if len(strategies) == 1:
             return await self.open(strategies[0].id)
         lines = []

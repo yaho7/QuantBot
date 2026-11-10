@@ -6,13 +6,11 @@ import asyncio
 import base64
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from typing import Any
 
-import pytest
 from aiohttp.test_utils import TestClient, TestServer
 
-from quantbot.config import ConfigError, StrategyConfig, load, load_strategies
+from quantbot.config import StrategyConfig
 from quantbot.hub import Hub
 from quantbot.server import make_app
 
@@ -161,36 +159,3 @@ def test_notices_connection_expiry_and_summary_image() -> None:
         ]
 
     scenario(test)
-
-
-def test_config_loading(tmp_path: Path) -> None:
-    path = tmp_path / "strategies.yaml"
-    path.write_text(
-        "strategies:\n"
-        "  - {id: momentum, name: 动量策略, token_env: QB_TOKEN_MOMENTUM}\n"
-        "  - {id: grid, token: '" + "g" * 16 + "'}\n"
-    )
-    env = {
-        "TG_TOKEN": "123:abc",
-        "TG_OWNER_ID": "42",
-        "QB_CONFIG": str(path),
-        "QB_TOKEN_MOMENTUM": "m" * 16,
-        "TG_QUIET_HOURS": "23-07",
-    }
-    settings = load(env)
-    assert [(s.id, s.name) for s in settings.strategies] == [
-        ("momentum", "动量策略"),
-        ("grid", "grid"),
-    ]
-    assert settings.quiet_hours == (23, 7) and settings.port == 8080
-    assert "m" * 16 not in repr(settings)
-    with pytest.raises(ConfigError, match="QB_TOKEN_MOMENTUM"):
-        load({**env, "QB_TOKEN_MOMENTUM": ""})
-    with pytest.raises(ConfigError, match="TG_OWNER_ID"):
-        load({**env, "TG_OWNER_ID": "me"})
-    path.write_text("strategies:\n  - {id: Bad!, token: '" + "x" * 16 + "'}\n")
-    with pytest.raises(ConfigError, match="lowercase"):
-        load_strategies(path, {})
-    path.write_text("strategies:\n  - {id: a, token: short}\n")
-    with pytest.raises(ConfigError, match="16"):
-        load_strategies(path, {})

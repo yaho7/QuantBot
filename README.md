@@ -31,28 +31,60 @@ Telegram ⇄ QuantBot 容器（long polling，不开公网端口）
 
 ## 部署
 
-1. 在 [@BotFather](https://t.me/BotFather) 建一个 bot，拿到 token。
-2. 向 [@userinfobot](https://t.me/userinfobot) 查你的数字 id。
-3. 复制配置，填上 token 和 id：
+建一个文件夹，比如 `quantbot/`，放一个 `compose.yaml`：
 
-   ```bash
-   cp .env.example .env
-   python3 -c "import secrets; print(secrets.token_urlsafe(32))"   # 每个策略生成一个 token
-   ```
+```yaml
+services:
+  quantbot:
+    image: ghcr.io/yaho7/quantbot:latest
+    restart: unless-stopped
+```
 
-4. 在 `config/strategies.yaml` 里登记每个策略。
-5. 启动：
-
-   ```bash
-   docker compose up -d
-   ```
-
-6. 在 Telegram 里给你的 bot 发 `/menu`。
-
-想先试一试，可以跑不连券商的示例策略：
+然后：
 
 ```bash
-docker run --rm --network quant -e QB_URL=http://quantbot:8080 -e QB_TOKEN=<demo 的 token> \
+docker compose up -d
+docker compose exec quantbot quantbot setup
+```
+
+`setup` 会一步步问你：
+
+1. Bot token：先在 [@BotFather](https://t.me/BotFather) 发 `/newbot` 创建。
+2. 你的账号：给 bot 发一条消息，它自己认出你。
+3. 静音时段和时区。
+4. 心跳地址，可以不填。
+
+填完会给你发一条测试消息。在 Telegram 里发 `/menu` 就能用了。
+
+设置存在容器的 `/data` 里，`docker compose pull && docker compose up -d` 升级时会保留。
+
+风险：`docker compose down` 会丢掉设置和 token，要重新 `setup`。停服务用 `docker compose stop`。
+
+## 管理策略
+
+```bash
+docker compose exec quantbot quantbot add momentum --name 动量策略   # 生成 token
+docker compose exec quantbot quantbot list
+docker compose exec quantbot quantbot token momentum                 # 再看一次 token
+docker compose exec quantbot quantbot token momentum --new           # 换 token
+docker compose exec quantbot quantbot rename momentum 动量 2
+docker compose exec quantbot quantbot remove momentum
+```
+
+`add` 会打印两行，交给策略程序：
+
+```text
+QB_URL=http://quantbot:8080
+QB_TOKEN=...
+```
+
+改动几秒内生效，不用重启。
+
+想先试一试，在 QuantBot 的文件夹里运行不连券商的示例策略（`quantbot_default` 是文件夹名加 `_default`）：
+
+```bash
+docker compose exec quantbot quantbot add demo --name 示例策略
+docker run --rm --network quantbot_default -e QB_URL=http://quantbot:8080 -e QB_TOKEN=<上面的 token> \
   -v "$PWD/client/quantbot_client.py:/app/quantbot_client.py:ro" \
   -v "$PWD/examples/demo.py:/app/demo.py:ro" -w /app python:3.12-slim python demo.py
 ```
@@ -99,31 +131,49 @@ with qb:                                          # 出错会推送报错，再�
 
 会发 HTTP 请求就行，见 `/PROTOCOL.md`。
 
-### 放在另一个 compose 项目里
+### 策略怎么连上
+
+最简单：把策略写进同一个 `compose.yaml`。
+
+```yaml
+services:
+  quantbot:
+    image: ghcr.io/yaho7/quantbot:latest
+    restart: unless-stopped
+  momentum:
+    build: ./momentum
+    restart: "no"          # 实盘程序不要自动重启
+    environment:
+      QB_URL: http://quantbot:8080
+      QB_TOKEN: ...        # quantbot add 打印的 token
+```
+
+策略在另一个 compose 项目里时，加入 QuantBot 的网络。网络名是 QuantBot 文件夹名加 `_default`，可以用 `docker network ls` 查。
 
 ```yaml
 services:
   momentum:
     build: .
-    restart: "no"          # 实盘程序不要自动重启
+    restart: "no"
     environment:
       QB_URL: http://quantbot:8080
-      QB_TOKEN: ${QB_TOKEN_MOMENTUM}
-    networks: [quant]
+      QB_TOKEN: ...
+    networks: [quantbot]
 
 networks:
-  quant:
+  quantbot:
     external: true
+    name: quantbot_default
 ```
 
 ## 安全
 
-- 只有 `TG_OWNER_ID` 能用命令和按钮。
-- 每个策略一个 token，不能冒充别的策略。
+- 只有 `setup` 里认出的账号能用命令和按钮。
+- 每个策略一个 token，不能冒充别的策略。token 和 bot token 只存在容器的 `/data/quantbot.json` 里，只有容器用户能读。
 - QuantBot 不连券商，不挂载 `docker.sock`，不启停容器。
 - 内网 HTTP 是明文的。策略在别的机器上时，走 HTTPS 或 Tailscale。
 - 实盘容器用 `restart: "no"`。重启前先在券商端核对订单和持仓。
-- QuantBot 自己挂了怎么办：设 `HEARTBEAT_URL`，由 [Healthchecks.io](https://healthchecks.io) 报警。
+- QuantBot 自己挂了怎么办：在 `setup` 里填心跳地址，由 [Healthchecks.io](https://healthchecks.io) 报警。
 
 ## 开发
 

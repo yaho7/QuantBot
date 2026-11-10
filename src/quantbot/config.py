@@ -1,19 +1,29 @@
-"""Settings from the environment and the strategy list from strategies.yaml."""
+"""Settings live in one JSON file in the data volume, written by `quantbot setup` and `add`.
+
+Nothing has to be passed through the environment. Two optional variables
+change where things are: QB_DATA_DIR (default /data) and QB_LISTEN
+(default 0.0.0.0:8080).
+"""
 
 from __future__ import annotations
 
+import json
 import os
 import re
+import secrets
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-
-import yaml
+from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from quantbot.notices import parse_quiet
 
 STRATEGY_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+BOT_TOKEN = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
 MIN_TOKEN = 16
+FILE_NAME = "quantbot.json"
 
 
 class ConfigError(ValueError):
@@ -39,66 +49,118 @@ class Settings:
     timezone: str = "Asia/Shanghai"
     heartbeat_url: str | None = None
 
-
-def load_strategies(path: Path, env: Mapping[str, str]) -> tuple[StrategyConfig, ...]:
-    try:
-        raw = yaml.safe_load(path.read_text("utf-8")) or {}
-    except FileNotFoundError as exc:
-        raise ConfigError(f"Strategy list not found: {path}") from exc
-    except yaml.YAMLError as exc:
-        raise ConfigError(f"{path} is not valid YAML: {exc}") from exc
-    items = raw.get("strategies") if isinstance(raw, dict) else None
-    if not isinstance(items, list) or not items:
-        raise ConfigError(f"{path} needs a non-empty `strategies:` list")
-    found: list[StrategyConfig] = []
-    for index, item in enumerate(items, 1):
-        if not isinstance(item, dict):
-            raise ConfigError(f"Strategy {index} must be a mapping")
-        sid = str(item.get("id", ""))
-        if not STRATEGY_ID.match(sid):
-            raise ConfigError(f"Strategy {index}: id must be lowercase letters, digits, - or _")
-        if "token" in item:
-            token = str(item["token"])
-        elif "token_env" in item:
-            token = env.get(str(item["token_env"]), "")
-            if not token:
-                raise ConfigError(f"{sid}: environment variable {item['token_env']} is not set")
-        else:
-            raise ConfigError(f"{sid}: set token_env (or token)")
-        if len(token) < MIN_TOKEN:
-            raise ConfigError(f"{sid}: token must be at least {MIN_TOKEN} characters")
-        found.append(StrategyConfig(sid, str(item.get("name") or sid), token))
-    if len({s.id for s in found}) != len(found):
-        raise ConfigError("Strategy ids must be unique")
-    if len({s.token for s in found}) != len(found):
-        raise ConfigError("Each strategy needs its own token")
-    return tuple(found)
+    def telegram_key(self) -> tuple[Any, ...]:
+        """Everything that needs a restart to change. Strategies reload on their own."""
+        return (self.tg_token, self.owner_id, self.quiet_hours, self.timezone, self.heartbeat_url)
 
 
-def load(env: Mapping[str, str] | None = None) -> Settings:
+def data_dir(env: Mapping[str, str] | None = None) -> Path:
     env = os.environ if env is None else env
-    token = env.get("TG_TOKEN", "")
-    owner = env.get("TG_OWNER_ID", "")
-    if not token:
-        raise ConfigError("TG_TOKEN is not set")
-    if not owner.lstrip("-").isdigit():
-        raise ConfigError("TG_OWNER_ID must be your numeric Telegram id")
-    listen = env.get("QB_LISTEN", "0.0.0.0:8080")  # noqa: S104
-    host, _, port = listen.rpartition(":")
-    if not host or not port.isdigit():
-        raise ConfigError("QB_LISTEN must look like 0.0.0.0:8080")
+    return Path(env.get("QB_DATA_DIR", "/data"))
+
+
+def new_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def check_strategy_id(sid: str) -> str:
+    if not STRATEGY_ID.match(sid):
+        raise ConfigError("id 只能用小写字母、数字、- 和 _，最多 32 个字符，例如 momentum")
+    return sid
+
+
+def check_timezone(name: str) -> str:
     try:
-        quiet = parse_quiet(env.get("TG_QUIET_HOURS"))
-    except ValueError as exc:
-        raise ConfigError(str(exc)) from exc
-    return Settings(
-        tg_token=token,
-        owner_id=int(owner),
-        strategies=load_strategies(Path(env.get("QB_CONFIG", "/config/strategies.yaml")), env),
-        data_dir=Path(env.get("QB_DATA_DIR", "/data")),
-        host=host,
-        port=int(port),
-        quiet_hours=quiet,
-        timezone=env.get("TG_TIMEZONE", "Asia/Shanghai"),
-        heartbeat_url=env.get("HEARTBEAT_URL") or None,
-    )
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ConfigError(f"不认识时区 {name}，例如 Asia/Shanghai 或 America/New_York") from exc
+    return name
+
+
+def check_url(url: str | None) -> str | None:
+    if url and not url.startswith(("https://", "http://")):
+        raise ConfigError("地址要以 https:// 或 http:// 开头")
+    return url or None
+
+
+class Store:
+    """Reads and writes quantbot.json. Writes are atomic and the file is private."""
+
+    def __init__(self, directory: Path) -> None:
+        self.dir = directory
+        self.path = directory / FILE_NAME
+
+    def exists(self) -> bool:
+        return self.path.is_file()
+
+    def mtime(self) -> int | None:
+        try:
+            return self.path.stat().st_mtime_ns
+        except FileNotFoundError:
+            return None
+
+    def read(self) -> dict[str, Any]:
+        try:
+            data = json.loads(self.path.read_text("utf-8"))
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError) as exc:
+            raise ConfigError(f"{self.path} 读不出来：{exc}") from exc
+        if not isinstance(data, dict):
+            raise ConfigError(f"{self.path} 格式不对")
+        return data
+
+    def write(self, data: dict[str, Any]) -> None:
+        self.dir.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=self.dir, prefix=".quantbot-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, ensure_ascii=False, indent=2)
+                fh.write("\n")
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, self.path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+
+    # ------------------------------------------------------------ settings
+
+    def strategies(self, data: dict[str, Any] | None = None) -> tuple[StrategyConfig, ...]:
+        data = self.read() if data is None else data
+        found = []
+        for item in data.get("strategies") or []:
+            sid, token = str(item.get("id", "")), str(item.get("token", ""))
+            if not STRATEGY_ID.match(sid) or len(token) < MIN_TOKEN:
+                raise ConfigError(f"{self.path} 里的策略 {sid!r} 不完整")
+            found.append(StrategyConfig(sid, str(item.get("name") or sid), token))
+        return tuple(found)
+
+    def settings(self, env: Mapping[str, str] | None = None) -> Settings:
+        """The running settings, or ConfigError saying what is missing."""
+        env = os.environ if env is None else env
+        data = self.read()
+        telegram = data.get("telegram") or {}
+        token, owner = str(telegram.get("token") or ""), telegram.get("owner_id")
+        if not token or not isinstance(owner, int):
+            raise ConfigError(
+                "还没配置 Telegram。运行：docker compose exec quantbot quantbot setup"
+            )
+        listen = env.get("QB_LISTEN", "0.0.0.0:8080")  # noqa: S104
+        host, _, port = listen.rpartition(":")
+        if not host or not port.isdigit():
+            raise ConfigError("QB_LISTEN 要像 0.0.0.0:8080")
+        try:
+            quiet = parse_quiet(data.get("quiet_hours"))
+        except ValueError as exc:
+            raise ConfigError(str(exc)) from exc
+        return Settings(
+            tg_token=token,
+            owner_id=owner,
+            strategies=self.strategies(data),
+            data_dir=self.dir,
+            host=host,
+            port=int(port),
+            quiet_hours=quiet,
+            timezone=check_timezone(str(data.get("timezone") or "Asia/Shanghai")),
+            heartbeat_url=check_url(data.get("heartbeat_url")),
+        )

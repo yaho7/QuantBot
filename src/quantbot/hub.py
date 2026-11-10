@@ -108,6 +108,34 @@ class Hub:
         self.connections = Connections()
         self.expiries = Expiries()
 
+    def sync(self, strategies: tuple[StrategyConfig, ...]) -> list[str]:
+        """Apply a changed strategy list without a restart. Returns what changed."""
+        changes = []
+        wanted = {s.id: s for s in strategies}
+        for sid in list(self.strategies):
+            if sid not in wanted:
+                old = self.strategies.pop(sid)
+                for command in old.pending.values():
+                    if not command.future.done():
+                        command.future.set_result(Result(False, "这个策略已经被删除。"))
+                old.wake.set()
+                changes.append(f"删除 {sid}")
+        for sid, config in wanted.items():
+            current = self.strategies.get(sid)
+            if current is None:
+                self.strategies[sid] = Strategy(sid, config.name, config.token)
+                changes.append(f"添加 {sid}")
+                continue
+            if current.token != config.token:
+                current.token = config.token
+                changes.append(f"换了 {sid} 的 token")
+            if current.name != config.name:
+                current.name = config.name
+                changes.append(f"{sid} 改名为 {config.name}")
+        order = list(wanted)
+        self.strategies = dict(sorted(self.strategies.items(), key=lambda kv: order.index(kv[0])))
+        return changes
+
     # ----------------------------------------------------------- lookups
 
     def by_token(self, token: str) -> Strategy | None:

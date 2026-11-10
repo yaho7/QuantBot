@@ -40,7 +40,8 @@ QuantBot 不挂载 `docker.sock`，不启停容器。容器的启动、停止和
 
 | 模块 | 作用 |
 |---|---|
-| `config.py` | 读 `strategies.yaml` 和环境变量 |
+| `config.py` | 读写 `/data/quantbot.json` |
+| `cli.py` | `quantbot` 命令：setup、add、list、token、rename、remove、run |
 | `hub.py` | 每个策略的在线状态、快照、能力、命令队列、等待结果 |
 | `server.py` | 内网 HTTP 接口，按策略 token 认证 |
 | `core.py` | 菜单、按钮、二次确认、审计，不含 Telegram 类型 |
@@ -53,18 +54,11 @@ QuantBot 不挂载 `docker.sock`，不启停容器。容器的启动、停止和
 
 ## 策略注册
 
-```yaml
-# config/strategies.yaml
-strategies:
-  - id: momentum            # 小写字母、数字、- 和 _
-    name: 动量策略
-    token_env: QB_TOKEN_MOMENTUM   # token 放在环境变量里，不写进文件
-  - id: grid
-    name: 网格策略
-    token_env: QB_TOKEN_GRID
+```bash
+quantbot add momentum --name 动量策略   # id 用小写字母、数字、- 和 _
 ```
 
-每个策略一个 token。token 认出是哪个策略，所以一个策略不能冒充另一个。
+每个策略一个随机 token。token 认出是哪个策略，所以一个策略不能冒充另一个。
 
 ## 能力和菜单
 
@@ -95,7 +89,7 @@ strategies:
 
 | 规则 | 做法 |
 |---|---|
-| 只认主人 | 命令和按钮都检查 `TG_OWNER_ID` |
+| 只认主人 | 命令和按钮都检查 setup 认出的主人 |
 | 二次确认 | 平仓、停止、撤单、改参数、手动下单，第二次点击的票据 30 秒内有效，只能用一次 |
 | 幂等 | 每个命令有 id。没收到结果的命令 20 秒后会重发；策略按 id 去重，不会执行两次 |
 | 超时 | 15 秒没结果，先回复“已发出，还没回报”；结果到了再推送 |
@@ -126,24 +120,33 @@ strategies:
 
 | 谁 | 怎么报 |
 |---|---|
-| QuantBot | 每 60 秒 ping 一次 `HEARTBEAT_URL`，证明 bot 还活着 |
+| QuantBot | 每 60 秒 ping 一次 setup 里填的心跳地址，证明 bot 还活着 |
 | 每个策略 | 一轮正常跑完后 ping 自己的监控地址，客户端里有 `heartbeat()` |
 
 超时没收到心跳，由 [Healthchecks.io](https://healthchecks.io) 自己的 Telegram 集成报警。这样 QuantBot 挂了也能知道。
 
 ## 配置
 
-| 变量 | 必填 | 说明 |
-|---|---|---|
-| `TG_TOKEN` | 是 | bot token，在 [@BotFather](https://t.me/BotFather) 创建 |
-| `TG_OWNER_ID` | 是 | 你的 Telegram 数字 id |
-| `QB_CONFIG` | 否 | 策略清单，默认 `/config/strategies.yaml` |
-| `QB_DATA_DIR` | 否 | 审计记录放哪里，默认 `/data` |
-| `QB_LISTEN` | 否 | 内网监听地址，默认 `0.0.0.0:8080` |
-| `QB_TOKEN_<ID>` | 是 | 每个策略的 token，名字由 `token_env` 决定 |
-| `TG_QUIET_HOURS` | 否 | 静音时段，例如 `23-07` |
-| `TG_TIMEZONE` | 否 | 默认 `Asia/Shanghai` |
-| `HEARTBEAT_URL` | 否 | QuantBot 自己的心跳地址 |
+不用环境变量，也不用配置文件挂载。所有设置都由 `quantbot` 命令写进 `/data/quantbot.json`（权限 600）。`compose.yaml` 只有镜像和重启策略四行。
+
+| 命令 | 写什么 |
+|---|---|
+| `quantbot setup` | bot token、主人、静音时段、时区、心跳地址 |
+| `quantbot add/rename/remove` | 策略的 id、名字、token |
+| `quantbot token <id> --new` | 换 token |
+
+`setup` 认主人的方法：用户给 bot 发一条消息，`setup` 用 `getUpdates` 读到发件人。QuantBot 已经在收消息时 Telegram 会报冲突，这时改为手动输入 id。
+
+运行中的 QuantBot 每 5 秒看一次文件有没有变：
+
+| 改了什么 | 怎么生效 |
+|---|---|
+| 策略 | 马上生效；删掉的策略，排队的命令作废 |
+| Telegram 设置 | 进程退出，容器按 `unless-stopped` 重启 |
+
+还没 `setup` 时，进程不退出，每 3 秒检查一次，这样 `docker compose exec` 能连进去。
+
+两个可选变量改的是位置：`QB_DATA_DIR`（默认 `/data`）、`QB_LISTEN`（默认 `0.0.0.0:8080`）。
 
 ## 不做的事
 

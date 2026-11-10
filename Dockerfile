@@ -12,10 +12,10 @@ RUN uv sync --frozen --no-dev
 
 RUN useradd --uid 10001 --create-home quantbot && mkdir /data && chown quantbot /data
 USER quantbot
-ENV PATH=/app/.venv/bin:$PATH QB_DATA_DIR=/data QB_CONFIG=/config/strategies.yaml
+ENV PATH=/app/.venv/bin:$PATH QB_DATA_DIR=/data
 VOLUME /data
 
 HEALTHCHECK --interval=30s --timeout=5s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"
 
-CMD ["python", "-m", "quantbot"]
+CMD ["quantbot", "run"]
