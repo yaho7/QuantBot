@@ -1,0 +1,183 @@
+"""The client against the real QuantBot HTTP API, running in a background thread."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import socket
+import sys
+import threading
+import time
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from aiohttp import web
+
+from quantbot.config import StrategyConfig
+from quantbot.hub import Hub, Result
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "client"))
+from quantbot_client import QuantBot  # noqa: E402
+
+TOKEN = "t" * 20
+
+
+class Server:
+    """QuantBot's hub and API on a free port, with helpers to drive it from the test."""
+
+    def __init__(self) -> None:
+        self.notes: list[tuple[str, str, str, Any]] = []
+        self.loop = asyncio.new_event_loop()
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            self.port = sock.getsockname()[1]
+        ready = threading.Event()
+        self.thread = threading.Thread(target=self._main, args=(ready,), daemon=True)
+        self.thread.start()
+        assert ready.wait(5)
+
+    def _main(self, ready: threading.Event) -> None:
+        from quantbot.server import make_app
+
+        asyncio.set_event_loop(self.loop)
+        self.hub = Hub(
+            (StrategyConfig("bot", "Bot", TOKEN),),
+            lambda *note: self.notes.append(note),
+            redeliver_after=0.3,
+        )
+        self.runner = web.AppRunner(make_app(self.hub), shutdown_timeout=0.5)
+        self.loop.run_until_complete(self.runner.setup())
+        site = web.TCPSite(self.runner, "127.0.0.1", self.port)
+        self.loop.run_until_complete(site.start())
+        ready.set()
+        self.loop.run_forever()
+
+    @property
+    def strategy(self) -> Any:
+        return self.hub.strategies["bot"]
+
+    def send(self, name: str, args: dict[str, Any] | None = None, timeout: float = 5) -> Result:
+        async def go() -> Result:
+            command = self.hub.send(self.strategy, name, args)
+            return await asyncio.wait_for(command.future, timeout)
+
+        return asyncio.run_coroutine_threadsafe(go(), self.loop).result(timeout + 1)
+
+    def stop(self) -> None:
+        asyncio.run_coroutine_threadsafe(self.runner.cleanup(), self.loop).result(5)
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(5)
+
+
+def wait_until(check: Callable[[], bool], timeout: float = 5) -> None:
+    deadline = time.monotonic() + timeout
+    while not check():
+        assert time.monotonic() < deadline, "timed out"
+        time.sleep(0.02)
+
+
+@pytest.fixture
+def server() -> Iterator[Server]:
+    server = Server()
+    yield server
+    server.stop()
+
+
+def serve(qb: QuantBot) -> threading.Thread:
+    def loop() -> None:
+        with qb:
+            while qb.sleep(0.05):
+                pass
+
+    thread = threading.Thread(target=loop, name="trading")
+    thread.start()
+    return thread
+
+
+def test_hello_commands_and_events(server: Server, tmp_path: Path) -> None:
+    ran: list[tuple[str, str]] = []
+    qb = QuantBot(f"http://127.0.0.1:{server.port}", TOKEN, state_file=str(tmp_path / "s.json"))
+    qb.on(
+        "positions", lambda: ran.append(("positions", threading.current_thread().name)) or "QQQ 10"
+    )
+    qb.on("orders", lambda: [{"id": "o1", "text": "卖 QQQ"}])
+    qb.on("chart", lambda: b"PNG")
+    qb.on("set_param", lambda name, value: f"{name}={value}")
+    trading = serve(qb)
+    wait_until(lambda: server.strategy.said_hello)
+    assert server.strategy.commands == (
+        "pause", "resume", "positions", "orders", "set_param", "chart", "stop",
+    )  # fmt: skip
+
+    assert server.send("positions").message == "QQQ 10"
+    assert ran == [("positions", "trading")]  # handlers run on the trading thread
+    assert server.send("orders").data == [{"id": "o1", "text": "卖 QQQ"}]
+    assert server.send("chart").data == "UE5H"
+    assert server.send("set_param", {"name": "n", "value": 3}).message == "n=3"
+    failed = server.send("flatten")
+    assert not failed.ok and "不支持 flatten" in failed.message
+
+    assert server.send("pause").ok and qb.paused and not qb.can_open()
+    assert json.loads((tmp_path / "s.json").read_text()) == {"paused": True}
+    assert QuantBot("http://x", TOKEN, state_file=str(tmp_path / "s.json")).paused
+
+    qb.status("净值 10000")
+    qb.fill("AAPL BUY 10 @ 280.50")
+    wait_until(lambda: server.strategy.status_text == "净值 10000")
+    assert server.strategy.paused is True
+    wait_until(lambda: any("AAPL" in note[1] for note in server.notes))
+
+    assert server.send("stop").ok
+    trading.join(5)
+    assert not trading.is_alive() and qb.stopping
+
+
+def test_redelivered_command_runs_once(server: Server) -> None:
+    count = []
+    qb = QuantBot(f"http://127.0.0.1:{server.port}", TOKEN)
+
+    def flatten() -> str:
+        count.append(1)
+        time.sleep(0.8)  # slower than redelivery, so the same id arrives again
+        return "平掉了"
+
+    qb.on("flatten", flatten)
+    trading = serve(qb)
+    wait_until(lambda: server.strategy.said_hello)
+    assert server.send("flatten").message == "平掉了"
+    time.sleep(0.5)
+    assert count == [1]
+    server.send("stop")
+    trading.join(5)
+
+
+def test_error_in_trading_loop_is_reported(server: Server) -> None:
+    qb = QuantBot(f"http://127.0.0.1:{server.port}", TOKEN)
+    with pytest.raises(ZeroDivisionError), qb:
+        1 / 0  # noqa: B018
+    wait_until(lambda: any(note[2] == "error" for note in server.notes))
+    note = next(n for n in server.notes if n[2] == "error")
+    assert "ZeroDivisionError" in note[1]
+
+
+def test_trading_goes_on_while_quantbot_is_down() -> None:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    qb = QuantBot(f"http://127.0.0.1:{port}", TOKEN).start()
+    qb.status("x")
+    start = time.monotonic()
+    assert qb.sleep(0.2) is True
+    assert time.monotonic() - start < 1
+    qb.close(timeout=0.2)
+
+
+def test_bad_settings_and_unknown_command() -> None:
+    with pytest.raises(ValueError):
+        QuantBot("quantbot:8080", TOKEN)
+    with pytest.raises(ValueError):
+        QuantBot("http://quantbot:8080", "")
+    with pytest.raises(ValueError):
+        QuantBot("http://quantbot:8080", TOKEN).on("rm", lambda: None)

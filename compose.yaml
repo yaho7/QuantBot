@@ -1,0 +1,29 @@
+services:
+  quantbot:
+    build: .
+    restart: unless-stopped   # QuantBot itself is safe to restart; it does not trade
+    env_file: .env
+    volumes:
+      - ./config:/config:ro
+      - quantbot-data:/data
+    networks: [quant]
+    # No ports: strategies reach it as http://quantbot:8080 on the `quant` network.
+
+  # Demo strategy without a broker: docker compose --profile demo up -d
+  demo:
+    profiles: [demo]
+    build:
+      context: .
+      dockerfile: examples/Dockerfile
+    restart: "no"             # never restart a trading program on its own
+    environment:
+      QB_URL: http://quantbot:8080
+      QB_TOKEN: ${QB_TOKEN_DEMO}
+    networks: [quant]
+
+volumes:
+  quantbot-data:
+
+networks:
+  quant:
+    name: quant               # other compose projects join it as an external network
