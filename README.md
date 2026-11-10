@@ -38,6 +38,8 @@ services:
   quantbot:
     image: ghcr.io/yaho7/quantbot:latest
     restart: unless-stopped
+    volumes:
+      - ./data:/data
 ```
 
 然后：
@@ -56,9 +58,9 @@ docker compose exec quantbot quantbot setup
 
 填完会给你发一条测试消息。在 Telegram 里发 `/menu` 就能用了。
 
-设置存在容器的 `/data` 里，`docker compose pull && docker compose up -d` 升级时会保留。
+填好的设置存在 `./data/quantbot.json`。重启、升级、`docker compose down` 后都还在，备份这个文件夹就行。
 
-风险：`docker compose down` 会丢掉设置和 token，要重新 `setup`。停服务用 `docker compose stop`。
+风险：这个文件里有 bot token 和每个策略的 token。它只有容器用户能读，不要提交到 git。
 
 ## 管理策略
 
@@ -140,6 +142,8 @@ services:
   quantbot:
     image: ghcr.io/yaho7/quantbot:latest
     restart: unless-stopped
+    volumes:
+      - ./data:/data
   momentum:
     build: ./momentum
     restart: "no"          # 实盘程序不要自动重启
@@ -169,7 +173,7 @@ networks:
 ## 安全
 
 - 只有 `setup` 里认出的账号能用命令和按钮。
-- 每个策略一个 token，不能冒充别的策略。token 和 bot token 只存在容器的 `/data/quantbot.json` 里，只有容器用户能读。
+- 每个策略一个 token，不能冒充别的策略。token 和 bot token 只存在 `./data/quantbot.json` 里，只有容器用户能读。
 - QuantBot 不连券商，不挂载 `docker.sock`，不启停容器。
 - 内网 HTTP 是明文的。策略在别的机器上时，走 HTTPS 或 Tailscale。
 - 实盘容器用 `restart: "no"`。重启前先在券商端核对订单和持仓。

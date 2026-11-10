@@ -127,7 +127,7 @@ quantbot add momentum --name 动量策略   # id 用小写字母、数字、- �
 
 ## 配置
 
-不用环境变量，也不用配置文件挂载。所有设置都由 `quantbot` 命令写进 `/data/quantbot.json`（权限 600）。`compose.yaml` 只有镜像和重启策略四行。
+不用环境变量，也不用配置文件挂载。所有设置都由 `quantbot` 命令写进 `/data/quantbot.json`（权限 600）。`compose.yaml` 只写镜像、重启策略和 `./data:/data`。容器先以 root 启动，把 `/data` 交给 quantbot 用户，再切换成它，所以宿主机上普通的 `./data` 文件夹就能用；`docker compose exec` 以 root 运行的 `setup` 也一样。
 
 | 命令 | 写什么 |
 |---|---|
