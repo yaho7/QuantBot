@@ -134,7 +134,7 @@ class QuantBot:
 
     async def _started(self, app: Application) -> None:
         server = make_app(self.hub)
-        self._runner = web.AppRunner(server, access_log=None)
+        self._runner = web.AppRunner(server, access_log=None, shutdown_timeout=2)
         await self._runner.setup()
         await web.TCPSite(self._runner, self.settings.host, self.settings.port).start()
         log.info("Strategy API on %s:%s", self.settings.host, self.settings.port)

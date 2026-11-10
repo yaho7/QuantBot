@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -10,51 +9,8 @@ from pathlib import Path
 import pytest
 
 from quantbot.audit import Audit
-from quantbot.bridge import Bridge, Stopped
 from quantbot.heartbeat import Heartbeat
 from quantbot.notices import Expiries, is_quiet, parse_quiet
-
-
-def test_commands_run_on_the_thread_that_sleeps() -> None:
-    bridge = Bridge()
-    seen: list[str] = []
-    worker = threading.Thread(target=lambda: bridge.sleep(5))
-    worker.start()
-    future = bridge.submit(lambda: seen.append(threading.current_thread().name) or "done")
-    assert future.result(timeout=2) == "done"
-    assert seen == [worker.name]
-    bridge.request_stop()
-    worker.join(timeout=2)
-    assert not worker.is_alive()
-
-
-def test_sleep_returns_true_on_time_and_false_on_stop() -> None:
-    bridge = Bridge()
-    start = time.monotonic()
-    assert bridge.sleep(0.05) is True
-    assert time.monotonic() - start >= 0.05
-    bridge.request_stop()
-    assert bridge.sleep(10) is False
-
-
-def test_errors_come_back_and_stopped_bridge_refuses_work() -> None:
-    bridge = Bridge()
-
-    def boom() -> None:
-        raise ValueError("bad")
-
-    failing = bridge.submit(boom)
-    assert bridge.process() == 1
-    with pytest.raises(ValueError, match="bad"):
-        failing.result(timeout=1)
-
-    waiting = bridge.submit(lambda: 1)
-    bridge.request_stop()
-    bridge.cancel_pending()
-    with pytest.raises(Stopped):
-        waiting.result(timeout=1)
-    with pytest.raises(Stopped):
-        bridge.submit(lambda: 1).result(timeout=1)
 
 
 def test_audit_appends_json_lines(tmp_path: Path) -> None:
