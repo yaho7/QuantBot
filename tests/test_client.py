@@ -98,7 +98,9 @@ def serve(qb: QuantBot) -> threading.Thread:
 
 def test_hello_commands_and_events(server: Server, tmp_path: Path) -> None:
     ran: list[tuple[str, str]] = []
-    qb = QuantBot(f"http://127.0.0.1:{server.port}", TOKEN, state_file=str(tmp_path / "s.json"))
+    qb = QuantBot(
+        url=f"http://127.0.0.1:{server.port}", token=TOKEN, state_file=str(tmp_path / "s.json")
+    )
     qb.on(
         "positions", lambda: ran.append(("positions", threading.current_thread().name)) or "QQQ 10"
     )
@@ -121,7 +123,7 @@ def test_hello_commands_and_events(server: Server, tmp_path: Path) -> None:
 
     assert server.send("pause").ok and qb.paused and not qb.can_open()
     assert json.loads((tmp_path / "s.json").read_text()) == {"paused": True}
-    assert QuantBot("http://x", TOKEN, state_file=str(tmp_path / "s.json")).paused
+    assert QuantBot(url="http://x", token=TOKEN, state_file=str(tmp_path / "s.json")).paused
 
     qb.status("净值 10000")
     qb.fill("AAPL BUY 10 @ 280.50")
@@ -136,7 +138,7 @@ def test_hello_commands_and_events(server: Server, tmp_path: Path) -> None:
 
 def test_redelivered_command_runs_once(server: Server) -> None:
     count = []
-    qb = QuantBot(f"http://127.0.0.1:{server.port}", TOKEN)
+    qb = QuantBot(url=f"http://127.0.0.1:{server.port}", token=TOKEN)
 
     def flatten() -> str:
         count.append(1)
@@ -154,7 +156,7 @@ def test_redelivered_command_runs_once(server: Server) -> None:
 
 
 def test_error_in_trading_loop_is_reported(server: Server) -> None:
-    qb = QuantBot(f"http://127.0.0.1:{server.port}", TOKEN)
+    qb = QuantBot(url=f"http://127.0.0.1:{server.port}", token=TOKEN)
     with pytest.raises(ZeroDivisionError), qb:
         1 / 0  # noqa: B018
     wait_until(lambda: any(note[2] == "error" for note in server.notes))
@@ -166,7 +168,7 @@ def test_trading_goes_on_while_quantbot_is_down() -> None:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
-    qb = QuantBot(f"http://127.0.0.1:{port}", TOKEN).start()
+    qb = QuantBot(url=f"http://127.0.0.1:{port}", token=TOKEN).start()
     qb.status("x")
     start = time.monotonic()
     assert qb.sleep(0.2) is True
@@ -176,8 +178,30 @@ def test_trading_goes_on_while_quantbot_is_down() -> None:
 
 def test_bad_settings_and_unknown_command() -> None:
     with pytest.raises(ValueError):
-        QuantBot("quantbot:8080", TOKEN)
+        QuantBot(url="quantbot:8080", token=TOKEN)
     with pytest.raises(ValueError):
-        QuantBot("http://quantbot:8080", "")
+        QuantBot(url="http://127.0.0.1:8080", token=TOKEN).on("rm", lambda: None)
+
+
+def test_connects_locally_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import json as _json
+
+    from quantbot_client import connect_locally
+
+    monkeypatch.delenv("QB_TOKEN", raising=False)
+    monkeypatch.delenv("QB_URL", raising=False)
+    monkeypatch.setenv("QB_DATA_DIR", str(tmp_path))
+    with pytest.raises(RuntimeError, match="quantbot setup"):
+        QuantBot("momentum")
+    (tmp_path / "quantbot.json").write_text(_json.dumps({"telegram": {}, "listen": "0.0.0.0:9001"}))
+    qb = QuantBot("momentum", display_name="动量")  # new: added to the settings
+    saved = _json.loads((tmp_path / "quantbot.json").read_text())
+    assert saved["strategies"][0]["id"] == "momentum" and saved["strategies"][0]["name"] == "动量"
+    assert qb.url == "http://127.0.0.1:9001"
+    assert connect_locally("momentum")[1] == saved["strategies"][0]["token"]  # reused
+    project = tmp_path / "Grid Bot"
+    project.mkdir()
+    monkeypatch.chdir(project)
+    assert QuantBot().name == "grid-bot"
     with pytest.raises(ValueError):
-        QuantBot("http://quantbot:8080", TOKEN).on("rm", lambda: None)
+        QuantBot("Bad Name")

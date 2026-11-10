@@ -79,6 +79,6 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 ```bash
 H="Authorization: Bearer $QB_TOKEN"
 curl -s -H "$H" -H 'Content-Type: application/json' \
-  -d '{"type":"hello","commands":["status","pause","resume"]}' http://quantbot:8080/v1/events
-curl -s -H "$H" 'http://quantbot:8080/v1/commands?wait=25'
+  -d '{"type":"hello","commands":["status","pause","resume"]}' http://127.0.0.1:8080/v1/events
+curl -s -H "$H" 'http://127.0.0.1:8080/v1/commands?wait=25'
 ```

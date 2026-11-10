@@ -24,6 +24,9 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/quantbot"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"client/quantbot_client.py" = "quantbot/client_template.py"
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"

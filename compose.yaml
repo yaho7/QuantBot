@@ -1,6 +1,0 @@
-services:
-  quantbot:
-    image: ghcr.io/yaho7/quantbot:latest
-    restart: unless-stopped
-    volumes:
-      - ./data:/data

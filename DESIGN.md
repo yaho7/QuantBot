@@ -7,11 +7,11 @@ QuantBot 是一个 Telegram 远程控制中心。一个 bot 管理你所有的�
 ## 结构
 
 ```text
-Telegram ⇄ QuantBot 容器（long polling，不开公网端口）
-              ▲  HTTP，只在 Docker 内网
+Telegram ⇄ QuantBot（装在 VPS 上，long polling，不开公网端口）
+              ▲  HTTP，默认只监听 127.0.0.1
               │
    ┌──────────┴──────────┐
-策略容器 A             策略容器 B
+策略 A（uv）           策略 B（conda）
 LumiBot                原生 Python
 Schwab 行情 + Alpaca    其他券商
 ```
@@ -29,21 +29,22 @@ Schwab 行情 + Alpaca    其他券商
 | 好处 | 原因 |
 |---|---|
 | 接入简单 | 策略不用写服务端 |
-| 哪里都能跑 | Docker 内网、本机、别的机器（走 HTTPS 或 Tailscale） |
+| 哪里都能跑 | 本机直接连；别的机器设 `QB_URL`，走 HTTPS 或 Tailscale |
 | 互不影响 | QuantBot 更新、重启、崩溃，策略照常交易；命令只是暂时发不出去 |
 | 离线看得出 | 45 秒没来取命令，就标成离线，并推送提醒 |
 | 状态不冒充实时 | 显示的是快照，旁边写“12 秒前” |
 
-QuantBot 不挂载 `docker.sock`，不启停容器。容器的启动、停止和重启交给 Docker Compose 或 1Panel。它只发命令，暂停、平仓、退出由策略自己决定怎么做。
+QuantBot 不启停你的策略。策略用什么环境、怎么启动，由你自己决定（uv、conda、systemd、tmux 都行）。它只发命令，暂停、平仓、退出由策略自己决定怎么做。
 
 ## 组成
 
 | 模块 | 作用 |
 |---|---|
-| `config.py` | 读写 `/data/quantbot.json` |
-| `cli.py` | `quantbot` 命令：setup、add、list、token、rename、remove、run |
+| `config.py` | 读写 `~/.config/quantbot/quantbot.json` |
+| `service.py` | 后台服务：Linux 的 systemd、macOS 的 launchd |
+| `cli.py` | `quantbot` 命令：setup、link、list、token、rename、remove、service、logs、update、run |
 | `hub.py` | 每个策略的在线状态、快照、能力、命令队列、等待结果 |
-| `server.py` | 内网 HTTP 接口，按策略 token 认证 |
+| `server.py` | 给策略用的 HTTP 接口，按策略 token 认证 |
 | `core.py` | 菜单、按钮、二次确认、审计，不含 Telegram 类型 |
 | `bot.py` | 把 Telegram 消息和按钮接到 `core.py` |
 | `notices.py` | 静音时段、授权到期提醒 |
@@ -94,13 +95,13 @@ quantbot add momentum --name 动量策略   # id 用小写字母、数字、- �
 | 幂等 | 每个命令有 id。没收到结果的命令 20 秒后会重发；策略按 id 去重，不会执行两次 |
 | 超时 | 15 秒没结果，先回复“已发出，还没回报”；结果到了再推送 |
 | 审计 | 每次操作和结果写进 `audit.jsonl` |
-| 内网认证 | 每个策略一个 token，比较时用常量时间 |
+| 接口认证 | 每个策略一个 token，比较时用常量时间 |
 | 大小限制 | 请求体最大 6 MB（净值图） |
 | 平仓归属 | 策略只能平自己能确认归属的仓位，分不清就拒绝 |
 | 停止 | `stop` 只请求策略退出，保护性止损单留着 |
-| 不自动重启实盘 | 实盘容器用 `restart: "no"`；Docker 的健康检查只标记 unhealthy，不会重启 |
+| 不自动重启实盘 | QuantBot 不启停策略；你自己跑策略时，崩了不要自动重启 |
 
-风险：内网 HTTP 是明文的。策略在别的机器上时，要走 HTTPS 或 Tailscale。
+风险：接口是明文 HTTP，所以默认只监听 127.0.0.1。策略在别的机器上时，要走 HTTPS 或 Tailscale。
 
 ## 推送
 
@@ -125,15 +126,33 @@ quantbot add momentum --name 动量策略   # id 用小写字母、数字、- �
 
 超时没收到心跳，由 [Healthchecks.io](https://healthchecks.io) 自己的 Telegram 集成报警。这样 QuantBot 挂了也能知道。
 
+## 安装
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash
+```
+
+`install.sh` 用系统的包管理器装上缺的 git 和 curl，装 uv，再用 `uv tool install` 装 QuantBot。uv 会给 QuantBot 单独下载 Python 3.12，不碰系统 Python 和策略环境。第一次运行时它会跑 `quantbot setup`，最后跑 `quantbot service install`。再运行一次就是更新。
+
+| 系统 | 后台服务 | 日志 |
+|---|---|---|
+| Linux，普通用户 | systemd 用户服务，打开 linger，退出登录也不停 | `journalctl --user -u quantbot` |
+| Linux，root | systemd 系统服务 | `journalctl -u quantbot` |
+| macOS | launchd agent | `~/Library/Logs/quantbot.log` |
+
+服务都设成退出后重启：QuantBot 不交易，重启它是安全的。
+
 ## 配置
 
-不用环境变量，也不用配置文件挂载。所有设置都由 `quantbot` 命令写进 `/data/quantbot.json`（权限 600）。`compose.yaml` 只写镜像、重启策略和 `./data:/data`。容器先以 root 启动，把 `/data` 交给 quantbot 用户，再切换成它，所以宿主机上普通的 `./data` 文件夹就能用；`docker compose exec` 以 root 运行的 `setup` 也一样。
+不用环境变量。所有设置都由 `quantbot` 命令写进 `~/.config/quantbot/quantbot.json`（权限 600）。
 
 | 命令 | 写什么 |
 |---|---|
 | `quantbot setup` | bot token、主人、静音时段、时区、心跳地址 |
-| `quantbot add/rename/remove` | 策略的 id、名字、token |
+| `quantbot link` | 策略的 id、名字、token |
+| `quantbot rename/remove` | 改名、删除 |
 | `quantbot token <id> --new` | 换 token |
+| `quantbot service install --listen` | 监听地址，默认 `127.0.0.1:8080` |
 
 `setup` 认主人的方法：用户给 bot 发一条消息，`setup` 用 `getUpdates` 读到发件人。QuantBot 已经在收消息时 Telegram 会报冲突，这时改为手动输入 id。
 
@@ -142,14 +161,22 @@ quantbot add momentum --name 动量策略   # id 用小写字母、数字、- �
 | 改了什么 | 怎么生效 |
 |---|---|
 | 策略 | 马上生效；删掉的策略，排队的命令作废 |
-| Telegram 设置 | 进程退出，容器按 `unless-stopped` 重启 |
+| Telegram 设置 | 进程退出，服务管理器把它重新拉起来 |
 
-还没 `setup` 时，进程不退出，每 3 秒检查一次，这样 `docker compose exec` 能连进去。
+还没 `setup` 时，进程不退出，每 3 秒检查一次。
 
-两个可选变量改的是位置：`QB_DATA_DIR`（默认 `/data`）、`QB_LISTEN`（默认 `0.0.0.0:8080`）。
+`QB_DATA_DIR` 和 `QB_LISTEN` 两个变量可以覆盖设置的位置和监听地址。
+
+## 连接策略
+
+`quantbot link` 在策略项目里交互式完成三件事：起名并登记 token；把客户端加进项目（`uv add`、写进 `requirements.txt`，或复制 `quantbot_client.py`）；打印要加进代码的几行。
+
+客户端 `QuantBot("momentum")` 不需要 token：它读本机的 `quantbot.json`，按名字找到 token 和监听地址。名字还没登记过，就自己登记，QuantBot 几秒内认出它。策略和 QuantBot 用同一个系统账号运行时才行；否则设 `QB_URL` 和 `QB_TOKEN`。
+
+客户端可以从 git 装：`quantbot-client @ git+https://github.com/yaho7/QuantBot#subdirectory=client`。它只有一个文件，只用标准库。
 
 ## 不做的事
 
 - 不连接券商，不存行情和成交。
-- 不启停容器，不挂载 `docker.sock`。
+- 不启停你的策略，不管它们的环境。
 - 不保存命令：QuantBot 重启时，还没执行的命令会丢掉，这比重启后突然执行更安全。

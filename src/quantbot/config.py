@@ -1,8 +1,9 @@
 """Settings live in one JSON file in the data volume, written by `quantbot setup` and `add`.
 
 Nothing has to be passed through the environment. Two optional variables
-change where things are: QB_DATA_DIR (default /data) and QB_LISTEN
-(default 0.0.0.0:8080).
+change where things are: QB_DATA_DIR (default ~/.config/quantbot) and
+QB_LISTEN (default: `listen` in the file, else 127.0.0.1:8080, so only programs
+on this machine can connect).
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ STRATEGY_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 BOT_TOKEN = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
 MIN_TOKEN = 16
 FILE_NAME = "quantbot.json"
+DEFAULT_LISTEN = "127.0.0.1:8080"
 
 
 class ConfigError(ValueError):
@@ -43,7 +45,7 @@ class Settings:
     owner_id: int
     strategies: tuple[StrategyConfig, ...]
     data_dir: Path
-    host: str = "0.0.0.0"  # noqa: S104 - the Docker network needs it; publish no port
+    host: str = "127.0.0.1"
     port: int = 8080
     quiet_hours: tuple[int, int] | None = None
     timezone: str = "Asia/Shanghai"
@@ -56,7 +58,10 @@ class Settings:
 
 def data_dir(env: Mapping[str, str] | None = None) -> Path:
     env = os.environ if env is None else env
-    return Path(env.get("QB_DATA_DIR", "/data"))
+    if env.get("QB_DATA_DIR"):
+        return Path(env["QB_DATA_DIR"]).expanduser()
+    base = env.get("XDG_CONFIG_HOME") or str(Path(env.get("HOME") or Path.home()) / ".config")
+    return Path(base) / "quantbot"
 
 
 def new_token() -> str:
@@ -142,13 +147,11 @@ class Store:
         telegram = data.get("telegram") or {}
         token, owner = str(telegram.get("token") or ""), telegram.get("owner_id")
         if not token or not isinstance(owner, int):
-            raise ConfigError(
-                "还没配置 Telegram。运行：docker compose exec quantbot quantbot setup"
-            )
-        listen = env.get("QB_LISTEN", "0.0.0.0:8080")  # noqa: S104
+            raise ConfigError("还没配置 Telegram。运行：quantbot setup")
+        listen = env.get("QB_LISTEN") or str(data.get("listen") or DEFAULT_LISTEN)
         host, _, port = listen.rpartition(":")
         if not host or not port.isdigit():
-            raise ConfigError("QB_LISTEN 要像 0.0.0.0:8080")
+            raise ConfigError("QB_LISTEN 要像 127.0.0.1:8080")
         try:
             quiet = parse_quiet(data.get("quiet_hours"))
         except ValueError as exc:

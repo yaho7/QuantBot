@@ -1,8 +1,9 @@
-"""The `quantbot` command: setup and strategy management in the terminal.
+"""The `quantbot` command: setup, the background service and strategy management.
 
-docker compose exec quantbot quantbot setup
-docker compose exec quantbot quantbot add momentum --name 动量策略
-docker compose exec quantbot quantbot list
+quantbot setup
+quantbot service install
+quantbot add momentum --name 动量策略
+quantbot list
 """
 
 from __future__ import annotations
@@ -11,17 +12,25 @@ import argparse
 import getpass
 import json
 import logging
+import os
+import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from importlib import resources
+from pathlib import Path
 from typing import Any
 
 from quantbot import __version__
 from quantbot.config import (
     BOT_TOKEN,
+    DEFAULT_LISTEN,
+    STRATEGY_ID,
     ConfigError,
     Store,
     check_strategy_id,
@@ -31,8 +40,8 @@ from quantbot.config import (
     new_token,
 )
 from quantbot.notices import parse_quiet
+from quantbot.service import Service, ServiceError, executable
 
-API_URL = "http://quantbot:8080"
 OWNER_WAIT = 120
 
 
@@ -106,10 +115,19 @@ Api = Callable[..., Any]
 # ----------------------------------------------------------------- commands
 
 
+def api_url(data: dict[str, Any] | None = None) -> str:
+    listen = os.environ.get("QB_LISTEN") or (data or {}).get("listen") or DEFAULT_LISTEN
+    host, _, port = str(listen).rpartition(":")
+    return f"http://{'127.0.0.1' if host in {'0.0.0.0', '::', ''} else host}:{port}"  # noqa: S104
+
+
 def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
-    if not io.interactive():
-        raise Abort("setup 要在终端里交互运行：docker compose exec quantbot quantbot setup")
     data = store.read()
+    if args.if_needed and (data.get("telegram") or {}).get("token"):
+        io.say("✓ 已经设置过了。要改设置，运行 quantbot setup")
+        return 0
+    if not io.interactive():
+        raise Abort("setup 要在终端里交互运行：quantbot setup")
     old = data.get("telegram") or {}
     io.say("QuantBot 设置。直接回车会用方括号里的值。")
     io.say()
@@ -176,8 +194,10 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     io.say(f"✓ 已保存。{sent}")
     if changed:
         io.say("  正在运行的 QuantBot 会在几秒内自动重启，用上新设置。")
+    if not args.if_needed:
+        io.say("  后台运行：quantbot service install")
     if not data["strategies"]:
-        io.say("  下一步，添加一个策略：quantbot add <id> --name <名字>")
+        io.say("  添加策略：quantbot add <id> --name <名字>")
     return 0
 
 
@@ -242,7 +262,7 @@ def cmd_add(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
     store.write(data)
     io.say(f"✓ 已添加 {name}（{sid}）。把下面两行交给这个策略程序：")
     io.say()
-    io.say(f"  QB_URL={API_URL}")
+    io.say(f"  QB_URL={api_url(data)}")
     io.say(f"  QB_TOKEN={token}")
     io.say()
     io.say("QuantBot 几秒内就会认出它，不用重启。")
@@ -310,6 +330,191 @@ def _find(data: dict[str, Any], sid: str) -> dict[str, Any]:
     raise Abort(f"没有策略 {sid}。看全部：quantbot list")
 
 
+detect_service: Callable[[], Service] = Service.detect
+
+
+def cmd_service(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    service = detect_service()
+    if args.action == "install":
+        if args.listen:
+            host, _, port = args.listen.rpartition(":")
+            if not host or not port.isdigit():
+                raise Abort("--listen 要像 127.0.0.1:8080")
+            data = store.read()
+            data["listen"] = args.listen
+            store.write(data)
+        notes = service.install(executable(), store.dir)
+        io.say(f"✓ QuantBot 已在后台运行，开机自动启动。服务文件：{service.path}")
+        for note in notes:
+            io.say(f"  {note}")
+        io.say("  看日志：quantbot logs -f")
+        if not store.exists():
+            io.say("  还没设置 Telegram，它会先等着。请运行：quantbot setup")
+    elif args.action == "uninstall":
+        service.uninstall()
+        io.say("✓ 已停止并删除服务。设置和策略 token 都还在。")
+    elif args.action == "restart":
+        service.restart()
+        io.say("✓ 已重启。")
+    else:
+        io.say(service.status() or "没有安装服务。安装：quantbot service install")
+    return 0
+
+
+def cmd_logs(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    command = detect_service().logs_command(args.follow)
+    try:
+        return subprocess.call(command)  # noqa: S603 - fixed journalctl/tail command
+    except FileNotFoundError as exc:
+        raise Abort(f"找不到 {command[0]}") from exc
+
+
+def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    uv = shutil.which("uv")
+    if not uv:
+        raise Abort("没找到 uv。重新运行安装命令，也能更新到最新版。")
+    io.say("正在更新 QuantBot…")
+    if subprocess.call([uv, "tool", "upgrade", "--reinstall", "quantbot"]):  # noqa: S603
+        raise Abort("更新失败，见上面的输出。")
+    try:
+        service = detect_service()
+    except ServiceError:
+        service = None
+    if service is not None and service.installed():
+        service.restart()
+        io.say("✓ 已更新，后台服务已重启。")
+    else:
+        io.say("✓ 已更新。")
+    return 0
+
+
+# ---------------------------------------------------------------- link
+
+CLIENT_GIT = "git+https://github.com/yaho7/QuantBot#subdirectory=client"
+CLIENT_REQUIREMENT = f"quantbot-client @ {CLIENT_GIT}"
+
+
+def client_source() -> str:
+    """The client file shipped inside the package (or next to it in a checkout)."""
+    try:
+        return (resources.files("quantbot") / "client_template.py").read_text("utf-8")
+    except (FileNotFoundError, ModuleNotFoundError):
+        here = Path(__file__).resolve().parents[2] / "client" / "quantbot_client.py"
+        return here.read_text("utf-8")
+
+
+def project_name(path: Path) -> str:
+    """The folder's name as a strategy id, matching what the client picks by default."""
+    name = re.sub(r"[^a-z0-9_-]+", "-", path.name.lower()).strip("-_")[:32]
+    return name if STRATEGY_ID.match(name) else "strategy"
+
+
+def run_command(project: Path) -> str:
+    entry = next(
+        (n for n in ("main.py", "bot.py", "strategy.py", "run.py") if (project / n).exists()),
+        "main.py",
+    )
+    if (project / "pyproject.toml").exists() and shutil.which("uv"):
+        return f"uv run {entry}"
+    if (project / "environment.yml").exists():
+        return f"conda run -n <环境名> python {entry}"
+    return f"python {entry}"
+
+
+def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    project = Path(args.path).expanduser().resolve()
+    if not project.is_dir():
+        raise Abort(f"没有这个文件夹：{project}")
+    data = store.read()
+    if not data:
+        raise Abort("这台机器上的 QuantBot 还没设置。先运行：quantbot setup")
+    io.say(f"把 {project} 连接到 QuantBot。直接回车会用方括号里的值。")
+    io.say()
+
+    io.say("1/3  名字")
+    items = data.setdefault("strategies", [])
+    while True:
+        try:
+            sid = check_strategy_id(io.ask("     策略 id", args.name or project_name(project)))
+            break
+        except ConfigError as exc:
+            io.say(f"     ✗ {exc}")
+    item = next((s for s in items if s.get("id") == sid), None)
+    name = io.ask("     在 Telegram 里显示的名字", str(item["name"]) if item else sid)
+    if item is None:
+        items.append({"id": sid, "name": name, "token": new_token()})
+        io.say(f"     ✓ 已添加 {name}")
+    else:
+        item["name"] = name
+        io.say(f"     ✓ {sid} 已经连接过，沿用它的 token")
+    store.write(data)
+
+    io.say()
+    io.say("2/3  把客户端加进项目")
+    choices = []
+    if (project / "pyproject.toml").exists() and shutil.which("uv"):
+        choices.append(("uv", "用 uv add 加成依赖（uv 项目，推荐）"))
+    if (project / "requirements.txt").exists():
+        choices.append(("requirements", "写进 requirements.txt"))
+    choices.append(("copy", "复制 quantbot_client.py 到项目里（什么环境都能用）"))
+    for index, (_, label) in enumerate(choices, 1):
+        io.say(f"     {index}. {label}")
+    while True:
+        picked = io.ask("     选择", "1")
+        if picked.isdigit() and 1 <= int(picked) <= len(choices):
+            how = choices[int(picked) - 1][0]
+            break
+        io.say(f"     ✗ 输入 1 到 {len(choices)}")
+    if how == "uv":
+        if subprocess.call(["uv", "add", CLIENT_REQUIREMENT], cwd=project):  # noqa: S603, S607
+            raise Abort("uv add 失败，见上面的输出。可以重新运行 quantbot link 选复制文件。")
+        io.say("     ✓ 已加到 pyproject.toml 和 uv.lock")
+    elif how == "requirements":
+        req = project / "requirements.txt"
+        lines = req.read_text("utf-8").splitlines()
+        if not any(line.startswith("quantbot-client") for line in lines):
+            text = req.read_text("utf-8")
+            req.write_text(
+                text
+                + ("" if text.endswith("\n") or not text else "\n")
+                + CLIENT_REQUIREMENT
+                + "\n",
+                "utf-8",
+            )
+        io.say("     ✓ 已写进 requirements.txt。在你的环境里运行：pip install -r requirements.txt")
+    else:
+        target = project / "quantbot_client.py"
+        source = client_source()
+        if target.exists() and target.read_text("utf-8") != source:
+            if not io.confirm("     quantbot_client.py 已存在，换成新版吗？"):
+                source = ""
+        if source:
+            target.write_text(source, "utf-8")
+        io.say("     ✓ 已复制 quantbot_client.py")
+
+    io.say()
+    io.say("3/3  在代码里加上这几行：")
+    io.say()
+    for line in (
+        "from quantbot_client import QuantBot",
+        "",
+        f'qb = QuantBot("{sid}")',
+        "with qb:",
+        "    while not qb.stopping:",
+        "        ...                          # 你的一轮交易，下开仓单前看 qb.can_open()",
+        '        qb.status("净值 10000")       # 显示在 Telegram 里',
+        "        if not qb.sleep(60):         # 等的时候也在响应按钮",
+        "            break",
+    ):
+        io.say(f"    {line}")
+    io.say()
+    io.say(f"然后照常运行：cd {project} && {run_command(project)}")
+    io.say(
+        "在 Telegram 里发 /menu 就能看到它。不用填 token，客户端会自己找到这台机器上的 QuantBot。"
+    )
+    return 0
+
+
 def cmd_run(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     from quantbot.bot import serve
 
@@ -323,8 +528,22 @@ def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="quantbot", description="一个 Telegram bot 管理所有量化程序")
     p.add_argument("--version", action="version", version=f"quantbot {__version__}")
     sub = p.add_subparsers(dest="command", metavar="命令")
-    sub.add_parser("run", help="运行 QuantBot（容器默认就是这个）").set_defaults(fn=cmd_run)
-    sub.add_parser("setup", help="设置 Telegram bot、你的账号和静音时段").set_defaults(fn=cmd_setup)
+    sub.add_parser("run", help="在前台运行 QuantBot（后台服务也是用它）").set_defaults(fn=cmd_run)
+    setup = sub.add_parser("setup", help="设置 Telegram bot、你的账号和静音时段")
+    setup.add_argument("--if-needed", action="store_true", help="已经设置过就跳过")
+    setup.set_defaults(fn=cmd_setup)
+    service = sub.add_parser("service", help="后台服务：install、uninstall、restart、status")
+    service.add_argument("action", choices=["install", "uninstall", "restart", "status"])
+    service.add_argument("--listen", help="监听地址，默认 127.0.0.1:8080，只有本机能连")
+    link = sub.add_parser("link", help="把你的策略项目连接到 QuantBot（交互式）")
+    link.add_argument("path", nargs="?", default=".", help="项目文件夹，默认当前文件夹")
+    link.add_argument("--name", help="策略 id，默认用文件夹名")
+    link.set_defaults(fn=cmd_link)
+    sub.add_parser("update", help="更新到最新版并重启后台服务").set_defaults(fn=cmd_update)
+    service.set_defaults(fn=cmd_service)
+    logs = sub.add_parser("logs", help="看后台服务的日志")
+    logs.add_argument("-f", "--follow", action="store_true", help="一直看新日志")
+    logs.set_defaults(fn=cmd_logs)
     add = sub.add_parser("add", help="添加一个策略，生成它的 token")
     add.add_argument("id", help="例如 momentum")
     add.add_argument("--name", help="在 Telegram 里显示的名字")
@@ -358,7 +577,7 @@ def main(
     store = store or Store(data_dir())
     try:
         return int(fn(store, io, api, args))
-    except (Abort, ConfigError) as exc:
+    except (Abort, ConfigError, ServiceError) as exc:
         io.say(f"✗ {exc}")
         return 1
     except KeyboardInterrupt:

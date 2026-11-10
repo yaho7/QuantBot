@@ -1,11 +1,10 @@
 """QuantBot client for Python trading programs. One file, standard library only.
 
-Copy this file next to your program (or `pip install` the QuantBot package)
-and use it like this:
+`quantbot link` in your project adds this to it. Then:
 
     from quantbot_client import QuantBot
 
-    qb = QuantBot()                     # reads QB_URL and QB_TOKEN
+    qb = QuantBot("momentum")           # finds QuantBot on this machine by itself
     qb.on("positions", lambda: broker.positions_text())
     qb.on("flatten", flatten_my_positions)
 
@@ -31,6 +30,9 @@ import json
 import logging
 import os
 import queue
+import re
+import secrets
+import tempfile
 import threading
 import time
 import traceback
@@ -38,6 +40,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 __all__ = ["QuantBot"]
@@ -55,19 +58,92 @@ EVENT_BACKLOG = 500
 _WAKE = object()
 
 
+NAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+DEFAULT_LISTEN = "127.0.0.1:8080"
+
+
+def _config_path() -> Path:
+    """Where QuantBot on this machine keeps its settings (see quantbot/config.py)."""
+    if os.environ.get("QB_DATA_DIR"):
+        return Path(os.environ["QB_DATA_DIR"]).expanduser() / "quantbot.json"
+    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
+    return Path(base) / "quantbot" / "quantbot.json"
+
+
+def _default_name() -> str:
+    """The project folder's name, made into a valid strategy id."""
+    name = re.sub(r"[^a-z0-9_-]+", "-", Path.cwd().name.lower()).strip("-_")[:32]
+    return name if NAME.match(name) else "strategy"
+
+
+def _url_from(listen: str) -> str:
+    host, _, port = listen.rpartition(":")
+    return f"http://{'127.0.0.1' if host in {'0.0.0.0', '::', ''} else host}:{port}"  # noqa: S104
+
+
+def connect_locally(name: str, display_name: str | None = None) -> tuple[str, str]:
+    """Find this strategy in the local QuantBot settings, adding it if it is new.
+
+    Returns (url, token). QuantBot picks up a new strategy within seconds.
+    """
+    path = _config_path()
+    try:
+        data = json.loads(path.read_text("utf-8"))
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            f"No QuantBot settings at {path}. Install QuantBot on this machine and run "
+            "`quantbot setup`, or set QB_URL and QB_TOKEN."
+        ) from exc
+    items = data.setdefault("strategies", [])
+    found = next((item for item in items if item.get("id") == name), None)
+    if found is None:
+        found = {"id": name, "name": display_name or name, "token": secrets.token_urlsafe(32)}
+        items.append(found)
+        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".quantbot-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(data, fh, ensure_ascii=False, indent=2)
+                fh.write("\n")
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        log.info("Added %s to QuantBot", name)
+    listen = os.environ.get("QB_LISTEN") or data.get("listen") or DEFAULT_LISTEN
+    return _url_from(str(listen)), str(found["token"])
+
+
 class QuantBot:
     def __init__(
         self,
+        name: str | None = None,
+        *,
+        display_name: str | None = None,
         url: str | None = None,
         token: str | None = None,
-        *,
         heartbeat_url: str | None = None,
         state_file: str | None = None,
     ) -> None:
+        """Connect to QuantBot.
+
+        With QuantBot on the same machine, a name is all it takes:
+        `QuantBot("momentum")`. Without one, the project folder's name is used.
+        The strategy is added to QuantBot the first time it connects.
+        QB_URL and QB_TOKEN (or url= and token=) connect to a QuantBot elsewhere.
+        """
         url = url or os.environ.get("QB_URL", "")
         token = token or os.environ.get("QB_TOKEN", "")
-        if not url.startswith(("http://", "https://")) or not token:
-            raise ValueError("Set QB_URL (http://quantbot:8080) and QB_TOKEN")
+        if not token:
+            name = name or os.environ.get("QB_NAME") or _default_name()
+            if not NAME.match(name):
+                raise ValueError("Strategy name: lowercase letters, digits, - and _, e.g. momentum")
+            local_url, token = connect_locally(name, display_name)
+            url = url or local_url
+        url = url or _url_from(DEFAULT_LISTEN)
+        if not url.startswith(("http://", "https://")):
+            raise ValueError("QB_URL must start with http:// or https://")
+        self.name = name
         self.url = url.rstrip("/")
         self._token = token
         self._heartbeat_url = heartbeat_url or os.environ.get("QB_HEARTBEAT_URL") or None

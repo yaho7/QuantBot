@@ -130,7 +130,7 @@ def test_add_list_token_rename_remove(tmp_path: Path) -> None:
     code, io = run(store, ["add", "momentum", "--name", "动量策略"])
     assert code == 0
     token = next(line for line in io.out if "QB_TOKEN=" in line).split("=", 1)[1]
-    assert len(token) >= 32 and "QB_URL=http://quantbot:8080" in io.text()
+    assert len(token) >= 32 and "QB_URL=http://127.0.0.1:8080" in io.text()
     assert "还没配置 Telegram" in io.text()
     assert run(store, ["add", "momentum"])[0] == 1
     assert run(store, ["add", "Bad!"])[0] == 1
@@ -182,3 +182,45 @@ def test_hub_sync_adds_renames_and_removes() -> None:
         assert hub.by_token("x" * 20) is hub.strategies["a"] and hub.by_token("a" * 20) is None
 
     asyncio.run(go())
+
+
+def test_link_copies_the_client_and_registers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = Store(tmp_path / "data")
+    run(store, ["setup"], [BOT, "", "", "-", "", "-"])
+    project = tmp_path / "My Momentum"
+    project.mkdir()
+    (project / "main.py").write_text("print('hi')\n")
+    monkeypatch.setattr("quantbot.cli.shutil.which", lambda name: None)  # no uv here
+    # id (default), display name, choice 1 = copy
+    code, io = run(store, ["link", str(project)], ["", "动量", ""])
+    assert code == 0, io.text()
+    assert [(s.id, s.name) for s in store.strategies()] == [("my-momentum", "动量")]
+    assert "class QuantBot" in (project / "quantbot_client.py").read_text()
+    assert 'qb = QuantBot("my-momentum")' in io.text() and "python main.py" in io.text()
+    token = store.strategies()[0].token
+    code, io = run(store, ["link", str(project)], ["", "", ""])  # again: same token
+    assert code == 0 and "已经连接过" in io.text() and store.strategies()[0].token == token
+
+
+def test_link_writes_requirements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    store = Store(tmp_path / "data")
+    run(store, ["setup"], [BOT, "", "", "-", "", "-"])
+    project = tmp_path / "grid"
+    project.mkdir()
+    (project / "requirements.txt").write_text("pandas")
+    monkeypatch.setattr("quantbot.cli.shutil.which", lambda name: None)
+    code, io = run(store, ["link", str(project)], ["", "", "9", "1"])  # bad choice, then 1
+    assert code == 0, io.text()
+    assert (project / "requirements.txt").read_text().splitlines() == [
+        "pandas",
+        "quantbot-client @ git+https://github.com/yaho7/QuantBot#subdirectory=client",
+    ]
+    run(store, ["link", str(project)], ["", "", "1"])
+    assert (project / "requirements.txt").read_text().count("quantbot-client") == 1
+
+
+def test_link_needs_setup_first(tmp_path: Path) -> None:
+    code, io = run(Store(tmp_path), ["link", str(tmp_path)])
+    assert code == 1 and "quantbot setup" in io.text()
