@@ -5,7 +5,12 @@ description = "One Telegram bot to control all your trading programs"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
-dependencies = ["python-telegram-bot>=22,<23"]
+dependencies = [
+    "aiohttp>=3.10,<4",
+    "python-telegram-bot>=22,<23",
+    "pyyaml>=6",
+    "tzdata>=2026.6",
+]
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
