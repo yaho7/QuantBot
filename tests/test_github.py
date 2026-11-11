@@ -13,9 +13,29 @@ import pytest
 from quantbot.config import ConfigError
 from quantbot.editor import Editor
 from quantbot.github import API_URL, DEVICE_URL, OAUTH_URL, GitHubEditor
+from quantbot.workspace import Workspace
 
 REMOTE = "https://github.com/acme/strategy.git"
 GIT = shutil.which("git") or "/usr/bin/git"
+
+
+def test_managed_workspace_git_uses_the_dedicated_account(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workspace = Workspace(tmp_path, 123, 456, tmp_path / "home")
+    monkeypatch.setattr(Editor, "workspace", lambda self: workspace)
+    monkeypatch.setattr("quantbot.workspace.shutil.which", lambda *a, **kw: "/usr/bin/setpriv")
+    monkeypatch.setenv("QB_SERVER_SECRET", "secret")
+
+    def run(command: list[str], **options: Any) -> subprocess.CompletedProcess[str]:
+        assert command[:4] == ["/usr/bin/setpriv", "--no-new-privs", "--", "git"]
+        assert options["user"] == 123 and options["group"] == 456
+        assert options["extra_groups"] == [] and options["cwd"] == tmp_path
+        assert "QB_SERVER_SECRET" not in options["env"]
+        return subprocess.CompletedProcess(command, 0, "main", "")
+
+    monkeypatch.setattr("quantbot.github.subprocess.run", run)
+    assert GitHubEditor._git(Editor(tmp_path, tmp_path / "data"), "branch") == "main"
 
 
 def git(directory: Path, *args: str) -> str:

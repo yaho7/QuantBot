@@ -13,6 +13,7 @@ from pathlib import Path
 
 from quantbot.config import ConfigError, Store
 from quantbot.i18n import tr
+from quantbot.workspace import Workspace
 
 EDITOR_FILE = "editor.json"
 MAX_FILE = 256 * 1024
@@ -63,10 +64,16 @@ class Editor:
             with editor._directory([]):
                 pass
             with editor_lock(data_dir):
-                Store(data_dir, filename=EDITOR_FILE).write({"root": str(root)})
+                editor.write_config()
         except (OSError, RuntimeError, EditorError) as exc:
             raise ConfigError(tr("无法打开编辑目录：{0}", exc)) from exc
         return root
+
+    def write_config(self) -> None:
+        Store(self.data_dir, filename=EDITOR_FILE).write({"root": str(self.root)})
+
+    def workspace(self) -> Workspace | None:
+        return Workspace.configured(self.data_dir, self.root)
 
     def _parts(self, path: str) -> list[str]:
         if not path:
@@ -153,6 +160,7 @@ class Editor:
         if len(raw) > MAX_FILE or b"\0" in raw:
             raise EditorError(tr("请保存 256 KiB 以内的 UTF-8 文本。"))
         parts, name = self._file_parts(path)
+        workspace = self.workspace()
         with self._directory(parts) as fd:
             current, mode = self._read(fd, name)
             if current.revision != revision:
@@ -165,6 +173,8 @@ class Editor:
                 with os.fdopen(output, "wb") as file:
                     file.write(raw)
                     file.flush()
+                    if workspace:
+                        os.fchown(file.fileno(), workspace.uid, workspace.gid)
                     os.fchmod(file.fileno(), mode)
                     os.fsync(file.fileno())
                 latest, _ = self._read(fd, name)

@@ -304,7 +304,12 @@ class GitHubEditor:
 
     @staticmethod
     def _git(editor: Editor, *args: str, token: str = "") -> str:
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        workspace = editor.workspace()
+        env = (
+            workspace.environment()
+            if workspace
+            else {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        )
         env["GIT_TERMINAL_PROMPT"] = "0"
         if token:
             credentials = base64.b64encode(f"x-access-token:{token}".encode()).decode("ascii")
@@ -337,6 +342,9 @@ class GitHubEditor:
             "http.followRedirects=false",
             *args,
         ]
+        options = workspace.process_options() if workspace else {}
+        if workspace:
+            command = workspace.command(command)
         try:
             done = subprocess.run(  # noqa: S603
                 command,
@@ -345,6 +353,7 @@ class GitHubEditor:
                 text=True,
                 timeout=90,
                 check=False,
+                **options,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise ConfigError(tr("Git 无法完成操作，请检查服务器上的 Git 和网络连接。")) from exc

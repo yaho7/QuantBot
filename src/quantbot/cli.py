@@ -58,6 +58,7 @@ from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable, wait_until_ready
 from quantbot.uninstall import UninstallPlan
 from quantbot.updates import Updater, installed
+from quantbot.workspace import DEFAULT_ROOT, WORKSPACE_FILE, Workspace
 
 OWNER_WAIT = 120
 
@@ -526,6 +527,14 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
 
     io.section(tr("5/5  命令入口"))
     shortcut, enable_alias = _ask_shortcut(io)
+    offer_workspace = (
+        not configured
+        and Workspace.supported()
+        and not Store(store.dir, filename=WORKSPACE_FILE).exists()
+    )
+    initialize_workspace = offer_workspace and io.confirm(
+        tr("初始化网页工作区和普通运行账号"), default=False
+    )
 
     io.section(tr("确认配置"))
     mode = "3" if public_url else "2" if listen.startswith(f"{ANY_HOST}:") else "1"
@@ -541,6 +550,8 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     ]
     if public_url:
         rows.insert(2, (tr("Tunnel 地址"), f"{public_url}/ui/"))
+    if offer_workspace:
+        rows.append((tr("工作区"), str(DEFAULT_ROOT) if initialize_workspace else tr("跳过")))
     io.rows(rows)
     if not io.confirm(tr("应用以上配置")):
         io.status("note", tr("已取消配置。"))
@@ -586,6 +597,14 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         except TelegramError as exc:
             io.status("warn", tr("Telegram 测试消息发送失败。{0}", exc))
     entry = _apply_shortcut(io, shortcut, enable_alias)
+    if initialize_workspace:
+        try:
+            workspace = Workspace.initialize(store.dir, DEFAULT_ROOT)
+            io.status("ok", tr("工作区已初始化。"))
+            io.rows([(tr("工作区"), str(workspace.root))])
+        except (ConfigError, OSError, subprocess.TimeoutExpired) as exc:
+            io.status("warn", str(exc))
+            io.say("  quantbot workspace init")
     state = _start_setup_service(store, io, service if start else None)
     return _setup_result(store, io, state, entry, initial)
 
@@ -1048,6 +1067,13 @@ def cmd_web(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
 def cmd_workspace(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     if not store.exists():
         raise Abort(tr("还没设置。先运行：quantbot setup"))
+    if args.workspace_action == "init":
+        try:
+            workspace = Workspace.initialize(store.dir, Path(args.root))
+        except subprocess.TimeoutExpired as exc:
+            raise Abort(tr("初始化工作区超时，请在服务器上重试。")) from exc
+        io.status("ok", tr("工作区已初始化。"))
+        io.rows([(tr("工作区"), str(workspace.root))])
     _print_web_link(store, io, workspace=True)
     return 0
 
@@ -1205,7 +1231,11 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
         sync = github_actions.add_parser(action, help=label)
         sync.add_argument("--yes", action="store_true", help=tr("无需确认"))
     sub.add_parser("web", description=tr("打印一次性的网页登录链接")).set_defaults(fn=cmd_web)
-    sub.add_parser("workspace", description=tr("打开网页工作区")).set_defaults(fn=cmd_workspace)
+    workspace = sub.add_parser("workspace", description=tr("打开和初始化网页工作区"))
+    workspace.set_defaults(fn=cmd_workspace)
+    workspace_actions = workspace.add_subparsers(dest="workspace_action")
+    init = workspace_actions.add_parser("init", help=tr("在 Linux 服务器上初始化工作区"))
+    init.add_argument("--root", default=str(DEFAULT_ROOT), help=tr("空的工作区目录"))
     sub.add_parser("password", description=tr("改网页管理员的用户名和密码")).set_defaults(
         fn=cmd_password
     )

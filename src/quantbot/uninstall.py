@@ -28,6 +28,7 @@ from quantbot.github import GITHUB_FILE
 from quantbot.i18n import tr
 from quantbot.service import NAME, Service
 from quantbot.updates import CACHE_FILE, find_uv
+from quantbot.workspace import WORKSPACE_FILE
 
 STATE_FILES = {
     FILE_NAME,
@@ -36,6 +37,7 @@ STATE_FILES = {
     EDITOR_FILE,
     GITHUB_FILE,
     USED_LINKS_FILE,
+    WORKSPACE_FILE,
     "editor.lock",
     f".{FILE_NAME}.lock",
     f".{USED_LINKS_FILE}.lock",

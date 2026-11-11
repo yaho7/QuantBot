@@ -91,7 +91,17 @@ QuantBot 启动后每小时查看一次检查缓存，每 6 小时向 GitHub 查
 
 ### 网页工作区
 
-编辑器默认关闭。在运行 QuantBot 的服务器上选择策略目录：
+Linux 上以 root 安装时，可以在向导里初始化工作区。已有安装可以在服务器上运行：
+
+```bash
+quantbot workspace init
+# 或指定另一个空目录
+quantbot workspace init --root /srv/quantbot/strategies
+```
+
+初始化会创建普通系统账号 `quantbot-workspace`，Git 操作用这个账号运行。默认目录是 `/srv/quantbot/strategies`。可在网页上把私有仓库克隆进去。
+
+如果只需要启用已有目录的编辑器，可以用：
 
 ```bash
 quantbot editor on --root ~/strategies
@@ -207,7 +217,7 @@ with qb:                               # 出错会推送报错，再抛出
 | `quantbot web` | 打印一次性的网页登录链接 |
 | `quantbot update [--check] [--yes]` | 检查或安装更新 |
 | `quantbot editor on/off/status` | 管理网页策略编辑器 |
-| `quantbot workspace` | 获取网页工作区的直达链接 |
+| `quantbot workspace [init]` | 获取网页工作区直达链接，或初始化 Linux 工作区 |
 
 设置和操作记录存在 `~/.config/quantbot/`。
 

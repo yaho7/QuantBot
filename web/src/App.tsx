@@ -300,7 +300,7 @@ export function App() {
                   <EmptyState icon={FolderCode} title={tr("设置工作区")}
                     description={tr("在运行 QuantBot 的服务器上选定目录后，即可在这里编辑代码并绑定 GitHub。")} />
                   <pre className="mx-auto max-w-fit overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs">
-                    mkdir -p ~/strategies &amp;&amp; quantbot editor on --root ~/strategies
+                    quantbot workspace init
                   </pre>
                 </Card>
               )}
