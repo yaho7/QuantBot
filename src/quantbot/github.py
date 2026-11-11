@@ -11,8 +11,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -21,12 +21,14 @@ from quantbot.editor import Editor, editor_lock
 from quantbot.i18n import tr
 
 GITHUB_FILE = "github.json"
+GITHUB_APP_FILE = "github-app.json"
 DEVICE_URL = "https://github.com/login/device"
 OAUTH_URL = "https://github.com/login/oauth/access_token"
 API_URL = "https://api.github.com"
 TRACKING = "refs/quantbot/github"
 SLUG = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+")
 CLIENT_ID = re.compile(r"[A-Za-z0-9._-]{8,100}")
+APP_SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")
 
 
 def _request(url: str, *, form: dict[str, str] | None = None, token: str = "") -> dict[str, Any]:
@@ -67,6 +69,14 @@ class Authorization:
         return {"url": DEVICE_URL, "code": self.user_code, "interval": self.interval}
 
 
+@dataclass
+class RepositoryGrant:
+    flow: Authorization
+    credentials: dict[str, Any] = field(repr=False)
+    expires: float = field(default_factory=lambda: time.monotonic() + 600)
+    repositories: list[dict[str, Any]] = field(default_factory=list)
+
+
 class GitHubEditor:
     def __init__(
         self,
@@ -74,6 +84,7 @@ class GitHubEditor:
         request: Callable[..., dict[str, Any]] = _request,
     ) -> None:
         self.store = Store(data_dir, filename=GITHUB_FILE)
+        self.app_store = Store(data_dir, filename=GITHUB_APP_FILE)
         self.request = request
 
     def _editor(self) -> Editor:
@@ -90,15 +101,49 @@ class GitHubEditor:
         data = self.store.read()
         return data if data.get("root") == str(editor.root) else {}
 
-    def begin(self, repo: str, branch: str, client_id: str) -> Authorization:
+    def app(self) -> dict[str, Any]:
+        app = self.app_store.read()
+        client_id = (
+            app.get("client_id")
+            or os.environ.get("QUANTBOT_GITHUB_CLIENT_ID")
+            or self.store.read().get("client_id")
+            or ""
+        )
+        slug = app.get("slug") or os.environ.get("QUANTBOT_GITHUB_APP_SLUG") or ""
+        return {
+            "client_id": client_id
+            if isinstance(client_id, str) and CLIENT_ID.fullmatch(client_id)
+            else "",
+            "slug": slug if isinstance(slug, str) and APP_SLUG.fullmatch(slug) else "",
+        }
+
+    def configure_app(self, client_id: str, slug: str = "") -> dict[str, str]:
+        client_id = client_id.strip()
+        slug = slug.strip().removeprefix("https://github.com/apps/").rstrip("/")
+        if not CLIENT_ID.fullmatch(client_id) or (slug and not APP_SLUG.fullmatch(slug)):
+            raise ConfigError(tr("请填写有效的 GitHub App Client ID 和应用名称。"))
+        app = {"client_id": client_id, "slug": slug}
+        self.app_store.write(app)
+        return app
+
+    def register_app(self, code: str) -> None:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{8,200}", code):
+            raise ConfigError(tr("GitHub 应用注册码无效。"))
+        result = self.request(f"{API_URL}/app-manifests/{code}/conversions", form={})
+        client_id, slug = result.get("client_id"), result.get("slug")
+        if not isinstance(client_id, str) or not isinstance(slug, str):
+            raise ConfigError(tr("GitHub 没有返回应用配置。"))
+        self.configure_app(client_id, slug)
+
+    def begin(self, repo: str = "", branch: str = "", client_id: str = "") -> Authorization:
         editor = self._editor()
         repo = repo.strip().removeprefix("https://github.com/").rstrip("/").removesuffix(".git")
-        if not SLUG.fullmatch(repo) or repo.split("/")[1] in {".", ".."}:
+        if repo and (not SLUG.fullmatch(repo) or repo.split("/")[1] in {".", ".."}):
             raise ConfigError(tr("请输入 GitHub 仓库名，例如 owner/strategy。"))
         branch = branch.strip()
         if branch:
             self._check_branch(editor, branch)
-        client_id = client_id.strip() or str(self._binding(editor).get("client_id") or "")
+        client_id = client_id.strip() or self.app()["client_id"]
         if not CLIENT_ID.fullmatch(client_id):
             raise ConfigError(tr("请填写启用了设备授权的 GitHub App Client ID。"))
         result = self.request(f"{DEVICE_URL}/code", form={"client_id": client_id})
@@ -122,6 +167,10 @@ class GitHubEditor:
             raise ConfigError(tr("GitHub 没有返回设备授权码。")) from exc
 
     def poll(self, flow: Authorization) -> dict[str, Any] | None:
+        credentials = self.poll_credentials(flow)
+        return self._finish(flow, credentials) if credentials else None
+
+    def poll_credentials(self, flow: Authorization) -> dict[str, Any] | None:
         now = time.monotonic()
         if now >= flow.expires:
             raise ConfigError(tr("GitHub 授权码已过期，请重新绑定。"))
@@ -145,7 +194,50 @@ class GitHubEditor:
             return None
         if error:
             raise ConfigError(tr("GitHub 授权未完成（{0}）。请重新绑定。", error))
-        return self._finish(flow, self._credentials(result))
+        return self._credentials(result)
+
+    def _pages(self, resource: str, key: str, token: str) -> Iterator[dict[str, Any]]:
+        page = 1
+        while True:
+            data = self.request(f"{API_URL}/{resource}?per_page=100&page={page}", token=token)
+            items = data.get(key)
+            if not isinstance(items, list):
+                raise ConfigError(tr("GitHub 返回的仓库列表格式不对。"))
+            yield from (item for item in items if isinstance(item, dict))
+            total = data.get("total_count")
+            if len(items) < 100 or (isinstance(total, int) and page * 100 >= total):
+                return
+            page += 1
+
+    def repositories(self, grant: RepositoryGrant) -> list[dict[str, Any]]:
+        self._check_grant(grant)
+        token = grant.credentials["access_token"]
+        repositories = {}
+        for installation in self._pages("user/installations", "installations", token):
+            installation_id = installation.get("id")
+            if type(installation_id) is not int or installation.get("suspended_at"):
+                continue
+            for repo in self._pages(
+                f"user/installations/{installation_id}/repositories", "repositories", token
+            ):
+                name = repo.get("full_name")
+                if isinstance(name, str) and SLUG.fullmatch(name):
+                    repositories[name] = {"name": name, "private": bool(repo.get("private"))}
+        grant.repositories = sorted(repositories.values(), key=lambda item: item["name"].casefold())
+        return grant.repositories
+
+    @staticmethod
+    def _check_grant(grant: RepositoryGrant) -> None:
+        if time.monotonic() >= grant.expires or (
+            grant.credentials.get("expires") and time.time() >= grant.credentials["expires"]
+        ):
+            raise ConfigError(tr("GitHub 授权已过期，请重新绑定。"))
+
+    def select_repository(self, grant: RepositoryGrant, repo: str) -> dict[str, Any]:
+        self._check_grant(grant)
+        if not any(item["name"] == repo for item in grant.repositories):
+            raise ConfigError(tr("请选择 GitHub 已授权的仓库。"))
+        return self._finish(replace(grant.flow, repo=repo), grant.credentials)
 
     @staticmethod
     def _credentials(result: dict[str, Any]) -> dict[str, Any]:
@@ -216,6 +308,8 @@ class GitHubEditor:
                 "client_id": flow.client_id,
             }
             self.store.write(binding)
+            if not self.app_store.exists():
+                self.configure_app(flow.client_id, self.app()["slug"])
             return self._status(editor, binding)
 
     def status(self) -> dict[str, Any]:
@@ -332,6 +426,8 @@ class GitHubEditor:
 
     def unbind(self) -> None:
         with editor_lock(self.store.dir):
+            if not self.app_store.exists() and (app := self.app())["client_id"]:
+                self.configure_app(app["client_id"], app["slug"])
             self.store.path.unlink(missing_ok=True)
 
     def _branch(self, editor: Editor) -> str:

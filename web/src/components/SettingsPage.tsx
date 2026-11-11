@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Globe, Languages, Radio, RefreshCw, Server, ShieldCheck, SlidersHorizontal, Wrench } from "lucide-react";
+import { Download, GitBranch, Globe, Languages, Radio, RefreshCw, Server, ShieldCheck, SlidersHorizontal, Wrench } from "lucide-react";
 import { useState } from "react";
 import { AccountDialog } from "@/components/AccountDialog";
 import { PageHeader, QueryBoundary } from "@/components/common";
@@ -49,13 +49,21 @@ export function SettingsPage({ update, onInstalled }: { update?: UpdateStatus; o
                     </Button>
                   </CardContent>
                 </Card>
-                <Card className="md:col-span-2">
+                <Card>
                   <CardHeader><CardTitle className="flex items-center gap-2"><Globe className="size-4 text-muted-foreground" /> {tr("访问地址")}</CardTitle></CardHeader>
                   <CardContent className="grid gap-2">
                     <code className="w-fit max-w-full break-all rounded-md bg-muted px-2 py-1 text-xs">
                       {data.public_url ? `${data.public_url}/ui/` : data.listen}
                     </code>
                     <p className="text-xs text-muted-foreground">{tr("在服务器上运行 quantbot setup 修改。")}</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader><CardTitle className="flex items-center gap-2"><GitBranch className="size-4 text-muted-foreground" /> GitHub</CardTitle></CardHeader>
+                  <CardContent>
+                    <Button asChild variant="outline" size="sm">
+                      <a href="/ui/?view=workspace&github=1">{tr("连接 GitHub")}</a>
+                    </Button>
                   </CardContent>
                 </Card>
               </div>

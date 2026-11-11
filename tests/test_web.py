@@ -322,6 +322,7 @@ def test_github_web_authorization_and_sync(tmp_path: Path, monkeypatch: pytest.M
         begin=lambda *args: pending,
         poll=lambda flow: status,
         status=lambda: {"bound": False},
+        app=lambda: {"client_id": "", "slug": ""},
         sync=lambda action: syncs.append(action) or status,
         unbind=lambda: None,
     )
@@ -355,6 +356,76 @@ def test_github_web_authorization_and_sync(tmp_path: Path, monkeypatch: pytest.M
             assert (await (await client.post(url + "/" + action, headers=CSRF)).json())["ok"]
         assert syncs == ["check", "pull", "push"]
         assert read_audit(tmp_path / "audit.jsonl", 1)[0]["operation"] == "unbind"
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
+def test_github_web_registers_app_and_lists_authorized_repositories(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from urllib.parse import parse_qs, urlsplit
+
+    from quantbot.github import API_URL, GitHubEditor
+
+    state_dir = tmp_path / "settings"
+    root = tmp_path / "workspace"
+    root.mkdir()
+    Editor.enable(state_dir, str(root))
+
+    def request(url: str, *, form: dict[str, Any] | None = None, token: str = "") -> dict[str, Any]:
+        if url == f"{API_URL}/app-manifests/registered-code/conversions":
+            assert form == {}
+            return {"client_id": "Iv1.example", "slug": "quantbot-test", "pem": "unused-private"}
+        if url == f"{DEVICE_URL}/code":
+            assert form == {"client_id": "Iv1.example"}
+            return {
+                "device_code": "server-code",
+                "user_code": "AAAA-BBBB",
+                "interval": 5,
+                "expires_in": 120,
+            }
+        assert token == "server-token"
+        if url.startswith(f"{API_URL}/user/installations?"):
+            return {"installations": [{"id": 3}]}
+        assert url.startswith(f"{API_URL}/user/installations/3/repositories?")
+        return {"repositories": [{"full_name": "acme/private-strategy", "private": True}]}
+
+    github = GitHubEditor(state_dir, request=request)
+    monkeypatch.setattr("quantbot.web.GitHubEditor", lambda path: github)
+    monkeypatch.setattr(github, "poll_credentials", lambda flow: {"access_token": "server-token"})
+    monkeypatch.setattr(
+        github,
+        "_finish",
+        lambda flow, credentials: {"bound": True, "repo": flow.repo, "branch": "main"},
+    )
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        url = "/ui/api/editor/github"
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        registration = await (await client.post(url + "/register", headers=CSRF)).json()
+        assert registration["data"]["manifest"]["redirect_url"].endswith("/ui/github/app")
+        state = parse_qs(urlsplit(registration["data"]["url"]).query)["state"][0]
+        callback = "/ui/github/app?code=registered-code&state="
+        assert (await client.get(callback + "wrong", allow_redirects=False)).status == 403
+        saved = await client.get(callback + state, allow_redirects=False)
+        assert saved.headers["Location"] == "/ui/?view=workspace&github=setup"
+        assert "unused-private" not in github.app_store.path.read_text()
+        assert (await client.get(callback + state, allow_redirects=False)).status == 403
+        bind = await (await client.post(url + "/bind", headers=CSRF)).json()
+        session = {"state": bind["data"]["state"]}
+        poll = await (await client.post(url + "/authorize", json=session, headers=CSRF)).json()
+        assert poll["data"] == {"ready": True}
+        result = await client.post(url + "/repositories", json=session, headers=CSRF)
+        listing = await result.json()
+        assert listing["data"]["repositories"] == [
+            {"name": "acme/private-strategy", "private": True}
+        ]
+        assert "server-token" not in await result.text()
+        for repo, ok in (("acme/other", False), ("acme/private-strategy", True)):
+            selected = await client.post(
+                url + "/select", json={**session, "repo": repo}, headers=CSRF
+            )
+            assert (await selected.json())["ok"] is ok
 
     scenario(test, tmp_path / "audit.jsonl")
 

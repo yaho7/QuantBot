@@ -99,7 +99,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const [error, setError] = useState("");
   const [review, setReview] = useState<ReactNode>(null);
   const [discard, setDiscard] = useState<string>();
-  const [githubOpen, setGithubOpen] = useState(false);
+  const [githubOpen, setGithubOpen] = useState(() => new URLSearchParams(location.search).has("github"));
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [programOpen, setProgramOpen] = useState(false);
   const showTerminal = managed && terminalOpen;
@@ -203,7 +203,14 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
           if (discard) go(discard);
           setDiscard(undefined);
         }} />
-      {githubOpen && <GitHubDialog dirty={dirty} onClose={() => setGithubOpen(false)}
+      {githubOpen && <GitHubDialog dirty={dirty} onClose={() => {
+        setGithubOpen(false);
+        const url = new URL(location.href);
+        if (url.searchParams.has("github")) {
+          url.searchParams.delete("github");
+          history.replaceState(null, "", url);
+        }
+      }}
         onChanged={() => {
           void qc.invalidateQueries({ queryKey: ["editor", "tree"] });
           if (file && !dirty) load.mutate(file.path);

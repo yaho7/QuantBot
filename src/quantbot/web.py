@@ -53,7 +53,7 @@ from quantbot.config import (
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
 from quantbot.editor import EDITOR_FILE, Editor, EditorError, editor_lock
-from quantbot.github import Authorization, GitHubEditor
+from quantbot.github import Authorization, GitHubEditor, RepositoryGrant
 from quantbot.hub import Hub, Result
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
 from quantbot.service import Service, ServiceError
@@ -344,6 +344,8 @@ class GitHubActions:
     editor: GitHubEditor
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     pending: tuple[str, Authorization] | None = None
+    grant: tuple[str, RepositoryGrant] | None = None
+    registration: tuple[str, float] | None = None
 
 
 GITHUB_KEY = web.AppKey("web_github", GitHubActions)
@@ -591,7 +593,11 @@ async def github_get(request: web.Request) -> web.Response:
         return denied
     actions = request.app[GITHUB_KEY]
     try:
-        return _answer(True, "", await asyncio.to_thread(actions.editor.status))
+        status = await asyncio.to_thread(actions.editor.status)
+        app = actions.editor.app()
+        return _answer(
+            True, "", {**status, "app_configured": bool(app["client_id"]), "app_slug": app["slug"]}
+        )
     except (ConfigError, OSError) as exc:
         return _answer(False, str(exc))
 
@@ -635,6 +641,38 @@ async def github_post(request: web.Request) -> web.Response:
     async with actions.lock:
         audit = request.app[CORE_KEY].audit
         try:
+            if action == "register":
+                _editor(request.app[STORE_KEY])
+                origin = check_public_url(
+                    request.app[STORE_KEY].read().get("public_url")
+                    or f"{request.scheme}://{request.host}"
+                )
+                state = secrets.token_urlsafe(24)
+                actions.registration = state, time.monotonic() + 600
+                return _answer(
+                    True,
+                    "",
+                    {
+                        "url": f"https://github.com/settings/apps/new?state={state}",
+                        "manifest": {
+                            "name": f"QuantBot {secrets.token_hex(3)}",
+                            "url": "https://github.com/yaho7/QuantBot",
+                            "redirect_url": f"{origin}/ui/github/app",
+                            "public": False,
+                            "hook_attributes": {"active": False},
+                            "default_permissions": {"contents": "write", "metadata": "read"},
+                        },
+                    },
+                )
+            if action == "app":
+                client_id, slug = body.get("client_id", ""), body.get("slug", "")
+                if not isinstance(client_id, str) or not isinstance(slug, str):
+                    return _answer(False, tr("请填写有效的 GitHub App Client ID 和应用名称。"))
+                app = await asyncio.to_thread(actions.editor.configure_app, client_id, slug)
+                actions.pending = actions.grant = None
+                actions.registration = None
+                audit.write("github", user=WEB_USER, ok=True, operation="app")
+                return _answer(True, "", {"app_configured": True, "app_slug": app["slug"]})
             if action == "bind":
                 repo, branch, client_id = (
                     body.get(key, "") for key in ("repo", "branch", "client_id")
@@ -644,13 +682,22 @@ async def github_post(request: web.Request) -> web.Response:
                 flow = await asyncio.to_thread(actions.editor.begin, repo, branch, client_id)
                 state = secrets.token_urlsafe(16)
                 actions.pending = state, flow
+                actions.grant = None
                 return _answer(True, "", {**flow.prompt(), "state": state})
             if action == "authorize":
                 if not actions.pending or body.get("state") != actions.pending[0]:
                     return _answer(False, tr("请重新开始 GitHub 授权。"))
                 _, flow = actions.pending
                 try:
-                    status = await asyncio.to_thread(actions.editor.poll, flow)
+                    if flow.repo:
+                        status = await asyncio.to_thread(actions.editor.poll, flow)
+                    else:
+                        credentials = await asyncio.to_thread(actions.editor.poll_credentials, flow)
+                        if credentials is None:
+                            return _answer(True, "", {"interval": flow.interval})
+                        actions.grant = actions.pending[0], RepositoryGrant(flow, credentials)
+                        actions.pending = None
+                        return _answer(True, "", {"ready": True})
                 except (ConfigError, OSError):
                     actions.pending = None
                     raise
@@ -659,9 +706,23 @@ async def github_post(request: web.Request) -> web.Response:
                 actions.pending = None
                 action = "bind"
                 message = tr("GitHub 已绑定。")
+            elif action in {"repositories", "select"}:
+                if not actions.grant or body.get("state") != actions.grant[0]:
+                    return _answer(False, tr("请重新开始 GitHub 授权。"))
+                grant = actions.grant[1]
+                if action == "repositories":
+                    repositories = await asyncio.to_thread(actions.editor.repositories, grant)
+                    return _answer(True, "", {"repositories": repositories})
+                repo = body.get("repo")
+                if not isinstance(repo, str):
+                    return _answer(False, tr("请选择 GitHub 已授权的仓库。"))
+                status = await asyncio.to_thread(actions.editor.select_repository, grant, repo)
+                actions.grant = None
+                message = tr("GitHub 已绑定。")
             elif action == "unbind":
                 await asyncio.to_thread(actions.editor.unbind)
                 actions.pending = None
+                actions.grant = None
                 status = {"bound": False}
                 message = tr("已解除 GitHub 绑定。")
             else:
@@ -683,6 +744,27 @@ async def github_post(request: web.Request) -> web.Response:
             result=message,
         )
         return _answer(True, message, {"status": status})
+
+
+async def github_app_callback(request: web.Request) -> web.StreamResponse:
+    actions = request.app[GITHUB_KEY]
+    async with actions.lock:
+        pending = actions.registration
+        if (
+            not pending
+            or time.monotonic() >= pending[1]
+            or not secrets.compare_digest(
+                request.query.get("state", "").encode(), pending[0].encode()
+            )
+        ):
+            return web.Response(status=403, text=tr("请重新开始 GitHub 应用注册。"))
+        actions.registration = None
+        try:
+            await asyncio.to_thread(actions.editor.register_app, request.query.get("code", ""))
+        except (ConfigError, OSError) as exc:
+            return web.Response(status=400, text=str(exc))
+        request.app[CORE_KEY].audit.write("github", user=WEB_USER, ok=True, operation="register")
+    raise web.HTTPFound("/ui/?view=workspace&github=setup")
 
 
 def _service() -> Service | None:
@@ -1309,6 +1391,7 @@ def add_routes(
             web.get("/", redirect_root),
             web.get("/ui", redirect_root),
             web.get("/ui/login", login),
+            web.get("/ui/github/app", github_app_callback),
             web.post("/ui/api/login", password_login),
             web.post("/ui/api/logout", logout),
             web.post("/ui/api/password", password_change),
@@ -1339,7 +1422,8 @@ def add_routes(
             web.post("/ui/api/workspace/program/{action:configure|start|stop}", workspace_program),
             web.post("/ui/api/editor/git/commit", local_git),
             web.post(
-                "/ui/api/editor/github/{action:bind|authorize|check|pull|push|unbind}", github_post
+                "/ui/api/editor/github/{action:app|register|bind|authorize|repositories|select|check|pull|push|unbind}",
+                github_post,
             ),
             web.post("/ui/api/strategies/{sid}/{command}", command),
             web.get("/ui/", page),

@@ -320,5 +320,22 @@
   "选择一个空文件夹作为工作区。": "Select an empty folder for the workspace.",
   "初始化此文件夹": "Initialize this folder",
   "初始化工作区": "Initialize workspace",
-  "初始化后，网页将打开所选目录。": "The console will open the selected directory after setup."
+  "初始化后，网页将打开所选目录。": "The console will open the selected directory after setup.",
+  "选择仓库": "Select repository",
+  "选择已授权的仓库": "Select an authorized repository",
+  "私有": "Private",
+  "绑定仓库": "Connect repository",
+  "GitHub 没有返回可用仓库。请将应用安装到目标仓库。": "GitHub returned no repositories. Install the app on the repository you want to use.",
+  "刷新仓库列表": "Refresh repositories",
+  "在 GitHub 选择授权仓库": "Grant repository access on GitHub",
+  "首次使用时，在 GitHub 创建 QuantBot 应用，并为策略仓库授权。": "Create the QuantBot app on GitHub and grant access to your strategy repository.",
+  "在 GitHub 创建应用": "Create app on GitHub",
+  "应用已登记。请在 GitHub 应用设置中启用 Device Flow，再安装到目标仓库。": "The app is registered. Enable Device Flow in its GitHub settings, then install it on the repository.",
+  "在 GitHub 输入一次性授权码后，回到这里选择仓库。": "Enter the one-time code on GitHub, then return to select a repository.",
+  "连接 GitHub": "Connect GitHub",
+  "GitHub 应用设置": "GitHub app settings",
+  "使用已有 GitHub 应用": "Use an existing GitHub app",
+  "GitHub 应用名称": "GitHub app name",
+  "可填 github.com/apps/ 后的应用名称。": "Use the app name after github.com/apps/.",
+  "保存应用": "Save app"
 }

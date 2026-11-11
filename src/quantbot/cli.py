@@ -52,7 +52,7 @@ from quantbot.config import (
     strategy_item,
 )
 from quantbot.editor import EDITOR_FILE, Editor, editor_lock
-from quantbot.github import GitHubEditor
+from quantbot.github import GitHubEditor, RepositoryGrant
 from quantbot.i18n import LANGUAGES, language, tr, use_language
 from quantbot.notices import parse_quiet
 from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
@@ -887,12 +887,36 @@ def cmd_editor(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
 def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     github = GitHubEditor(store.dir)
     action = args.github_action
+    if action == "app":
+        github.configure_app(args.client_id, args.app_slug)
+        io.status("ok", tr("GitHub 应用已保存。"))
+        return 0
     if action == "bind":
+        if not args.repo and not io.interactive():
+            raise Abort(tr("请在终端选择仓库，或通过 --repo 指定仓库。"))
         flow = github.begin(args.repo, args.branch, args.client_id)
         prompt = flow.prompt()
         io.say(tr("打开 {0}，输入验证码 {1}。", prompt["url"], prompt["code"]))
-        while (status := github.poll(flow)) is None:
-            time.sleep(flow.interval)
+        if flow.repo:
+            while (status := github.poll(flow)) is None:
+                time.sleep(flow.interval)
+        else:
+            while (credentials := github.poll_credentials(flow)) is None:
+                time.sleep(flow.interval)
+            grant = RepositoryGrant(flow, credentials)
+            repositories = github.repositories(grant)
+            if not repositories:
+                raise Abort(tr("GitHub 没有返回可用仓库。请将应用安装到目标仓库。"))
+            for index, repo in enumerate(repositories, start=1):
+                io.say(f"  {index}. {repo['name']}")
+            choice = io.ask(tr("选择仓库"), "1")
+            if (
+                not choice.isascii()
+                or not choice.isdecimal()
+                or not 1 <= int(choice) <= len(repositories)
+            ):
+                raise Abort(tr("请选择 GitHub 已授权的仓库。"))
+            status = github.select_repository(grant, repositories[int(choice) - 1]["name"])
         io.status("ok", tr("已绑定 GitHub 仓库。"))
     elif action == "unbind":
         github.unbind()
@@ -1289,9 +1313,12 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     github.set_defaults(fn=cmd_editor_github)
     github_actions = github.add_subparsers(dest="github_action", required=True)
     bind = github_actions.add_parser("bind", help=tr("用 GitHub 设备授权绑定仓库"))
-    bind.add_argument("--repo", required=True, help=tr("GitHub 仓库名，例如 owner/strategy"))
+    bind.add_argument("--repo", default="", help=tr("GitHub 仓库名，例如 owner/strategy"))
     bind.add_argument("--branch", default="", help=tr("分支，默认使用本地分支或仓库默认分支"))
     bind.add_argument("--client-id", default="", help="GitHub App Client ID")
+    app = github_actions.add_parser("app", help=tr("保存 GitHub 应用配置"))
+    app.add_argument("--client-id", required=True, help="GitHub App Client ID")
+    app.add_argument("--app-slug", default="", help=tr("GitHub 应用名称"))
     github_actions.add_parser("status", help=tr("查看绑定和本地状态"))
     github_actions.add_parser("check", help=tr("检查远端状态"))
     github_actions.add_parser("unbind", help=tr("解除绑定"))

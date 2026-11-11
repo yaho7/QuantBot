@@ -96,6 +96,8 @@ export interface SourceFile {
 
 export interface GitHubStatus {
   bound: boolean;
+  app_configured?: boolean;
+  app_slug?: string;
   repo?: string;
   branch?: string;
   client_id?: string;
@@ -127,6 +129,11 @@ export interface GitHubAuthorization {
   code: string;
   state: string;
   interval: number;
+}
+
+export interface GitHubRepository {
+  name: string;
+  private: boolean;
 }
 
 export type StrategyConfigAction = "add" | "rename" | "remove" | "credentials" | "rotate";
@@ -206,10 +213,17 @@ export const api = {
     answerData<{ path: string }>("POST", "workspace/init", { path }),
   changeWorkspaceProgram: (action: "configure" | "start" | "stop", command?: string) =>
     answerData<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
-  githubBind: (form: { repo: string; branch: string; client_id: string }) =>
-    answerData<GitHubAuthorization>("POST", "editor/github/bind", form),
+  githubBind: () => answerData<GitHubAuthorization>("POST", "editor/github/bind"),
   githubAuthorize: (state: string) =>
-    answerData<{ status?: GitHubStatus; interval?: number }>("POST", "editor/github/authorize", { state }),
+    answerData<{ ready?: boolean; interval?: number }>("POST", "editor/github/authorize", { state }),
+  githubRepositories: (state: string) =>
+    answerData<{ repositories: GitHubRepository[] }>("POST", "editor/github/repositories", { state }),
+  githubSelect: (state: string, repo: string) =>
+    answerData<{ status: GitHubStatus }>("POST", "editor/github/select", { state, repo }),
+  githubRegister: () =>
+    answerData<{ url: string; manifest: object }>("POST", "editor/github/register"),
+  githubConfigure: (client_id: string, slug: string) =>
+    answerData<{ app_configured: boolean; app_slug: string }>("POST", "editor/github/app", { client_id, slug }),
   githubSync: (action: "check" | "pull" | "push" | "unbind") =>
     answerData<{ status: GitHubStatus }>("POST", `editor/github/${action}`),
   saveSettings: (body: Partial<Record<keyof Settings | "token" | "remove_telegram", unknown>>) =>

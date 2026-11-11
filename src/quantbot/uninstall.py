@@ -24,7 +24,7 @@ from quantbot.config import (
     local_origin,
 )
 from quantbot.editor import EDITOR_FILE
-from quantbot.github import GITHUB_FILE
+from quantbot.github import GITHUB_APP_FILE, GITHUB_FILE
 from quantbot.i18n import tr
 from quantbot.service import NAME, Service
 from quantbot.updates import CACHE_FILE, find_uv
@@ -37,6 +37,7 @@ STATE_FILES = {
     CACHE_FILE,
     EDITOR_FILE,
     GITHUB_FILE,
+    GITHUB_APP_FILE,
     USED_LINKS_FILE,
     WORKSPACE_FILE,
     RUN_FILE,

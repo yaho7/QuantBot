@@ -7,7 +7,7 @@ import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, Field, Input } from "@/components/ui/primitives";
+import { Alert, Field, Input, Select } from "@/components/ui/primitives";
 import { api, type GitHubAuthorization, type GitHubStatus } from "@/lib/api";
 
 type SyncAction = "pull" | "push" | "unbind";
@@ -29,13 +29,30 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
   const status = useQuery({ queryKey, queryFn: api.githubStatus, retry: false });
   const [binding, setBinding] = useState(false);
   const [repo, setRepo] = useState("");
-  const [branch, setBranch] = useState("");
-  const [clientId, setClientId] = useState("");
+  const [grant, setGrant] = useState("");
   const [authorization, setAuthorization] = useState<GitHubAuthorization>();
   const [confirm, setConfirm] = useState<SyncAction>();
   const [error, setError] = useState("");
   const showError = (err: Error) => setError(err.message);
-  const update = (data: GitHubStatus) => qc.setQueryData(queryKey, data);
+  const update = (data: GitHubStatus) => qc.setQueryData<GitHubStatus>(queryKey, (current) => ({ ...current, ...data }));
+  const repositories = useQuery({
+    queryKey: ["editor", "github-repositories", grant],
+    queryFn: () => api.githubRepositories(grant),
+    enabled: !!grant,
+    retry: false,
+  });
+  const select = useMutation({
+    mutationFn: () => api.githubSelect(grant, repo),
+    onSuccess: ({ status: data }) => {
+      update(data);
+      setGrant("");
+      setRepo("");
+      setBinding(false);
+      onChanged();
+      toast.success(tr("GitHub 已绑定。"));
+    },
+    onError: showError,
+  });
 
   const bind = useMutation({
     mutationFn: api.githubBind,
@@ -45,15 +62,12 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
   const { mutate: poll, isPending: polling } = useMutation({
     mutationFn: api.githubAuthorize,
     onSuccess: (answer) => {
-      if (!answer.status) {
+      if (answer.ready && authorization) {
+        setGrant(authorization.state);
+        setAuthorization(undefined);
+      } else {
         setAuthorization((current) => current && { ...current, interval: answer.interval ?? current.interval });
-        return;
       }
-      update(answer.status);
-      setAuthorization(undefined);
-      setBinding(false);
-      onChanged();
-      toast.success(tr("GitHub 已绑定。"));
     },
     onError: (err) => { setAuthorization(undefined); showError(err); },
   });
@@ -73,7 +87,7 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
     onError: showError,
     onSettled: () => setConfirm(undefined),
   });
-  const busy = bind.isPending || sync.isPending || polling;
+  const busy = bind.isPending || sync.isPending || polling || select.isPending;
   return (
     <>
       <Dialog open onOpenChange={() => { if (!busy) onClose(); }}>
@@ -81,7 +95,7 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
           <Tabs defaultValue="remote">
             <TabsList>
               <TabsTrigger value="remote">{tr("GitHub 仓库")}</TabsTrigger>
-              <TabsTrigger value="local" disabled={busy || !!authorization}>{tr("本地改动")}</TabsTrigger>
+              <TabsTrigger value="local" disabled={busy || !!authorization || !!grant}>{tr("本地改动")}</TabsTrigger>
             </TabsList>
             <TabsContent value="remote">
           <QueryBoundary query={status}>
@@ -96,29 +110,41 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
                 </div>
                 <p className="text-xs text-muted-foreground" role="status">{tr("等待 GitHub 授权…")}</p>
               </div>
-            ) : binding || !data.bound ? (
-              <form className="grid gap-3" onSubmit={(event) => {
-                event.preventDefault();
-                setError("");
-                bind.mutate({ repo, branch, client_id: clientId });
-              }}>
-                <Field label={tr("仓库")} htmlFor="github-repo" hint={tr("填写 owner/repo 或 GitHub 仓库地址。")}>
-                  <Input id="github-repo" value={repo} onChange={(e) => setRepo(e.target.value)} required />
-                </Field>
-                <Field label={tr("分支")} htmlFor="github-branch" hint={tr("留空使用本地分支或仓库默认分支。")}>
-                  <Input id="github-branch" value={branch} onChange={(e) => setBranch(e.target.value)} />
-                </Field>
-                <Field label="GitHub App Client ID" htmlFor="github-client"
-                  hint={tr("在 GitHub App 设置中启用设备授权，并将 App 安装到策略仓库。")}>
-                  <Input id="github-client" value={clientId} onChange={(e) => setClientId(e.target.value)} required />
-                </Field>
-                <p className="text-xs text-muted-foreground">{tr("编辑目录为空时，授权后会将仓库克隆到该目录。")}</p>
+            ) : grant ? (
+              <div className="grid gap-3">
+                <QueryBoundary query={repositories}>
+                  {({ repositories: items }) => items.length ? (
+                    <form className="grid gap-3" onSubmit={(event) => {
+                      event.preventDefault();
+                      if (repo) { setError(""); select.mutate(); }
+                    }}>
+                      <Field label={tr("选择仓库")} htmlFor="github-repository">
+                        <Select id="github-repository" value={repo} disabled={busy}
+                          onChange={(event) => setRepo(event.target.value)} required>
+                          <option value="">{tr("选择已授权的仓库")}</option>
+                          {items.map((item) => <option key={item.name} value={item.name}>
+                            {item.name}{item.private ? ` · ${tr("私有")}` : ""}
+                          </option>)}
+                        </Select>
+                      </Field>
+                      <DialogFooter>
+                        <Button type="submit" disabled={!repo} loading={select.isPending}>{tr("绑定仓库")}</Button>
+                      </DialogFooter>
+                    </form>
+                  ) : <Alert tone="info">{tr("GitHub 没有返回可用仓库。请将应用安装到目标仓库。")}</Alert>}
+                </QueryBoundary>
+                <div className="flex flex-wrap gap-2">
+                  {data.app_slug && <GitHubInstall slug={data.app_slug} />}
+                  <Button size="sm" variant="ghost" disabled={busy} loading={repositories.isFetching}
+                    onClick={() => void repositories.refetch()}><RefreshCw /> {tr("刷新仓库列表")}</Button>
+                </div>
                 {error && <Alert tone="loss">{error}</Alert>}
-                <DialogFooter>
-                  {data.bound && <Button type="button" variant="outline" onClick={() => { setBinding(false); setError(""); }}>{tr("返回")}</Button>}
-                  <Button type="submit" loading={bind.isPending}><GitBranch /> {tr("开始 GitHub 授权")}</Button>
-                </DialogFooter>
-              </form>
+              </div>
+            ) : binding || !data.bound ? (
+              <GitHubConnect data={data} busy={bind.isPending} error={error}
+                onConnect={() => { setError(""); bind.mutate(); }}
+                onCancel={data.bound ? () => { setBinding(false); setError(""); } : undefined}
+                onConfigured={() => { setError(""); void status.refetch(); }} />
             ) : (
               <div className="grid gap-4">
                 <div className="grid gap-1 rounded-lg border bg-card p-3 text-sm">
@@ -144,9 +170,6 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
                 <DialogFooter>
                   <Button variant="ghost" className="text-loss sm:mr-auto" disabled={busy} onClick={() => setConfirm("unbind")}>{tr("解除绑定")}</Button>
                   <Button variant="ghost" disabled={busy} onClick={() => {
-                    setRepo(data.repo || "");
-                    setBranch(data.branch || "");
-                    setClientId(data.client_id || "");
                     setError("");
                     setBinding(true);
                   }}>{tr("重新绑定")}</Button>
@@ -166,6 +189,90 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
           if (confirm) { setError(""); sync.mutate(confirm); }
         }} />
     </>
+  );
+}
+
+function GitHubInstall({ slug }: { slug: string }) {
+  return (
+    <Button asChild size="sm" variant="outline">
+      <a href={`https://github.com/apps/${slug}/installations/new`} target="_blank" rel="noreferrer">
+        <ExternalLink /> {tr("在 GitHub 选择授权仓库")}
+      </a>
+    </Button>
+  );
+}
+
+function GitHubConnect({ data, busy, error, onConnect, onCancel, onConfigured }: {
+  data: GitHubStatus;
+  busy: boolean;
+  error: string;
+  onConnect: () => void;
+  onCancel?: () => void;
+  onConfigured: () => void;
+}) {
+  const [clientId, setClientId] = useState("");
+  const [slug, setSlug] = useState("");
+  const fromSetup = new URLSearchParams(location.search).get("github") === "setup";
+  const register = useMutation({
+    mutationFn: api.githubRegister,
+    onSuccess: ({ url, manifest }) => {
+      const form = document.createElement("form");
+      form.method = "POST";
+      form.action = url;
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "manifest";
+      input.value = JSON.stringify(manifest);
+      form.append(input);
+      document.body.append(form);
+      form.submit();
+    },
+  });
+  const configure = useMutation({
+    mutationFn: () => api.githubConfigure(clientId.trim(), slug.trim()),
+    onSuccess: onConfigured,
+  });
+  return (
+    <div className="grid gap-3">
+      {!data.app_configured ? (
+        <>
+          <p className="text-sm text-muted-foreground">{tr("首次使用时，在 GitHub 创建 QuantBot 应用，并为策略仓库授权。")}</p>
+          <Button className="w-fit" loading={register.isPending} onClick={() => register.mutate()}>
+            <ExternalLink /> {tr("在 GitHub 创建应用")}
+          </Button>
+        </>
+      ) : (
+        <>
+          {fromSetup && <Alert tone="info">{tr("应用已登记。请在 GitHub 应用设置中启用 Device Flow，再安装到目标仓库。")}</Alert>}
+          <p className="text-sm text-muted-foreground">{tr("在 GitHub 输入一次性授权码后，回到这里选择仓库。")}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button loading={busy} onClick={onConnect}><GitBranch /> {tr("连接 GitHub")}</Button>
+            {data.app_slug && <GitHubInstall slug={data.app_slug} />}
+            {data.app_slug && (fromSetup || !!error) && (
+              <Button asChild size="sm" variant="outline">
+                <a href={`https://github.com/settings/apps/${data.app_slug}`} target="_blank" rel="noreferrer">
+                  <ExternalLink /> {tr("GitHub 应用设置")}
+                </a>
+              </Button>
+            )}
+          </div>
+        </>
+      )}
+      <details className="rounded-lg border px-3 py-2 text-sm">
+        <summary className="cursor-pointer text-muted-foreground">{tr("使用已有 GitHub 应用")}</summary>
+        <form className="mt-3 grid gap-3" onSubmit={(event) => { event.preventDefault(); configure.mutate(); }}>
+          <Field label="GitHub App Client ID" htmlFor="github-client">
+            <Input id="github-client" value={clientId} onChange={(e) => setClientId(e.target.value)} required />
+          </Field>
+          <Field label={tr("GitHub 应用名称")} htmlFor="github-slug" hint={tr("可填 github.com/apps/ 后的应用名称。")}>
+            <Input id="github-slug" value={slug} onChange={(e) => setSlug(e.target.value)} />
+          </Field>
+          <Button className="w-fit" variant="outline" size="sm" type="submit" loading={configure.isPending}>{tr("保存应用")}</Button>
+        </form>
+      </details>
+      {(error || register.error || configure.error) && <Alert tone="loss">{error || register.error?.message || configure.error?.message}</Alert>}
+      {onCancel && <Button variant="ghost" size="sm" className="w-fit" onClick={onCancel}>{tr("返回")}</Button>}
+    </div>
   );
 }
 
