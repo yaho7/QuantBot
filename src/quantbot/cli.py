@@ -28,6 +28,7 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
+from quantbot.command_alias import ShortCommand
 from quantbot.config import (
     BOT_TOKEN,
     LOCALHOST,
@@ -911,6 +912,25 @@ def cmd_web(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
     return 0
 
 
+def cmd_alias(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    shortcut = ShortCommand.detect()
+    if args.action == "enable":
+        shortcut.enable()
+        io.status("ok", "已启用短命令 qb。")
+        io.rows([("命令路径", str(shortcut.path)), ("用法", "qb --help")])
+    elif args.action == "disable":
+        shortcut.disable()
+        io.status("ok", "已停用 QuantBot 的短命令 qb。")
+    elif conflict := shortcut.conflict():
+        io.status("warn", f"命令 qb 已被占用（{conflict}）。")
+    elif shortcut.enabled():
+        io.status("ok", "已启用短命令 qb。")
+        io.rows([("命令路径", str(shortcut.path))])
+    else:
+        io.status("note", "短命令 qb 未启用。运行 quantbot alias enable 启用。")
+    return 0
+
+
 def cmd_run(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     from quantbot.bot import serve
 
@@ -923,7 +943,7 @@ def cmd_run(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
 def parser(io: Console | None = None) -> argparse.ArgumentParser:
     io = io or Console()
     p = argparse.ArgumentParser(
-        prog="quantbot",
+        prog="qb" if Path(sys.argv[0]).name == "qb" else "quantbot",
         usage="%(prog)s [选项] [命令 ...]",
         description="QuantBot · 量化策略控制台",
         add_help=False,
@@ -982,6 +1002,9 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     sub.add_parser("password", description="改网页管理员的用户名和密码").set_defaults(
         fn=cmd_password
     )
+    shortcut = sub.add_parser("alias", description="启用、停用或查看短命令 qb")
+    shortcut.add_argument("action", choices=["enable", "disable", "status"])
+    shortcut.set_defaults(fn=cmd_alias)
     service.set_defaults(fn=cmd_service)
     logs = sub.add_parser("logs", description="看后台服务的日志")
     logs.add_argument("-f", "--follow", action="store_true", help="一直看新日志")
@@ -1006,7 +1029,7 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     remove.set_defaults(fn=cmd_remove)
 
     groups = (
-        ("访问与账号", ("setup", "web", "password")),
+        ("访问与设置", ("setup", "web", "password", "alias")),
         ("服务运维", ("run", "service", "logs")),
         ("策略管理", ("list", "add", "link", "prompt", "rename", "token", "remove")),
         ("编辑与同步", ("editor",)),

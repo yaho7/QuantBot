@@ -116,6 +116,35 @@ def test_cli_colors_only_terminal_output(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "策略管理\n  list" in parser(console).format_help()
 
 
+def test_qb_alias_activation_and_conflict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    command = tmp_path / "quantbot"
+    command.touch(mode=0o700)
+    monkeypatch.setattr("sys.argv", [str(command)])
+    monkeypatch.setenv("PATH", str(tmp_path))
+    store = Store(tmp_path / "config")
+    alias = tmp_path / "qb"
+    assert "未启用" in run(store, ["alias", "status"])[1].text()
+    assert run(store, ["alias", "enable"])[0] == 0
+    assert alias.readlink() == Path("quantbot")
+    assert run(store, ["alias", "enable"])[0] == 0
+    monkeypatch.setattr("sys.argv", [str(alias)])
+    assert "usage: qb " in parser().format_help()
+    assert run(store, ["alias", "disable"])[0] == 0
+    assert not alias.is_symlink()
+
+    alias.write_text("another qb")
+    assert run(store, ["alias", "enable"])[0] == 1
+    assert run(store, ["alias", "disable"])[0] == 0
+    assert alias.read_text() == "another qb"
+    alias.unlink()
+    other_bin = tmp_path / "other"
+    other_bin.mkdir()
+    (other_bin / "qb").touch(mode=0o700)
+    monkeypatch.setenv("PATH", f"{other_bin}{os.pathsep}{tmp_path}")
+    assert run(store, ["alias", "enable"])[0] == 1
+    assert not alias.is_symlink()
+
+
 def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
     store = Store(tmp_path)
     api = FakeTelegram([message()])

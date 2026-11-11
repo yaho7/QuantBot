@@ -171,7 +171,9 @@ with qb:                               # 出错会推送报错，再抛出
 
 ## 命令
 
-`quantbot --help` 按访问与账号、服务运维、策略管理、编辑与同步、版本更新分组。终端用颜色标记操作状态，重定向输出使用纯文本。也可以通过 `NO_COLOR=1` 关闭颜色。
+`quantbot --help` 按访问与设置、服务运维、策略管理、编辑与同步、版本更新分组。终端用颜色标记操作状态，重定向输出使用纯文本。也可以通过 `NO_COLOR=1` 关闭颜色。
+
+可运行 `quantbot alias enable` 启用短命令 `qb`。例如 `qb list` 等同于 `quantbot list`。用 `quantbot alias status` 查看状态，或用 `quantbot alias disable` 停用。启用时会检查本机已有的同名命令。
 
 | 命令 | 作用 |
 |---|---|
