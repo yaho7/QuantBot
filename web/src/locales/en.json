@@ -270,5 +270,7 @@
   "已提交 {0}。": "Committed {0}.",
   "工作区里还没有 Git 仓库。": "There is no Git repository in the workspace yet.",
   "提交说明": "Commit message",
-  "提交所选文件": "Commit selected files"
+  "提交所选文件": "Commit selected files",
+  "新版本": "New version",
+  "有新版本 {0}": "Update {0} available"
 }

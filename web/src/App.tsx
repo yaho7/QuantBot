@@ -1,7 +1,7 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronRight, CircleDashed, Download, FolderCode, LogOut, Monitor, Moon, Pause, Plus, Radio, Settings, Sparkles, Sun,
+  ChevronRight, CircleDashed, Download, FolderCode, LogOut, Monitor, Moon, Pause, Plus, Radio, RefreshCw, Settings, Sparkles, Sun,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
@@ -10,7 +10,7 @@ import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } fr
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { StrategyAdminDialog } from "@/components/StrategyAdminDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
-import { UpdateDialog } from "@/components/UpdateDialog";
+import { UpdateDialog, updateLabel } from "@/components/UpdateDialog";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,11 +30,12 @@ const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "lo
 const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
 const WorkspaceEditor = React.lazy(() => import("@/components/WorkspaceEditor"));
 
-function TopBar({ onLogout, onSettings, onUpdate, workspace }: {
+function TopBar({ onLogout, onSettings, onUpdate, workspace, updateVersion }: {
   onLogout?: () => void;
   onSettings?: () => void;
   onUpdate?: () => void;
   workspace?: boolean;
+  updateVersion?: string | null;
 }) {
   const [theme, setTheme] = useTheme();
   const ThemeIcon = THEME_ICON[theme];
@@ -58,8 +59,9 @@ function TopBar({ onLogout, onSettings, onUpdate, workspace }: {
       )}
       <div className="ml-auto flex flex-wrap items-center gap-1">
         {onUpdate && (
-          <Button variant="outline" size="sm" className="text-warning" onClick={onUpdate}>
-            <Download /> {tr("有新版本")}</Button>
+          <Button variant="outline" size="sm" className={updateVersion ? "text-warning" : undefined} onClick={onUpdate}>
+            {updateVersion ? <Download /> : <RefreshCw />}
+            {updateVersion ? tr("有新版本 {0}", updateVersion) : tr("检查更新")}</Button>
         )}
         <Button variant="ghost" size="icon" onClick={() => setTheme(NEXT_THEME[theme])}
           aria-label={tr("主题：{0}", THEME_LABEL[theme])} title={tr("主题：{0}", THEME_LABEL[theme])}>
@@ -267,9 +269,12 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [promptOpen, setPromptOpen] = React.useState(false);
   const [updateOpen, setUpdateOpen] = React.useState(false);
+  const [checkOnOpen, setCheckOnOpen] = React.useState(false);
   const [manage, setManage] = React.useState<StrategyView | null>();
   const [updatedFrom, setUpdatedFrom] = React.useState<string>();
   const version = update.data?.version;
+  const updateVersion = update.data?.result?.available && !update.data.updated
+    ? updateLabel(update.data.result.latest) : null;
   React.useEffect(() => {
     if (updatedFrom && version && version !== updatedFrom && !workspace) location.reload();
   }, [updatedFrom, version, workspace]);
@@ -280,10 +285,11 @@ export function App() {
     <>
       <TopBar onLogout={() => logout.mutate()} onSettings={() => setSettingsOpen(true)}
         workspace={overview.data ? workspace : undefined}
-        onUpdate={update.data?.result?.available && !update.data.updated ? () => setUpdateOpen(true) : undefined} />
+        updateVersion={updateVersion}
+        onUpdate={overview.data ? () => { setCheckOnOpen(!updateVersion); setUpdateOpen(true); } : undefined} />
       {settingsOpen && <SettingsDialog open onOpenChange={setSettingsOpen} version={version}
-        onVersion={() => { setSettingsOpen(false); setUpdateOpen(true); }} />}
-      {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} onInstalled={setUpdatedFrom} />}
+        onVersion={() => { setSettingsOpen(false); setCheckOnOpen(false); setUpdateOpen(true); }} />}
+      {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} onInstalled={setUpdatedFrom} checkOnOpen={checkOnOpen} />}
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       {manage !== undefined && <StrategyAdminDialog strategy={manage ?? undefined} onClose={() => setManage(undefined)} />}
       <main className="view-enter mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8">

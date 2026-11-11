@@ -146,6 +146,18 @@ def test_qb_uninstall_menu_defaults_to_cancel(
     assert installed_qb.is_symlink()
 
 
+def test_qb_update_menu_displays_the_cached_revision(
+    tmp_path: Path, installed_qb: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        "quantbot.cli.Updater.cached",
+        lambda self: {"available": True, "latest": "a1b2c3d" + "f" * 33},
+    )
+    code, io = run(Store(tmp_path / "state"), [], ["0"])
+    assert code == 0
+    assert "6. 检查更新 · 有新版本 a1b2c3d" in io.text()
+
+
 def test_qb_full_uninstall_removes_service_and_owned_state(
     tmp_path: Path, installed_qb: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

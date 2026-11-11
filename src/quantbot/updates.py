@@ -102,6 +102,13 @@ def _first_line(message: str) -> str:
     return (message or "").strip().splitlines()[0][:120] if (message or "").strip() else ""
 
 
+def update_label(result: dict[str, Any] | None) -> str:
+    latest = (result or {}).get("latest")
+    if not isinstance(latest, str):
+        return ""
+    return latest[:7] if re.fullmatch(r"[a-fA-F0-9]{40,64}", latest) else latest
+
+
 class Updater:
     def __init__(
         self,
@@ -225,7 +232,7 @@ class Updater:
                 return None
             result["notified"] = latest
             self._save(result)
-            return latest if self.current().on_tag else latest[:7]
+            return update_label(result)
 
     def _save(self, data: dict[str, Any]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)

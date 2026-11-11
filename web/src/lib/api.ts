@@ -74,6 +74,7 @@ export interface Settings {
 
 export interface UpdateResult {
   available: boolean;
+  latest?: string | null;
   behind: number;
   checked_at: string;
   commits: { sha: string; message: string; date: string | null }[];

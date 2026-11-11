@@ -57,7 +57,7 @@ from quantbot.notices import parse_quiet
 from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable, wait_until_ready
 from quantbot.uninstall import UninstallPlan
-from quantbot.updates import Updater, installed
+from quantbot.updates import Updater, installed, update_label
 from quantbot.workspace import DEFAULT_ROOT, WORKSPACE_FILE, Workspace
 
 OWNER_WAIT = 120
@@ -840,6 +840,8 @@ def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
         return 0
     count = result["behind"]
     io.status("note", tr("有新版本（{0} 个新提交）。", count) if count else tr("有新版本。"))
+    if latest := update_label(result):
+        io.rows([(tr("新版本"), latest)])
     for commit in result["commits"]:
         io.say(f"  {commit['sha']} {commit['message']}".rstrip())
     if args.check:
@@ -1134,12 +1136,18 @@ def cmd_uninstall(store: Store, io: Console, api: Api, args: argparse.Namespace)
 
 
 def maintenance_menu(store: Store, io: Console, api: Api) -> int:
+    cached = Updater(store.dir).cached()
+    revision = update_label(cached) if cached and cached.get("available") else ""
+    check_update = tr("检查更新")
+    if revision:
+        check_update = tr("检查更新 · 有新版本 {0}", revision)
     actions = {
         "1": (tr("查看后台服务状态"), ["service", "status"]),
         "2": (tr("修改设置"), ["setup"]),
         "3": (tr("获取网页登录链接"), ["web"]),
         "4": (tr("完全卸载 QuantBot"), ["uninstall"]),
         "5": (tr("打开工作区"), ["workspace"]),
+        "6": (check_update, ["update", "--check"]),
     }
     io.section(tr("QuantBot 管理"))
     for choice, (label, _) in actions.items():
@@ -1151,7 +1159,7 @@ def maintenance_menu(store: Store, io: Console, api: Api) -> int:
             return 0
         if choice in actions:
             return main(actions[choice][1], io=io, api=api, store=store)
-        io.status("warn", tr("请输入 0 到 5。"))
+        io.status("warn", tr("请输入 0 到 6。"))
 
 
 def cmd_run(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
@@ -1322,7 +1330,13 @@ def main(
             if code == 0 and args.command in {"list", "link", "web", "setup"}:
                 update = Updater(store.dir).cached()
                 if update and update.get("available"):
-                    io.status("note", tr("有新版本，运行 quantbot update 查看。"))
+                    revision = update_label(update)
+                    io.status(
+                        "note",
+                        tr("有新版本 {0}，运行 quantbot update 查看。", revision)
+                        if revision
+                        else tr("有新版本，运行 quantbot update 查看。"),
+                    )
             return code
         except (Abort, ConfigError, OSError, ServiceError) as exc:
             io.status("error", str(exc))

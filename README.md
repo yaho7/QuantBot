@@ -83,7 +83,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 ### 更新 QuantBot
 
-QuantBot 启动后每小时查看一次检查缓存，每 6 小时向 GitHub 查询一次。有新版本时，顶栏显示“有新版本”，推送里也会收到提醒。已接 Telegram 的账号也会收到这条提醒。按分支安装时显示新增提交，按版本标签安装时检查最新 GitHub Release。
+QuantBot 启动后每小时查看一次检查缓存，每 6 小时向 GitHub 查询一次。可在网页顶栏或 `qb` 菜单点击「检查更新」，也可运行 `quantbot update --check`。后台发现新版本时，网页顶栏和 `qb` 菜单会显示目标版本或提交号，推送与已连接的 Telegram 也会收到提醒。按版本标签安装时检查最新 GitHub Release。
 
 - 在网页点“有新版本”，或从“设置 → 版本”打开更新窗口。点“检查更新”可以立即查询，每分钟最多一次。确认“一键更新”后，已安装的后台服务会重启，网页会自动重连。前台运行时，请在服务器上停止 QuantBot，再运行 `quantbot run`。
 - 在终端运行 `quantbot update --check` 只检查更新。运行 `quantbot update` 会先列出变更再询问是否安装，`--yes` 跳过确认。`quantbot --version` 显示 Git 安装的提交。

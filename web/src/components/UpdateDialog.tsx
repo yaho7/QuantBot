@@ -1,7 +1,7 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog, QueryBoundary } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
@@ -9,7 +9,13 @@ import { Alert } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 
-export function UpdateDialog({ onClose, onInstalled }: { onClose: () => void; onInstalled: (version: string) => void }) {
+export function updateLabel(latest?: string | null) {
+  return latest && /^[a-f\d]{40,64}$/i.test(latest) ? latest.slice(0, 7) : latest;
+}
+
+export function UpdateDialog({ onClose, onInstalled, checkOnOpen = false }: {
+  onClose: () => void; onInstalled: (version: string) => void; checkOnOpen?: boolean;
+}) {
   const qc = useQueryClient();
   const status = useQuery({ queryKey: ["update"], queryFn: api.updateStatus });
   const [confirm, setConfirm] = useState(false);
@@ -24,6 +30,13 @@ export function UpdateDialog({ onClose, onInstalled }: { onClose: () => void; on
     },
     onError: (err) => setError(err.message),
   });
+  const checked = useRef(false);
+  useEffect(() => {
+    if (checkOnOpen && !checked.current) {
+      checked.current = true;
+      check.mutate();
+    }
+  }, [checkOnOpen, check.mutate]);
   const install = useMutation({
     mutationFn: api.installUpdate,
     onSuccess: (answer) => {
@@ -52,6 +65,12 @@ export function UpdateDialog({ onClose, onInstalled }: { onClose: () => void; on
                 <dl className="flex flex-wrap justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
                   <dt className="text-muted-foreground">{tr("当前版本")}</dt>
                   <dd className="font-mono">{version}</dd>
+                  {result?.available && result.latest && (
+                    <>
+                      <dt className="basis-1/2 text-muted-foreground">{tr("新版本")}</dt>
+                      <dd className="font-mono">{updateLabel(result.latest)}</dd>
+                    </>
+                  )}
                 </dl>
                 {message || updated ? (
                   <Alert tone="info">{message || tr("已安装更新，等待 QuantBot 重启。")}</Alert>
