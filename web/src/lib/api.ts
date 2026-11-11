@@ -84,11 +84,27 @@ export interface UpdateStatus {
   updated: boolean;
 }
 
+export interface SourceFile {
+  content: string;
+  revision: string;
+}
+
+interface DirectoryEntry {
+  name: string;
+  kind: "directory" | "file";
+}
+
 /** What a strategy answered. `ok: false` with a message is a normal answer, not an error. */
 export interface Answer<T = unknown> {
   ok: boolean;
   message: string;
   data: T;
+}
+
+async function editorRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const answer = await request<Answer<T>>(method, path, body);
+  if (!answer.ok) throw new Error(answer.message);
+  return answer.data;
 }
 
 export type OrderItem = { id: string; text: string };
@@ -97,7 +113,7 @@ export type Command =
   | "flatten" | "params" | "set_param" | "manual_order" | "chart" | "stop";
 
 export const api = {
-  overview: () => request<{ strategies: StrategyView[]; feed: Notice[] }>("GET", "overview"),
+  overview: () => request<{ strategies: StrategyView[]; feed: Notice[]; editor_enabled: boolean }>("GET", "overview"),
   audit: () => request<{ records: AuditRecord[] }>("GET", "audit?limit=200"),
   login: (username: string, password: string) =>
     request<Answer>("POST", "login", { username, password }),
@@ -109,6 +125,12 @@ export const api = {
   updateStatus: () => request<UpdateStatus>("GET", "update"),
   checkUpdate: () => request<Answer<UpdateResult | null>>("POST", "update/check"),
   installUpdate: () => request<Answer>("POST", "update"),
+  editorTree: (path: string) =>
+    editorRequest<{ entries: DirectoryEntry[] }>("GET", `editor/tree?${new URLSearchParams({ path })}`),
+  editorFile: (path: string) =>
+    editorRequest<SourceFile>("GET", `editor/file?${new URLSearchParams({ path })}`),
+  saveEditorFile: (file: SourceFile & { path: string }) =>
+    editorRequest<SourceFile>("POST", "editor/file", file),
   saveSettings: (body: Partial<Record<keyof Settings | "token" | "remove_telegram", unknown>>) =>
     request<Answer>("POST", "settings", body),
   command: <T = unknown>(sid: string, name: Command, args: Record<string, unknown> = {}) =>

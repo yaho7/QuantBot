@@ -128,11 +128,11 @@ def check_url(url: str | None) -> str | None:
 
 
 class Store:
-    """Reads and writes quantbot.json. Writes are atomic and the file is private."""
+    """Reads and writes a settings file. Writes are atomic and the file is private."""
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(self, directory: Path, *, filename: str = FILE_NAME) -> None:
         self.dir = directory
-        self.path = directory / FILE_NAME
+        self.path = directory / filename
 
     def exists(self) -> bool:
         return self.path.is_file()

@@ -70,6 +70,20 @@ QuantBot 启动后每小时查看一次检查缓存，每 6 小时向 GitHub 查
 - 在终端运行 `quantbot update --check` 只检查更新。运行 `quantbot update` 会先列出变更再询问是否安装，`--yes` 跳过确认。`quantbot --version` 显示 Git 安装的提交。
 - 也可以再运行一次安装命令，它会更新并重启后台服务。
 
+### 网页策略编辑器
+
+编辑器默认关闭。在运行 QuantBot 的服务器上选择策略目录：
+
+```bash
+quantbot editor on --root ~/strategies
+quantbot editor status
+quantbot editor off
+```
+
+启用后，网页的策略页会显示“策略编辑器”。打开目录内的 UTF-8 文件即可编辑，单个文件最大 256 KiB。请选择存放策略代码的目录，QuantBot 的数据目录由服务器管理。打开 Python 文件时，可以在光标处插入连接、等待、开仓检查、状态、推送和按钮回调的示例。
+
+点“预览并保存”查看改动，确认后才会写入服务器，并在“操作记录”里留下一条保存记录。保存时会检测服务器上的文件是否已变更。文件保存后，由你决定何时启动或重启策略、何时提交 Git。
+
 ## 连接你的策略
 
 在策略项目的文件夹里运行：

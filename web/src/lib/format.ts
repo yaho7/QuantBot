@@ -35,6 +35,7 @@ const ACTIONS: Record<string, string> = {
   manual_order: "手动下单",
   settings: "改设置",
   update: "安装更新",
+  editor_save: "保存策略文件",
 };
 
 export function actionLabel(action: string): string {

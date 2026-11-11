@@ -402,3 +402,21 @@ def test_update_check_only_and_cached_hint(tmp_path: Path, monkeypatch: pytest.M
     assert code == 0
     assert "1111111" in io.text() and "2222222 新功能" in io.text()
     assert "有新版本" in run(store, ["list"])[1].text()
+
+
+def test_editor_cli_enables_only_the_chosen_root(tmp_path: Path) -> None:
+    from quantbot.editor import Editor
+
+    store = Store(tmp_path / "config")
+    root = tmp_path / "strategies"
+    root.mkdir()
+    assert Editor.configured(store.dir) is None
+    assert run(store, ["editor", "on"])[0] == 1
+    assert run(store, ["editor", "on", "--root", str(tmp_path / "missing")])[0] == 1
+    code, _ = run(store, ["editor", "on", "--root", str(root)])
+    assert code == 0
+    editor = Editor.configured(store.dir)
+    assert editor and editor.root == root.resolve()
+    assert str(editor.root) in run(store, ["editor", "status"])[1].text()
+    assert run(store, ["editor", "off"])[0] == 0
+    assert Editor.configured(store.dir) is None

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronRight, CircleDashed, Download, LogOut, Monitor, Moon, Pause, Radio, Settings, Sparkles, Sun,
+  ChevronRight, CircleDashed, Download, FileCode, LogOut, Monitor, Moon, Pause, Radio, Settings, Sparkles, Sun,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
@@ -11,6 +11,7 @@ import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Table, Td, Th,
 } from "@/components/ui/primitives";
@@ -26,6 +27,7 @@ const THEME_LABEL = { light: "浅色", dark: "深色", system: "跟随系统" };
 
 const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "loss" } as const;
 const KIND_LABEL = { info: "消息", trade: "成交", alert: "提醒", error: "报错" };
+const EditorDialog = React.lazy(() => import("@/components/EditorDialog"));
 
 function TopBar({ onLogout, onSettings, onUpdate }: {
   onLogout?: () => void;
@@ -252,11 +254,12 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [promptOpen, setPromptOpen] = React.useState(false);
   const [updateOpen, setUpdateOpen] = React.useState(false);
+  const [editorOpen, setEditorOpen] = React.useState(false);
   const [updatedFrom, setUpdatedFrom] = React.useState<string>();
   const version = update.data?.version;
   React.useEffect(() => {
-    if (updatedFrom && version && version !== updatedFrom) location.reload();
-  }, [updatedFrom, version]);
+    if (updatedFrom && version && version !== updatedFrom && !editorOpen) location.reload();
+  }, [updatedFrom, version, editorOpen]);
   if (overview.error instanceof ApiError && overview.error.status === 401) return <Login />;
   const strategies = overview.data?.strategies ?? [];
   const online = strategies.filter((s) => s.online).length;
@@ -268,12 +271,26 @@ export function App() {
         onVersion={() => { setSettingsOpen(false); setUpdateOpen(true); }} />}
       {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} onInstalled={setUpdatedFrom} />}
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
+      {editorOpen && (
+        <React.Suspense fallback={
+          <Dialog open onOpenChange={setEditorOpen}>
+            <DialogContent title="策略编辑器"><p className="text-sm text-muted-foreground">加载中…</p></DialogContent>
+          </Dialog>
+        }>
+          <EditorDialog onClose={() => setEditorOpen(false)} />
+        </React.Suspense>
+      )}
       <main className="view-enter mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8">
         <PageHeader
           title="策略"
           description={overview.data ? `${strategies.length} 个策略，${online} 个在线 · 每 5 秒刷新` : undefined}
           actions={
             <div className="flex flex-wrap gap-2">
+              {overview.data?.editor_enabled && (
+                <Button variant="outline" onClick={() => setEditorOpen(true)}>
+                  <FileCode /> 策略编辑器
+                </Button>
+              )}
               <Button variant="outline" onClick={() => setPromptOpen(true)}>
                 <Sparkles /> 让 AI 接入策略
               </Button>

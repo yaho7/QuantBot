@@ -15,6 +15,7 @@ from aiohttp.test_utils import TestClient, TestServer
 from quantbot.audit import Audit
 from quantbot.config import Store, StrategyConfig
 from quantbot.core import Core
+from quantbot.editor import EDITOR_FILE, Editor
 from quantbot.hub import Hub
 from quantbot.server import make_app
 from quantbot.updates import Installed, Updater
@@ -187,6 +188,70 @@ def test_api_needs_the_cookie_and_returns_strategies(tmp_path: Path) -> None:
         assert (await client.get("/ui/api/overview")).status == 401
         # The strategy API still wants its own token, the cookie is not enough.
         assert (await client.get("/v1/commands?wait=0")).status == 401
+
+    scenario(test, audit)
+
+
+def test_editor_requires_local_enable_and_refuses_unsafe_paths(tmp_path: Path) -> None:
+    store = Store(tmp_path / "settings")
+    root = tmp_path / "strategies"
+    root.mkdir()
+    sub = root / "signals"
+    sub.mkdir()
+    source = sub / "动量.py"
+    source.write_bytes(b"x = 1\r\n")
+    source.chmod(0o640)
+    outside = tmp_path / "outside.py"
+    outside.write_text("outside")
+    (root / "symlink.py").symlink_to(outside)
+    (root / "symlink-folder").symlink_to(tmp_path, target_is_directory=True)
+    (root / "hardlink.py").hardlink_to(outside)
+    audit = tmp_path / "audit.jsonl"
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        tree, file = "/ui/api/editor/tree", "/ui/api/editor/file"
+        path = "signals/动量.py"
+        assert (await client.get(tree)).status == 401
+        assert (await client.post(file, headers=CSRF)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        assert not (await (await client.get(tree)).json())["ok"]
+        assert not (await (await client.get("/ui/api/overview")).json())["editor_enabled"]
+        assert (await client.post(file)).status == 403
+
+        Editor.enable(store.dir, str(root))
+        assert (await (await client.get("/ui/api/overview")).json())["editor_enabled"]
+        entries = (await (await client.get(tree)).json())["data"]["entries"]
+        assert entries == [{"name": "signals", "kind": "directory"}]
+        for bad in (
+            "../outside.py",
+            str(outside),
+            "symlink.py",
+            "symlink-folder/outside.py",
+            "hardlink.py",
+        ):
+            result = await (await client.get(file, params={"path": bad})).json()
+            assert not result["ok"]
+        first = (await (await client.get(file, params={"path": path})).json())["data"]
+        assert first["content"] == "x = 1\r\n"
+        changes = {"path": path, "content": "x = 2\r\n", "revision": first["revision"]}
+        saved = await (await client.post(file, json=changes, headers=CSRF)).json()
+        assert saved["ok"] and saved["data"]["revision"] != first["revision"]
+        assert source.read_bytes() == b"x = 2\r\n" and source.stat().st_mode & 0o777 == 0o640
+        stale = await (await client.post(file, json=changes, headers=CSRF)).json()
+        assert not stale["ok"] and "服务器上的文件已变更" in stale["message"]
+        outside_write = await (
+            await client.post(file, json={**changes, "path": "symlink.py"}, headers=CSRF)
+        ).json()
+        assert not outside_write["ok"] and outside.read_text() == "outside"
+        assert any(r["action"] == "editor_save" and r["ok"] for r in read_audit(audit, 5))
+        assert "x = 2" not in audit.read_text()
+
+        # Even a root which contains the data directory cannot edit editor.json.
+        Editor.enable(store.dir, str(tmp_path))
+        response = await client.get(file, params={"path": f"settings/{EDITOR_FILE}"})
+        assert not (await response.json())["ok"]
+        Store(store.dir, filename=EDITOR_FILE).path.unlink()
+        assert not (await (await client.get(file, params={"path": path})).json())["ok"]
 
     scenario(test, audit)
 

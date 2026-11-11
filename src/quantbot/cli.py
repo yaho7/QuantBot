@@ -42,6 +42,7 @@ from quantbot.config import (
     new_token,
     port_free,
 )
+from quantbot.editor import EDITOR_FILE, Editor
 from quantbot.notices import parse_quiet
 from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable
@@ -639,6 +640,23 @@ def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
     return 0
 
 
+def cmd_editor(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    if args.action == "on":
+        if not args.root:
+            raise Abort("请选择策略目录：quantbot editor on --root ~/strategies")
+        root = Editor.enable(store.dir, args.root)
+        io.say(f"✓ 网页策略编辑器已开启，编辑目录：{root}")
+    elif args.root:
+        raise Abort("--root 用于 quantbot editor on。")
+    elif args.action == "off":
+        Store(store.dir, filename=EDITOR_FILE).path.unlink(missing_ok=True)
+        io.say("✓ 网页策略编辑器已关闭。")
+    else:
+        editor = Editor.configured(store.dir)
+        io.say(f"编辑目录：{editor.root}" if editor else "网页策略编辑器已关闭。")
+    return 0
+
+
 # ---------------------------------------------------------------- link
 
 
@@ -817,6 +835,10 @@ def parser() -> argparse.ArgumentParser:
     update.add_argument("--check", action="store_true", help="只检查，不安装")
     update.add_argument("--yes", action="store_true", help="直接安装，无需确认")
     update.set_defaults(fn=cmd_update)
+    editor = sub.add_parser("editor", help="在服务器上管理网页策略编辑器")
+    editor.add_argument("action", choices=["on", "off", "status"])
+    editor.add_argument("--root", help="允许网页编辑的策略目录")
+    editor.set_defaults(fn=cmd_editor)
     sub.add_parser("web", help="打印一次性的网页登录链接").set_defaults(fn=cmd_web)
     sub.add_parser("password", help="改网页管理员的用户名和密码").set_defaults(fn=cmd_password)
     service.set_defaults(fn=cmd_service)

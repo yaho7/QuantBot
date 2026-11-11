@@ -28,7 +28,7 @@ import re
 import secrets
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from importlib import resources
 from pathlib import Path
@@ -45,6 +45,7 @@ from quantbot.config import (
     check_url,
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
+from quantbot.editor import EDITOR_FILE, Editor, EditorError
 from quantbot.hub import Hub, Result
 from quantbot.service import Service, ServiceError
 from quantbot.updates import Updater
@@ -296,6 +297,7 @@ async def command(request: web.Request) -> web.Response:
 
 STORE_KEY = web.AppKey("web_store", Store)
 TELEGRAM_KEY = web.AppKey("web_telegram", object)  # cli.telegram, replaced in tests
+EDITOR_LOCK = web.AppKey("web_editor_lock", asyncio.Lock)
 
 
 def _telegram(request: web.Request) -> Any:
@@ -306,6 +308,59 @@ async def _bot_call(request: web.Request, token: str, method: str, **params: Any
     call = _telegram(request)
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: call(token, method, **params))
+
+
+def _editor(store: Store) -> Editor:
+    editor = Editor.configured(store.dir)
+    if editor is None:
+        raise EditorError("网页策略编辑器已关闭。")
+    return editor
+
+
+async def editor_read(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    store = request.app[STORE_KEY]
+    path = request.query.get("path", "")
+
+    def read() -> dict[str, Any]:
+        editor = _editor(store)
+        if request.match_info["kind"] == "tree":
+            return {"entries": editor.entries(path)}
+        return asdict(editor.read(path))
+
+    try:
+        return _answer(True, "", await asyncio.to_thread(read))
+    except ConfigError as exc:
+        return _answer(False, str(exc))
+    except OSError:
+        return _answer(False, "无法打开这个路径，请检查文件是否存在且可读。")
+
+
+async def editor_save(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    store = request.app[STORE_KEY]
+    body = await _args(request)
+    path, content, revision = body.get("path"), body.get("content"), body.get("revision")
+    if not all(isinstance(value, str) for value in (path, content, revision)):
+        return _answer(False, "请选择文件并确认要保存的改动。")
+
+    def save() -> dict[str, str]:
+        return asdict(_editor(store).save(path, content, revision))
+
+    async with request.app[EDITOR_LOCK]:
+        try:
+            result = await asyncio.to_thread(save)
+            ok, message = True, "文件已保存。"
+        except ConfigError as exc:
+            result, ok, message = None, False, str(exc)
+        except OSError:
+            result, ok, message = None, False, "无法保存这个路径，请检查文件和目录权限。"
+        request.app[CORE_KEY].audit.write(
+            "editor_save", user=WEB_USER, ok=ok, result=f"{path}：{message}"
+        )
+    return _answer(ok, message, result)
 
 
 def _service_installed() -> bool:
@@ -578,7 +633,10 @@ async def overview(request: web.Request) -> web.Response:
             }
         )
     feed = list(request.app[FEED_KEY].items)[::-1]
-    return web.json_response({"strategies": strategies, "feed": feed})
+    editor_enabled = Store(request.app[STORE_KEY].dir, filename=EDITOR_FILE).exists()
+    return web.json_response(
+        {"strategies": strategies, "feed": feed, "editor_enabled": editor_enabled}
+    )
 
 
 def read_audit(path: Path, limit: int) -> list[dict[str, Any]]:
@@ -668,6 +726,7 @@ def add_routes(
     app[FEED_KEY] = feed
     app[AUDIT_KEY] = audit_path
     app[UPDATE_KEY] = UpdateActions(updater or Updater(store.dir), restart)
+    app[EDITOR_LOCK] = asyncio.Lock()
     app.add_routes(
         [
             web.get("/", redirect_root),
@@ -684,6 +743,8 @@ def add_routes(
             web.get("/ui/api/update", update_get),
             web.post("/ui/api/update/check", update_check),
             web.post("/ui/api/update", update_post),
+            web.get("/ui/api/editor/{kind:tree|file}", editor_read),
+            web.post("/ui/api/editor/file", editor_save),
             web.post("/ui/api/strategies/{sid}/{command}", command),
             web.get("/ui/", page),
             web.get("/ui/{path:.+}", page),
