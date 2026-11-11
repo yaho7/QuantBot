@@ -1,8 +1,9 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { structuredPatch } from "diff";
-import { ChevronRight, FileCode, Folder, FolderOpen, RefreshCw, Save } from "lucide-react";
+import { ChevronRight, FileCode, Folder, FolderOpen, GitBranch, RefreshCw, Save } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ConfirmDialog, EmptyState, QueryBoundary } from "@/components/common";
+import { GitHubDialog } from "@/components/GitHubDialog";
 import { StrategyCodeEditor } from "@/components/StrategyCodeEditor";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -89,11 +90,13 @@ function preview(file: File, draft: string) {
 
 export default function EditorDialog({ onClose }: { onClose: () => void }) {
   const toast = useToast();
+  const qc = useQueryClient();
   const [file, setFile] = useState<File>();
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [review, setReview] = useState<ReactNode>(null);
   const [discard, setDiscard] = useState<{ target: string | null }>();
+  const [githubOpen, setGithubOpen] = useState(false);
   const dirty = !!file && file.content !== draft;
   const load = useMutation({
     mutationFn: api.editorFile,
@@ -129,6 +132,11 @@ export default function EditorDialog({ onClose }: { onClose: () => void }) {
     <>
       <Dialog open onOpenChange={() => choose(null)}>
         <DialogContent title="策略编辑器" className="max-w-5xl">
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => setGithubOpen(true)}>
+              <GitBranch /> GitHub 仓库
+            </Button>
+          </div>
           <div className="grid items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]">
             <nav aria-label="策略文件" className="max-h-44 overflow-auto rounded-lg border bg-card p-2 md:max-h-[58vh]">
               <FileTree path="" selected={file?.path} disabled={busy} onFile={(path) => {
@@ -179,6 +187,11 @@ export default function EditorDialog({ onClose }: { onClose: () => void }) {
           if (discard) go(discard.target);
           setDiscard(undefined);
         }} />
+      {githubOpen && <GitHubDialog dirty={dirty} onClose={() => setGithubOpen(false)}
+        onChanged={() => {
+          void qc.invalidateQueries({ queryKey: ["editor", "tree"] });
+          if (file && !dirty) load.mutate(file.path);
+        }} />}
     </>
   );
 }

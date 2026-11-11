@@ -43,7 +43,8 @@ from quantbot.config import (
     new_token,
     port_free,
 )
-from quantbot.editor import EDITOR_FILE, Editor
+from quantbot.editor import EDITOR_FILE, Editor, editor_lock
+from quantbot.github import GitHubEditor
 from quantbot.notices import parse_quiet
 from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable
@@ -676,14 +677,49 @@ def cmd_editor(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
             raise Abort("请选择策略目录：quantbot editor on --root ~/strategies")
         root = Editor.enable(store.dir, args.root)
         io.say(f"✓ 网页策略编辑器已开启，编辑目录：{root}")
-    elif args.root:
-        raise Abort("--root 用于 quantbot editor on。")
     elif args.action == "off":
-        Store(store.dir, filename=EDITOR_FILE).path.unlink(missing_ok=True)
+        with editor_lock(store.dir):
+            Store(store.dir, filename=EDITOR_FILE).path.unlink(missing_ok=True)
         io.say("✓ 网页策略编辑器已关闭。")
     else:
         editor = Editor.configured(store.dir)
         io.say(f"编辑目录：{editor.root}" if editor else "网页策略编辑器已关闭。")
+    return 0
+
+
+def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    github = GitHubEditor(store.dir)
+    action = args.github_action
+    if action == "bind":
+        flow = github.begin(args.repo, args.branch, args.client_id)
+        prompt = flow.prompt()
+        io.say(f"打开 {prompt['url']}，输入验证码 {prompt['code']}。")
+        while (status := github.poll(flow)) is None:
+            time.sleep(flow.interval)
+        io.say("✓ GitHub 已绑定。")
+    elif action == "unbind":
+        github.unbind()
+        io.say("✓ 已解除 GitHub 绑定。")
+        return 0
+    elif action == "status":
+        status = github.status()
+    else:
+        if action in {"pull", "push"} and not args.yes:
+            if not io.interactive():
+                raise Abort("请在终端确认，或加上 --yes。")
+            label = "拉取远端提交" if action == "pull" else "推送本地已有提交"
+            if not io.confirm(f"{label}？", default=False):
+                return 0
+        status = github.sync(action)
+    if not status["bound"]:
+        io.say("还未绑定 GitHub 仓库。")
+    elif status.get("error"):
+        raise Abort(status["error"])
+    else:
+        io.say(f"{status['repo']} · {status['branch']}")
+        io.say(f"领先 {status['ahead']}，落后 {status['behind']}。")
+        if status["dirty"]:
+            io.say("本地有未提交的改动。")
     return 0
 
 
@@ -866,9 +902,25 @@ def parser() -> argparse.ArgumentParser:
     update.add_argument("--yes", action="store_true", help="直接安装，无需确认")
     update.set_defaults(fn=cmd_update)
     editor = sub.add_parser("editor", help="在服务器上管理网页策略编辑器")
-    editor.add_argument("action", choices=["on", "off", "status"])
-    editor.add_argument("--root", help="允许网页编辑的策略目录")
     editor.set_defaults(fn=cmd_editor)
+    editor_actions = editor.add_subparsers(dest="action", required=True)
+    enable = editor_actions.add_parser("on", help="开启编辑器并选择目录")
+    enable.add_argument("--root", help="允许网页编辑的策略目录")
+    editor_actions.add_parser("off", help="关闭编辑器")
+    editor_actions.add_parser("status", help="查看编辑目录")
+    github = editor_actions.add_parser("github", help="绑定 GitHub 策略仓库并同步")
+    github.set_defaults(fn=cmd_editor_github)
+    github_actions = github.add_subparsers(dest="github_action", required=True)
+    bind = github_actions.add_parser("bind", help="用 GitHub 设备授权绑定仓库")
+    bind.add_argument("--repo", required=True, help="GitHub 仓库名，例如 owner/strategy")
+    bind.add_argument("--branch", default="", help="分支，默认使用本地分支或仓库默认分支")
+    bind.add_argument("--client-id", default="", help="GitHub App Client ID")
+    github_actions.add_parser("status", help="查看绑定和本地状态")
+    github_actions.add_parser("check", help="检查远端状态")
+    github_actions.add_parser("unbind", help="解除绑定")
+    for action, label in (("pull", "拉取远端提交"), ("push", "推送本地已有提交")):
+        sync = github_actions.add_parser(action, help=label)
+        sync.add_argument("--yes", action="store_true", help="无需确认")
     sub.add_parser("web", help="打印一次性的网页登录链接").set_defaults(fn=cmd_web)
     sub.add_parser("password", help="改网页管理员的用户名和密码").set_defaults(fn=cmd_password)
     service.set_defaults(fn=cmd_service)

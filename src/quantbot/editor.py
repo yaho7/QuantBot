@@ -27,6 +27,19 @@ class SourceFile:
     revision: str
 
 
+@contextmanager
+def editor_lock(data_dir: Path) -> Iterator[None]:
+    """Serialize editor changes from the server and CLI."""
+    if os.name != "posix":
+        raise EditorError("网页策略编辑器支持 Linux 和 macOS。")
+    import fcntl
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    with (data_dir / "editor.lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 class Editor:
     def __init__(self, root: Path, data_dir: Path) -> None:
         if os.name != "posix":
@@ -48,7 +61,8 @@ class Editor:
             editor = cls(root, data_dir)
             with editor._directory([]):
                 pass
-            Store(data_dir, filename=EDITOR_FILE).write({"root": str(root)})
+            with editor_lock(data_dir):
+                Store(data_dir, filename=EDITOR_FILE).write({"root": str(root)})
         except (OSError, RuntimeError, EditorError) as exc:
             raise ConfigError(f"无法打开编辑目录：{exc}") from exc
         return root
@@ -59,6 +73,8 @@ class Editor:
         parts = path.split("/")
         if any(part in {"", ".", ".."} or "\0" in part for part in parts):
             raise EditorError("请选择编辑目录内的相对路径。")
+        if any(part.casefold() == ".git" for part in parts):
+            raise EditorError("Git 仓库元数据由 Git 管理。")
         if self.root.joinpath(*parts).is_relative_to(self.data_dir):
             raise EditorError("这个路径位于 QuantBot 数据目录中。")
         return parts
@@ -83,7 +99,9 @@ class Editor:
         items = []
         with self._directory(parts) as fd, os.scandir(fd) as entries:
             for entry in entries:
-                if (folder / entry.name).is_relative_to(self.data_dir):
+                if entry.name.casefold() == ".git" or (folder / entry.name).is_relative_to(
+                    self.data_dir
+                ):
                     continue
                 if entry.is_dir(follow_symlinks=False):
                     items.append({"name": entry.name, "kind": "directory"})

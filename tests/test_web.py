@@ -18,6 +18,7 @@ from quantbot.audit import Audit
 from quantbot.config import Store, StrategyConfig
 from quantbot.core import Core
 from quantbot.editor import EDITOR_FILE, Editor
+from quantbot.github import DEVICE_URL, Authorization
 from quantbot.hub import Hub
 from quantbot.server import make_app
 from quantbot.updates import Installed, Updater
@@ -256,6 +257,67 @@ def test_editor_requires_local_enable_and_refuses_unsafe_paths(tmp_path: Path) -
         assert not (await (await client.get(file, params={"path": path})).json())["ok"]
 
     scenario(test, audit)
+
+
+def test_github_web_authorization_and_sync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pending = Authorization(
+        "acme/strategy",
+        "main",
+        tmp_path,
+        "Iv1.example",
+        "server-only-device-code",
+        "ABCD-1234",
+        100,
+        5,
+        0,
+    )
+    status = {
+        "bound": True,
+        "repo": pending.repo,
+        "branch": pending.branch,
+        "ahead": 0,
+        "behind": 0,
+    }
+    syncs = []
+    fake = SimpleNamespace(
+        begin=lambda *args: pending,
+        poll=lambda flow: status,
+        status=lambda: {"bound": False},
+        sync=lambda action: syncs.append(action) or status,
+        unbind=lambda: None,
+    )
+    monkeypatch.setattr("quantbot.web.GitHubEditor", lambda path: fake)
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        url = "/ui/api/editor/github"
+        assert (await client.get(url)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        assert (await client.post(url + "/bind")).status == 403
+        result = await (await client.get(url)).json()
+        assert result["ok"] and not result["data"]["bound"]
+        response = await client.post(
+            url + "/bind", headers=CSRF, json={"repo": pending.repo, "client_id": pending.client_id}
+        )
+        result = await response.json()
+        assert result["ok"] and result["data"]["url"] == DEVICE_URL
+        assert result["data"]["code"] == pending.user_code
+        assert pending.device_code not in await response.text()
+        refused = await (
+            await client.post(url + "/authorize", headers=CSRF, json={"state": "stale"})
+        ).json()
+        assert not refused["ok"]
+        bound = await (
+            await client.post(
+                url + "/authorize", headers=CSRF, json={"state": result["data"]["state"]}
+            )
+        ).json()
+        assert bound["data"]["status"] == status
+        for action in ("check", "pull", "push", "unbind"):
+            assert (await (await client.post(url + "/" + action, headers=CSRF)).json())["ok"]
+        assert syncs == ["check", "pull", "push"]
+        assert read_audit(tmp_path / "audit.jsonl", 1)[0]["operation"] == "unbind"
+
+    scenario(test, tmp_path / "audit.jsonl")
 
 
 def test_password_login_and_lock(tmp_path: Path) -> None:

@@ -36,6 +36,7 @@ const ACTIONS: Record<string, string> = {
   settings: "改设置",
   update: "安装更新",
   editor_save: "保存策略文件",
+  github: "同步 GitHub",
 };
 
 export function actionLabel(action: string): string {

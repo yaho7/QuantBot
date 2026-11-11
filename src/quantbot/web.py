@@ -47,7 +47,8 @@ from quantbot.config import (
     check_url,
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
-from quantbot.editor import EDITOR_FILE, Editor, EditorError
+from quantbot.editor import EDITOR_FILE, Editor, EditorError, editor_lock
+from quantbot.github import Authorization, GitHubEditor
 from quantbot.hub import Hub, Result
 from quantbot.service import Service, ServiceError
 from quantbot.updates import Updater
@@ -304,6 +305,16 @@ TELEGRAM_KEY = web.AppKey("web_telegram", object)  # cli.telegram, replaced in t
 EDITOR_LOCK = web.AppKey("web_editor_lock", asyncio.Lock)
 
 
+@dataclass
+class GitHubActions:
+    editor: GitHubEditor
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    pending: tuple[str, Authorization] | None = None
+
+
+GITHUB_KEY = web.AppKey("web_github", GitHubActions)
+
+
 def _telegram(request: web.Request) -> Any:
     return request.app[TELEGRAM_KEY]
 
@@ -351,7 +362,8 @@ async def editor_save(request: web.Request) -> web.Response:
         return _answer(False, "请选择文件并确认要保存的改动。")
 
     def save() -> dict[str, str]:
-        return asdict(_editor(store).save(path, content, revision))
+        with editor_lock(store.dir):
+            return asdict(_editor(store).save(path, content, revision))
 
     async with request.app[EDITOR_LOCK]:
         try:
@@ -365,6 +377,75 @@ async def editor_save(request: web.Request) -> web.Response:
             "editor_save", user=WEB_USER, ok=ok, result=f"{path}：{message}"
         )
     return _answer(ok, message, result)
+
+
+async def github_get(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    actions = request.app[GITHUB_KEY]
+    try:
+        return _answer(True, "", await asyncio.to_thread(actions.editor.status))
+    except (ConfigError, OSError) as exc:
+        return _answer(False, str(exc))
+
+
+async def github_post(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    actions = request.app[GITHUB_KEY]
+    body = await _args(request)
+    action = request.match_info["action"]
+    if actions.lock.locked():
+        return _answer(False, "GitHub 操作正在进行，请稍后再试。")
+    async with actions.lock:
+        audit = request.app[CORE_KEY].audit
+        try:
+            if action == "bind":
+                repo, branch, client_id = (
+                    body.get(key, "") for key in ("repo", "branch", "client_id")
+                )
+                if not all(isinstance(value, str) for value in (repo, branch, client_id)):
+                    return _answer(False, "请填写仓库、分支和 GitHub App Client ID。")
+                flow = await asyncio.to_thread(actions.editor.begin, repo, branch, client_id)
+                state = secrets.token_urlsafe(16)
+                actions.pending = state, flow
+                return _answer(True, "", {**flow.prompt(), "state": state})
+            if action == "authorize":
+                if not actions.pending or body.get("state") != actions.pending[0]:
+                    return _answer(False, "请重新开始 GitHub 授权。")
+                _, flow = actions.pending
+                try:
+                    status = await asyncio.to_thread(actions.editor.poll, flow)
+                except (ConfigError, OSError):
+                    actions.pending = None
+                    raise
+                if status is None:
+                    return _answer(True, "", {"interval": flow.interval})
+                actions.pending = None
+                action = "bind"
+                message = "GitHub 已绑定。"
+            elif action == "unbind":
+                await asyncio.to_thread(actions.editor.unbind)
+                actions.pending = None
+                status = {"bound": False}
+                message = "已解除 GitHub 绑定。"
+            else:
+                status = await asyncio.to_thread(actions.editor.sync, action)
+                message = {"check": "已检查远端状态。", "pull": "已拉取。", "push": "已推送。"}[
+                    action
+                ]
+        except (ConfigError, OSError) as exc:
+            audit.write("github", user=WEB_USER, ok=False, operation=action, result=str(exc))
+            return _answer(False, str(exc))
+        audit.write(
+            "github",
+            user=WEB_USER,
+            ok=True,
+            operation=action,
+            repo=status.get("repo"),
+            result=message,
+        )
+        return _answer(True, message, {"status": status})
 
 
 def _service_installed() -> bool:
@@ -764,6 +845,7 @@ def add_routes(
     app[AUDIT_KEY] = audit_path
     app[UPDATE_KEY] = UpdateActions(updater or Updater(store.dir), restart)
     app[EDITOR_LOCK] = asyncio.Lock()
+    app[GITHUB_KEY] = GitHubActions(GitHubEditor(store.dir))
     app.add_routes(
         [
             web.get("/", redirect_root),
@@ -782,6 +864,10 @@ def add_routes(
             web.post("/ui/api/update", update_post),
             web.get("/ui/api/editor/{kind:tree|file}", editor_read),
             web.post("/ui/api/editor/file", editor_save),
+            web.get("/ui/api/editor/github", github_get),
+            web.post(
+                "/ui/api/editor/github/{action:bind|authorize|check|pull|push|unbind}", github_post
+            ),
             web.post("/ui/api/strategies/{sid}/{command}", command),
             web.get("/ui/", page),
             web.get("/ui/{path:.+}", page),
