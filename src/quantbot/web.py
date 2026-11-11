@@ -419,6 +419,34 @@ async def github_get(request: web.Request) -> web.Response:
         return _answer(False, str(exc))
 
 
+async def local_git(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    git = request.app[GITHUB_KEY].editor
+    if request.method == "GET":
+        try:
+            return _answer(True, "", await asyncio.to_thread(git.local_status))
+        except (ConfigError, OSError) as exc:
+            return _answer(False, str(exc))
+    body = await _args(request)
+    paths, message = body.get("paths"), body.get("message")
+    if (
+        not isinstance(message, str)
+        or not isinstance(paths, list)
+        or not all(isinstance(path, str) for path in paths)
+    ):
+        return _answer(False, tr("请选择要提交的文件并填写提交说明。"))
+    audit = request.app[CORE_KEY].audit
+    try:
+        revision = await asyncio.to_thread(git.commit, paths, message)
+    except (ConfigError, OSError) as exc:
+        audit.write("git_commit", user=WEB_USER, ok=False, result=str(exc))
+        return _answer(False, str(exc))
+    result = tr("已提交 {0}。", revision)
+    audit.write("git_commit", user=WEB_USER, ok=True, result=result)
+    return _answer(True, result, {"revision": revision})
+
+
 async def github_post(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
@@ -1115,6 +1143,8 @@ def add_routes(
             web.get("/ui/api/editor/{kind:tree|file}", editor_read),
             web.post("/ui/api/editor/file", editor_save),
             web.get("/ui/api/editor/github", github_get),
+            web.get("/ui/api/editor/git", local_git),
+            web.post("/ui/api/editor/git/commit", local_git),
             web.post(
                 "/ui/api/editor/github/{action:bind|authorize|check|pull|push|unbind}", github_post
             ),

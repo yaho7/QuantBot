@@ -261,5 +261,14 @@
   "可以先在工作区绑定 GitHub 并准备代码，或添加策略获取连接令牌。": "Use Workspace to connect GitHub and prepare your code, or add a strategy to get a connection token.",
   "在运行 QuantBot 的服务器上选定目录后，即可在这里编辑代码并绑定 GitHub。": "Select a directory on the QuantBot server to edit files and connect GitHub here.",
   "工作区": "Workspace",
-  "设置工作区": "Set up the workspace"
+  "设置工作区": "Set up the workspace",
+  "将当前分支的已有提交推送到 GitHub。保存的文件可以在「本地改动」中提交。": "Push existing commits on this branch to GitHub. Commit saved files under Local changes.",
+  "本地改动": "Local changes",
+  "刷新改动": "Refresh changes",
+  "没有未提交的改动。": "No uncommitted changes.",
+  "请先保存编辑器里的改动。": "Save your edits before committing.",
+  "已提交 {0}。": "Committed {0}.",
+  "工作区里还没有 Git 仓库。": "There is no Git repository in the workspace yet.",
+  "提交说明": "Commit message",
+  "提交所选文件": "Commit selected files"
 }

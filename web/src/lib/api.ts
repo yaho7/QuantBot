@@ -104,6 +104,12 @@ export interface GitHubStatus {
   error?: string;
 }
 
+export interface LocalGitStatus {
+  repository: boolean;
+  branch: string;
+  files: { path: string; status: string }[];
+}
+
 export interface GitHubAuthorization {
   url: string;
   code: string;
@@ -176,6 +182,9 @@ export const api = {
   saveEditorFile: (file: SourceFile & { path: string }) =>
     answerData<SourceFile>("POST", "editor/file", file),
   githubStatus: () => answerData<GitHubStatus>("GET", "editor/github"),
+  gitStatus: () => answerData<LocalGitStatus>("GET", "editor/git"),
+  gitCommit: (paths: string[], message: string) =>
+    answerData<{ revision: string }>("POST", "editor/git/commit", { paths, message }),
   githubBind: (form: { repo: string; branch: string; client_id: string }) =>
     answerData<GitHubAuthorization>("POST", "editor/github/bind", form),
   githubAuthorize: (state: string) =>

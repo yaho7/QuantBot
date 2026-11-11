@@ -139,7 +139,7 @@ export default function WorkspaceEditor() {
       <div className="grid gap-4">
         <div className="flex justify-end">
           <Button variant="outline" size="sm" disabled={busy} onClick={() => setGithubOpen(true)}>
-            <GitBranch /> {tr("GitHub 仓库")}</Button>
+            <GitBranch /> Git</Button>
         </div>
         <div className="grid items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]">
           <nav aria-label={tr("策略文件")} className="max-h-44 overflow-auto rounded-lg border bg-card p-2 md:max-h-[58vh]">

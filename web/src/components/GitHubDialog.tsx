@@ -1,11 +1,12 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, GitBranch, RefreshCw } from "lucide-react";
+import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, GitBranch, GitCommitHorizontal, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ConfirmDialog, QueryBoundary } from "@/components/common";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, Field, Input } from "@/components/ui/primitives";
 import { api, type GitHubAuthorization, type GitHubStatus } from "@/lib/api";
 
@@ -13,7 +14,7 @@ type SyncAction = "pull" | "push" | "unbind";
 const labels = { pull: tr("拉取提交"), push: tr("推送已有提交"), unbind: tr("解除绑定") };
 const confirmText = {
   pull: tr("将 GitHub 上的新提交同步到编辑目录。拉取只在本地工作区干净、分支可以快进时执行。"),
-  push: tr("将当前分支的已有提交推送到 GitHub。网页里保存的文件需要在服务器上提交后才能推送。"),
+  push: tr("将当前分支的已有提交推送到 GitHub。保存的文件可以在「本地改动」中提交。"),
   unbind: tr("从 QuantBot 移除这个仓库的授权凭据。"),
 };
 
@@ -76,7 +77,13 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
   return (
     <>
       <Dialog open onOpenChange={() => { if (!busy) onClose(); }}>
-        <DialogContent title={tr("GitHub 仓库")} className="max-w-lg">
+        <DialogContent title="Git" className="max-w-lg">
+          <Tabs defaultValue="remote">
+            <TabsList>
+              <TabsTrigger value="remote">{tr("GitHub 仓库")}</TabsTrigger>
+              <TabsTrigger value="local" disabled={busy || !!authorization}>{tr("本地改动")}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="remote">
           <QueryBoundary query={status}>
             {(data) => authorization ? (
               <div className="grid gap-4">
@@ -147,6 +154,9 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
               </div>
             )}
           </QueryBoundary>
+            </TabsContent>
+            <TabsContent value="local"><LocalGitChanges unsaved={dirty} /></TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
       <ConfirmDialog open={!!confirm} onOpenChange={(open) => { if (!open && !busy) setConfirm(undefined); }}
@@ -156,5 +166,66 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
           if (confirm) { setError(""); sync.mutate(confirm); }
         }} />
     </>
+  );
+}
+
+function LocalGitChanges({ unsaved }: { unsaved: boolean }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const status = useQuery({ queryKey: ["editor", "git"], queryFn: api.gitStatus, retry: false });
+  const [selection, setSelection] = useState<string[]>([]);
+  const [message, setMessage] = useState("");
+  const paths = selection.filter((path) => status.data?.files.some((file) => file.path === path));
+  const commit = useMutation({
+    mutationFn: () => api.gitCommit(paths, message),
+    onSuccess: ({ revision }) => {
+      setSelection([]);
+      setMessage("");
+      void qc.invalidateQueries({ queryKey: ["editor", "git"] });
+      void qc.invalidateQueries({ queryKey: ["editor", "github"] });
+      toast.success(tr("已提交 {0}。", revision));
+    },
+  });
+  return (
+    <QueryBoundary query={status}>
+      {(data) => !data.repository ? (
+        <p className="text-sm text-muted-foreground">{tr("工作区里还没有 Git 仓库。")}</p>
+      ) : (
+        <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); commit.mutate(); }}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="flex min-w-0 items-center gap-2 font-mono text-xs"><GitBranch className="size-4 shrink-0" /> <span className="truncate">{data.branch}</span></span>
+            <Button type="button" variant="ghost" size="sm" loading={status.isFetching} onClick={() => void status.refetch()}>
+              <RefreshCw /> {tr("刷新改动")}
+            </Button>
+          </div>
+          {data.files.length ? (
+            <ul className="max-h-52 divide-y overflow-auto rounded-lg border bg-card text-sm">
+              {data.files.map((file) => (
+                <li key={file.path}>
+                  <label className="flex items-center gap-3 px-3 py-2">
+                    <input type="checkbox" className="accent-primary" checked={selection.includes(file.path)}
+                      onChange={(e) => setSelection(e.target.checked ? [...selection, file.path] : selection.filter((path) => path !== file.path))} />
+                    <code className="text-xs text-muted-foreground">{file.status}</code>
+                    <span className="min-w-0 break-all font-mono text-xs">{file.path}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-sm text-muted-foreground">{tr("没有未提交的改动。")}</p>}
+          {data.files.length > 0 && (
+            <Field label={tr("提交说明")} htmlFor="git-message">
+              <Input id="git-message" value={message} onChange={(event) => setMessage(event.target.value)} maxLength={1000} required />
+            </Field>
+          )}
+          {unsaved && <Alert tone="warning">{tr("请先保存编辑器里的改动。")}</Alert>}
+          {commit.error && <Alert tone="loss">{commit.error.message}</Alert>}
+          <DialogFooter>
+            <Button type="submit" loading={commit.isPending} disabled={!paths.length || !message.trim() || unsaved}>
+              <GitCommitHorizontal /> {tr("提交所选文件")}
+            </Button>
+          </DialogFooter>
+        </form>
+      )}
+    </QueryBoundary>
   );
 }

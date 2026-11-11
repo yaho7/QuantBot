@@ -117,10 +117,10 @@ quantbot editor off
 
 QuantBot 使用 GitHub App 的设备授权，支持私有仓库。首次使用时，在 GitHub 注册 App 并启用 Device Flow。为 App 配置仓库 Contents 权限，读取代码选择 Read-only，需要推送时选择 Read and write。将 App 安装到要同步的仓库，并记下 App 的 Client ID。 [GitHub App 注册指南](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app) · [Git 访问权限](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app#choosing-permissions-for-git-access)
 
-- 网页里打开「工作区 → GitHub 仓库」，填仓库名和 Client ID。点击「开始 GitHub 授权」，按提示在 GitHub 输入验证码。
+- 网页里打开「工作区 → Git → GitHub 仓库」，填仓库名和 Client ID。点击「开始 GitHub 授权」，按提示在 GitHub 输入验证码。
 - 在服务器也可运行 `quantbot editor github bind --repo owner/strategy --client-id <Client-ID>`。完成授权后，可以用 `quantbot editor github status/check/pull/push/unbind` 管理绑定和同步。
 - 一个编辑目录绑定一个仓库。目录可以是现有 Git 仓库的根目录，也可以是用于克隆的空目录。同步默认使用现有本地分支或 GitHub 的默认分支。
-- 拉取需要干净的工作区，且只做快进更新。保存网页编辑后，可在服务器上提交，再用网页或 CLI 推送已有提交。绑定凭据保存在服务器的私有配置目录，网页只接收设备验证码和同步状态。
+- 拉取需要干净的工作区，且只做快进更新。保存后，在「Git → 本地改动」选择文件并填写提交说明，再推送。首次提交前用 `git config user.name` 和 `git config user.email` 设置身份。CLI 对应命令为 `quantbot workspace git status` 和 `quantbot workspace git commit -m "提交说明" 文件路径`。绑定凭据保存在服务器的私有配置目录。
 
 ## 连接你的策略
 

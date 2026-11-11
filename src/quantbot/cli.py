@@ -1065,6 +1065,19 @@ def cmd_web(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
 
 
 def cmd_workspace(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    if args.workspace_action == "git":
+        git = GitHubEditor(store.dir)
+        if args.git_action == "commit":
+            revision = git.commit(args.paths, args.message)
+            io.status("ok", tr("已提交 {0}。", revision))
+        else:
+            status = git.local_status()
+            if not status["repository"]:
+                raise Abort(tr("工作区里还没有 Git 仓库。"))
+            io.say(tr("分支：{0}", status["branch"]))
+            for item in status["files"]:
+                io.say(f"  {item['status']}  {item['path']}")
+        return 0
     if not store.exists():
         raise Abort(tr("还没设置。先运行：quantbot setup"))
     if args.workspace_action == "init":
@@ -1236,6 +1249,12 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     workspace_actions = workspace.add_subparsers(dest="workspace_action")
     init = workspace_actions.add_parser("init", help=tr("在 Linux 服务器上初始化工作区"))
     init.add_argument("--root", default=str(DEFAULT_ROOT), help=tr("空的工作区目录"))
+    git = workspace_actions.add_parser("git", help=tr("查看和提交本地 Git 改动"))
+    git_actions = git.add_subparsers(dest="git_action", required=True)
+    git_actions.add_parser("status", help=tr("查看本地 Git 改动"))
+    git_commit = git_actions.add_parser("commit", help=tr("提交所选文件"))
+    git_commit.add_argument("-m", "--message", required=True, help=tr("提交说明"))
+    git_commit.add_argument("paths", nargs="+")
     sub.add_parser("password", description=tr("改网页管理员的用户名和密码")).set_defaults(
         fn=cmd_password
     )

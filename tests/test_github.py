@@ -62,6 +62,30 @@ def commit(directory: Path, text: str) -> str:
     return git(directory, "rev-parse", "HEAD")
 
 
+def test_workspace_commit_includes_only_selected_paths(tmp_path: Path) -> None:
+    root = tmp_path / "editor"
+    root.mkdir()
+    git(root, "init", "--initial-branch=main")
+    git(root, "config", "user.name", "Test")
+    git(root, "config", "user.email", "test@example.invalid")
+    commit(root, "value = 1\n")
+    state = tmp_path / "state"
+    Editor.enable(state, str(root))
+    service = GitHubEditor(state)
+    (root / "strategy.py").write_text("value = 2\n")
+    git(root, "add", "strategy.py")
+    (root / ":new file.py").write_text("print(1)\n")
+    assert service.local_status()["files"] == [
+        {"path": "strategy.py", "status": "M "},
+        {"path": ":new file.py", "status": "??"},
+    ]
+    revision = service.commit([":new file.py"], "Add selected file")
+    assert revision == git(root, "rev-parse", "--short", "HEAD")
+    assert git(root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD") == ":new file.py"
+    assert git(root, "diff", "--cached", "--name-only") == "strategy.py"
+    assert service.local_status()["files"] == [{"path": "strategy.py", "status": "M "}]
+
+
 def test_official_device_flow_clone_pull_push_and_refresh(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

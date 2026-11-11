@@ -223,6 +223,56 @@ class GitHubEditor:
             editor = self._editor()
             return self._status(editor, self._binding(editor))
 
+    def local_status(self) -> dict[str, Any]:
+        with editor_lock(self.store.dir):
+            return self._local_status(self._editor())
+
+    def _local_status(self, editor: Editor) -> dict[str, Any]:
+        if not (editor.root / ".git").exists():
+            return {"repository": False, "branch": "", "files": []}
+        branch = self._branch(editor)
+        output = self._git(
+            editor,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--no-renames",
+            "--untracked-files=all",
+            raw=True,
+        )
+        return {
+            "repository": True,
+            "branch": branch,
+            "files": [
+                {"path": record[3:], "status": record[:2]}
+                for record in output.split("\0")
+                if record
+            ],
+        }
+
+    def commit(self, paths: list[str], message: str) -> str:
+        message = message.strip()
+        if not message or len(message) > 1000 or "\0" in message or not paths or len(paths) > 200:
+            raise ConfigError(tr("请选择要提交的文件并填写提交说明。"))
+        with editor_lock(self.store.dir):
+            editor = self._editor()
+            files = {item["path"]: item["status"] for item in self._local_status(editor)["files"]}
+            if any(path not in files for path in paths):
+                raise ConfigError(tr("文件状态已变更，请刷新 Git 改动后重试。"))
+            if any("U" in status or status in {"AA", "DD"} for status in files.values()):
+                raise ConfigError(tr("请先在终端解决 Git 冲突。"))
+            try:
+                self._git(editor, "var", "GIT_AUTHOR_IDENT")
+                self._git(editor, "var", "GIT_COMMITTER_IDENT")
+            except ConfigError as exc:
+                raise ConfigError(
+                    tr("请先在工作区终端用 git config 设置 user.name 和 user.email。")
+                ) from exc
+            if new := [path for path in paths if files[path] == "??"]:
+                self._git(editor, "add", "--intent-to-add", "--", *new)
+            self._git(editor, "commit", "--only", "-m", message, "--", *paths)
+            return self._git(editor, "rev-parse", "--short", "HEAD")
+
     def _status(self, editor: Editor, binding: dict[str, Any]) -> dict[str, Any]:
         if not binding:
             return {"bound": False}
@@ -303,7 +353,7 @@ class GitHubEditor:
         )
 
     @staticmethod
-    def _git(editor: Editor, *args: str, token: str = "") -> str:
+    def _git(editor: Editor, *args: str, token: str = "", raw: bool = False) -> str:
         workspace = editor.workspace()
         env = (
             workspace.environment()
@@ -311,6 +361,7 @@ class GitHubEditor:
             else {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
         )
         env["GIT_TERMINAL_PROMPT"] = "0"
+        env["GIT_LITERAL_PATHSPECS"] = "1"
         if token:
             credentials = base64.b64encode(f"x-access-token:{token}".encode()).decode("ascii")
             env.update(
@@ -362,4 +413,4 @@ class GitHubEditor:
             if token:
                 output = output.replace(token, "***").replace(credentials, "***")
             raise ConfigError(tr("Git {0} 失败。{1}", args[0], output[-800:]))
-        return done.stdout.strip()
+        return done.stdout if raw else done.stdout.strip()
