@@ -16,7 +16,7 @@ const extensions = [
   }),
 ];
 
-export function WorkspaceDiff({ before, after, labels }: {
+export default function WorkspaceDiff({ before, after, labels }: {
   before: string; after: string; labels: [string, string];
 }) {
   const parent = useRef<HTMLDivElement>(null);

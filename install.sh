@@ -153,6 +153,9 @@ for tool in git curl; do command -v "$tool" >/dev/null || missing+=("$tool"); do
 if [ "$(uname)" = Linux ] && ! command -v rg >/dev/null; then
   missing+=(ripgrep)
 fi
+if [ "$(uname)" = Linux ] && ! PATH=/usr/local/bin:/usr/bin:/bin command -v gh >/dev/null; then
+  missing+=(gh)
+fi
 if [ "$(uname)" = Linux ] && ! command -v update-ca-certificates >/dev/null \
    && [ ! -d /etc/ssl/certs ]; then
   missing+=(ca-certificates)
@@ -196,6 +199,11 @@ if ! command -v uv >/dev/null; then
   curl -fsSL https://astral.sh/uv/install.sh | sh || die "$(msg "uv 安装失败。请检查上方输出后重试。" "Could not install uv. Review the output above and retry.")"
 fi
 uv_path="$(command -v uv)" || die "$(msg "当前终端找不到 uv。请重新打开终端后重试。" "uv was not found. Open a new terminal and retry.")"
+if [ "$(uname)" = Linux ] && [ "$(id -u)" -eq 0 ] &&
+   ! PATH=/usr/local/bin:/usr/bin:/bin command -v uv >/dev/null; then
+  # The workspace account cannot access a root-owned home directory.
+  install -m 0755 "$uv_path" /usr/local/bin/uv
+fi
 status ok '1;32' "$(msg "系统依赖已就绪。" "System dependencies are ready.")"
 
 BIN="$("$uv_path" tool dir --bin)" || die "$(msg "无法读取 uv 的命令目录。" "Could not locate the uv executable directory.")"

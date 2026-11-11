@@ -4,9 +4,8 @@ import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { ConfirmDialog, EmptyState, LoadingState } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
-import { StrategyCodeEditor } from "@/components/StrategyCodeEditor";
-import { WorkspaceDiff } from "@/components/WorkspaceDiff";
 import { WorkspaceExplorer, WorkspaceSearch } from "@/components/WorkspaceExplorer";
+import { WorkspaceGit } from "@/components/WorkspaceGit";
 import { WorkspaceProgram } from "@/components/WorkspaceProgram";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -17,6 +16,8 @@ import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 const WorkspaceTerminal = lazy(() => import("@/components/WorkspaceTerminal"));
+const StrategyCodeEditor = lazy(() => import("@/components/StrategyCodeEditor"));
+const WorkspaceDiff = lazy(() => import("@/components/WorkspaceDiff"));
 const under = (path: string, folder: string) => path === folder || path.startsWith(folder + "/");
 
 export default function WorkspaceEditor({ managed }: { managed: boolean }) {
@@ -26,7 +27,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const [active, setActive] = useState<string>();
   const [drafts, setDrafts] = useState<Record<string, { base: SourceFile; text: string }>>({});
   const [location, setLocation] = useState<{ path: string; line: number; request: number }>();
-  const [sidebar, setSidebar] = useState<"files" | "search">("files");
+  const [sidebar, setSidebar] = useState<"files" | "search" | "git">("files");
   const [review, setReview] = useState(false);
   const [discard, setDiscard] = useState<{ path: string; close: boolean }>();
   const [githubOpen, setGithubOpen] = useState(() => new URLSearchParams(window.location.search).has("github"));
@@ -46,7 +47,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const conflicted = !!draft && (fileQuery?.isError || (disk && disk.revision !== draft.base.revision));
 
   const refresh = useCallback(() => {
-    for (const key of ["tree", "file", "search", "git", "github"]) {
+    for (const key of ["tree", "file", "search", "git"]) {
       void qc.invalidateQueries({ queryKey: ["editor", key] });
     }
   }, [qc]);
@@ -126,7 +127,8 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
               onClick={() => setSidebar("files")}><Files /> {tr("文件")}</Button>
             <Button size="sm" variant={sidebar === "search" ? "secondary" : "ghost"} aria-pressed={sidebar === "search"}
               onClick={() => setSidebar("search")}><Search /> {tr("搜索")}</Button>
-            <Button size="sm" variant="ghost" onClick={() => setGithubOpen(true)}><GitBranch /> Git</Button>
+            <Button size="sm" variant={sidebar === "git" ? "secondary" : "ghost"} aria-pressed={sidebar === "git"}
+              onClick={() => setSidebar("git")}><GitBranch /> Git</Button>
           </div>
           {managed && <div className="flex gap-1">
             <Button size="sm" variant={showTerminal ? "secondary" : "ghost"} aria-pressed={showTerminal}
@@ -146,6 +148,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
                 canChange={(path) => !Object.keys(drafts).some((item) => under(item, path))} onChange={changed} />
             </div>
             {sidebar === "search" && <WorkspaceSearch onOpen={open} />}
+            {sidebar === "git" && <WorkspaceGit dirty={dirty} onConnect={() => setGithubOpen(true)} onChanged={refresh} />}
           </Panel>
           <Separator aria-label={tr("调整文件栏宽度")} className="w-px bg-border hover:bg-ring focus-visible:bg-ring" />
           <Panel id="workspace-source" minSize="10rem">
@@ -186,8 +189,10 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
                         {tr("重新读取")}
                       </Button>
                     </Alert>}
-                    <StrategyCodeEditor key={active + ":" + base.revision} path={active} initial={draft?.text ?? base.content}
-                      onChange={edit} disabled={save.isPending} jump={jump} />
+                    <Suspense fallback={<LoadingState rows={2} />}>
+                      <StrategyCodeEditor key={active + ":" + base.revision} path={active} initial={draft?.text ?? base.content}
+                        onChange={edit} disabled={save.isPending} jump={jump} />
+                    </Suspense>
                   </>}
                 </div>}
             </section>
@@ -202,7 +207,9 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
       </div>
       <Dialog open={review && !!draft} onOpenChange={(open) => { if (!open && !save.isPending) setReview(false); }}>
         <DialogContent title={tr("确认保存")} description={active} className="max-w-4xl">
-          {draft && <WorkspaceDiff before={draft.base.content} after={draft.text} labels={[tr("保存前"), tr("保存后")]} />}
+          {draft && <Suspense fallback={<LoadingState rows={2} />}>
+            <WorkspaceDiff before={draft.base.content} after={draft.text} labels={[tr("保存前"), tr("保存后")]} />
+          </Suspense>}
           {save.error && <Alert tone="loss">{save.error.message}</Alert>}
           <DialogFooter>
             <Button variant="outline" disabled={save.isPending} onClick={() => setReview(false)}>{tr("返回编辑")}</Button>
@@ -222,7 +229,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
           }
           setDiscard(undefined);
         }} />
-      {githubOpen && <GitHubDialog dirty={dirty} onClose={() => {
+      {githubOpen && <GitHubDialog onClose={() => {
         setGithubOpen(false);
         const url = new URL(window.location.href);
         if (url.searchParams.has("github")) {

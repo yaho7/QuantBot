@@ -3,6 +3,7 @@ import { Download, GitBranch, Globe, Languages, Radio, RefreshCw, Server, Shield
 import { useState } from "react";
 import { AccountDialog } from "@/components/AccountDialog";
 import { PageHeader, QueryBoundary } from "@/components/common";
+import { GitHubDialog } from "@/components/GitHubDialog";
 import { ServiceDialog } from "@/components/ServiceDialog";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useToast } from "@/components/toast";
@@ -13,10 +14,12 @@ import { api, type Settings, type UpdateStatus } from "@/lib/api";
 import { tr, type Language } from "@/lib/i18n";
 
 export function SettingsPage({ update, onInstalled }: { update?: UpdateStatus; onInstalled: (version: string) => void }) {
+  const qc = useQueryClient();
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const [accountOpen, setAccountOpen] = useState(false);
   const [serviceOpen, setServiceOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [githubOpen, setGithubOpen] = useState(false);
   const initialTab = new URLSearchParams(location.search).get("tab");
   const latest = update?.result?.available && !update.updated ? update.result.latest : null;
   const username = settings.data?.admin_username;
@@ -61,9 +64,7 @@ export function SettingsPage({ update, onInstalled }: { update?: UpdateStatus; o
                 <Card>
                   <CardHeader><CardTitle className="flex items-center gap-2"><GitBranch className="size-4 text-muted-foreground" /> GitHub</CardTitle></CardHeader>
                   <CardContent>
-                    <Button asChild variant="outline" size="sm">
-                      <a href="/ui/?view=workspace&github=1">{tr("连接 GitHub")}</a>
-                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setGithubOpen(true)}>{tr("连接 GitHub")}</Button>
                   </CardContent>
                 </Card>
               </div>
@@ -104,6 +105,8 @@ export function SettingsPage({ update, onInstalled }: { update?: UpdateStatus; o
       {accountOpen && username !== undefined && <AccountDialog username={username} onClose={() => setAccountOpen(false)} />}
       {serviceOpen && <ServiceDialog onClose={() => setServiceOpen(false)} />}
       {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} checkOnOpen={!latest} onInstalled={onInstalled} />}
+      {githubOpen && <GitHubDialog onClose={() => setGithubOpen(false)}
+        onChanged={() => void qc.invalidateQueries({ queryKey: ["editor"] })} />}
     </>
   );
 }

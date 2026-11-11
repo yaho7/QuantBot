@@ -52,7 +52,7 @@ from quantbot.config import (
     strategy_item,
 )
 from quantbot.editor import EDITOR_FILE, Editor, editor_lock
-from quantbot.github import GitHubEditor, RepositoryGrant
+from quantbot.github import GitHubEditor
 from quantbot.i18n import LANGUAGES, language, tr, use_language
 from quantbot.notices import parse_quiet
 from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
@@ -884,34 +884,21 @@ def cmd_editor(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
 def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     github = GitHubEditor(store.dir)
     action = args.github_action
-    if action == "app":
-        github.configure_app(args.client_id, args.app_slug)
-        io.status("ok", tr("GitHub 应用已保存。"))
-        return 0
-    if action == "branches":
-        view = github.branches()
-        for branch in view["branches"]:
-            marker = "*" if branch == view["current"] else " "
-            io.say(f"  {marker} {branch}")
-        return 0
-    if action == "bind":
-        if not args.repo and not io.interactive():
-            raise Abort(tr("请在终端选择仓库，或通过 --repo 指定仓库。"))
-        flow = github.begin(args.repo, args.branch, args.client_id)
-        prompt = flow.prompt()
-        io.say(tr("打开 {0}，输入验证码 {1}。", prompt["url"], prompt["code"]))
-        if flow.repo:
-            while (status := github.poll(flow)) is None:
-                time.sleep(flow.interval)
-        else:
-            while (credentials := github.poll_credentials(flow)) is None:
-                time.sleep(flow.interval)
-            grant = RepositoryGrant(flow, credentials)
-            repositories = github.repositories(grant)
+    if action in {"login", "bind"}:
+        if not github.status()["account"]:
+            github.login()
+        if action == "login":
+            io.status("ok", tr("GitHub 已连接。"))
+            return 0
+        repo = args.repo
+        if not repo:
+            if not io.interactive():
+                raise Abort(tr("请在终端选择仓库，或通过 --repo 指定仓库。"))
+            repositories = github.repositories()
             if not repositories:
-                raise Abort(tr("GitHub 没有返回可用仓库。请将应用安装到目标仓库。"))
-            for index, repo in enumerate(repositories, start=1):
-                io.say(f"  {index}. {repo['name']}")
+                raise Abort(tr("GitHub 没有返回可用仓库。"))
+            for index, item in enumerate(repositories, start=1):
+                io.say(f"  {index}. {item['name']}")
             choice = io.ask(tr("选择仓库"), "1")
             if (
                 not choice.isascii()
@@ -919,14 +906,23 @@ def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namesp
                 or not 1 <= int(choice) <= len(repositories)
             ):
                 raise Abort(tr("请选择 GitHub 已授权的仓库。"))
-            status = github.select_repository(grant, repositories[int(choice) - 1]["name"])
-        io.status("ok", tr("已绑定 GitHub 仓库。"))
-    elif action == "unbind":
-        github.unbind()
-        io.status("ok", tr("已解除 GitHub 仓库绑定。"))
+            repo = repositories[int(choice) - 1]["name"]
+        status = github.select(repo)
+        io.status("ok", tr("GitHub 仓库已就绪。"))
+    elif action in {"logout", "unbind"}:
+        github.logout()
+        io.status("ok", tr("已退出 GitHub 登录。"))
         return 0
     elif action == "status":
-        status = github.status()
+        account = github.status()["account"]
+        io.say(tr("GitHub 账号：{0}", account) if account else tr("GitHub 尚未连接。"))
+        status = github.local_status()
+    elif action == "branches":
+        view = github.branches()
+        for branch in view["branches"]:
+            marker = "*" if branch == view["current"] else " "
+            io.say(f"  {marker} {branch}")
+        return 0
     elif action == "switch":
         status = github.switch(args.target)
         io.status("ok", tr("已切换到分支 {0}。", args.target))
@@ -938,14 +934,10 @@ def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namesp
             if not io.confirm(f"{label}？", default=False):
                 return 0
         status = github.sync(action)
-    if not status["bound"]:
-        io.status("note", tr("尚未绑定 GitHub 仓库。"))
-    elif status.get("error"):
-        raise Abort(status["error"])
-    else:
+    if status.get("repo"):
         io.say(f"{status['repo']} · {status['branch']}")
         io.say(tr("领先 {0}，落后 {1}。", status["ahead"], status["behind"]))
-        if status["dirty"]:
+        if status["files"]:
             io.say(tr("本地有未提交的改动。"))
     return 0
 
@@ -1100,9 +1092,17 @@ def cmd_web(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
 def cmd_workspace(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     if args.workspace_action == "git":
         git = GitHubEditor(store.dir)
-        if args.git_action == "commit":
+        action = args.git_action
+        if action == "commit":
             revision = git.commit(args.paths, args.message)
             io.status("ok", tr("已提交 {0}。", revision))
+        elif action == "init":
+            git.initialize()
+            io.status("ok", tr("Git 仓库已初始化。"))
+        elif action in {"stage", "unstage"}:
+            git.stage(args.paths, action == "stage")
+        elif action == "diff":
+            io.say(git.unified_diff(args.path, args.staged).rstrip("\n"))
         else:
             status = git.local_status()
             if not status["repository"]:
@@ -1320,11 +1320,8 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     github_actions = github.add_subparsers(dest="github_action", required=True)
     bind = github_actions.add_parser("bind", help=tr("用 GitHub 设备授权绑定仓库"))
     bind.add_argument("--repo", default="", help=tr("GitHub 仓库名，例如 owner/strategy"))
-    bind.add_argument("--branch", default="", help=tr("分支，默认使用本地分支或仓库默认分支"))
-    bind.add_argument("--client-id", default="", help="GitHub App Client ID")
-    app = github_actions.add_parser("app", help=tr("保存 GitHub 应用配置"))
-    app.add_argument("--client-id", required=True, help="GitHub App Client ID")
-    app.add_argument("--app-slug", default="", help=tr("GitHub 应用名称"))
+    github_actions.add_parser("login", help=tr("使用 GitHub 官方设备授权登录"))
+    github_actions.add_parser("logout", help=tr("退出 GitHub 登录"))
     github_actions.add_parser("branches", help=tr("查看 GitHub 分支"))
     switch = github_actions.add_parser("switch", help=tr("切换工作区分支"))
     switch.add_argument("target", help=tr("目标分支"))
@@ -1345,7 +1342,14 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     git_actions.add_parser("status", help=tr("查看本地 Git 改动"))
     git_commit = git_actions.add_parser("commit", help=tr("提交所选文件"))
     git_commit.add_argument("-m", "--message", required=True, help=tr("提交说明"))
-    git_commit.add_argument("paths", nargs="+")
+    git_commit.add_argument("paths", nargs="*")
+    git_actions.add_parser("init", help=tr("初始化 Git 仓库"))
+    for action, label in (("stage", tr("暂存文件")), ("unstage", tr("取消暂存"))):
+        stage = git_actions.add_parser(action, help=label)
+        stage.add_argument("paths", nargs="+")
+    git_diff = git_actions.add_parser("diff", help=tr("查看文件差异"))
+    git_diff.add_argument("path")
+    git_diff.add_argument("--staged", action="store_true", help=tr("查看已暂存改动"))
     program = workspace_actions.add_parser("run", help=tr("管理工作区后台程序"))
     run_actions = program.add_subparsers(dest="run_action", required=True)
     run_set = run_actions.add_parser("set", help=tr("保存启动命令"))

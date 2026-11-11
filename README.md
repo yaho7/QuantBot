@@ -99,7 +99,7 @@ quantbot workspace init
 quantbot workspace init --root /srv/quantbot/strategies
 ```
 
-初始化会创建普通系统账号 `quantbot-workspace`，Git 操作用这个账号运行。默认目录是 `/srv/quantbot/strategies`。可在网页上把私有仓库克隆进去。
+初始化会创建普通系统账号 `quantbot-workspace`，终端、Git 和程序均以这个账号运行。默认目录是 `/srv/quantbot/strategies`。Linux 一键安装会安装 GitHub CLI（`gh`）、ripgrep 和 ttyd，并在 root 安装时让工作区账号可使用 uv。
 
 如果只需要启用已有目录的编辑器，可以用：
 
@@ -111,11 +111,13 @@ quantbot editor off
 
 网页顶栏的「工作区」无需注册策略即可打开。也可以用 `quantbot workspace` 获取一次性直达链接。启用目录后，可以编辑其中的 UTF-8 文件，单个文件最大 256 KiB。请选择存放策略代码的目录。打开 Python 文件时，可以在光标处插入连接、等待、开仓检查、状态、推送和按钮回调的示例。
 
-点“预览并保存”查看改动，确认后才会写入服务器，并在“操作记录”里留下一条保存记录。保存时会检测服务器上的文件是否已变更。文件保存后，由你决定何时启动或重启策略、何时提交 Git。
+在文件栏工具条或右键菜单新建文件、文件夹，右键可重命名、剪切、复制、粘贴和删除，也可拖拽移动。支持打开多个文件，并搜索文件名和内容。在终端或另一网页修改文件后，文件树和 Git 状态会自动刷新。
 
-使用 `quantbot workspace init` 初始化后，点工作区右上方的「终端」即可在目录内打开交互式 Bash。终端和 Git 使用 `quantbot-workspace` 系统账号。右上角的延迟是浏览器到终端的往返时间。关闭终端会结束当前 shell。
+点「预览并保存」查看差异并确认写入，操作会记入审计日志。外部改动会刷新干净的标签页，并在存在未保存草稿时提示冲突。文件保存后，由你决定何时运行或提交。
 
-「运行」面板可保存一条启动命令，在工作区目录下启动、停止和查看最近输出。选用会在前台保持运行的命令，例如 `uv run python main.py`。如果普通账号还没有 uv，可先在工作区终端安装。关闭浏览器后程序继续运行，QuantBot 服务停止或重启时会停止工作区程序。
+使用 `quantbot workspace init` 初始化后，点工作区右上方的「终端」即可在当前选中的目录内打开交互式 Bash。终端和 Git 使用 `quantbot-workspace` 系统账号。右上角的延迟是浏览器到终端的往返时间。关闭终端会结束当前 shell。
+
+「运行」面板可保存一条启动命令，在工作区目录下启动、停止和查看最近输出。选用会在前台保持运行的命令，例如 `uv run python main.py`。关闭浏览器后程序继续运行。在 systemd 主机上，程序由 systemd 托管，输出写入系统日志。QuantBot 服务停止或重启时会停止工作区程序。
 
 ```bash
 quantbot workspace run set -- uv run python main.py
@@ -127,12 +129,19 @@ quantbot workspace run stop
 
 #### 绑定 GitHub 策略仓库
 
-在「设置 → 常规 → 连接 GitHub」或「工作区 → Git」进入授权页面。点「连接 GitHub」，在 GitHub 输入一次性授权码，回到 QuantBot 从列表选择仓库。支持已授权的私有仓库。
+在「设置 → 常规 → 连接 GitHub」或「工作区 → Git → GitHub」点「使用 GitHub 登录」。把显示的一次性验证码输入 GitHub 的 **Authorize your device** 页面，授权后在 QuantBot 选择账号可访问的私有或公开仓库。仓库会克隆到已初始化的空工作区。已有 GitHub 仓库的工作区可以直接使用其远端。[GitHub CLI 登录](https://cli.github.com/manual/gh_auth_login)
 
-- 首次使用可点「在 GitHub 创建应用」。登记后，在 GitHub 应用设置启用 Device Flow，再把应用安装到目标仓库。也可以展开「使用已有 GitHub 应用」保存一次应用配置。 [GitHub 应用设置](https://docs.github.com/en/apps/maintaining-github-apps/modifying-a-github-app-registration#enabling-or-disabling-the-device-flow)
-- 终端可运行 `quantbot editor github bind` 完成设备授权并选择仓库，脚本可通过 `--repo owner/strategy` 指定。应用也可用 `quantbot editor github app --client-id <Client-ID> --app-slug <slug>` 保存一次。完成授权后，可以用 `quantbot editor github status/check/pull/push/unbind` 管理绑定和同步。
-- 一个编辑目录绑定一个仓库。初次绑定使用当前本地分支，克隆到空目录时使用 GitHub 默认分支。绑定后在工作区「Git」点当前分支名称，即可选择远端分支。切换要求本地改动已处理。CLI 对应命令为 `quantbot editor github branches` 和 `quantbot editor github switch <分支>`。
-- 拉取需要干净的工作区，且只做快进更新。保存后，在「Git → 本地改动」选择文件并填写提交说明，再推送。首次提交前用 `git config user.name` 和 `git config user.email` 设置身份。CLI 对应命令为 `quantbot workspace git status` 和 `quantbot workspace git commit -m "提交说明" 文件路径`。绑定凭据保存在服务器的私有配置目录。
+网页和 CLI 共用服务器工作区账号的 GitHub CLI 登录状态。GitHub CLI 管理凭据，GitHub 组织的访问策略仍适用。退出登录后，已克隆的文件和本地提交仍可使用。
+
+```bash
+quantbot editor github login
+quantbot editor github bind
+quantbot editor github bind --repo owner/strategy
+quantbot editor github status
+quantbot editor github logout
+```
+
+在工作区的「Git」侧栏查看已暂存和未暂存改动、对照差异、提交、检查远端、快进拉取和推送。点击当前分支可切换本地或已拉取的远端分支。已有的 Git 提交身份优先使用，已登录 GitHub 且未设置身份时可用 GitHub 用户名和 noreply 邮箱提交。命令行可用 `quantbot workspace git init/status/stage/unstage/diff/commit`，远端操作可用 `quantbot editor github branches/switch/check/pull/push`。
 
 ## 连接你的策略
 

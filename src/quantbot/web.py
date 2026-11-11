@@ -53,7 +53,7 @@ from quantbot.config import (
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
 from quantbot.editor import EDITOR_FILE, Editor, EditorError, editor_lock
-from quantbot.github import Authorization, GitHubEditor, RepositoryGrant
+from quantbot.github import DEVICE_URL, DeviceLogin, GitHubEditor
 from quantbot.hub import Hub, Result
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
 from quantbot.service import Service, ServiceError
@@ -344,9 +344,7 @@ EDITOR_LOCK = web.AppKey("web_editor_lock", asyncio.Lock)
 class GitHubActions:
     editor: GitHubEditor
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    pending: tuple[str, Authorization] | None = None
-    grant: tuple[str, RepositoryGrant] | None = None
-    registration: tuple[str, float] | None = None
+    pending: tuple[str, DeviceLogin] | None = None
 
 
 GITHUB_KEY = web.AppKey("web_github", GitHubActions)
@@ -684,13 +682,9 @@ async def _close_workspace_changes(app: web.Application) -> None:
 async def github_get(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
-    actions = request.app[GITHUB_KEY]
     try:
-        status = await asyncio.to_thread(actions.editor.status)
-        app = actions.editor.app()
-        return _answer(
-            True, "", {**status, "app_configured": bool(app["client_id"]), "app_slug": app["slug"]}
-        )
+        status = await asyncio.to_thread(request.app[GITHUB_KEY].editor.status)
+        return _answer(True, "", status)
     except (ConfigError, OSError) as exc:
         return _answer(False, str(exc))
 
@@ -698,175 +692,123 @@ async def github_get(request: web.Request) -> web.Response:
 async def local_git(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
-    git = request.app[GITHUB_KEY].editor
+    actions = request.app[GITHUB_KEY]
+    git = actions.editor
+    operation = request.match_info.get("action", "")
     if request.method == "GET":
         try:
-            return _answer(True, "", await asyncio.to_thread(git.local_status))
+            if operation == "diff":
+                path = request.query.get("path", "")
+                staged = request.query.get("staged") == "true"
+                data = await asyncio.to_thread(git.diff, path, staged)
+            elif operation == "branches":
+                data = await asyncio.to_thread(git.branches)
+            else:
+                data = await asyncio.to_thread(git.local_status)
+            return _answer(True, "", data)
         except (ConfigError, OSError) as exc:
             return _answer(False, str(exc))
     body = await _args(request)
-    paths, message = body.get("paths"), body.get("message")
-    if (
-        not isinstance(message, str)
-        or not isinstance(paths, list)
-        or not all(isinstance(path, str) for path in paths)
-    ):
-        return _answer(False, tr("请选择要提交的文件并填写提交说明。"))
     audit = request.app[CORE_KEY].audit
-    try:
-        revision = await asyncio.to_thread(git.commit, paths, message)
-    except (ConfigError, OSError) as exc:
-        audit.write("git_commit", user=WEB_USER, ok=False, result=str(exc))
-        return _answer(False, str(exc))
-    result = tr("已提交 {0}。", revision)
-    audit.write("git_commit", user=WEB_USER, ok=True, result=result)
-    return _answer(True, result, {"revision": revision})
+    async with actions.lock:
+        try:
+            if operation in {"stage", "unstage", "commit"}:
+                paths = body.get("paths", [])
+                if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+                    return _answer(False, tr("请选择要操作的 Git 文件。"))
+                if operation == "commit":
+                    message = body.get("message")
+                    if not isinstance(message, str):
+                        return _answer(False, tr("请填写有效的提交说明。"))
+                    revision = await asyncio.to_thread(git.commit, paths, message)
+                    data = {"revision": revision}
+                else:
+                    data = await asyncio.to_thread(git.stage, paths, operation == "stage")
+            elif operation == "init":
+                data = await asyncio.to_thread(git.initialize)
+            elif operation == "switch":
+                branch = body.get("branch")
+                if not isinstance(branch, str):
+                    return _answer(False, tr("请填写有效的 Git 分支名。"))
+                data = await asyncio.to_thread(git.switch, branch)
+            else:
+                data = await asyncio.to_thread(git.sync, operation)
+        except (ConfigError, OSError) as exc:
+            audit.write(f"git_{operation}", user=WEB_USER, ok=False, result=str(exc))
+            return _answer(False, str(exc))
+        audit.write(f"git_{operation}", user=WEB_USER, ok=True, revision=data.get("revision"))
+        return _answer(True, "", data)
 
 
 async def github_post(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
     actions = request.app[GITHUB_KEY]
+    operation = request.match_info["action"]
     body = await _args(request)
-    action = request.match_info["action"]
-    if actions.lock.locked():
-        return _answer(False, tr("GitHub 操作正在进行，请稍后再试。"))
+    audit = request.app[CORE_KEY].audit
     async with actions.lock:
-        audit = request.app[CORE_KEY].audit
         try:
-            if action == "register":
-                _editor(request.app[STORE_KEY])
-                origin = check_public_url(
-                    request.app[STORE_KEY].read().get("public_url")
-                    or f"{request.scheme}://{request.host}"
-                )
-                callback = f"{origin}/ui/github/app"
-                state = secrets.token_urlsafe(24)
-                actions.registration = state, time.monotonic() + 600
-                return _answer(
-                    True,
-                    "",
-                    {
-                        "url": f"https://github.com/settings/apps/new?state={state}",
-                        "manifest": {
-                            "name": f"QuantBot {secrets.token_hex(3)}",
-                            "url": "https://github.com/yaho7/QuantBot",
-                            "redirect_url": callback,
-                            "public": False,
-                            "hook_attributes": {"url": callback, "active": False},
-                            "default_permissions": {"contents": "write", "metadata": "read"},
-                        },
-                    },
-                )
-            if action == "app":
-                client_id, slug = body.get("client_id", ""), body.get("slug", "")
-                if not isinstance(client_id, str) or not isinstance(slug, str):
-                    return _answer(False, tr("请填写有效的 GitHub App Client ID 和应用名称。"))
-                app = await asyncio.to_thread(actions.editor.configure_app, client_id, slug)
-                actions.pending = actions.grant = None
-                actions.registration = None
-                audit.write("github", user=WEB_USER, ok=True, operation="app")
-                return _answer(True, "", {"app_configured": True, "app_slug": app["slug"]})
-            if action == "bind":
-                repo, branch, client_id = (
-                    body.get(key, "") for key in ("repo", "branch", "client_id")
-                )
-                if not all(isinstance(value, str) for value in (repo, branch, client_id)):
-                    return _answer(False, tr("请填写仓库、分支和 GitHub App Client ID。"))
-                flow = await asyncio.to_thread(actions.editor.begin, repo, branch, client_id)
-                state = secrets.token_urlsafe(16)
-                actions.pending = state, flow
-                actions.grant = None
-                return _answer(True, "", {**flow.prompt(), "state": state})
-            if action == "authorize":
+            if operation == "bind":
+                if not actions.pending or actions.pending[1].done.done():
+                    actions.pending = secrets.token_urlsafe(16), await actions.editor.begin()
+                state, login = actions.pending
+                try:
+                    code = await asyncio.wait_for(asyncio.shield(login.code), 15)
+                    if not code:
+                        raise ConfigError(tr("GitHub 授权未启动，请检查服务器网络后重试。"))
+                except asyncio.TimeoutError as exc:
+                    actions.pending = None
+                    await login.close()
+                    raise ConfigError(tr("GitHub 授权未启动，请检查服务器网络后重试。")) from exc
+                return _answer(True, "", {"url": DEVICE_URL, "code": code, "state": state})
+            if operation in {"authorize", "cancel"}:
                 if not actions.pending or body.get("state") != actions.pending[0]:
                     return _answer(False, tr("请重新开始 GitHub 授权。"))
-                _, flow = actions.pending
-                try:
-                    if flow.repo:
-                        status = await asyncio.to_thread(actions.editor.poll, flow)
-                    else:
-                        credentials = await asyncio.to_thread(actions.editor.poll_credentials, flow)
-                        if credentials is None:
-                            return _answer(True, "", {"interval": flow.interval})
-                        actions.grant = actions.pending[0], RepositoryGrant(flow, credentials)
-                        actions.pending = None
-                        return _answer(True, "", {"ready": True})
-                except (ConfigError, OSError):
+                _, login = actions.pending
+                if operation == "cancel":
+                    await login.close()
                     actions.pending = None
-                    raise
-                if status is None:
-                    return _answer(True, "", {"interval": flow.interval})
-                actions.pending = None
-                action = "bind"
-                message = tr("GitHub 已绑定。")
-            elif action in {"repositories", "select"}:
-                if not actions.grant or body.get("state") != actions.grant[0]:
-                    return _answer(False, tr("请重新开始 GitHub 授权。"))
-                grant = actions.grant[1]
-                if action == "repositories":
-                    repositories = await asyncio.to_thread(actions.editor.repositories, grant)
-                    return _answer(True, "", {"repositories": repositories})
+                    return _answer(True, "")
+                if not login.done.done():
+                    return _answer(True, "", {"ready": False})
+                if not await login.done:
+                    actions.pending = None
+                    raise ConfigError(tr("GitHub 授权未完成，请重试。"))
+                if not login.reported:
+                    audit.write("github", user=WEB_USER, ok=True, operation="login")
+                    login.reported = True
+                return _answer(True, "", {"ready": True})
+            if operation == "repositories":
+                repos = await asyncio.to_thread(actions.editor.repositories)
+                return _answer(True, "", {"repositories": repos})
+            if operation == "select":
                 repo = body.get("repo")
                 if not isinstance(repo, str):
                     return _answer(False, tr("请选择 GitHub 已授权的仓库。"))
-                status = await asyncio.to_thread(actions.editor.select_repository, grant, repo)
-                actions.grant = None
-                message = tr("GitHub 已绑定。")
-            elif action == "unbind":
-                await asyncio.to_thread(actions.editor.unbind)
+                data = await asyncio.to_thread(actions.editor.select, repo)
+                audit.write("github", user=WEB_USER, ok=True, operation="clone", repo=repo)
+                return _answer(True, "", data)
+            if actions.pending:
+                _, login = actions.pending
                 actions.pending = None
-                actions.grant = None
-                status = {"bound": False}
-                message = tr("已解除 GitHub 绑定。")
-            elif action == "branches":
-                return _answer(True, "", await asyncio.to_thread(actions.editor.branches))
-            elif action == "switch":
-                branch = body.get("branch")
-                if not isinstance(branch, str):
-                    return _answer(False, tr("请填写有效的 Git 分支名。"))
-                status = await asyncio.to_thread(actions.editor.switch, branch)
-                message = tr("已切换到分支 {0}。", branch)
-            else:
-                status = await asyncio.to_thread(actions.editor.sync, action)
-                message = {
-                    "check": tr("已检查远端状态。"),
-                    "pull": tr("已拉取。"),
-                    "push": tr("已推送。"),
-                }[action]
-        except (ConfigError, OSError) as exc:
-            audit.write("github", user=WEB_USER, ok=False, operation=action, result=str(exc))
-            return _answer(False, str(exc))
-        audit.write(
-            "github",
-            user=WEB_USER,
-            ok=True,
-            operation=action,
-            repo=status.get("repo"),
-            result=message,
-        )
-        return _answer(True, message, {"status": status})
-
-
-async def github_app_callback(request: web.Request) -> web.StreamResponse:
-    actions = request.app[GITHUB_KEY]
-    async with actions.lock:
-        pending = actions.registration
-        if (
-            not pending
-            or time.monotonic() >= pending[1]
-            or not secrets.compare_digest(
-                request.query.get("state", "").encode(), pending[0].encode()
+                await login.close()
+            await asyncio.to_thread(actions.editor.logout)
+            audit.write("github", user=WEB_USER, ok=True, operation="logout")
+            return _answer(True, "")
+        except (ConfigError, OSError, ValueError) as exc:
+            audit.write("github", user=WEB_USER, ok=False, operation=operation)
+            return _answer(
+                False, str(exc) if isinstance(exc, ConfigError) else tr("GitHub 操作失败，请重试。")
             )
-        ):
-            return web.Response(status=403, text=tr("请重新开始 GitHub 应用注册。"))
-        actions.registration = None
-        try:
-            await asyncio.to_thread(actions.editor.register_app, request.query.get("code", ""))
-        except (ConfigError, OSError) as exc:
-            return web.Response(status=400, text=str(exc))
-        request.app[CORE_KEY].audit.write("github", user=WEB_USER, ok=True, operation="register")
-    raise web.HTTPFound("/ui/?view=workspace&github=setup")
+
+
+async def _close_github(app: web.Application) -> None:
+    actions = app[GITHUB_KEY]
+    if actions.pending:
+        _, login = actions.pending
+        actions.pending = None
+        await login.close()
 
 
 def _service() -> Service | None:
@@ -1490,13 +1432,13 @@ def add_routes(
     app[CHANGES_CLOSING_KEY] = asyncio.Event()
     app.on_shutdown.append(_close_workspace_changes)
     app.on_shutdown.append(_close_terminals)
+    app.on_shutdown.append(_close_github)
     app.on_shutdown.append(_stop_workspace_program)
     app.add_routes(
         [
             web.get("/", redirect_root),
             web.get("/ui", redirect_root),
             web.get("/ui/login", login),
-            web.get("/ui/github/app", github_app_callback),
             web.post("/ui/api/login", password_login),
             web.post("/ui/api/logout", logout),
             web.post("/ui/api/password", password_change),
@@ -1528,9 +1470,13 @@ def add_routes(
             web.post("/ui/api/workspace/{action:folder|init}", workspace_setup),
             web.get("/ui/api/workspace/program", workspace_program),
             web.post("/ui/api/workspace/program/{action:configure|start|stop}", workspace_program),
-            web.post("/ui/api/editor/git/commit", local_git),
+            web.get("/ui/api/editor/git/{action:diff|branches}", local_git),
             web.post(
-                "/ui/api/editor/github/{action:app|register|bind|authorize|repositories|select|branches|switch|check|pull|push|unbind}",
+                "/ui/api/editor/git/{action:init|stage|unstage|commit|check|pull|push|switch}",
+                local_git,
+            ),
+            web.post(
+                "/ui/api/editor/github/{action:bind|authorize|cancel|repositories|select|logout}",
                 github_post,
             ),
             web.post("/ui/api/strategies/{sid}/{command}", command),

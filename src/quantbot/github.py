@@ -1,528 +1,233 @@
-"""GitHub App device authorization and explicit Git sync for the editor root."""
+"""Use GitHub CLI for authentication and GitPython for workspace Git commands."""
 
 from __future__ import annotations
 
-import base64
+import asyncio
+import difflib
 import json
 import os
 import re
+import shutil
 import subprocess
-import time
-import urllib.error
-import urllib.parse
-import urllib.request
-from collections.abc import Callable, Iterator
-from contextlib import suppress
-from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from quantbot.config import ConfigError, Store
-from quantbot.editor import Editor, editor_lock
-from quantbot.i18n import tr
+from git import Git
+from git.exc import GitError
 
+from quantbot.config import ConfigError
+from quantbot.editor import MAX_FILE, Editor, EditorError, editor_lock
+from quantbot.i18n import tr
+from quantbot.workspace import stop_process
+
+# Recognized by the uninstaller for installations which previously used a GitHub App.
 GITHUB_FILE = "github.json"
 GITHUB_APP_FILE = "github-app.json"
 DEVICE_URL = "https://github.com/login/device"
-OAUTH_URL = "https://github.com/login/oauth/access_token"
-API_URL = "https://api.github.com"
-TRACKING = "refs/quantbot/github"
+TOOLS = "/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin"
 SLUG = re.compile(r"[A-Za-z0-9-]+/[A-Za-z0-9_.-]+")
-CLIENT_ID = re.compile(r"[A-Za-z0-9._-]{8,100}")
-APP_SLUG = re.compile(r"[a-z0-9][a-z0-9-]{0,99}")
+DEVICE_CODE = re.compile(rb"\bone-time code(?::\s+|\s+\()([A-Z0-9]{4}-[A-Z0-9]{4})\b", re.I)
+LOGIN = ("auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web")
+CONFLICTS = {"DD", "AU", "UD", "UA", "DU", "AA", "UU"}
 
 
-def _request(url: str, *, form: dict[str, str] | None = None, token: str = "") -> dict[str, Any]:
-    headers = {"Accept": "application/json", "User-Agent": "QuantBot"}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    data = urllib.parse.urlencode(form).encode() if form is not None else None
-    request = urllib.request.Request(url, data=data, headers=headers)  # noqa: S310 - fixed HTTPS URLs
-    try:
-        with urllib.request.urlopen(request, timeout=15) as response:  # noqa: S310
-            result = json.load(response)
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            raise ConfigError(
-                tr("GitHub 找不到仓库。请确认 GitHub App 已获准访问该仓库。")
-            ) from exc
-        raise ConfigError(tr("GitHub 请求失败（HTTP {0}）。", exc.code)) from exc
-    except (OSError, ValueError) as exc:
-        raise ConfigError(tr("连接 GitHub 失败，请稍后再试。")) from exc
-    if not isinstance(result, dict):
-        raise ConfigError(tr("GitHub 返回的数据格式不对。"))
-    return result
+class DeviceLogin:
+    def __init__(self, process: asyncio.subprocess.Process, github: GitHubEditor) -> None:
+        self.process = process
+        self.code: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+        self.done = asyncio.create_task(self._run(github))
+        self.reported = False
 
+    async def _run(self, github: GitHubEditor) -> bool:
+        async def collect() -> bool:
+            assert self.process.stdout is not None
+            while line := await self.process.stdout.readline():
+                if not self.code.done() and (match := DEVICE_CODE.search(line)):
+                    self.code.set_result(match[1].decode("ascii"))
+            return await self.process.wait() == 0
 
-@dataclass
-class Authorization:
-    repo: str
-    branch: str
-    root: Path
-    client_id: str
-    device_code: str = field(repr=False)
-    user_code: str
-    expires: float
-    interval: int
-    next_poll: float
+        try:
+            if not await asyncio.wait_for(collect(), 900):
+                return False
+            await asyncio.to_thread(github.setup_git)
+            return True
+        except (ConfigError, OSError, asyncio.TimeoutError, ValueError):
+            return False
+        finally:
+            if not self.code.done():
+                self.code.set_result("")
+            await stop_process(self.process)
 
-    def prompt(self) -> dict[str, Any]:
-        return {"url": DEVICE_URL, "code": self.user_code, "interval": self.interval}
-
-
-@dataclass
-class RepositoryGrant:
-    flow: Authorization
-    credentials: dict[str, Any] = field(repr=False)
-    expires: float = field(default_factory=lambda: time.monotonic() + 600)
-    repositories: list[dict[str, Any]] = field(default_factory=list)
+    async def close(self) -> None:
+        await stop_process(self.process)
+        await self.done
 
 
 class GitHubEditor:
-    def __init__(
-        self,
-        data_dir: Path,
-        request: Callable[..., dict[str, Any]] = _request,
-    ) -> None:
-        self.store = Store(data_dir, filename=GITHUB_FILE)
-        self.app_store = Store(data_dir, filename=GITHUB_APP_FILE)
-        self.request = request
+    def __init__(self, data_dir: Path) -> None:
+        self.data_dir = data_dir
 
     def _editor(self) -> Editor:
-        editor = Editor.configured(self.store.dir)
+        editor = Editor.configured(self.data_dir)
         if editor is None:
-            raise ConfigError(tr("请先在服务器上启用策略编辑器。"))
+            raise ConfigError(tr("请先初始化工作区。"))
         if editor.data_dir.is_relative_to(editor.root):
             raise ConfigError(tr("请选择 QuantBot 数据目录之外的 Git 仓库。"))
         if not editor.root.is_dir() or editor.root.resolve() != editor.root:
             raise ConfigError(tr("编辑目录已变更，请在服务器上重新选择目录。"))
         return editor
 
-    def _binding(self, editor: Editor) -> dict[str, Any]:
-        data = self.store.read()
-        return data if data.get("root") == str(editor.root) else {}
-
-    def app(self) -> dict[str, Any]:
-        app = self.app_store.read()
-        client_id = (
-            app.get("client_id")
-            or os.environ.get("QUANTBOT_GITHUB_CLIENT_ID")
-            or self.store.read().get("client_id")
-            or ""
-        )
-        slug = app.get("slug") or os.environ.get("QUANTBOT_GITHUB_APP_SLUG") or ""
+    @staticmethod
+    def _context(editor: Editor) -> tuple[dict[str, str], dict[str, Any]]:
+        workspace = editor.workspace()
+        if workspace:
+            return workspace.environment(), workspace.process_options()
+        if os.geteuid() == 0:
+            raise ConfigError(tr("请先初始化工作区，以普通用户运行 Git。"))
         return {
-            "client_id": client_id
-            if isinstance(client_id, str) and CLIENT_ID.fullmatch(client_id)
-            else "",
-            "slug": slug if isinstance(slug, str) and APP_SLUG.fullmatch(slug) else "",
-        }
+            "HOME": str(Path.home()),
+            "PATH": TOOLS,
+            "LANG": "C.UTF-8",
+            **{
+                key: os.environ[key]
+                for key in ("USER", "LOGNAME", "XDG_CONFIG_HOME")
+                if key in os.environ
+            },
+        }, {"cwd": editor.root}
 
-    def configure_app(self, client_id: str, slug: str = "") -> dict[str, str]:
-        client_id = client_id.strip()
-        slug = slug.strip().removeprefix("https://github.com/apps/").rstrip("/")
-        if not CLIENT_ID.fullmatch(client_id) or (slug and not APP_SLUG.fullmatch(slug)):
-            raise ConfigError(tr("请填写有效的 GitHub App Client ID 和应用名称。"))
-        app = {"client_id": client_id, "slug": slug}
-        self.app_store.write(app)
-        return app
+    def _gh_command(self, editor: Editor, *args: str) -> tuple[list[str], dict[str, Any]]:
+        env, options = self._context(editor)
+        gh = shutil.which("gh", path=TOOLS)
+        if not gh:
+            raise ConfigError(tr("请在服务器上安装 GitHub CLI（gh）。"))
+        command = [gh, *args]
+        if workspace := editor.workspace():
+            command = workspace.command(command)
+        env.update(GH_NO_UPDATE_NOTIFIER="1", GH_PROMPT_DISABLED="1", NO_COLOR="1")
+        return command, {**options, "env": env}
 
-    def register_app(self, code: str) -> None:
-        if not re.fullmatch(r"[A-Za-z0-9_-]{8,200}", code):
-            raise ConfigError(tr("GitHub 应用注册码无效。"))
-        result = self.request(f"{API_URL}/app-manifests/{code}/conversions", form={})
-        client_id, slug = result.get("client_id"), result.get("slug")
-        if not isinstance(client_id, str) or not isinstance(slug, str):
-            raise ConfigError(tr("GitHub 没有返回应用配置。"))
-        self.configure_app(client_id, slug)
-
-    def begin(self, repo: str = "", branch: str = "", client_id: str = "") -> Authorization:
-        editor = self._editor()
-        repo = repo.strip().removeprefix("https://github.com/").rstrip("/").removesuffix(".git")
-        if repo and (not SLUG.fullmatch(repo) or repo.split("/")[1] in {".", ".."}):
-            raise ConfigError(tr("请输入 GitHub 仓库名，例如 owner/strategy。"))
-        branch = branch.strip()
-        if branch:
-            self._check_branch(editor, branch)
-        client_id = client_id.strip() or self.app()["client_id"]
-        if not CLIENT_ID.fullmatch(client_id):
-            raise ConfigError(tr("请填写启用了设备授权的 GitHub App Client ID。"))
-        result = self.request(f"{DEVICE_URL}/code", form={"client_id": client_id})
-        if result.get("error"):
-            raise ConfigError(tr("GitHub 无法启动设备授权（{0}）。", result["error"]))
-        now = time.monotonic()
+    def _gh(self, editor: Editor, *args: str, optional: bool = False) -> str:
+        command, options = self._gh_command(editor, *args)
         try:
-            interval = max(5, int(result["interval"]))
-            return Authorization(
-                repo,
-                branch,
-                editor.root,
-                client_id,
-                str(result["device_code"]),
-                str(result["user_code"]),
-                now + int(result["expires_in"]),
-                interval,
-                now + interval,
+            result = subprocess.run(  # noqa: S603
+                command,
+                **options,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                timeout=90,
+                stdin=subprocess.DEVNULL,
+                check=False,
             )
-        except (KeyError, ValueError, TypeError) as exc:
-            raise ConfigError(tr("GitHub 没有返回设备授权码。")) from exc
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise ConfigError(tr("GitHub CLI 无法完成操作，请检查服务器网络。")) from exc
+        if result.returncode and not optional:
+            raise ConfigError(tr("GitHub CLI 操作失败，请检查登录状态和仓库访问权限。"))
+        return "" if result.returncode else result.stdout.strip()
 
-    def poll(self, flow: Authorization) -> dict[str, Any] | None:
-        credentials = self.poll_credentials(flow)
-        return self._finish(flow, credentials) if credentials else None
-
-    def poll_credentials(self, flow: Authorization) -> dict[str, Any] | None:
-        now = time.monotonic()
-        if now >= flow.expires:
-            raise ConfigError(tr("GitHub 授权码已过期，请重新绑定。"))
-        if now < flow.next_poll:
-            return None
-        flow.next_poll = now + flow.interval
-        result = self.request(
-            OAUTH_URL,
-            form={
-                "client_id": flow.client_id,
-                "device_code": flow.device_code,
-                "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
-            },
+    async def begin(self) -> DeviceLogin:
+        command, options = self._gh_command(self._editor(), *LOGIN)
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            **options,
+            start_new_session=True,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
         )
-        error = result.get("error")
-        if error == "authorization_pending":
-            return None
-        if error == "slow_down":
-            flow.interval = max(flow.interval + 5, int(result.get("interval") or 0))
-            flow.next_poll = now + flow.interval
-            return None
-        if error:
-            raise ConfigError(tr("GitHub 授权未完成（{0}）。请重新绑定。", error))
-        return self._credentials(result)
+        return DeviceLogin(process, self)
 
-    def _pages(self, resource: str, key: str, token: str) -> Iterator[dict[str, Any]]:
-        page = 1
-        while True:
-            data = self.request(f"{API_URL}/{resource}?per_page=100&page={page}", token=token)
-            items = data.get(key)
-            if not isinstance(items, list):
-                raise ConfigError(tr("GitHub 返回的仓库列表格式不对。"))
-            yield from (item for item in items if isinstance(item, dict))
-            total = data.get("total_count")
-            if len(items) < 100 or (isinstance(total, int) and page * 100 >= total):
-                return
-            page += 1
+    def login(self) -> None:
+        command, options = self._gh_command(self._editor(), *LOGIN)
+        options["env"].pop("GH_PROMPT_DISABLED")
+        result = subprocess.run(command, **options, check=False)  # noqa: S603
+        if result.returncode:
+            raise ConfigError(tr("GitHub 授权未完成，请重试。"))
+        self.setup_git()
 
-    def repositories(self, grant: RepositoryGrant) -> list[dict[str, Any]]:
-        self._check_grant(grant)
-        token = grant.credentials["access_token"]
-        repositories = {}
-        for installation in self._pages("user/installations", "installations", token):
-            installation_id = installation.get("id")
-            if type(installation_id) is not int or installation.get("suspended_at"):
-                continue
-            for repo in self._pages(
-                f"user/installations/{installation_id}/repositories", "repositories", token
-            ):
-                name = repo.get("full_name")
-                if isinstance(name, str) and SLUG.fullmatch(name):
-                    repositories[name] = {"name": name, "private": bool(repo.get("private"))}
-        grant.repositories = sorted(repositories.values(), key=lambda item: item["name"].casefold())
-        return grant.repositories
+    def setup_git(self) -> None:
+        self._gh(self._editor(), "auth", "setup-git", "--hostname", "github.com")
 
-    @staticmethod
-    def _check_grant(grant: RepositoryGrant) -> None:
-        if time.monotonic() >= grant.expires or (
-            grant.credentials.get("expires") and time.time() >= grant.credentials["expires"]
-        ):
-            raise ConfigError(tr("GitHub 授权已过期，请重新绑定。"))
+    def logout(self) -> None:
+        editor = self._editor()
+        self._gh(editor, "auth", "logout", "--hostname", "github.com")
 
-    def select_repository(self, grant: RepositoryGrant, repo: str) -> dict[str, Any]:
-        self._check_grant(grant)
-        if not any(item["name"] == repo for item in grant.repositories):
-            raise ConfigError(tr("请选择 GitHub 已授权的仓库。"))
-        return self._finish(replace(grant.flow, repo=repo), grant.credentials)
-
-    @staticmethod
-    def _credentials(result: dict[str, Any]) -> dict[str, Any]:
-        token = result.get("access_token")
-        if not isinstance(token, str) or not token:
-            raise ConfigError(tr("GitHub 没有签发访问凭据，请重新授权。"))
-        lifetime = int(result.get("expires_in") or 0)
-        return {
-            "access_token": token,
-            "refresh_token": result.get("refresh_token"),
-            "expires": time.time() + lifetime if lifetime else 0,
-        }
-
-    def _token(self, binding: dict[str, Any]) -> str:
-        if not binding.get("expires") or binding["expires"] > time.time() + 60:
-            return binding["access_token"]
-        if not binding.get("refresh_token"):
-            raise ConfigError(tr("GitHub 授权已过期，请重新绑定。"))
-        result = self.request(
-            OAUTH_URL,
-            form={
-                "client_id": binding["client_id"],
-                "grant_type": "refresh_token",
-                "refresh_token": binding["refresh_token"],
-            },
+    def _account(self, editor: Editor) -> dict[str, Any]:
+        result = self._gh(
+            editor,
+            "api",
+            "--hostname",
+            "github.com",
+            "--cache",
+            "1m",
+            "user",
+            "--jq",
+            "{login: .login, id: .id}",
+            optional=True,
         )
-        binding.update(self._credentials(result))
-        self.store.write(binding)
-        return binding["access_token"]
-
-    def _finish(self, flow: Authorization, credentials: dict[str, Any]) -> dict[str, Any]:
-        with editor_lock(self.store.dir):
-            editor = self._editor()
-            if editor.root != flow.root:
-                raise ConfigError(tr("编辑目录已变更，请重新绑定。"))
-            token = credentials["access_token"]
-            repo = self.request(f"{API_URL}/repos/{flow.repo}", token=token)
-            url = f"https://github.com/{flow.repo}.git"
-            if any(editor.root.iterdir()):
-                branch = self._branch(editor)
-                if flow.branch and flow.branch != branch:
-                    raise ConfigError(tr("当前本地分支是 {0}，请切换到要绑定的分支。", branch))
-                self._git(
-                    editor, "fetch", "--no-tags", "--", url, f"refs/heads/{branch}", token=token
-                )
-                self._git(editor, "merge-base", "HEAD", "FETCH_HEAD")
-                self._git(editor, "update-ref", TRACKING, "FETCH_HEAD")
-            else:
-                branch = flow.branch or str(repo.get("default_branch") or "")
-                self._check_branch(editor, branch)
-                self._git(
-                    editor,
-                    "clone",
-                    "--single-branch",
-                    "--branch",
-                    branch,
-                    "--",
-                    url,
-                    ".",
-                    token=token,
-                )
-                self._git(editor, "update-ref", TRACKING, "HEAD")
-            binding = {
-                **credentials,
-                "repo": flow.repo,
-                "root": str(editor.root),
-                "branch": branch,
-                "client_id": flow.client_id,
-            }
-            self.store.write(binding)
-            if not self.app_store.exists():
-                self.configure_app(flow.client_id, self.app()["slug"])
-            return self._status(editor, binding)
+        try:
+            account = json.loads(result)
+        except ValueError:
+            return {}
+        if isinstance(account, dict) and isinstance(account.get("login"), str):
+            return account
+        return {}
 
     def status(self) -> dict[str, Any]:
-        with editor_lock(self.store.dir):
-            editor = self._editor()
-            return self._status(editor, self._binding(editor))
-
-    def local_status(self) -> dict[str, Any]:
-        with editor_lock(self.store.dir):
-            return self._local_status(self._editor())
-
-    def _local_status(self, editor: Editor) -> dict[str, Any]:
-        if not (editor.root / ".git").exists():
-            return {"repository": False, "branch": "", "files": []}
-        branch = self._branch(editor)
-        output = self._git(
-            editor,
-            "status",
-            "--porcelain=v1",
-            "-z",
-            "--no-renames",
-            "--untracked-files=all",
-            raw=True,
-        )
-        return {
-            "repository": True,
-            "branch": branch,
-            "files": [
-                {"path": record[3:], "status": record[:2]}
-                for record in output.split("\0")
-                if record
-            ],
-        }
-
-    def commit(self, paths: list[str], message: str) -> str:
-        message = message.strip()
-        if not message or len(message) > 1000 or "\0" in message or not paths or len(paths) > 200:
-            raise ConfigError(tr("请选择要提交的文件并填写提交说明。"))
-        with editor_lock(self.store.dir):
-            editor = self._editor()
-            files = {item["path"]: item["status"] for item in self._local_status(editor)["files"]}
-            if any(path not in files for path in paths):
-                raise ConfigError(tr("文件状态已变更，请刷新 Git 改动后重试。"))
-            if any("U" in status or status in {"AA", "DD"} for status in files.values()):
-                raise ConfigError(tr("请先在终端解决 Git 冲突。"))
-            try:
-                self._git(editor, "var", "GIT_AUTHOR_IDENT")
-                self._git(editor, "var", "GIT_COMMITTER_IDENT")
-            except ConfigError as exc:
-                raise ConfigError(
-                    tr("请先在工作区终端用 git config 设置 user.name 和 user.email。")
-                ) from exc
-            if new := [path for path in paths if files[path] == "??"]:
-                self._git(editor, "add", "--intent-to-add", "--", *new)
-            self._git(editor, "commit", "--only", "-m", message, "--", *paths)
-            return self._git(editor, "rev-parse", "--short", "HEAD")
-
-    def _status(self, editor: Editor, binding: dict[str, Any]) -> dict[str, Any]:
-        if not binding:
-            return {"bound": False}
-        result = {
-            "bound": True,
-            "repo": binding["repo"],
-            "branch": binding["branch"],
-            "client_id": binding["client_id"],
-        }
         try:
-            branch = self._branch(editor)
-            if branch != binding["branch"]:
-                raise ConfigError(tr("请切换回已绑定的本地分支 {0}。", binding["branch"]))
-            ahead, behind = self._git(
-                editor, "rev-list", "--left-right", "--count", f"HEAD...{TRACKING}"
-            ).split()
-            result.update(
-                ahead=int(ahead),
-                behind=int(behind),
-                dirty=bool(self._git(editor, "status", "--porcelain", "--untracked-files=all")),
-            )
-        except ConfigError as exc:
-            result["error"] = str(exc)
-        return result
-
-    def sync(self, action: str) -> dict[str, Any]:
-        if action not in {"check", "pull", "push"}:
-            raise ConfigError(tr("请选择检查、拉取或推送。"))
-        with editor_lock(self.store.dir):
             editor = self._editor()
-            binding = self._binding(editor)
-            if not binding:
-                raise ConfigError(tr("请先绑定 GitHub 策略仓库。"))
-            status = self._status(editor, binding)
-            if status.get("error"):
-                raise ConfigError(status["error"])
-            if action == "pull" and status["dirty"]:
-                raise ConfigError(tr("本地有未提交的改动。请先在服务器上处理这些改动。"))
-            token = self._token(binding)
-            url = f"https://github.com/{binding['repo']}.git"
-            branch = binding["branch"]
-            self._fetch(editor, url, branch, token)
-            if action == "pull":
-                self._git(editor, "merge", "--ff-only", "--no-overwrite-ignore", TRACKING)
-            if action == "push":
-                self._git(
-                    editor,
-                    "push",
-                    "--no-verify",
-                    "--",
-                    url,
-                    f"HEAD:refs/heads/{branch}",
-                    token=token,
-                )
-                self._git(editor, "update-ref", TRACKING, "HEAD")
-            return self._status(editor, binding)
+            self._context(editor)
+        except ConfigError:
+            return {"configured": False, "available": False, "account": ""}
+        available = bool(shutil.which("gh", path=TOOLS))
+        account = self._account(editor).get("login", "") if available else ""
+        return {"configured": True, "available": available, "account": account}
 
-    def branches(self) -> dict[str, Any]:
-        with editor_lock(self.store.dir):
-            editor = self._editor()
-            binding = self._binding(editor)
-            if not binding:
-                raise ConfigError(tr("请先绑定 GitHub 策略仓库。"))
-            url = f"https://github.com/{binding['repo']}.git"
-            refs = self._git(editor, "ls-remote", "--heads", "--", url, token=self._token(binding))
-            prefix = "refs/heads/"
-            branches = {
-                ref.removeprefix(prefix)
-                for line in refs.splitlines()
-                if (ref := line.partition("\t")[2]).startswith(prefix)
-            }
-            return {"current": self._branch(editor), "branches": sorted(branches, key=str.casefold)}
-
-    def switch(self, branch: str) -> dict[str, Any]:
-        with editor_lock(self.store.dir):
-            editor = self._editor()
-            binding = self._binding(editor)
-            if not binding:
-                raise ConfigError(tr("请先绑定 GitHub 策略仓库。"))
-            self._check_branch(editor, branch)
-            if self._git(editor, "status", "--porcelain", "--untracked-files=all"):
-                raise ConfigError(tr("请先提交或处理本地改动，再切换分支。"))
-            current = self._branch(editor)
-            previous = self._git(editor, "rev-parse", "--verify", TRACKING)
-            url = f"https://github.com/{binding['repo']}.git"
-            ref = f"refs/heads/{branch}"
-            self._git(editor, "fetch", "--no-tags", "--", url, ref, token=self._token(binding))
-            remote = self._git(editor, "rev-parse", "--verify", "FETCH_HEAD")
-            checkout = ("switch", "--no-guess", "--no-overwrite-ignore")
-            if current != branch:
-                local = self._git(editor, "for-each-ref", "--format=%(refname)", ref).splitlines()
-                args = ("--", branch) if ref in local else ("--create", branch, remote)
-                self._git(editor, *checkout, *args)
-            updated = {**binding, "branch": branch}
-            try:
-                self._git(editor, "update-ref", TRACKING, remote)
-                self.store.write(updated)
-            except (ConfigError, OSError):
-                with suppress(ConfigError):
-                    self._git(editor, "update-ref", TRACKING, previous)
-                if current != branch:
-                    with suppress(ConfigError):
-                        self._git(editor, *checkout, "--", current)
-                raise
-            return self._status(editor, updated)
-
-    def unbind(self) -> None:
-        with editor_lock(self.store.dir):
-            if not self.app_store.exists() and (app := self.app())["client_id"]:
-                self.configure_app(app["client_id"], app["slug"])
-            self.store.path.unlink(missing_ok=True)
-
-    def _branch(self, editor: Editor) -> str:
-        git_dir = editor.root / ".git"
-        if not git_dir.is_dir() or git_dir.is_symlink():
-            raise ConfigError(tr("编辑目录需要是空文件夹，或现有 Git 仓库的根目录。"))
-        if Path(self._git(editor, "rev-parse", "--show-toplevel")) != editor.root:
-            raise ConfigError(tr("请选择 Git 仓库的根目录。"))
-        return self._git(editor, "symbolic-ref", "--short", "HEAD")
-
-    def _check_branch(self, editor: Editor, branch: str) -> None:
-        if not branch or branch.startswith("-"):
-            raise ConfigError(tr("请填写有效的 Git 分支名。"))
-        self._git(editor, "check-ref-format", f"refs/heads/{branch}")
-
-    def _fetch(self, editor: Editor, url: str, branch: str, token: str) -> None:
-        self._git(
-            editor, "fetch", "--no-tags", "--", url, f"+refs/heads/{branch}:{TRACKING}", token=token
+    def repositories(self) -> list[dict[str, Any]]:
+        output = self._gh(
+            self._editor(),
+            "api",
+            "--hostname",
+            "github.com",
+            "--paginate",
+            "user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member",
+            "--jq",
+            ".[] | {name: .full_name, private: .private}",
         )
+        return [json.loads(line) for line in output.splitlines() if line]
+
+    def select(self, repo: str) -> dict[str, Any]:
+        if not SLUG.fullmatch(repo) or repo.split("/")[1] in {".", ".."}:
+            raise ConfigError(tr("请选择 GitHub 已授权的仓库。"))
+        with editor_lock(self.data_dir):
+            editor = self._editor()
+            if any(editor.root.iterdir()):
+                if self._repository(editor) and self._origin(editor).casefold() == repo.casefold():
+                    self.setup_git()
+                    return self._local_status(editor)
+                raise ConfigError(tr("请选择空工作区克隆仓库，或使用当前 Git 仓库的远端。"))
+            self.setup_git()
+            self._gh(editor, "repo", "clone", repo, ".", "--", "--no-recurse-submodules")
+            return self._local_status(editor)
 
     @staticmethod
-    def _git(editor: Editor, *args: str, token: str = "", raw: bool = False) -> str:
-        workspace = editor.workspace()
-        env = (
-            workspace.environment()
-            if workspace
-            else {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    def _git(editor: Editor, *args: str, raw: bool = False, optional: bool = False) -> str:
+        env, options = GitHubEditor._context(editor)
+        options.pop("cwd")
+        env.update(
+            GIT_TERMINAL_PROMPT="0",
+            GIT_LITERAL_PATHSPECS="1",
+            GIT_OPTIONAL_LOCKS="0",
+            GH_PROMPT_DISABLED="1",
         )
-        env["GIT_TERMINAL_PROMPT"] = "0"
-        env["GIT_LITERAL_PATHSPECS"] = "1"
-        if token:
-            credentials = base64.b64encode(f"x-access-token:{token}".encode()).decode("ascii")
-            env.update(
-                GIT_CONFIG_COUNT="1",
-                GIT_CONFIG_KEY_0="http.https://github.com/.extraheader",
-                GIT_CONFIG_VALUE_0=f"Authorization: Basic {credentials}",
-            )
+        git = shutil.which("git", path=TOOLS)
+        if not git:
+            raise ConfigError(tr("请在服务器上安装 Git。"))
         command = [
-            "git",
-            "-C",
-            str(editor.root),
-            "-c",
-            "credential.helper=",
-            "-c",
-            "credential.https://github.com.helper=",
+            "/usr/bin/env",
+            "-i",
+            *(f"{key}={value}" for key, value in env.items()),
+            git,
             "-c",
             "core.hooksPath=/dev/null",
             "-c",
@@ -539,24 +244,232 @@ class GitHubEditor:
             "http.followRedirects=false",
             *args,
         ]
-        options = workspace.process_options() if workspace else {}
-        if workspace:
+        if workspace := editor.workspace():
             command = workspace.command(command)
         try:
-            done = subprocess.run(  # noqa: S603
+            status, output, _ = Git(editor.root).execute(
                 command,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=90,
-                check=False,
+                with_extended_output=True,
+                with_exceptions=False,
+                stdout_as_string=False,
+                strip_newline_in_stdout=False,
+                kill_after_timeout=90,
                 **options,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except (GitError, OSError) as exc:
             raise ConfigError(tr("Git 无法完成操作，请检查服务器上的 Git 和网络连接。")) from exc
-        if done.returncode:
-            output = done.stderr.strip()
-            if token:
-                output = output.replace(token, "***").replace(credentials, "***")
-            raise ConfigError(tr("Git {0} 失败。{1}", args[0], output[-800:]))
-        return done.stdout if raw else done.stdout.strip()
+        if status:
+            if optional:
+                return ""
+            raise ConfigError(tr("Git {0} 失败。请检查工作区状态和远端权限。", args[0]))
+        try:
+            decoded = output.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ConfigError(tr("这个 Git 文件无法作为 UTF-8 文本显示。")) from exc
+        return decoded if raw else decoded.strip()
+
+    @staticmethod
+    def _repository(editor: Editor) -> bool:
+        git_dir = editor.root / ".git"
+        return git_dir.is_dir() and not git_dir.is_symlink()
+
+    def _require_repo(self, editor: Editor) -> None:
+        if not self._repository(editor):
+            raise ConfigError(tr("工作区里还没有 Git 仓库。"))
+
+    def _branch(self, editor: Editor) -> str:
+        return self._git(editor, "symbolic-ref", "--short", "HEAD", optional=True)
+
+    def _origin(self, editor: Editor) -> str:
+        origin = self._git(editor, "remote", "get-url", "origin", optional=True)
+        for prefix in ("https://github.com/", "git@github.com:", "ssh://git@github.com/"):
+            if origin.startswith(prefix):
+                repo = origin.removeprefix(prefix).removesuffix(".git")
+                return repo if SLUG.fullmatch(repo) else ""
+        return ""
+
+    def _local_status(self, editor: Editor) -> dict[str, Any]:
+        if not self._repository(editor):
+            return {"repository": False, "branch": "", "files": [], "remote": False}
+        branch = self._branch(editor)
+        files = self._git(
+            editor,
+            "status",
+            "--porcelain=v1",
+            "-z",
+            "--no-renames",
+            "--untracked-files=all",
+            raw=True,
+        )
+        upstream = self._git(editor, "rev-parse", "--abbrev-ref", "@{upstream}", optional=True)
+        counts = (
+            self._git(
+                editor,
+                "rev-list",
+                "--left-right",
+                "--count",
+                "HEAD...@{upstream}",
+                optional=True,
+            )
+            if upstream
+            else ""
+        )
+        ahead, behind = map(int, counts.split()) if counts else (0, 0)
+        return {
+            "repository": True,
+            "branch": branch,
+            "ahead": ahead,
+            "behind": behind,
+            "repo": self._origin(editor),
+            "remote": bool(self._git(editor, "remote", "get-url", "origin", optional=True)),
+            "files": [{"path": row[3:], "status": row[:2]} for row in files.split("\0") if row],
+        }
+
+    def local_status(self) -> dict[str, Any]:
+        return self._local_status(self._editor())
+
+    def initialize(self) -> dict[str, Any]:
+        with editor_lock(self.data_dir):
+            editor = self._editor()
+            if not self._repository(editor):
+                if (editor.root / ".git").exists() or (editor.root / ".git").is_symlink():
+                    raise ConfigError(tr("请选择 Git 仓库的根目录。"))
+                self._git(editor, "init", "--initial-branch=main")
+            return self._local_status(editor)
+
+    def _validate_paths(self, editor: Editor, paths: list[str]) -> dict[str, str]:
+        if not paths or len(paths) > 200:
+            raise ConfigError(tr("请选择要操作的 Git 文件。"))
+        self._require_repo(editor)
+        files = {row["path"]: row["status"] for row in self._local_status(editor)["files"]}
+        for path in paths:
+            editor._file_parts(path)
+            if path not in files:
+                raise ConfigError(tr("文件状态已变更，请刷新 Git 改动后重试。"))
+        return files
+
+    def stage(self, paths: list[str], staged: bool) -> dict[str, Any]:
+        with editor_lock(self.data_dir):
+            editor = self._editor()
+            self._validate_paths(editor, paths)
+            if staged:
+                self._git(editor, "add", "--", *paths)
+            elif self._git(editor, "rev-parse", "--verify", "HEAD", optional=True):
+                self._git(editor, "reset", "--quiet", "HEAD", "--", *paths)
+            else:
+                self._git(editor, "rm", "--cached", "--force", "--ignore-unmatch", "--", *paths)
+            return self._local_status(editor)
+
+    def _blob(self, editor: Editor, revision: str) -> str:
+        size = self._git(editor, "cat-file", "-s", revision, optional=True)
+        if not size:
+            return ""
+        if int(size) > MAX_FILE:
+            raise ConfigError(tr("文件超过 256 KiB，无法在网页编辑。"))
+        content = self._git(editor, "cat-file", "blob", revision, raw=True)
+        if "\0" in content:
+            raise ConfigError(tr("这个 Git 文件无法作为 UTF-8 文本显示。"))
+        return content
+
+    def diff(self, path: str, staged: bool) -> dict[str, str]:
+        editor = self._editor()
+        files = self._validate_paths(editor, [path])
+        index = self._blob(editor, ":" + path)
+        if staged:
+            return {"before": self._blob(editor, "HEAD:" + path), "after": index}
+        try:
+            current = "" if files[path][1] == "D" else editor.read(path).content
+        except OSError as exc:
+            raise EditorError(tr("无法打开这个路径，请检查文件是否存在且可读。")) from exc
+        return {"before": index, "after": current}
+
+    def unified_diff(self, path: str, staged: bool) -> str:
+        change = self.diff(path, staged)
+        return "".join(
+            difflib.unified_diff(
+                change["before"].splitlines(keepends=True),
+                change["after"].splitlines(keepends=True),
+                fromfile="a/" + path,
+                tofile="b/" + path,
+            )
+        )
+
+    def commit(self, paths: list[str], message: str) -> str:
+        message = message.strip()
+        if not message or len(message) > 1000 or "\0" in message:
+            raise ConfigError(tr("请填写有效的提交说明。"))
+        with editor_lock(self.data_dir):
+            editor = self._editor()
+            self._require_repo(editor)
+            files = {row["path"]: row["status"] for row in self._local_status(editor)["files"]}
+            if paths:
+                self._validate_paths(editor, paths)
+            elif not any(value[0] not in {" ", "?"} for value in files.values()):
+                raise ConfigError(tr("请先暂存要提交的文件。"))
+            if any(value in CONFLICTS for value in files.values()):
+                raise ConfigError(tr("请先在终端解决 Git 冲突。"))
+            identity = self._git(editor, "var", "GIT_AUTHOR_IDENT", optional=True)
+            identity_args: list[str] = []
+            if not identity:
+                account = self._account(editor) if shutil.which("gh", path=TOOLS) else {}
+                login, user_id = account.get("login"), account.get("id")
+                if not isinstance(login, str) or not isinstance(user_id, int):
+                    raise ConfigError(
+                        tr("请先在工作区终端用 git config 设置 user.name 和 user.email。")
+                    )
+                identity_args = [
+                    "-c",
+                    f"user.name={login}",
+                    "-c",
+                    f"user.email={user_id}+{login}@users.noreply.github.com",
+                ]
+            if new := [path for path in paths if files[path] == "??"]:
+                self._git(editor, "add", "--intent-to-add", "--", *new)
+            selection = ("--only", "--", *paths) if paths else ()
+            self._git(editor, *identity_args, "commit", "-m", message, *selection)
+            return self._git(editor, "rev-parse", "--short", "HEAD")
+
+    def branches(self) -> dict[str, Any]:
+        editor = self._editor()
+        self._require_repo(editor)
+        local = self._git(editor, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+        refs = self._git(editor, "for-each-ref", "--format=%(refname:short)", "refs/remotes/origin")
+        names = set(local.splitlines()) | {
+            name.removeprefix("origin/") for name in refs.splitlines() if name != "origin/HEAD"
+        }
+        return {"current": self._branch(editor), "branches": sorted(names, key=str.casefold)}
+
+    def switch(self, branch: str) -> dict[str, Any]:
+        with editor_lock(self.data_dir):
+            editor = self._editor()
+            status = self._local_status(editor)
+            self._require_repo(editor)
+            if not branch or branch.startswith("-") or branch not in self.branches()["branches"]:
+                raise ConfigError(tr("请填写有效的 Git 分支名。"))
+            if status["files"]:
+                raise ConfigError(tr("请先提交或处理本地改动，再切换分支。"))
+            self._git(editor, "switch", "--no-overwrite-ignore", "--", branch)
+            return self._local_status(editor)
+
+    def sync(self, action: str) -> dict[str, Any]:
+        with editor_lock(self.data_dir):
+            editor = self._editor()
+            status = self._local_status(editor)
+            if not status["remote"]:
+                raise ConfigError(tr("请先在工作区配置 Git 远端。"))
+            branch = status["branch"]
+            if action == "check":
+                self._git(editor, "fetch", "--prune", "--", "origin")
+            elif not branch:
+                raise ConfigError(tr("请选择当前 Git 分支。"))
+            elif action == "pull":
+                if status["files"]:
+                    raise ConfigError(tr("本地有未提交的改动。请先在服务器上处理这些改动。"))
+                self._git(
+                    editor, "pull", "--ff-only", "--no-recurse-submodules", "--", "origin", branch
+                )
+            elif action == "push":
+                self._git(
+                    editor, "push", "--set-upstream", "--", "origin", f"HEAD:refs/heads/{branch}"
+                )
+            return self._local_status(editor)

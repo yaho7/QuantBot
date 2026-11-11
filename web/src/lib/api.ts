@@ -95,23 +95,22 @@ export interface SourceFile {
 export type FileAction = "file" | "folder" | "move" | "copy" | "delete";
 
 export interface GitHubStatus {
-  bound: boolean;
-  app_configured?: boolean;
-  app_slug?: string;
-  repo?: string;
-  branch?: string;
-  client_id?: string;
-  ahead?: number;
-  behind?: number;
-  dirty?: boolean;
-  error?: string;
+  configured: boolean;
+  available: boolean;
+  account: string;
 }
 
 export interface LocalGitStatus {
   repository: boolean;
   branch: string;
+  remote: boolean;
+  repo?: string;
+  ahead?: number;
+  behind?: number;
   files: { path: string; status: string }[];
 }
+
+export type GitAction = "init" | "stage" | "unstage" | "check" | "pull" | "push" | "switch";
 
 export interface WorkspaceProgramStatus {
   command: string;
@@ -128,7 +127,6 @@ export interface GitHubAuthorization {
   url: string;
   code: string;
   state: string;
-  interval: number;
 }
 
 export interface GitHubRepository {
@@ -221,20 +219,20 @@ export const api = {
     answerData<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
   githubBind: () => answerData<GitHubAuthorization>("POST", "editor/github/bind"),
   githubAuthorize: (state: string) =>
-    answerData<{ ready?: boolean; interval?: number }>("POST", "editor/github/authorize", { state }),
-  githubRepositories: (state: string) =>
-    answerData<{ repositories: GitHubRepository[] }>("POST", "editor/github/repositories", { state }),
-  githubSelect: (state: string, repo: string) =>
-    answerData<{ status: GitHubStatus }>("POST", "editor/github/select", { state, repo }),
-  githubBranches: () => answerData<{ current: string; branches: string[] }>("POST", "editor/github/branches"),
-  githubSwitch: (branch: string) =>
-    answerData<{ status: GitHubStatus }>("POST", "editor/github/switch", { branch }),
-  githubRegister: () =>
-    answerData<{ url: string; manifest: object }>("POST", "editor/github/register"),
-  githubConfigure: (client_id: string, slug: string) =>
-    answerData<{ app_configured: boolean; app_slug: string }>("POST", "editor/github/app", { client_id, slug }),
-  githubSync: (action: "check" | "pull" | "push" | "unbind") =>
-    answerData<{ status: GitHubStatus }>("POST", `editor/github/${action}`),
+    answerData<{ ready: boolean }>("POST", "editor/github/authorize", { state }),
+  githubCancel: (state: string) => answerData<null>("POST", "editor/github/cancel", { state }),
+  githubLogout: () => answerData<null>("POST", "editor/github/logout"),
+  githubRepositories: () =>
+    answerData<{ repositories: GitHubRepository[] }>("POST", "editor/github/repositories"),
+  githubSelect: (repo: string) =>
+    answerData<LocalGitStatus>("POST", "editor/github/select", { repo }),
+  gitBranches: () => answerData<{ current: string; branches: string[] }>("GET", "editor/git/branches"),
+  gitDiff: (path: string, staged: boolean) =>
+    answerData<{ before: string; after: string }>(
+      "GET", `editor/git/diff?${new URLSearchParams({ path, staged: String(staged) })}`,
+    ),
+  gitAction: (action: GitAction, body?: { paths?: string[]; branch?: string }) =>
+    answerData<LocalGitStatus>("POST", `editor/git/${action}`, body),
   saveSettings: (body: Partial<Record<keyof Settings | "token" | "remove_telegram", unknown>>) =>
     request<Answer>("POST", "settings", body),
   command: <T = unknown>(sid: string, name: Command, args: Record<string, unknown> = {}) =>

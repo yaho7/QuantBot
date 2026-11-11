@@ -18,7 +18,7 @@ from quantbot.audit import Audit
 from quantbot.config import Store, StrategyConfig
 from quantbot.core import Core
 from quantbot.editor import EDITOR_FILE, Editor
-from quantbot.github import DEVICE_URL, Authorization
+from quantbot.github import DEVICE_URL, GitHubEditor
 from quantbot.hub import Hub
 from quantbot.server import make_app
 from quantbot.updates import Installed, Updater
@@ -348,136 +348,69 @@ def test_workspace_file_operations_and_external_refresh(tmp_path: Path) -> None:
     scenario(test, tmp_path / "audit.jsonl")
 
 
-def test_github_web_authorization_and_sync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    pending = Authorization(
-        "acme/strategy",
-        "main",
-        tmp_path,
-        "Iv1.example",
-        "server-only-device-code",
-        "ABCD-1234",
-        100,
-        5,
-        0,
-    )
-    status = {
-        "bound": True,
-        "repo": pending.repo,
-        "branch": pending.branch,
-        "ahead": 0,
-        "behind": 0,
-    }
-    syncs = []
-    fake = SimpleNamespace(
-        begin=lambda *args: pending,
-        poll=lambda flow: status,
-        status=lambda: {"bound": False},
-        app=lambda: {"client_id": "", "slug": ""},
-        sync=lambda action: syncs.append(action) or status,
-        unbind=lambda: None,
-    )
-    monkeypatch.setattr("quantbot.web.GitHubEditor", lambda path: fake)
-
-    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
-        url = "/ui/api/editor/github"
-        assert (await client.get(url)).status == 401
-        await client.get(f"/ui/login?t={auth.link_token()}")
-        assert (await client.post(url + "/bind")).status == 403
-        result = await (await client.get(url)).json()
-        assert result["ok"] and not result["data"]["bound"]
-        response = await client.post(
-            url + "/bind", headers=CSRF, json={"repo": pending.repo, "client_id": pending.client_id}
-        )
-        result = await response.json()
-        assert result["ok"] and result["data"]["url"] == DEVICE_URL
-        assert result["data"]["code"] == pending.user_code
-        assert pending.device_code not in await response.text()
-        refused = await (
-            await client.post(url + "/authorize", headers=CSRF, json={"state": "stale"})
-        ).json()
-        assert not refused["ok"]
-        bound = await (
-            await client.post(
-                url + "/authorize", headers=CSRF, json={"state": result["data"]["state"]}
-            )
-        ).json()
-        assert bound["data"]["status"] == status
-        for action in ("check", "pull", "push", "unbind"):
-            assert (await (await client.post(url + "/" + action, headers=CSRF)).json())["ok"]
-        assert syncs == ["check", "pull", "push"]
-        assert read_audit(tmp_path / "audit.jsonl", 1)[0]["operation"] == "unbind"
-
-    scenario(test, tmp_path / "audit.jsonl")
-
-
-def test_github_web_registers_app_and_lists_authorized_repositories(
+def test_github_web_official_device_authorization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from urllib.parse import parse_qs, urlsplit
+    flows = []
+    cloned = []
 
-    from quantbot.github import API_URL, GitHubEditor
+    class Login:
+        reported = False
 
-    state_dir = tmp_path / "settings"
-    root = tmp_path / "workspace"
-    root.mkdir()
-    Editor.enable(state_dir, str(root))
+        def __init__(self) -> None:
+            loop = asyncio.get_running_loop()
+            self.code = loop.create_future()
+            self.code.set_result("ABCD-EFGH")
+            self.done = loop.create_future()
 
-    def request(url: str, *, form: dict[str, Any] | None = None, token: str = "") -> dict[str, Any]:
-        if url == f"{API_URL}/app-manifests/registered-code/conversions":
-            assert form == {}
-            return {"client_id": "Iv1.example", "slug": "quantbot-test", "pem": "unused-private"}
-        if url == f"{DEVICE_URL}/code":
-            assert form == {"client_id": "Iv1.example"}
-            return {
-                "device_code": "server-code",
-                "user_code": "AAAA-BBBB",
-                "interval": 5,
-                "expires_in": 120,
-            }
-        assert token == "server-token"
-        if url.startswith(f"{API_URL}/user/installations?"):
-            return {"installations": [{"id": 3}]}
-        assert url.startswith(f"{API_URL}/user/installations/3/repositories?")
-        return {"repositories": [{"full_name": "acme/private-strategy", "private": True}]}
+        async def close(self) -> None:
+            if not self.done.done():
+                self.done.set_result(False)
 
-    github = GitHubEditor(state_dir, request=request)
-    monkeypatch.setattr("quantbot.web.GitHubEditor", lambda path: github)
-    monkeypatch.setattr(github, "poll_credentials", lambda flow: {"access_token": "server-token"})
+    async def begin(github: GitHubEditor) -> Login:
+        login = Login()
+        flows.append(login)
+        return login
+
+    monkeypatch.setattr(GitHubEditor, "begin", begin)
     monkeypatch.setattr(
-        github,
-        "_finish",
-        lambda flow, credentials: {"bound": True, "repo": flow.repo, "branch": "main"},
+        GitHubEditor,
+        "repositories",
+        lambda self: [
+            {"name": "acme/private", "private": True},
+        ],
+    )
+    monkeypatch.setattr(
+        GitHubEditor, "select", lambda self, repo: cloned.append(repo) or {"repo": repo}
     )
 
     async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
-        url = "/ui/api/editor/github"
+        base = "/ui/api/editor/github"
+        assert (await client.post(f"{base}/bind", headers=CSRF)).status == 401
         await client.get(f"/ui/login?t={auth.link_token()}")
-        registration = await (await client.post(url + "/register", headers=CSRF)).json()
-        manifest = registration["data"]["manifest"]
-        assert manifest["redirect_url"].endswith("/ui/github/app")
-        assert manifest["hook_attributes"] == {"url": manifest["redirect_url"], "active": False}
-        state = parse_qs(urlsplit(registration["data"]["url"]).query)["state"][0]
-        callback = "/ui/github/app?code=registered-code&state="
-        assert (await client.get(callback + "wrong", allow_redirects=False)).status == 403
-        saved = await client.get(callback + state, allow_redirects=False)
-        assert saved.headers["Location"] == "/ui/?view=workspace&github=setup"
-        assert "unused-private" not in github.app_store.path.read_text()
-        assert (await client.get(callback + state, allow_redirects=False)).status == 403
-        bind = await (await client.post(url + "/bind", headers=CSRF)).json()
-        session = {"state": bind["data"]["state"]}
-        poll = await (await client.post(url + "/authorize", json=session, headers=CSRF)).json()
-        assert poll["data"] == {"ready": True}
-        result = await client.post(url + "/repositories", json=session, headers=CSRF)
-        listing = await result.json()
-        assert listing["data"]["repositories"] == [
-            {"name": "acme/private-strategy", "private": True}
+
+        async def post(action: str, **body: str) -> Any:
+            return await (await client.post(f"{base}/{action}", headers=CSRF, json=body)).json()
+
+        first = (await post("bind"))["data"]
+        assert first["url"] == DEVICE_URL and first["code"] == "ABCD-EFGH"
+        assert set(first) == {"url", "code", "state"}
+        assert not (await post("authorize", state="wrong"))["ok"]
+        assert (await post("authorize", state=first["state"]))["data"] == {"ready": False}
+        assert (await post("cancel", state=first["state"]))["ok"]
+        assert not await flows[0].done
+
+        second = (await post("bind"))["data"]
+        assert second["state"] != first["state"]
+        flows[1].done.set_result(True)
+        for _ in range(2):
+            assert (await post("authorize", state=second["state"]))["data"] == {"ready": True}
+        assert (await post("repositories"))["data"]["repositories"] == [
+            {"name": "acme/private", "private": True},
         ]
-        assert "server-token" not in await result.text()
-        for repo, ok in (("acme/other", False), ("acme/private-strategy", True)):
-            selected = await client.post(
-                url + "/select", json={**session, "repo": repo}, headers=CSRF
-            )
-            assert (await selected.json())["ok"] is ok
+        assert (await post("select", repo="acme/private"))["data"]["repo"] == "acme/private"
+        assert cloned == ["acme/private"]
+        assert "ABCD-EFGH" not in (tmp_path / "audit.jsonl").read_text()
 
     scenario(test, tmp_path / "audit.jsonl")
 

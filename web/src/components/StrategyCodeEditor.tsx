@@ -41,7 +41,7 @@ const highlighting = syntaxHighlighting(HighlightStyle.define([
   { tag: [tags.className, tags.function(tags.definition(tags.variableName))], fontWeight: "600" },
 ]));
 
-export function StrategyCodeEditor({ path, initial, onChange, disabled, jump }: {
+export default function StrategyCodeEditor({ path, initial, onChange, disabled, jump }: {
   path: string;
   initial: string;
   onChange: (code: string) => void;
