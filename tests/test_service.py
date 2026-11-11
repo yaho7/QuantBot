@@ -35,6 +35,10 @@ def test_systemd_user_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     notes = service.install("/home/yaho/.local/bin/quantbot", tmp_path / "data")
     unit = service.path.read_text()
     assert service.path == tmp_path / "cfg/systemd/user/quantbot.service"
+    assert service.configured_instance() == (
+        Path("/home/yaho/.local/bin/quantbot"),
+        tmp_path / "data",
+    )
     assert "ExecStart=/home/yaho/.local/bin/quantbot run" in unit
     assert f"Environment=QB_DATA_DIR={tmp_path / 'data'}" in unit
     assert "Restart=always" in unit and "WantedBy=default.target" in unit

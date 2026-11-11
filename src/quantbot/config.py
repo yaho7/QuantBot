@@ -30,6 +30,7 @@ STRATEGY_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 BOT_TOKEN = re.compile(r"^\d{5,}:[A-Za-z0-9_-]{30,}$")
 MIN_TOKEN = 16
 FILE_NAME = "quantbot.json"
+USED_LINKS_FILE = "used-web-links.json"
 LOCALHOST = "127.0.0.1"
 PORT_RANGE = (20000, 39999)  # below most systems' range for outgoing connections
 
@@ -57,6 +58,15 @@ def check_listen(listen: str) -> str:
     if not host or not port.isdigit() or not 1 <= int(port) <= 65535:
         raise ConfigError(tr("监听地址 {0!r} 不对，要像 127.0.0.1:23456", listen))
     return f"{host}:{int(port)}"
+
+
+def local_origin(listen: str) -> str:
+    host, _, port = listen.rpartition(":")
+    if host in {"0.0.0.0", "::", ""}:  # noqa: S104
+        host = LOCALHOST
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"http://{host}:{port}"
 
 
 class ConfigError(ValueError):

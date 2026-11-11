@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import stat
+import subprocess
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,7 @@ import pytest
 from quantbot.cli import Console, TelegramError, main, parser
 from quantbot.config import ConfigError, Store, StrategyConfig
 from quantbot.hub import Hub
-from quantbot.service import ServiceError
+from quantbot.service import Service, ServiceError
 from quantbot.web import check_password
 
 BOT = "123456789:" + "A" * 35
@@ -110,6 +111,97 @@ def run(
     io = Script(answers or [], tty=kw.pop("tty", True))
     api = kw.pop("api", FakeTelegram([message()]))
     return main(argv, io=io, api=api, store=store), io
+
+
+@pytest.fixture
+def installed_qb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    prefix = tmp_path / "uv tools" / "quantbot"
+    entry = prefix / "bin" / "quantbot"
+    entry.parent.mkdir(parents=True)
+    entry.touch(mode=0o700)
+    (prefix / "uv-receipt.toml").touch()
+    command = tmp_path / "bin" / "quantbot"
+    command.unlink()
+    command.symlink_to(entry)
+    qb = command.with_name("qb")
+    qb.symlink_to(command.name)
+    monkeypatch.setattr("sys.argv", [str(qb)])
+    monkeypatch.setattr("quantbot.uninstall.sys.prefix", str(prefix))
+    monkeypatch.setattr("quantbot.uninstall.find_uv", lambda: "/test/uv")
+    return qb
+
+
+def test_qb_uninstall_menu_defaults_to_cancel(
+    tmp_path: Path, installed_qb: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("QUANTBOT_LANG", raising=False)
+    store = Store(tmp_path / "quantbot")
+    store.write({"language": "en"})
+    code, io = run(store, [], ["4", ""])
+    assert code == 1
+    assert "4. Completely uninstall QuantBot" in io.text()
+    assert str(store.dir) in io.text()
+    assert "Completely uninstall QuantBot? [y/N]" in io.text()
+    assert store.exists()
+    assert installed_qb.is_symlink()
+
+
+def test_qb_full_uninstall_removes_service_and_owned_state(
+    tmp_path: Path, installed_qb: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = Store(tmp_path / "quantbot")
+    store.write({"language": "zh"})
+    managed = Store(tmp_path / "service data")
+    managed.write({"language": "zh"})
+    (managed.dir / "github.json").write_text("{}")
+    (managed.dir / "audit.jsonl").touch()
+    (store.dir / "strategy.py").touch()
+    (store.dir / ".git").mkdir()
+    service = Service(
+        "launchd",
+        tmp_path / "service home",
+        lambda cmd: subprocess.CompletedProcess(cmd, 0, "", ""),
+    )
+    service.install(str(installed_qb.with_name("quantbot")), managed.dir)
+    service.log_file.touch()
+    monkeypatch.setattr("quantbot.cli.detect_service", lambda: service)
+
+    def uninstall_uv(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        assert cmd == ["/test/uv", "tool", "uninstall", "quantbot"]
+        assert kwargs["env"]["UV_TOOL_BIN_DIR"] == str(installed_qb.parent)
+        assert kwargs["env"]["UV_TOOL_DIR"] == str(tmp_path / "uv tools")
+        assert not service.installed()
+        assert not store.exists() and not managed.exists()
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr("quantbot.uninstall.subprocess.run", uninstall_uv)
+    code, io = run(store, [], ["4", "y"])
+    assert code == 0
+    assert str(managed.dir) in io.text()
+    assert not service.log_file.exists()
+    assert not installed_qb.is_symlink()
+    assert not list(managed.dir.iterdir())
+    assert {path.name for path in store.dir.iterdir()} == {"strategy.py", ".git"}
+
+
+def test_uninstall_preserves_data_when_service_stop_fails(
+    tmp_path: Path, installed_qb: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = Store(tmp_path / "quantbot")
+    store.write({})
+    service = Service(
+        "launchd",
+        tmp_path / "service home",
+        lambda cmd: subprocess.CompletedProcess(cmd, int("bootout" in cmd), "", "failed"),
+    )
+    service.install(str(installed_qb.with_name("quantbot")), store.dir)
+    monkeypatch.setattr("quantbot.cli.detect_service", lambda: service)
+    code, io = run(store, ["uninstall", "--yes"])
+    assert code == 1
+    assert "launchctl bootout" in io.text()
+    assert service.installed()
+    assert store.exists()
+    assert installed_qb.is_symlink()
 
 
 def test_cli_colors_only_terminal_output(monkeypatch: pytest.MonkeyPatch) -> None:

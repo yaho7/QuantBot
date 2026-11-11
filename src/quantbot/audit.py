@@ -8,12 +8,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+AUDIT_FILE = "audit.jsonl"
+
 
 class Audit:
     def __init__(self, directory: str | Path) -> None:
         self.dir = Path(directory)
         self.dir.mkdir(parents=True, exist_ok=True)
-        self.path = self.dir / "audit.jsonl"
+        self.path = self.dir / AUDIT_FILE
         self._lock = threading.Lock()
 
     def write(self, action: str, **detail: Any) -> None:

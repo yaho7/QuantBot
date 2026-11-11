@@ -185,6 +185,10 @@ with qb:                               # 出错会推送报错，再抛出
 
 可运行 `quantbot alias enable` 启用短命令 `qb`。例如 `qb list` 等同于 `quantbot list`。用 `quantbot alias status` 查看状态，或用 `quantbot alias disable` 停用。启用时会检查本机已有的同名命令。
 
+在终端直接输入 `qb` 会打开管理菜单，可查看后台服务、修改设置、获取网页登录链接或选择「完全卸载 QuantBot」。如果要在前台运行服务，请用 `qb run`。
+
+「完全卸载 QuantBot」和 `quantbot uninstall` 都会先列出受影响的路径，再请你确认。卸载会停止并移除这套安装的后台服务、uv 工具、`qb` 快捷命令及 QuantBot 管理的设置、凭据、记录和缓存。策略文件和 Git 仓库会保留。前台运行的实例需先停止。脚本可用 `quantbot uninstall --yes` 跳过确认。
+
 | 命令 | 作用 |
 |---|---|
 | `quantbot setup` | 改设置：地址、网页管理员、Telegram、心跳 |
@@ -196,6 +200,7 @@ with qb:                               # 出错会推送报错，再抛出
 | `quantbot remove <id>` | 删除策略 |
 | `quantbot token <id> [--new]` | 看或换 token |
 | `quantbot service install/uninstall/restart/status` | 后台服务；`install --port` 换端口 |
+| `quantbot uninstall [--yes]` | 完全卸载当前 uv 安装与 QuantBot 数据 |
 | `quantbot logs -f` | 看日志 |
 | `quantbot web` | 打印一次性的网页登录链接 |
 | `quantbot update [--check] [--yes]` | 检查或安装更新 |

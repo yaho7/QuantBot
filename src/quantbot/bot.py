@@ -23,8 +23,8 @@ from telegram.ext import (
     filters,
 )
 
-from quantbot.audit import Audit
-from quantbot.config import ConfigError, Settings, Store
+from quantbot.audit import AUDIT_FILE, Audit
+from quantbot.config import USED_LINKS_FILE, ConfigError, Settings, Store
 from quantbot.core import Buttons, Core, Reply
 from quantbot.heartbeat import Heartbeat
 from quantbot.hub import Hub, Strategy
@@ -129,7 +129,7 @@ class QuantBot:
         self.updater = Updater(settings.data_dir, current=lambda: version)
         secret = store.web_secret() if store else secrets.token_urlsafe(32)
         self.web_auth = WebAuth(
-            secret, used_links=Store(settings.data_dir, filename="used-web-links.json")
+            secret, used_links=Store(settings.data_dir, filename=USED_LINKS_FILE)
         )
         self._runner: web.AppRunner | None = None
         self._upkeep: asyncio.Task[None] | None = None
@@ -218,7 +218,7 @@ class QuantBot:
     # ------------------------------------------------------------ lifecycle
 
     async def _started(self, app: Application | None) -> None:
-        audit_path = self.settings.data_dir / "audit.jsonl"
+        audit_path = self.settings.data_dir / AUDIT_FILE
         server = make_app(
             self.hub,
             lambda app: add_routes(

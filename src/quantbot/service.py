@@ -172,13 +172,47 @@ class Service:
         return notes
 
     def uninstall(self) -> None:
+        if not self.installed():
+            return
         if self.kind == "launchd":
-            self._launchctl("bootout", f"{self._domain()}/{LABEL}")
+            target = f"{self._domain()}/{LABEL}"
+            result = self._launchctl("bootout", target)
+            if result.returncode and self._launchctl("print", target).returncode == 0:
+                self._check(result, "launchctl bootout")
         else:
-            self._systemctl("disable", "--now", NAME)
+            self._check(self._systemctl("disable", "--now", NAME), "systemctl disable --now")
         self.path.unlink(missing_ok=True)
         if self.kind != "launchd":
-            self._systemctl("daemon-reload")
+            self._check(self._systemctl("daemon-reload"), "systemctl daemon-reload")
+
+    def configured_instance(self) -> tuple[Path, Path]:
+        """Read the executable and data directory from a QuantBot service file."""
+        try:
+            if self.kind == "launchd":
+                with self.path.open("rb") as file:
+                    config = plistlib.load(file)
+                args = config["ProgramArguments"]
+                directory = config["EnvironmentVariables"]["QB_DATA_DIR"]
+            else:
+                lines = self.path.read_text("utf-8").splitlines()
+                args = shlex.split(
+                    next(line.split("=", 1)[1] for line in lines if line.startswith("ExecStart="))
+                )
+                env = dict(
+                    pair.split("=", 1)
+                    for line in lines
+                    if line.startswith("Environment=")
+                    for pair in shlex.split(line.split("=", 1)[1])
+                )
+                directory = env["QB_DATA_DIR"]
+            command, data_dir = Path(args[0]), Path(directory)
+            if args[1:] != ["run"] or not command.is_absolute() or not data_dir.is_absolute():
+                raise ValueError
+        except (OSError, ValueError, TypeError, KeyError, IndexError, StopIteration) as exc:
+            raise ServiceError(
+                tr("无法识别服务文件中的 QuantBot 实例（{0}）。", self.path)
+            ) from exc
+        return command, data_dir
 
     def installed(self) -> bool:
         return self.path.exists()

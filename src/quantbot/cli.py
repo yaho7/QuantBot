@@ -43,6 +43,7 @@ from quantbot.config import (
     check_url,
     data_dir,
     free_port,
+    local_origin,
     new_token,
     port_free,
     require_strategy,
@@ -55,6 +56,7 @@ from quantbot.i18n import LANGUAGES, language, tr, use_language
 from quantbot.notices import parse_quiet
 from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable, wait_until_ready
+from quantbot.uninstall import UninstallPlan
 from quantbot.updates import Updater, installed
 
 OWNER_WAIT = 120
@@ -184,16 +186,7 @@ Api = Callable[..., Any]
 
 
 def api_url(store: Store) -> str:
-    return _local_origin(store.ensure_listen())
-
-
-def _local_origin(listen: str) -> str:
-    host, _, port = listen.rpartition(":")
-    if host in {ANY_HOST, "::", ""}:
-        host = LOCALHOST
-    if ":" in host and not host.startswith("["):
-        host = f"[{host}]"
-    return f"http://{host}:{port}"
+    return local_origin(store.ensure_listen())
 
 
 def _service_or_none() -> Service | None:
@@ -384,7 +377,7 @@ def _start_setup_service(store: Store, io: Console, service: Service | None) -> 
             for note in service.install(executable(), store.dir.resolve()):
                 io.status("warn", note)
         io.status("step", tr("正在等待本机健康检查。"))
-        wait_until_ready(_local_origin(store.ensure_listen({})))
+        wait_until_ready(local_origin(store.ensure_listen({})))
     except (ServiceError, OSError) as exc:
         io.status("error", str(exc))
         return "failed"
@@ -404,7 +397,7 @@ def _setup_result(
     elif host in {ANY_HOST, "::"}:
         address = tr("http://<服务器 IP 或域名>:{0}/ui/", port)
     else:
-        address = f"{_local_origin(listen)}/ui/"
+        address = f"{local_origin(listen)}/ui/"
 
     admin = data.get("web_admin") or {}
     ready = service_state == "ready"
@@ -1054,7 +1047,7 @@ def cmd_alias(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     if args.action == "enable":
         shortcut.enable()
         io.status("ok", tr("已启用短命令 qb。"))
-        io.rows([(tr("命令路径"), str(shortcut.path)), (tr("用法"), "qb --help")])
+        io.rows([(tr("命令路径"), str(shortcut.path)), (tr("打开管理菜单"), "qb")])
     elif args.action == "disable":
         shortcut.disable()
         io.status("ok", tr("已停用 QuantBot 的短命令 qb。"))
@@ -1066,6 +1059,49 @@ def cmd_alias(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     else:
         io.status("note", tr("短命令 qb 未启用。运行 quantbot alias enable 启用。"))
     return 0
+
+
+def cmd_uninstall(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    plan = UninstallPlan.prepare(store.dir, _service_or_none())
+    io.section(tr("完全卸载 QuantBot"))
+    rows = [(tr("命令路径"), str(plan.shortcut.target))]
+    if plan.shortcut.enabled():
+        rows.append((tr("短命令 qb"), str(plan.shortcut.path)))
+    if plan.service and plan.service_directory is not None:
+        rows.append((tr("服务文件"), str(plan.service.path)))
+    if plan.service and plan.service.kind == "launchd" and plan.service.log_file.exists():
+        rows.append((tr("日志文件"), str(plan.service.log_file)))
+    rows.extend((tr("数据目录"), str(directory)) for directory in plan.directories)
+    io.rows(rows)
+    io.status("warn", tr("将删除 QuantBot 的设置、登录凭据、操作记录和缓存。"))
+    if not args.yes and not io.confirm(tr("确认完全卸载 QuantBot？"), default=False):
+        io.status("note", tr("已取消。"))
+        return 1
+    plan.stop_service()
+    plan.remove_state()
+    plan.remove_program()
+    io.status("ok", tr("QuantBot 已完全卸载。"))
+    return 0
+
+
+def maintenance_menu(store: Store, io: Console, api: Api) -> int:
+    actions = {
+        "1": (tr("查看后台服务状态"), ["service", "status"]),
+        "2": (tr("修改设置"), ["setup"]),
+        "3": (tr("获取网页登录链接"), ["web"]),
+        "4": (tr("完全卸载 QuantBot"), ["uninstall"]),
+    }
+    io.section(tr("QuantBot 管理"))
+    for choice, (label, _) in actions.items():
+        io.say(f"  {choice}. {label}")
+    io.say(f"  0. {tr('退出')}")
+    while True:
+        choice = io.ask(tr("选择操作"), "0")
+        if choice == "0":
+            return 0
+        if choice in actions:
+            return main(actions[choice][1], io=io, api=api, store=store)
+        io.status("warn", tr("请输入 0 到 4。"))
 
 
 def cmd_run(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
@@ -1122,6 +1158,9 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     service.add_argument(
         "--listen", help=tr("完整监听地址，例如 0.0.0.0:23456（让别的机器也能连）")
     )
+    uninstall = sub.add_parser("uninstall", description=tr("完全卸载 QuantBot"))
+    uninstall.add_argument("--yes", action="store_true", help=tr("无需确认"))
+    uninstall.set_defaults(fn=cmd_uninstall)
     link = sub.add_parser("link", description=tr("为策略项目安装客户端并接入 QuantBot"))
     link.add_argument("path", nargs="?", default=".", help=tr("项目文件夹，默认当前文件夹"))
     link.add_argument("--name", help=tr("策略 id，默认用文件夹名"))
@@ -1189,7 +1228,7 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
 
     groups = (
         (tr("访问与设置"), ("setup", "web", "password", "alias", "language")),
-        (tr("服务运维"), ("run", "service", "logs")),
+        (tr("服务运维"), ("run", "service", "logs", "uninstall")),
         (tr("策略管理"), ("list", "add", "link", "prompt", "rename", "token", "remove")),
         (tr("编辑与同步"), ("editor",)),
         (tr("版本更新"), ("update",)),
@@ -1198,6 +1237,8 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     for title, names in groups:
         commands = [f"  {name:<10} {sub.choices[name].description}" for name in names]
         sections.append("\n".join([io.styled(title, "1;36"), *commands]))
+    if p.prog == "qb":
+        sections.append(tr("直接运行 qb 可打开管理菜单。"))
     p.epilog = "\n\n".join(sections)
     return p
 
@@ -1214,6 +1255,8 @@ def main(
         args = parser(io).parse_args(argv)
         fn = getattr(args, "fn", cmd_run)
         try:
+            if args.command is None and Path(sys.argv[0]).name == "qb" and io.interactive():
+                return maintenance_menu(store, io, api)
             code = int(fn(store, io, api, args))
             if code == 0 and args.command in {"list", "link", "web", "setup"}:
                 update = Updater(store.dir).cached()
