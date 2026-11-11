@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from quantbot.config import ConfigError
+from quantbot.i18n import tr
 
 
 @dataclass(frozen=True)
@@ -25,7 +26,7 @@ class ShortCommand:
         target = shutil.which("quantbot")
         if target:
             return cls(Path(target).absolute())
-        raise ConfigError("找不到 QuantBot 命令。请先安装 QuantBot，再启用 qb。")
+        raise ConfigError(tr("找不到 QuantBot 命令。请先安装 QuantBot，再启用 qb。"))
 
     @property
     def path(self) -> Path:
@@ -47,16 +48,16 @@ class ShortCommand:
 
     def enable(self) -> None:
         if conflict := self.conflict():
-            raise ConfigError(f"同名命令已存在（{conflict}）。请改用 quantbot。")
+            raise ConfigError(tr("同名命令已存在（{0}）。请改用 quantbot。", conflict))
         if self.enabled():
             return
         try:
             self.path.symlink_to(self.target.name)
         except FileExistsError as exc:
             if not self.enabled():
-                raise ConfigError(f"命令路径已被占用（{self.path}）。") from exc
+                raise ConfigError(tr("命令路径已被占用（{0}）。", self.path)) from exc
         except OSError as exc:
-            raise ConfigError(f"无法创建短命令 qb（{self.path}）\n{exc}") from exc
+            raise ConfigError(tr("无法创建短命令 qb（{0}）\n{1}", self.path, exc)) from exc
 
     def disable(self) -> None:
         if not self.enabled():
@@ -64,4 +65,4 @@ class ShortCommand:
         try:
             self.path.unlink(missing_ok=True)
         except OSError as exc:
-            raise ConfigError(f"无法停用短命令 qb（{self.path}）\n{exc}") from exc
+            raise ConfigError(tr("无法停用短命令 qb（{0}）\n{1}", self.path, exc)) from exc

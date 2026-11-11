@@ -6,6 +6,8 @@ import re
 import threading
 from datetime import datetime, timedelta, timezone
 
+from quantbot.i18n import tr
+
 # Kinds of message. Quiet hours deliver "info" and "trade" silently; the others ring.
 KINDS = ("info", "trade", "alert", "error")
 LOUD = {"alert", "error"}
@@ -73,9 +75,9 @@ class Expiries:
                     continue
                 sent.update(REMIND_BEFORE if left <= timedelta(0) else passed)
                 if left <= timedelta(0):
-                    messages.append((key, f"⛔ {label} 的授权已经过期，请重新授权。"))
+                    messages.append((key, tr("⛔ {0} 的授权已经过期，请重新授权。", label)))
                 else:
                     hours = max(1, int(left.total_seconds() // 3600))
-                    text = f"⏰ {label} 的授权约 {hours} 小时后过期，请尽快续期。"
+                    text = tr("⏰ {0} 的授权约 {1} 小时后过期，请尽快续期。", label, hours)
                     messages.append((key, text))
         return messages

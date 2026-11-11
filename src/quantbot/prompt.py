@@ -7,6 +7,8 @@ project links and the exact way to connect, but never a token.
 
 from __future__ import annotations
 
+from quantbot.i18n import language
+
 REPO = "https://github.com/yaho7/QuantBot"
 RAW = "https://raw.githubusercontent.com/yaho7/QuantBot/main"
 CLIENT_REQUIREMENT = f"quantbot-client @ git+{REPO}#subdirectory=client"
@@ -123,7 +125,122 @@ D. 多线程程序：在操作交易状态的那个线程里调用 `qb.sleep()` 
 """
 
 
+ENGLISH_TEMPLATE = """\
+Help me connect this trading program to QuantBot.
+
+QuantBot is a remote console for viewing strategy status, receiving notifications, and operating strategy controls on the web or in Telegram. The program connects through a Python client. Keep all trading logic and broker connections in the strategy.
+
+- Project: {repo}
+- Client source (a single standard-library-only Python file; read it before making changes): {raw}/client/quantbot_client.py
+- Protocol: {repo}/blob/main/PROTOCOL.md
+
+## This strategy
+
+- Strategy ID: `{sid}`
+- Display name: {name}
+
+## 1. Install the client
+
+Choose one method:
+
+- Run `quantbot link` inside the strategy project
+- For a uv project, run `uv add "{requirement}"`
+- For pip, add `{requirement}` to requirements.txt
+- Copy quantbot_client.py directly into the project
+
+## 2. Connect
+
+```python
+from quantbot_client import QuantBot
+
+qb = QuantBot("{sid}", display_name="{name}")
+```
+
+On the same machine, the client reads the server address and token from the local QuantBot settings. On another machine, set `QB_URL` and `QB_TOKEN` (run `quantbot token {sid}` on the QuantBot server to obtain the token). Keep the token out of source code and Git.
+
+Connect during live or paper trading only. Keep backtests disconnected.
+
+## 3. Find the main loop and choose the integration
+
+Controls run on the thread that calls `qb.sleep()` or `qb.process()`. Use the thread that owns the trading state.
+
+A. The program has its own loop with `while True` and `time.sleep`:
+
+```python
+with qb:                                  # Sends a notification and re-raises on error.
+    while not qb.stopping:
+        ...                               # Existing trading iteration.
+        qb.status("Equity 10234.50")       # Report status once per iteration.
+        if not qb.sleep(60):              # Process controls while waiting.
+            break
+```
+
+B. A framework such as LumiBot, backtrader, or vn.py owns the loop:
+
+- Call `qb.start()` at startup and `qb.close()` at exit
+- Call `qb.process()` from a callback such as LumiBot's `on_trading_iteration`. It runs queued controls and returns immediately
+- Keep `qb.sleep()` out of callbacks
+- If iterations are infrequent, also call `qb.process()` from a more frequent callback or timer on the trading thread
+- Use the framework's normal shutdown when `qb.stopping` is true
+- Call `qb.error(...)` from the framework's error callback
+
+C. For asyncio:
+
+- Keep `qb.sleep()` out of the event loop
+- Run a task that calls `qb.process()` once per second, followed by `await asyncio.sleep(1)`
+- Keep control handlers fast and non-blocking
+
+D. In a multi-threaded program, call `qb.sleep()` or `qb.process()` from the trading thread.
+
+## 4. Register the controls the strategy supports
+
+| Command | Registration | Handler arguments | Return value |
+|---|---|---|---|
+| status | `qb.on("status", fn)` | None | Status text |
+| positions | `qb.on("positions", fn)` | None | Position text |
+| orders | `qb.on("orders", fn)` | None | `[{{"id": "…", "text": "…"}}]` |
+| cancel | `qb.on("cancel", fn)` | `order_id` | Text |
+| flatten | `qb.on("flatten", fn)` | None | Text |
+| params | `qb.on("params", fn)` | None | `{{"parameter": value}}` |
+| set_param | `qb.on("set_param", fn)` | `name`, `value` | Text |
+| manual_order | `qb.on("manual_order", fn)` | `side` (buy or sell), `symbol`, `qty` | Text |
+| chart | `qb.on("chart", fn)` | None | PNG bytes |
+
+The client provides `pause`, `resume`, and `stop`. While paused, `qb.can_open()` returns false. When stopped, `qb.stopping` becomes true and `qb.sleep()` returns false. Raise errors from handlers so QuantBot can display the reason. The console shows the registered controls.
+
+## 5. Report status and send notifications
+
+| Method | When to call it |
+|---|---|
+| `qb.status(text)` | Once per iteration, for the strategy card |
+| `qb.fill(text)` | After a fill |
+| `qb.info(text)` | For a routine message |
+| `qb.alert(text)` | For an alert, audible during quiet hours |
+| `qb.error(text)` | For an error, audible during quiet hours |
+| `qb.summary(text, png=None)` | For a daily summary, with an optional image |
+| `qb.risk_triggered(reason)` | When risk controls pause entries and need to report why |
+| `qb.connection(name, ok)` | When a broker or market data connection changes |
+| `qb.expiry(name, when)` | For authorization expiry, using a timezone-aware datetime |
+
+## Integration rules
+
+- Limit changes to the integration and preserve trading logic and order parameters
+- Check `qb.can_open()` before opening or adding to positions. Closing trades and protective stops remain active during a pause
+- Flatten only positions you can verify belong to this strategy, for example using its client_order_id prefix. Raise an error if ownership is uncertain
+- Keep protective stop orders in place on shutdown
+- Keep handlers fast because they run on the trading thread
+- Preserve the existing run commands
+
+## Report back
+
+- List the files and sections changed
+- List the controls that were connected and explain any omissions
+- Show how to run the strategy
+"""
+
+
 def ai_prompt(sid: str, name: str | None = None) -> str:
     """The message for an AI assistant to connect strategy `sid`."""
     name = (name or sid).replace("`", "'").replace('"', "'").strip() or sid
-    return TEMPLATE.format(repo=REPO, raw=RAW, requirement=CLIENT_REQUIREMENT, sid=sid, name=name)
+    template = ENGLISH_TEMPLATE if language() == "en" else TEMPLATE
+    return template.format(repo=REPO, raw=RAW, requirement=CLIENT_REQUIREMENT, sid=sid, name=name)

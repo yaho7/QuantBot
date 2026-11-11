@@ -23,6 +23,7 @@ from typing import Any
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from quantbot.i18n import DEFAULT_LANGUAGE, normalize_language, tr
 from quantbot.notices import parse_quiet
 
 STRATEGY_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
@@ -48,13 +49,13 @@ def free_port(tries: int = 100) -> int:
         port = secrets.choice(range(PORT_RANGE[0], PORT_RANGE[1] + 1))
         if port_free(port):
             return port
-    raise ConfigError("找不到空闲端口，请用 --port 指定一个")
+    raise ConfigError(tr("找不到空闲端口，请用 --port 指定一个"))
 
 
 def check_listen(listen: str) -> str:
     host, _, port = listen.strip().rpartition(":")
     if not host or not port.isdigit() or not 1 <= int(port) <= 65535:
-        raise ConfigError(f"监听地址 {listen!r} 不对，要像 127.0.0.1:23456")
+        raise ConfigError(tr("监听地址 {0!r} 不对，要像 127.0.0.1:23456", listen))
     return f"{host}:{int(port)}"
 
 
@@ -134,13 +135,13 @@ def strategy_item(data: dict[str, Any], sid: str) -> dict[str, Any] | None:
 def require_strategy(data: dict[str, Any], sid: str) -> dict[str, Any]:
     item = strategy_item(data, sid)
     if item is None:
-        raise ConfigError(f"没有策略 {sid}。")
+        raise ConfigError(tr("没有策略 {0}。", sid))
     return item
 
 
 def add_strategy(data: dict[str, Any], sid: str, name: str) -> dict[str, Any]:
     if strategy_item(data, sid):
-        raise ConfigError(f"已经有策略 {sid}。")
+        raise ConfigError(tr("已经有策略 {0}。", sid))
     item = {"id": sid, "name": name, "token": new_token()}
     items = data.get("strategies") or []
     items.append(item)
@@ -150,7 +151,7 @@ def add_strategy(data: dict[str, Any], sid: str, name: str) -> dict[str, Any]:
 
 def check_strategy_id(sid: str) -> str:
     if not STRATEGY_ID.match(sid):
-        raise ConfigError("id 只能用小写字母、数字、- 和 _，最多 32 个字符，例如 momentum")
+        raise ConfigError(tr("id 只能用小写字母、数字、- 和 _，最多 32 个字符，例如 momentum"))
     return sid
 
 
@@ -158,20 +159,22 @@ def check_timezone(name: str) -> str:
     try:
         ZoneInfo(name)
     except (ZoneInfoNotFoundError, ValueError) as exc:
-        raise ConfigError(f"不认识时区 {name}，例如 Asia/Shanghai 或 America/New_York") from exc
+        raise ConfigError(
+            tr("不认识时区 {0}，例如 Asia/Shanghai 或 America/New_York", name)
+        ) from exc
     return name
 
 
 def check_url(url: str | None) -> str | None:
     if url and not url.startswith(("https://", "http://")):
-        raise ConfigError("地址要以 https:// 或 http:// 开头")
+        raise ConfigError(tr("地址要以 https:// 或 http:// 开头"))
     return url or None
 
 
 def check_public_url(url: str | None) -> str | None:
     if not url:
         return None
-    message = "网页地址需要是域名或 IP 的 HTTP(S) 地址，例如 https://bot.example.com。"
+    message = tr("网页地址需要是域名或 IP 的 HTTP(S) 地址，例如 https://bot.example.com。")
     try:
         if not isinstance(url, str):
             raise ValueError
@@ -212,6 +215,12 @@ class Store:
     def exists(self) -> bool:
         return self.path.is_file()
 
+    def language(self) -> str:
+        try:
+            return normalize_language(self.read().get("language"))
+        except ConfigError:
+            return DEFAULT_LANGUAGE
+
     def mtime(self) -> int | None:
         try:
             return self.path.stat().st_mtime_ns
@@ -224,9 +233,9 @@ class Store:
         except FileNotFoundError:
             return {}
         except (OSError, ValueError) as exc:
-            raise ConfigError(f"{self.path} 读不出来：{exc}") from exc
+            raise ConfigError(tr("{0} 读不出来：{1}", self.path, exc)) from exc
         if not isinstance(data, dict):
-            raise ConfigError(f"{self.path} 格式不对")
+            raise ConfigError(tr("{0} 格式不对", self.path))
         return data
 
     def write(self, data: dict[str, Any]) -> None:
@@ -288,7 +297,7 @@ class Store:
         for item in data.get("strategies") or []:
             sid, token = str(item.get("id", "")), str(item.get("token", ""))
             if not STRATEGY_ID.match(sid) or len(token) < MIN_TOKEN:
-                raise ConfigError(f"{self.path} 里的策略 {sid!r} 不完整")
+                raise ConfigError(tr("{0} 里的策略 {1!r} 不完整", self.path, sid))
             found.append(StrategyConfig(sid, str(item.get("name") or sid), token))
         return tuple(found)
 

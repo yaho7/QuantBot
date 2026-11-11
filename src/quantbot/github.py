@@ -18,6 +18,7 @@ from typing import Any
 
 from quantbot.config import ConfigError, Store
 from quantbot.editor import Editor, editor_lock
+from quantbot.i18n import tr
 
 GITHUB_FILE = "github.json"
 DEVICE_URL = "https://github.com/login/device"
@@ -39,12 +40,14 @@ def _request(url: str, *, form: dict[str, str] | None = None, token: str = "") -
             result = json.load(response)
     except urllib.error.HTTPError as exc:
         if exc.code == 404:
-            raise ConfigError("GitHub 找不到仓库。请确认 GitHub App 已获准访问该仓库。") from exc
-        raise ConfigError(f"GitHub 请求失败（HTTP {exc.code}）。") from exc
+            raise ConfigError(
+                tr("GitHub 找不到仓库。请确认 GitHub App 已获准访问该仓库。")
+            ) from exc
+        raise ConfigError(tr("GitHub 请求失败（HTTP {0}）。", exc.code)) from exc
     except (OSError, ValueError) as exc:
-        raise ConfigError("连接 GitHub 失败，请稍后再试。") from exc
+        raise ConfigError(tr("连接 GitHub 失败，请稍后再试。")) from exc
     if not isinstance(result, dict):
-        raise ConfigError("GitHub 返回的数据格式不对。")
+        raise ConfigError(tr("GitHub 返回的数据格式不对。"))
     return result
 
 
@@ -76,11 +79,11 @@ class GitHubEditor:
     def _editor(self) -> Editor:
         editor = Editor.configured(self.store.dir)
         if editor is None:
-            raise ConfigError("请先在服务器上启用策略编辑器。")
+            raise ConfigError(tr("请先在服务器上启用策略编辑器。"))
         if editor.data_dir.is_relative_to(editor.root):
-            raise ConfigError("请选择 QuantBot 数据目录之外的 Git 仓库。")
+            raise ConfigError(tr("请选择 QuantBot 数据目录之外的 Git 仓库。"))
         if not editor.root.is_dir() or editor.root.resolve() != editor.root:
-            raise ConfigError("编辑目录已变更，请在服务器上重新选择目录。")
+            raise ConfigError(tr("编辑目录已变更，请在服务器上重新选择目录。"))
         return editor
 
     def _binding(self, editor: Editor) -> dict[str, Any]:
@@ -91,16 +94,16 @@ class GitHubEditor:
         editor = self._editor()
         repo = repo.strip().removeprefix("https://github.com/").rstrip("/").removesuffix(".git")
         if not SLUG.fullmatch(repo) or repo.split("/")[1] in {".", ".."}:
-            raise ConfigError("请输入 GitHub 仓库名，例如 owner/strategy。")
+            raise ConfigError(tr("请输入 GitHub 仓库名，例如 owner/strategy。"))
         branch = branch.strip()
         if branch:
             self._check_branch(editor, branch)
         client_id = client_id.strip() or str(self._binding(editor).get("client_id") or "")
         if not CLIENT_ID.fullmatch(client_id):
-            raise ConfigError("请填写启用了设备授权的 GitHub App Client ID。")
+            raise ConfigError(tr("请填写启用了设备授权的 GitHub App Client ID。"))
         result = self.request(f"{DEVICE_URL}/code", form={"client_id": client_id})
         if result.get("error"):
-            raise ConfigError(f"GitHub 无法启动设备授权（{result['error']}）。")
+            raise ConfigError(tr("GitHub 无法启动设备授权（{0}）。", result["error"]))
         now = time.monotonic()
         try:
             interval = max(5, int(result["interval"]))
@@ -116,12 +119,12 @@ class GitHubEditor:
                 now + interval,
             )
         except (KeyError, ValueError, TypeError) as exc:
-            raise ConfigError("GitHub 没有返回设备授权码。") from exc
+            raise ConfigError(tr("GitHub 没有返回设备授权码。")) from exc
 
     def poll(self, flow: Authorization) -> dict[str, Any] | None:
         now = time.monotonic()
         if now >= flow.expires:
-            raise ConfigError("GitHub 授权码已过期，请重新绑定。")
+            raise ConfigError(tr("GitHub 授权码已过期，请重新绑定。"))
         if now < flow.next_poll:
             return None
         flow.next_poll = now + flow.interval
@@ -141,14 +144,14 @@ class GitHubEditor:
             flow.next_poll = now + flow.interval
             return None
         if error:
-            raise ConfigError(f"GitHub 授权未完成（{error}）。请重新绑定。")
+            raise ConfigError(tr("GitHub 授权未完成（{0}）。请重新绑定。", error))
         return self._finish(flow, self._credentials(result))
 
     @staticmethod
     def _credentials(result: dict[str, Any]) -> dict[str, Any]:
         token = result.get("access_token")
         if not isinstance(token, str) or not token:
-            raise ConfigError("GitHub 没有签发访问凭据，请重新授权。")
+            raise ConfigError(tr("GitHub 没有签发访问凭据，请重新授权。"))
         lifetime = int(result.get("expires_in") or 0)
         return {
             "access_token": token,
@@ -160,7 +163,7 @@ class GitHubEditor:
         if not binding.get("expires") or binding["expires"] > time.time() + 60:
             return binding["access_token"]
         if not binding.get("refresh_token"):
-            raise ConfigError("GitHub 授权已过期，请重新绑定。")
+            raise ConfigError(tr("GitHub 授权已过期，请重新绑定。"))
         result = self.request(
             OAUTH_URL,
             form={
@@ -177,14 +180,14 @@ class GitHubEditor:
         with editor_lock(self.store.dir):
             editor = self._editor()
             if editor.root != flow.root:
-                raise ConfigError("编辑目录已变更，请重新绑定。")
+                raise ConfigError(tr("编辑目录已变更，请重新绑定。"))
             token = credentials["access_token"]
             repo = self.request(f"{API_URL}/repos/{flow.repo}", token=token)
             url = f"https://github.com/{flow.repo}.git"
             if any(editor.root.iterdir()):
                 branch = self._branch(editor)
                 if flow.branch and flow.branch != branch:
-                    raise ConfigError(f"当前本地分支是 {branch}，请切换到要绑定的分支。")
+                    raise ConfigError(tr("当前本地分支是 {0}，请切换到要绑定的分支。", branch))
                 self._git(
                     editor, "fetch", "--no-tags", "--", url, f"refs/heads/{branch}", token=token
                 )
@@ -232,7 +235,7 @@ class GitHubEditor:
         try:
             branch = self._branch(editor)
             if branch != binding["branch"]:
-                raise ConfigError(f"请切换回已绑定的本地分支 {binding['branch']}。")
+                raise ConfigError(tr("请切换回已绑定的本地分支 {0}。", binding["branch"]))
             ahead, behind = self._git(
                 editor, "rev-list", "--left-right", "--count", f"HEAD...{TRACKING}"
             ).split()
@@ -247,17 +250,17 @@ class GitHubEditor:
 
     def sync(self, action: str) -> dict[str, Any]:
         if action not in {"check", "pull", "push"}:
-            raise ConfigError("请选择检查、拉取或推送。")
+            raise ConfigError(tr("请选择检查、拉取或推送。"))
         with editor_lock(self.store.dir):
             editor = self._editor()
             binding = self._binding(editor)
             if not binding:
-                raise ConfigError("请先绑定 GitHub 策略仓库。")
+                raise ConfigError(tr("请先绑定 GitHub 策略仓库。"))
             status = self._status(editor, binding)
             if status.get("error"):
                 raise ConfigError(status["error"])
             if action == "pull" and status["dirty"]:
-                raise ConfigError("本地有未提交的改动。请先在服务器上处理这些改动。")
+                raise ConfigError(tr("本地有未提交的改动。请先在服务器上处理这些改动。"))
             token = self._token(binding)
             url = f"https://github.com/{binding['repo']}.git"
             branch = binding["branch"]
@@ -284,14 +287,14 @@ class GitHubEditor:
     def _branch(self, editor: Editor) -> str:
         git_dir = editor.root / ".git"
         if not git_dir.is_dir() or git_dir.is_symlink():
-            raise ConfigError("编辑目录需要是空文件夹，或现有 Git 仓库的根目录。")
+            raise ConfigError(tr("编辑目录需要是空文件夹，或现有 Git 仓库的根目录。"))
         if Path(self._git(editor, "rev-parse", "--show-toplevel")) != editor.root:
-            raise ConfigError("请选择 Git 仓库的根目录。")
+            raise ConfigError(tr("请选择 Git 仓库的根目录。"))
         return self._git(editor, "symbolic-ref", "--short", "HEAD")
 
     def _check_branch(self, editor: Editor, branch: str) -> None:
         if not branch or branch.startswith("-"):
-            raise ConfigError("请填写有效的 Git 分支名。")
+            raise ConfigError(tr("请填写有效的 Git 分支名。"))
         self._git(editor, "check-ref-format", f"refs/heads/{branch}")
 
     def _fetch(self, editor: Editor, url: str, branch: str, token: str) -> None:
@@ -344,10 +347,10 @@ class GitHubEditor:
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
-            raise ConfigError("Git 无法完成操作，请检查服务器上的 Git 和网络连接。") from exc
+            raise ConfigError(tr("Git 无法完成操作，请检查服务器上的 Git 和网络连接。")) from exc
         if done.returncode:
             output = done.stderr.strip()
             if token:
                 output = output.replace(token, "***").replace(credentials, "***")
-            raise ConfigError(f"Git {args[0]} 失败。{output[-800:]}")
+            raise ConfigError(tr("Git {0} 失败。{1}", args[0], output[-800:]))
         return done.stdout.strip()

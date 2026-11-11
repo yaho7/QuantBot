@@ -21,6 +21,8 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from quantbot.i18n import tr
+
 NAME = "quantbot"
 LABEL = "io.github.yaho7.quantbot"
 
@@ -47,7 +49,7 @@ def wait_until_ready(origin: str, timeout: float = 25) -> None:
         except (OSError, ValueError):
             pass
         if time.monotonic() >= deadline:
-            raise ServiceError(f"服务未通过健康检查（{url}）。")
+            raise ServiceError(tr("服务未通过健康检查（{0}）。", url))
         time.sleep(0.5)
 
 
@@ -73,7 +75,7 @@ class Service:
         if platform.startswith("linux") and shutil.which("systemctl"):
             kind = "systemd-system" if os.geteuid() == 0 else "systemd-user"
             return cls(kind, home, run)
-        raise ServiceError("这台机器没有 systemd 或 launchd。请用 quantbot run 在前台运行。")
+        raise ServiceError(tr("这台机器没有 systemd 或 launchd。请用 quantbot run 在前台运行。"))
 
     # --------------------------------------------------------------- paths
 
@@ -142,7 +144,7 @@ class Service:
 
     def _check(self, result: subprocess.CompletedProcess[str], what: str) -> None:
         if result.returncode != 0:
-            raise ServiceError(f"{what} 失败：{(result.stderr or result.stdout).strip()}")
+            raise ServiceError(tr("{0} 失败：{1}", what, (result.stderr or result.stdout).strip()))
 
     def install(self, executable: str, data_dir: Path) -> list[str]:
         """Write the service file, enable it and (re)start it. Returns notes for the user."""
@@ -161,8 +163,11 @@ class Service:
             user = os.environ.get("USER") or ""
             if self.run(["loginctl", "enable-linger", *([user] if user else [])]).returncode:
                 notes.append(
-                    "退出登录后 QuantBot 会停。要一直运行，请执行："
-                    f"sudo loginctl enable-linger {user or '$USER'}"
+                    tr(
+                        "退出登录后 QuantBot 会停。要一直运行，请执行："
+                        "sudo loginctl enable-linger {0}",
+                        user or "$USER",
+                    )
                 )
         return notes
 
@@ -183,7 +188,7 @@ class Service:
             result = self._launchctl("kickstart", "-k", f"{self._domain()}/{LABEL}")
         else:
             result = self._systemctl("restart", NAME)
-        self._check(result, "重启")
+        self._check(result, tr("重启"))
 
     def status(self) -> str:
         if not self.installed():
@@ -193,7 +198,7 @@ class Service:
             state = next(
                 (line.strip() for line in result.stdout.splitlines() if "state =" in line), ""
             )
-            return f"{LABEL}: {state or '没有在运行'}"
+            return f"{LABEL}: {state or tr('没有在运行')}"
         result = self._systemctl("status", "--no-pager", "--lines=0", NAME)
         return (result.stdout or result.stderr).strip()
 
@@ -215,5 +220,5 @@ class Service:
         if self.kind == "launchd" and not self.log_file.exists():
             return ""
         result = self.run(self.logs_command(follow=False))
-        self._check(result, "读取日志")
+        self._check(result, tr("读取日志"))
         return result.stdout

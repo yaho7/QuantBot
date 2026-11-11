@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from quantbot import __version__
+from quantbot.i18n import tr
 
 log = logging.getLogger(__name__)
 
@@ -55,8 +56,8 @@ class Installed:
     @property
     def label(self) -> str:
         if not self.commit:
-            return f"{self.version}（开发版）"
-        return f"{self.version}（{self.ref or 'main'} {self.commit[:7]}）"
+            return tr("{0}（开发版）", self.version)
+        return tr("{0}（{1} {2}）", self.version, self.ref or "main", self.commit[:7])
 
 
 def installed() -> Installed:
@@ -162,7 +163,7 @@ class Updater:
             timespec="seconds"
         )
         if not now.commit:
-            result["error"] = "这是开发版，不是从 GitHub 装的，不检查更新。"
+            result["error"] = tr("这是开发版，不是从 GitHub 装的，不检查更新。")
             return result
         try:
             if now.on_tag:
@@ -173,7 +174,11 @@ class Updater:
                 result.update(latest=tag, available=latest > current)
                 if result["available"]:
                     result["commits"] = [
-                        {"sha": "", "message": f"新版本 {tag}", "date": release.get("published_at")}
+                        {
+                            "sha": "",
+                            "message": tr("新版本 {0}", tag),
+                            "date": release.get("published_at"),
+                        }
                     ]
             else:
                 ref = urllib.parse.quote(now.ref or "main", safe="")
@@ -198,9 +203,9 @@ class Updater:
                 if key in previous:
                     result[key] = previous[key]
             result["error"] = (
-                "GitHub 暂时不让查（每小时 60 次的限制），稍后再试。"
+                tr("GitHub 暂时不让查（每小时 60 次的限制），稍后再试。")
                 if code in {403, 429}
-                else f"查不到 GitHub：{exc}"
+                else tr("查不到 GitHub：{0}", exc)
             )
         self._save(result)
         return result
@@ -244,11 +249,11 @@ class Updater:
     def _upgrade(self) -> tuple[bool, str]:
         uv = self.uv()
         if not uv:
-            return False, "没找到 uv。重新运行安装命令，也能更新到最新版。"
+            return False, tr("没找到 uv。重新运行安装命令，也能更新到最新版。")
         now = self.current()
         command = [uv, "tool", "upgrade", "--reinstall", "quantbot"]
         if not now.commit:
-            return False, "开发版请通过 Git 更新。"
+            return False, tr("开发版请通过 Git 更新。")
         if now.on_tag:
             cached = self.cached() or {}
             latest = cached.get("latest")
@@ -257,18 +262,18 @@ class Updater:
                 or not isinstance(latest, str)
                 or not TAG.fullmatch(latest)
             ):
-                return False, "已经是最新的版本。"
+                return False, tr("已经是最新的版本。")
             if not now.url:
-                return False, "找不到安装来源。请重新运行安装命令。"
+                return False, tr("找不到安装来源。请重新运行安装命令。")
             source = f"quantbot @ git+{now.url.removeprefix('git+')}@{latest}"
             command = [uv, "tool", "install", "--force", "--reinstall", "--python", "3.12", source]
         try:
             done = self.run(command, capture_output=True, text=True, timeout=600, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
-            return False, f"更新没跑完：{exc}"
+            return False, tr("更新没跑完：{0}", exc)
         output = ((done.stdout or "") + (done.stderr or "")).strip()
         if done.returncode != 0:
-            return False, output[-2000:] or f"uv 退出码 {done.returncode}"
+            return False, output[-2000:] or tr("uv 退出码 {0}", done.returncode)
         try:
             self.path.unlink(missing_ok=True)  # describe the new commit next time
         except OSError:

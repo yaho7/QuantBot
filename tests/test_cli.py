@@ -417,6 +417,22 @@ def test_setup_noninteractive_uses_explicit_credentials_without_printing_them(
     assert run(store, args, tty=False)[0] == 0 and store.read() == data
 
 
+def test_setup_persists_the_installer_language(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = Store(tmp_path / "data")
+    monkeypatch.setenv("QUANTBOT_LANG", "en")
+    code, io = run(store, ["setup"], [*ADDRESS_ADMIN, "n", "-", *FINISH])
+    assert code == 0 and "1/5  Web access" in io.text()
+    assert "Configuration saved." in io.text() and store.read()["language"] == "en"
+    monkeypatch.delenv("QUANTBOT_LANG")
+    assert run(store, ["language"])[1].text() == "en"
+    assert "No strategies yet." in run(store, ["list"])[1].text()
+    assert "Help me connect this trading program" in run(store, ["prompt", "grid"])[1].text()
+    assert run(store, ["language", "zh"])[0] == 0
+    assert "暂无策略" in run(store, ["list"])[1].text()
+
+
 def test_add_list_token_rename_remove(tmp_path: Path) -> None:
     store = Store(tmp_path)
     code, io = run(store, ["add", "momentum", "--name", "动量策略"])
