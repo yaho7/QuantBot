@@ -1,19 +1,18 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronRight, CircleDashed, Download, FileCode, LogOut, Monitor, Moon, Pause, Plus, Radio, Settings, Sparkles, Sun,
+  ChevronRight, CircleDashed, Download, FolderCode, LogOut, Monitor, Moon, Pause, Plus, Radio, Settings, Sparkles, Sun,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { BrandIcon } from "@/components/BrandIcon";
-import { ConfirmDialog, EmptyState, PageHeader, QueryBoundary } from "@/components/common";
+import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { StrategyAdminDialog } from "@/components/StrategyAdminDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Table, Td, Th,
 } from "@/components/ui/primitives";
@@ -29,12 +28,13 @@ const THEME_LABEL = { light: tr("浅色"), dark: tr("深色"), system: tr("跟�
 
 const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "loss" } as const;
 const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
-const EditorDialog = React.lazy(() => import("@/components/EditorDialog"));
+const WorkspaceEditor = React.lazy(() => import("@/components/WorkspaceEditor"));
 
-function TopBar({ onLogout, onSettings, onUpdate }: {
+function TopBar({ onLogout, onSettings, onUpdate, workspace }: {
   onLogout?: () => void;
   onSettings?: () => void;
   onUpdate?: () => void;
+  workspace?: boolean;
 }) {
   const [theme, setTheme] = useTheme();
   const ThemeIcon = THEME_ICON[theme];
@@ -44,6 +44,18 @@ function TopBar({ onLogout, onSettings, onUpdate }: {
         <BrandIcon className="size-6" />
         <span className="font-display text-lg">QuantBot</span>
       </div>
+      {workspace !== undefined && (
+        <nav aria-label={tr("主导航")} className="order-last flex w-full gap-1 sm:order-none sm:ml-3 sm:w-auto">
+          <Button asChild variant={workspace ? "ghost" : "secondary"} size="sm">
+            <a href="/ui/" aria-current={workspace ? undefined : "page"}>{tr("策略")}</a>
+          </Button>
+          <Button asChild variant={workspace ? "secondary" : "ghost"} size="sm">
+            <a href="/ui/?view=workspace" aria-current={workspace ? "page" : undefined}>
+              <FolderCode /> {tr("工作区")}
+            </a>
+          </Button>
+        </nav>
+      )}
       <div className="ml-auto flex flex-wrap items-center gap-1">
         {onUpdate && (
           <Button variant="outline" size="sm" className="text-warning" onClick={onUpdate}>
@@ -246,6 +258,7 @@ function TelegramNote({ onSettings }: { onSettings: () => void }) {
 }
 
 export function App() {
+  const workspace = new URLSearchParams(location.search).get("view") === "workspace";
   const overview = useQuery({ queryKey: ["overview"], queryFn: api.overview, refetchInterval: 5_000 });
   const update = useQuery({
     queryKey: ["update"], queryFn: api.updateStatus, enabled: !!overview.data, refetchInterval: 5_000,
@@ -254,80 +267,88 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [promptOpen, setPromptOpen] = React.useState(false);
   const [updateOpen, setUpdateOpen] = React.useState(false);
-  const [editorOpen, setEditorOpen] = React.useState(false);
   const [manage, setManage] = React.useState<StrategyView | null>();
   const [updatedFrom, setUpdatedFrom] = React.useState<string>();
   const version = update.data?.version;
   React.useEffect(() => {
-    if (updatedFrom && version && version !== updatedFrom && !editorOpen) location.reload();
-  }, [updatedFrom, version, editorOpen]);
+    if (updatedFrom && version && version !== updatedFrom && !workspace) location.reload();
+  }, [updatedFrom, version, workspace]);
   if (overview.error instanceof ApiError && overview.error.status === 401) return <Login />;
   const strategies = overview.data?.strategies ?? [];
   const online = strategies.filter((s) => s.online).length;
   return (
     <>
       <TopBar onLogout={() => logout.mutate()} onSettings={() => setSettingsOpen(true)}
+        workspace={overview.data ? workspace : undefined}
         onUpdate={update.data?.result?.available && !update.data.updated ? () => setUpdateOpen(true) : undefined} />
       {settingsOpen && <SettingsDialog open onOpenChange={setSettingsOpen} version={version}
         onVersion={() => { setSettingsOpen(false); setUpdateOpen(true); }} />}
       {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} onInstalled={setUpdatedFrom} />}
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       {manage !== undefined && <StrategyAdminDialog strategy={manage ?? undefined} onClose={() => setManage(undefined)} />}
-      {editorOpen && (
-        <React.Suspense fallback={
-          <Dialog open onOpenChange={setEditorOpen}>
-            <DialogContent title={tr("策略编辑器")}><p className="text-sm text-muted-foreground">{tr("加载中…")}</p></DialogContent>
-          </Dialog>
-        }>
-          <EditorDialog onClose={() => setEditorOpen(false)} />
-        </React.Suspense>
-      )}
       <main className="view-enter mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8">
-        <PageHeader
-          title={tr("策略")}
-          description={overview.data ? tr("{0} 个策略，{1} 个在线 · 每 5 秒刷新", strategies.length, online) : undefined}
-          actions={
-            <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setManage(null)}><Plus /> {tr("添加策略")}</Button>
-              {overview.data?.editor_enabled && (
-                <Button variant="outline" onClick={() => setEditorOpen(true)}>
-                  <FileCode /> {tr("策略编辑器")}</Button>
-              )}
-              <Button variant="outline" onClick={() => setPromptOpen(true)}>
-                <Sparkles /> {tr("让 AI 接入策略")}</Button>
-              <PauseAll count={online} />
-            </div>
-          }
-        />
-        <QueryBoundary query={overview} rows={4}>
-          {(data) => (
-            <div className="grid gap-8">
-              <TelegramNote onSettings={() => setSettingsOpen(true)} />
-              {data.strategies.length === 0 ? (
-                <Card>
-                  <EmptyState title={tr("还没有策略")}
-                    description={tr("添加策略可以生成连接令牌。也可以在策略项目里运行 quantbot link。")} />
-                </Card>
+        {workspace ? (
+          <>
+            <PageHeader title={tr("工作区")} />
+            <QueryBoundary query={overview}>
+              {(data) => data.editor_enabled ? (
+                <React.Suspense fallback={<LoadingState />}>
+                  <WorkspaceEditor />
+                </React.Suspense>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {data.strategies.map((s) => <StrategyCard key={s.id} s={s} onManage={() => setManage(s)} />)}
-                </div>
+                <Card className="p-5">
+                  <EmptyState icon={FolderCode} title={tr("设置工作区")}
+                    description={tr("在运行 QuantBot 的服务器上选定目录后，即可在这里编辑代码并绑定 GitHub。")} />
+                  <pre className="mx-auto max-w-fit overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs">
+                    mkdir -p ~/strategies &amp;&amp; quantbot editor on --root ~/strategies
+                  </pre>
+                </Card>
               )}
-              <Tabs defaultValue="feed">
-                <TabsList>
-                  <TabsTrigger value="feed">{tr("推送")}</TabsTrigger>
-                  <TabsTrigger value="audit">{tr("操作记录")}</TabsTrigger>
-                </TabsList>
-                <TabsContent value="feed">
-                  <Card><Feed items={data.feed} /></Card>
-                </TabsContent>
-                <TabsContent value="audit">
-                  <Card className="py-2"><AuditLog /></Card>
-                </TabsContent>
-              </Tabs>
-            </div>
-          )}
-        </QueryBoundary>
+            </QueryBoundary>
+          </>
+        ) : <>
+          <PageHeader
+            title={tr("策略")}
+            description={overview.data ? tr("{0} 个策略，{1} 个在线 · 每 5 秒刷新", strategies.length, online) : undefined}
+            actions={
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" onClick={() => setManage(null)}><Plus /> {tr("添加策略")}</Button>
+                <Button variant="outline" onClick={() => setPromptOpen(true)}>
+                  <Sparkles /> {tr("让 AI 接入策略")}</Button>
+                <PauseAll count={online} />
+              </div>
+            }
+          />
+          <QueryBoundary query={overview} rows={4}>
+            {(data) => (
+              <div className="grid gap-8">
+                <TelegramNote onSettings={() => setSettingsOpen(true)} />
+                {data.strategies.length === 0 ? (
+                  <Card>
+                    <EmptyState title={tr("还没有策略")}
+                      description={tr("可以先在工作区绑定 GitHub 并准备代码，或添加策略获取连接令牌。")} />
+                  </Card>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {data.strategies.map((s) => <StrategyCard key={s.id} s={s} onManage={() => setManage(s)} />)}
+                  </div>
+                )}
+                <Tabs defaultValue="feed">
+                  <TabsList>
+                    <TabsTrigger value="feed">{tr("推送")}</TabsTrigger>
+                    <TabsTrigger value="audit">{tr("操作记录")}</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="feed">
+                    <Card><Feed items={data.feed} /></Card>
+                  </TabsContent>
+                  <TabsContent value="audit">
+                    <Card className="py-2"><AuditLog /></Card>
+                  </TabsContent>
+                </Tabs>
+              </div>
+            )}
+          </QueryBoundary>
+        </>}
       </main>
     </>
   );

@@ -89,7 +89,7 @@ QuantBot 启动后每小时查看一次检查缓存，每 6 小时向 GitHub 查
 - 在终端运行 `quantbot update --check` 只检查更新。运行 `quantbot update` 会先列出变更再询问是否安装，`--yes` 跳过确认。`quantbot --version` 显示 Git 安装的提交。
 - 也可以再运行一次安装命令，它会更新并重启后台服务。
 
-### 网页策略编辑器
+### 网页工作区
 
 编辑器默认关闭。在运行 QuantBot 的服务器上选择策略目录：
 
@@ -99,7 +99,7 @@ quantbot editor status
 quantbot editor off
 ```
 
-启用后，网页的策略页会显示“策略编辑器”。打开目录内的 UTF-8 文件即可编辑，单个文件最大 256 KiB。请选择存放策略代码的目录，QuantBot 的数据目录由服务器管理。打开 Python 文件时，可以在光标处插入连接、等待、开仓检查、状态、推送和按钮回调的示例。
+网页顶栏的「工作区」无需注册策略即可打开。也可以用 `quantbot workspace` 获取一次性直达链接。启用目录后，可以编辑其中的 UTF-8 文件，单个文件最大 256 KiB。请选择存放策略代码的目录。打开 Python 文件时，可以在光标处插入连接、等待、开仓检查、状态、推送和按钮回调的示例。
 
 点“预览并保存”查看改动，确认后才会写入服务器，并在“操作记录”里留下一条保存记录。保存时会检测服务器上的文件是否已变更。文件保存后，由你决定何时启动或重启策略、何时提交 Git。
 
@@ -107,7 +107,7 @@ quantbot editor off
 
 QuantBot 使用 GitHub App 的设备授权，支持私有仓库。首次使用时，在 GitHub 注册 App 并启用 Device Flow。为 App 配置仓库 Contents 权限，读取代码选择 Read-only，需要推送时选择 Read and write。将 App 安装到要同步的仓库，并记下 App 的 Client ID。 [GitHub App 注册指南](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app) · [Git 访问权限](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app#choosing-permissions-for-git-access)
 
-- 网页里打开“策略编辑器 → GitHub 仓库”，填仓库名和 Client ID。点击“开始 GitHub 授权”，按提示在 GitHub 输入验证码。
+- 网页里打开「工作区 → GitHub 仓库」，填仓库名和 Client ID。点击「开始 GitHub 授权」，按提示在 GitHub 输入验证码。
 - 在服务器也可运行 `quantbot editor github bind --repo owner/strategy --client-id <Client-ID>`。完成授权后，可以用 `quantbot editor github status/check/pull/push/unbind` 管理绑定和同步。
 - 一个编辑目录绑定一个仓库。目录可以是现有 Git 仓库的根目录，也可以是用于克隆的空目录。同步默认使用现有本地分支或 GitHub 的默认分支。
 - 拉取需要干净的工作区，且只做快进更新。保存网页编辑后，可在服务器上提交，再用网页或 CLI 推送已有提交。绑定凭据保存在服务器的私有配置目录，网页只接收设备验证码和同步状态。
@@ -207,6 +207,7 @@ with qb:                               # 出错会推送报错，再抛出
 | `quantbot web` | 打印一次性的网页登录链接 |
 | `quantbot update [--check] [--yes]` | 检查或安装更新 |
 | `quantbot editor on/off/status` | 管理网页策略编辑器 |
+| `quantbot workspace` | 获取网页工作区的直达链接 |
 
 设置和操作记录存在 `~/.config/quantbot/`。
 

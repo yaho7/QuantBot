@@ -611,6 +611,21 @@ def test_web_command_prints_a_link(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     token = link.split("t=", 1)[1]
     assert WebAuth(store.web_secret()).redeem(token)
 
+    code, io = run(store, ["workspace"])
+    link = next(line.strip() for line in io.out if "/ui/login?t=" in line)
+    assert code == 0 and link.endswith("&view=workspace")
+    assert WebAuth(store.web_secret()).redeem(link.split("t=", 1)[1].split("&", 1)[0])
+
+
+def test_workspace_link_redirects_to_workspace(tmp_path: Path) -> None:
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        link = f"/ui/login?t={auth.link_token()}&view=workspace"
+        response = await client.get(link, allow_redirects=False)
+        assert response.headers["Location"] == "/ui/?view=workspace"
+        assert COOKIE in response.cookies
+
+    scenario(test, tmp_path / "audit.jsonl")
+
 
 def test_web_actions_go_through_the_strategy_and_the_audit_log(tmp_path: Path) -> None:
     from tests.test_core import Fake

@@ -611,14 +611,15 @@ def cmd_password(store: Store, io: Console, api: Api, args: argparse.Namespace) 
     return 0
 
 
-def _print_web_link(store: Store, io: Console) -> None:
+def _print_web_link(store: Store, io: Console, *, workspace: bool = False) -> None:
     from quantbot.web import WebAuth, login_url
 
     listen = store.ensure_listen()
     host, _, port = listen.rpartition(":")
     public_url = check_public_url(store.read().get("public_url"))
     io.say(tr("一次性登录链接，不用密码，5 分钟内有效，只能用一次："))
-    io.say(f"  {login_url(listen, WebAuth(store.web_secret()).link_token(), public_url)}")
+    token = WebAuth(store.web_secret()).link_token()
+    io.say(f"  {login_url(listen, token, public_url, workspace=workspace)}")
     if public_url:
         return
     if host in {ANY_HOST, "::", ""}:
@@ -1044,6 +1045,13 @@ def cmd_web(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
     return 0
 
 
+def cmd_workspace(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    if not store.exists():
+        raise Abort(tr("还没设置。先运行：quantbot setup"))
+    _print_web_link(store, io, workspace=True)
+    return 0
+
+
 def cmd_alias(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     shortcut = ShortCommand.detect()
     if args.action == "enable":
@@ -1092,6 +1100,7 @@ def maintenance_menu(store: Store, io: Console, api: Api) -> int:
         "2": (tr("修改设置"), ["setup"]),
         "3": (tr("获取网页登录链接"), ["web"]),
         "4": (tr("完全卸载 QuantBot"), ["uninstall"]),
+        "5": (tr("打开工作区"), ["workspace"]),
     }
     io.section(tr("QuantBot 管理"))
     for choice, (label, _) in actions.items():
@@ -1103,7 +1112,7 @@ def maintenance_menu(store: Store, io: Console, api: Api) -> int:
             return 0
         if choice in actions:
             return main(actions[choice][1], io=io, api=api, store=store)
-        io.status("warn", tr("请输入 0 到 4。"))
+        io.status("warn", tr("请输入 0 到 5。"))
 
 
 def cmd_run(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
@@ -1196,6 +1205,7 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
         sync = github_actions.add_parser(action, help=label)
         sync.add_argument("--yes", action="store_true", help=tr("无需确认"))
     sub.add_parser("web", description=tr("打印一次性的网页登录链接")).set_defaults(fn=cmd_web)
+    sub.add_parser("workspace", description=tr("打开网页工作区")).set_defaults(fn=cmd_workspace)
     sub.add_parser("password", description=tr("改网页管理员的用户名和密码")).set_defaults(
         fn=cmd_password
     )
@@ -1232,7 +1242,7 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
         (tr("访问与设置"), ("setup", "web", "password", "alias", "language")),
         (tr("服务运维"), ("run", "service", "logs", "uninstall")),
         (tr("策略管理"), ("list", "add", "link", "prompt", "rename", "token", "remove")),
-        (tr("编辑与同步"), ("editor",)),
+        (tr("编辑与同步"), ("workspace", "editor")),
         (tr("版本更新"), ("update",)),
     )
     sections = []

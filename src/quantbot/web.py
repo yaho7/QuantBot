@@ -197,12 +197,14 @@ class WebAuth:
         return good and expires > self.clock()
 
 
-def login_url(listen: str, token: str, public_url: str | None = None) -> str:
-    if public_url:
-        return f"{public_url}/ui/login?t={token}"
+def login_url(
+    listen: str, token: str, public_url: str | None = None, *, workspace: bool = False
+) -> str:
     host, _, port = listen.rpartition(":")
     host = "127.0.0.1" if host in {"0.0.0.0", "::", ""} else host  # noqa: S104
-    return f"http://{host}:{port}/ui/login?t={token}"
+    origin = public_url or f"http://{host}:{port}"
+    view = "&view=workspace" if workspace else ""
+    return f"{origin}/ui/login?t={token}{view}"
 
 
 # ---------------------------------------------------------------- handlers
@@ -819,7 +821,8 @@ async def login(request: web.Request) -> web.StreamResponse:
                 ),
             ),
         )
-    redirect = web.HTTPFound("/ui/")
+    workspace = request.query.get("view") == "workspace"
+    redirect = web.HTTPFound("/ui/?view=workspace" if workspace else "/ui/")
     public_url = check_public_url(request.app[STORE_KEY].read().get("public_url"))
     _set_session(redirect, cookie, secure=_secure_session(request, public_url))
     raise redirect

@@ -256,5 +256,10 @@
   "生成登录链接": "Generated login link",
   "修改策略名称": "Renamed strategy",
   "换发策略令牌": "Rotated strategy token",
-  "语言": "Language"
+  "语言": "Language",
+  "主导航": "Main navigation",
+  "可以先在工作区绑定 GitHub 并准备代码，或添加策略获取连接令牌。": "Use Workspace to connect GitHub and prepare your code, or add a strategy to get a connection token.",
+  "在运行 QuantBot 的服务器上选定目录后，即可在这里编辑代码并绑定 GitHub。": "Select a directory on the QuantBot server to edit files and connect GitHub here.",
+  "工作区": "Workspace",
+  "设置工作区": "Set up the workspace"
 }
