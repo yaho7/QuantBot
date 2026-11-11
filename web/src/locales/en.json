@@ -337,5 +337,9 @@
   "使用已有 GitHub 应用": "Use an existing GitHub app",
   "GitHub 应用名称": "GitHub app name",
   "可填 github.com/apps/ 后的应用名称。": "Use the app name after github.com/apps/.",
-  "保存应用": "Save app"
+  "保存应用": "Save app",
+  "已切换到分支 {0}。": "Switched to branch {0}.",
+  "选择分支": "Choose branch",
+  "选择远端分支": "Choose a remote branch",
+  "切换分支": "Switch branch"
 }

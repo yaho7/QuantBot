@@ -180,5 +180,18 @@ def test_official_device_flow_clone_pull_push_and_refresh(
     assert service.status()["ahead"] == 1
     assert service.sync("push")["ahead"] == 0
     assert git(remote, "rev-parse", "main") == ours
+    git(upstream, "switch", "-c", "experiments/test")
+    experiment = commit(upstream, "value = 5\n")
+    git(upstream, "push", "origin", "experiments/test")
+    assert service.branches() == {"current": "main", "branches": ["experiments/test", "main"]}
+    (root / "unsaved.txt").touch()
+    with pytest.raises(ConfigError, match="切换分支"):
+        service.switch("experiments/test")
+    (root / "unsaved.txt").unlink()
+    switched = service.switch("experiments/test")
+    assert switched["branch"] == "experiments/test" and switched["behind"] == 0
+    assert git(root, "rev-parse", "HEAD") == experiment
+    assert git(root, "rev-parse", "refs/quantbot/github") == experiment
+    assert service.switch("main")["branch"] == "main"
     service.unbind()
     assert not service.status()["bound"] and git(root, "rev-parse", "HEAD") == ours

@@ -220,6 +220,9 @@ export const api = {
     answerData<{ repositories: GitHubRepository[] }>("POST", "editor/github/repositories", { state }),
   githubSelect: (state: string, repo: string) =>
     answerData<{ status: GitHubStatus }>("POST", "editor/github/select", { state, repo }),
+  githubBranches: () => answerData<{ current: string; branches: string[] }>("POST", "editor/github/branches"),
+  githubSwitch: (branch: string) =>
+    answerData<{ status: GitHubStatus }>("POST", "editor/github/switch", { branch }),
   githubRegister: () =>
     answerData<{ url: string; manifest: object }>("POST", "editor/github/register"),
   githubConfigure: (client_id: string, slug: string) =>

@@ -891,6 +891,12 @@ def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namesp
         github.configure_app(args.client_id, args.app_slug)
         io.status("ok", tr("GitHub 应用已保存。"))
         return 0
+    if action == "branches":
+        view = github.branches()
+        for branch in view["branches"]:
+            marker = "*" if branch == view["current"] else " "
+            io.say(f"  {marker} {branch}")
+        return 0
     if action == "bind":
         if not args.repo and not io.interactive():
             raise Abort(tr("请在终端选择仓库，或通过 --repo 指定仓库。"))
@@ -924,6 +930,9 @@ def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namesp
         return 0
     elif action == "status":
         status = github.status()
+    elif action == "switch":
+        status = github.switch(args.target)
+        io.status("ok", tr("已切换到分支 {0}。", args.target))
     else:
         if action in {"pull", "push"} and not args.yes:
             if not io.interactive():
@@ -1319,6 +1328,9 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     app = github_actions.add_parser("app", help=tr("保存 GitHub 应用配置"))
     app.add_argument("--client-id", required=True, help="GitHub App Client ID")
     app.add_argument("--app-slug", default="", help=tr("GitHub 应用名称"))
+    github_actions.add_parser("branches", help=tr("查看 GitHub 分支"))
+    switch = github_actions.add_parser("switch", help=tr("切换工作区分支"))
+    switch.add_argument("target", help=tr("目标分支"))
     github_actions.add_parser("status", help=tr("查看绑定和本地状态"))
     github_actions.add_parser("check", help=tr("检查远端状态"))
     github_actions.add_parser("unbind", help=tr("解除绑定"))

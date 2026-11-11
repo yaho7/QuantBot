@@ -213,7 +213,11 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
       }}
         onChanged={() => {
           void qc.invalidateQueries({ queryKey: ["editor", "tree"] });
-          if (file && !dirty) load.mutate(file.path);
+          if (file && !dirty) {
+            setFile(undefined);
+            setDraft("");
+            load.mutate(file.path);
+          }
         }} />}
     </>
   );

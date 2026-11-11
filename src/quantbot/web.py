@@ -725,6 +725,14 @@ async def github_post(request: web.Request) -> web.Response:
                 actions.grant = None
                 status = {"bound": False}
                 message = tr("已解除 GitHub 绑定。")
+            elif action == "branches":
+                return _answer(True, "", await asyncio.to_thread(actions.editor.branches))
+            elif action == "switch":
+                branch = body.get("branch")
+                if not isinstance(branch, str):
+                    return _answer(False, tr("请填写有效的 Git 分支名。"))
+                status = await asyncio.to_thread(actions.editor.switch, branch)
+                message = tr("已切换到分支 {0}。", branch)
             else:
                 status = await asyncio.to_thread(actions.editor.sync, action)
                 message = {
@@ -1422,7 +1430,7 @@ def add_routes(
             web.post("/ui/api/workspace/program/{action:configure|start|stop}", workspace_program),
             web.post("/ui/api/editor/git/commit", local_git),
             web.post(
-                "/ui/api/editor/github/{action:app|register|bind|authorize|repositories|select|check|pull|push|unbind}",
+                "/ui/api/editor/github/{action:app|register|bind|authorize|repositories|select|branches|switch|check|pull|push|unbind}",
                 github_post,
             ),
             web.post("/ui/api/strategies/{sid}/{command}", command),

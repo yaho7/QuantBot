@@ -131,7 +131,7 @@ quantbot workspace run stop
 
 - 首次使用可点「在 GitHub 创建应用」。登记后，在 GitHub 应用设置启用 Device Flow，再把应用安装到目标仓库。也可以展开「使用已有 GitHub 应用」保存一次应用配置。 [GitHub 应用设置](https://docs.github.com/en/apps/maintaining-github-apps/modifying-a-github-app-registration#enabling-or-disabling-the-device-flow)
 - 终端可运行 `quantbot editor github bind` 完成设备授权并选择仓库，脚本可通过 `--repo owner/strategy` 指定。应用也可用 `quantbot editor github app --client-id <Client-ID> --app-slug <slug>` 保存一次。完成授权后，可以用 `quantbot editor github status/check/pull/push/unbind` 管理绑定和同步。
-- 一个编辑目录绑定一个仓库。目录可以是现有 Git 仓库的根目录，也可以是用于克隆的空目录。同步默认使用现有本地分支或 GitHub 的默认分支。
+- 一个编辑目录绑定一个仓库。初次绑定使用当前本地分支，克隆到空目录时使用 GitHub 默认分支。绑定后在工作区「Git」点当前分支名称，即可选择远端分支。切换要求本地改动已处理。CLI 对应命令为 `quantbot editor github branches` 和 `quantbot editor github switch <分支>`。
 - 拉取需要干净的工作区，且只做快进更新。保存后，在「Git → 本地改动」选择文件并填写提交说明，再推送。首次提交前用 `git config user.name` 和 `git config user.email` 设置身份。CLI 对应命令为 `quantbot workspace git status` 和 `quantbot workspace git commit -m "提交说明" 文件路径`。绑定凭据保存在服务器的私有配置目录。
 
 ## 连接你的策略

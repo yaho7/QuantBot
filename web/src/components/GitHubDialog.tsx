@@ -32,6 +32,8 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
   const [grant, setGrant] = useState("");
   const [authorization, setAuthorization] = useState<GitHubAuthorization>();
   const [confirm, setConfirm] = useState<SyncAction>();
+  const [showBranches, setShowBranches] = useState(false);
+  const [branch, setBranch] = useState("");
   const [error, setError] = useState("");
   const showError = (err: Error) => setError(err.message);
   const update = (data: GitHubStatus) => qc.setQueryData<GitHubStatus>(queryKey, (current) => ({ ...current, ...data }));
@@ -40,6 +42,25 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
     queryFn: () => api.githubRepositories(grant),
     enabled: !!grant,
     retry: false,
+  });
+  const branches = useQuery({
+    queryKey: ["editor", "github-branches", status.data?.repo],
+    queryFn: api.githubBranches,
+    enabled: showBranches && !!status.data?.bound,
+    retry: false,
+  });
+  const switchBranch = useMutation({
+    mutationFn: api.githubSwitch,
+    onSuccess: ({ status: data }, target) => {
+      update(data);
+      setShowBranches(false);
+      setBranch("");
+      void qc.invalidateQueries({ queryKey: ["editor", "git"] });
+      void qc.invalidateQueries({ queryKey: ["editor", "github-branches"] });
+      onChanged();
+      toast.success(tr("已切换到分支 {0}。", target));
+    },
+    onError: showError,
   });
   const select = useMutation({
     mutationFn: () => api.githubSelect(grant, repo),
@@ -87,7 +108,7 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
     onError: showError,
     onSettled: () => setConfirm(undefined),
   });
-  const busy = bind.isPending || sync.isPending || polling || select.isPending;
+  const busy = bind.isPending || sync.isPending || polling || select.isPending || switchBranch.isPending;
   return (
     <>
       <Dialog open onOpenChange={() => { if (!busy) onClose(); }}>
@@ -152,11 +173,41 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
                     href={`https://github.com/${data.repo}`} target="_blank" rel="noreferrer">
                     {data.repo} <ExternalLink className="size-3 shrink-0" />
                   </a>
-                  <span className="font-mono text-xs text-muted-foreground">{data.branch}</span>
+                  <Button variant="ghost" size="sm" className="w-fit px-1 font-mono" disabled={busy}
+                    aria-label={tr("选择分支")} aria-expanded={showBranches}
+                    onClick={() => { setBranch(""); setError(""); setShowBranches(!showBranches); }}>
+                    <GitBranch /> {data.branch}
+                  </Button>
                   {!data.error && (
                     <span className="text-xs text-muted-foreground">{tr("领先")} {data.ahead} {tr("个提交 · 落后")} {data.behind} {tr("个提交")}</span>
                   )}
                 </div>
+                {showBranches && (
+                  <QueryBoundary query={branches}>
+                    {({ current, branches: options }) => {
+                      const target = branch || (options.includes(current) ? current : "");
+                      return (
+                        <form className="flex flex-wrap items-end gap-2" onSubmit={(event) => {
+                          event.preventDefault();
+                          if (target && target !== data.branch && !dirty && !data.dirty) {
+                            setError("");
+                            switchBranch.mutate(target);
+                          }
+                        }}>
+                          <Field label={tr("选择分支")} htmlFor="github-switch-branch" className="min-w-36 flex-1">
+                            <Select id="github-switch-branch" value={target} disabled={busy}
+                              onChange={(event) => setBranch(event.target.value)}>
+                              <option value="">{tr("选择远端分支")}</option>
+                              {options.map((name) => <option key={name} value={name}>{name}</option>)}
+                            </Select>
+                          </Field>
+                          <Button type="submit" size="sm" disabled={!target || target === data.branch || dirty || !!data.dirty}
+                            loading={switchBranch.isPending}>{tr("切换分支")}</Button>
+                        </form>
+                      );
+                    }}
+                  </QueryBoundary>
+                )}
                 {(dirty || data.dirty) && <Alert tone="warning">{tr("本地有未提交的改动，处理后可以拉取。")}</Alert>}
                 {(error || data.error) && <Alert tone="loss">{error || data.error}</Alert>}
                 <div className="flex flex-wrap gap-2">
@@ -171,6 +222,7 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
                   <Button variant="ghost" className="text-loss sm:mr-auto" disabled={busy} onClick={() => setConfirm("unbind")}>{tr("解除绑定")}</Button>
                   <Button variant="ghost" disabled={busy} onClick={() => {
                     setError("");
+                    setShowBranches(false);
                     setBinding(true);
                   }}>{tr("重新绑定")}</Button>
                 </DialogFooter>

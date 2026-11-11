@@ -12,6 +12,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Iterator
+from contextlib import suppress
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -423,6 +424,55 @@ class GitHubEditor:
                 )
                 self._git(editor, "update-ref", TRACKING, "HEAD")
             return self._status(editor, binding)
+
+    def branches(self) -> dict[str, Any]:
+        with editor_lock(self.store.dir):
+            editor = self._editor()
+            binding = self._binding(editor)
+            if not binding:
+                raise ConfigError(tr("请先绑定 GitHub 策略仓库。"))
+            url = f"https://github.com/{binding['repo']}.git"
+            refs = self._git(editor, "ls-remote", "--heads", "--", url, token=self._token(binding))
+            prefix = "refs/heads/"
+            branches = {
+                ref.removeprefix(prefix)
+                for line in refs.splitlines()
+                if (ref := line.partition("\t")[2]).startswith(prefix)
+            }
+            return {"current": self._branch(editor), "branches": sorted(branches, key=str.casefold)}
+
+    def switch(self, branch: str) -> dict[str, Any]:
+        with editor_lock(self.store.dir):
+            editor = self._editor()
+            binding = self._binding(editor)
+            if not binding:
+                raise ConfigError(tr("请先绑定 GitHub 策略仓库。"))
+            self._check_branch(editor, branch)
+            if self._git(editor, "status", "--porcelain", "--untracked-files=all"):
+                raise ConfigError(tr("请先提交或处理本地改动，再切换分支。"))
+            current = self._branch(editor)
+            previous = self._git(editor, "rev-parse", "--verify", TRACKING)
+            url = f"https://github.com/{binding['repo']}.git"
+            ref = f"refs/heads/{branch}"
+            self._git(editor, "fetch", "--no-tags", "--", url, ref, token=self._token(binding))
+            remote = self._git(editor, "rev-parse", "--verify", "FETCH_HEAD")
+            checkout = ("switch", "--no-guess", "--no-overwrite-ignore")
+            if current != branch:
+                local = self._git(editor, "for-each-ref", "--format=%(refname)", ref).splitlines()
+                args = ("--", branch) if ref in local else ("--create", branch, remote)
+                self._git(editor, *checkout, *args)
+            updated = {**binding, "branch": branch}
+            try:
+                self._git(editor, "update-ref", TRACKING, remote)
+                self.store.write(updated)
+            except (ConfigError, OSError):
+                with suppress(ConfigError):
+                    self._git(editor, "update-ref", TRACKING, previous)
+                if current != branch:
+                    with suppress(ConfigError):
+                        self._git(editor, *checkout, "--", current)
+                raise
+            return self._status(editor, updated)
 
     def unbind(self) -> None:
         with editor_lock(self.store.dir):
