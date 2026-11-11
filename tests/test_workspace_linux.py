@@ -8,10 +8,11 @@ import shutil
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 
 import pytest
 
-from quantbot.workspace import Workspace
+from quantbot.workspace import Workspace, web_create_directory, web_initialize
 from quantbot.workspace_terminal import TerminalProcess
 
 
@@ -19,7 +20,9 @@ from quantbot.workspace_terminal import TerminalProcess
     sys.platform != "linux" or os.geteuid() != 0,
     reason="requires a root Linux runner with util-linux",
 )
-def test_linux_workspace_uses_an_unprivileged_controlling_terminal() -> None:
+def test_linux_workspace_uses_an_unprivileged_controlling_terminal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import pwd
 
     account = pwd.getpwnam("nobody")
@@ -32,12 +35,22 @@ def test_linux_workspace_uses_an_unprivileged_controlling_terminal() -> None:
         parent.chmod(0o755)
         private = parent / "server-secret"
         private.touch(mode=0o600)
-        root = parent / "repo"
         home = parent / "home"
-        for path in (root, home):
-            path.mkdir(mode=0o700)
-            os.chown(path, account.pw_uid, account.pw_gid)
-        workspace = Workspace(root, account.pw_uid, account.pw_gid, home)
+        home.mkdir(mode=0o700)
+        os.chown(home, account.pw_uid, account.pw_gid)
+        base = parent / "projects"
+        monkeypatch.setattr("quantbot.workspace.WEB_ROOT", base)
+        monkeypatch.setattr("quantbot.workspace.WORKSPACE_USER", account.pw_name)
+        user = SimpleNamespace(pw_uid=account.pw_uid, pw_gid=account.pw_gid, pw_dir=str(home))
+        monkeypatch.setattr(Workspace, "_account", staticmethod(lambda: user))
+        data_dir = parent / "state"
+        mask = os.umask(0o077)
+        try:
+            assert web_create_directory(data_dir, "", "repo") == "repo"
+        finally:
+            os.umask(mask)
+        workspace = web_initialize(data_dir, "repo")
+        assert workspace.root.stat().st_uid == account.pw_uid
 
         async def verify() -> None:
             terminal = await TerminalProcess.start(workspace)
@@ -46,7 +59,7 @@ def test_linux_workspace_uses_an_unprivileged_controlling_terminal() -> None:
                 await terminal.write(
                     b"printf 'uid:%s\\n' \"$(id -u)\"; "
                     b"printf 'size:%s\\n' \"$(stty size)\"; "
-                    b"test ! -r ../server-secret && printf 'secret:%s\\n' denied\r"
+                    b"test ! -r ../../server-secret && printf 'secret:%s\\n' denied\r"
                 )
                 output = bytearray()
                 marker = b"secret:denied"

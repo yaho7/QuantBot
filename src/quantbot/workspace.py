@@ -45,18 +45,32 @@ def _protected(info: os.stat_result) -> bool:
     return info.st_uid == os.geteuid() and not info.st_mode & 0o022
 
 
+def _make_web_directory(fd: int, name: str) -> None:
+    os.mkdir(name, mode=0o755, dir_fd=fd)
+    created = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+    try:
+        os.fchmod(created, 0o755)
+    finally:
+        os.close(created)
+
+
 @contextmanager
 def _web_directory(parts: list[str], *, create_base: bool = False) -> Iterator[int]:
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     if create_base:
-        WEB_ROOT.parent.mkdir(mode=0o755, exist_ok=True)
+        parent = os.open(WEB_ROOT.parent.parent, flags)
+        try:
+            with suppress(FileExistsError):
+                _make_web_directory(parent, WEB_ROOT.parent.name)
+        finally:
+            os.close(parent)
     fd = os.open(WEB_ROOT.parent, flags)
     try:
         if not _protected(os.fstat(fd)):
             raise ConfigError(tr("目录需要由 QuantBot 服务账号管理。"))
         if create_base:
             with suppress(FileExistsError):
-                os.mkdir(WEB_ROOT.name, mode=0o755, dir_fd=fd)
+                _make_web_directory(fd, WEB_ROOT.name)
         for name in [WEB_ROOT.name, *parts]:
             next_fd = os.open(name, flags, dir_fd=fd)
             os.close(fd)
@@ -109,14 +123,17 @@ def web_create_directory(data_dir: Path, path: str, name: str) -> str:
     parts, child = _web_parts(path), _web_parts(name)
     if len(child) != 1:
         raise ConfigError(tr("请输入单个文件夹名称。"))
-    if Store(data_dir, filename=WORKSPACE_FILE).read().get("root"):
-        raise ConfigError(tr("工作区已经初始化。"))
+    from quantbot.editor import editor_lock
+
     _web_location(data_dir, parts + child)
-    try:
-        with _web_directory(parts, create_base=True) as fd:
-            os.mkdir(name, mode=0o755, dir_fd=fd)
-    except FileExistsError as exc:
-        raise ConfigError(tr("同名文件夹或文件已存在。")) from exc
+    with editor_lock(data_dir):
+        if Store(data_dir, filename=WORKSPACE_FILE).read().get("root"):
+            raise ConfigError(tr("工作区已经初始化。"))
+        try:
+            with _web_directory(parts, create_base=True) as fd:
+                _make_web_directory(fd, name)
+        except FileExistsError as exc:
+            raise ConfigError(tr("同名文件夹或文件已存在。")) from exc
     return "/".join(parts + child)
 
 
