@@ -1,16 +1,15 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronRight, CircleDashed, Download, FolderCode, LogOut, Monitor, Moon, Pause, Plus, Radio, RefreshCw, Settings, Sparkles, Sun,
+  ChevronRight, CircleDashed, FolderCode, LogOut, Monitor, Moon, Pause, Plus, Radio, Settings, Sparkles, Sun,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
-import { SettingsDialog } from "@/components/SettingsDialog";
+import { SettingsPage } from "@/components/SettingsPage";
 import { StrategyAdminDialog } from "@/components/StrategyAdminDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
-import { UpdateDialog, updateLabel } from "@/components/UpdateDialog";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,12 +29,11 @@ const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "lo
 const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
 const WorkspaceEditor = React.lazy(() => import("@/components/WorkspaceEditor"));
 
-function TopBar({ onLogout, onSettings, onUpdate, workspace, updateVersion }: {
+type View = "strategies" | "workspace" | "settings";
+
+function TopBar({ onLogout, view }: {
   onLogout?: () => void;
-  onSettings?: () => void;
-  onUpdate?: () => void;
-  workspace?: boolean;
-  updateVersion?: string | null;
+  view?: View;
 }) {
   const [theme, setTheme] = useTheme();
   const ThemeIcon = THEME_ICON[theme];
@@ -45,31 +43,27 @@ function TopBar({ onLogout, onSettings, onUpdate, workspace, updateVersion }: {
         <BrandIcon className="size-6" />
         <span className="font-display text-lg">QuantBot</span>
       </div>
-      {workspace !== undefined && (
+      {view && (
         <nav aria-label={tr("主导航")} className="order-last flex w-full gap-1 sm:order-none sm:ml-3 sm:w-auto">
-          <Button asChild variant={workspace ? "ghost" : "secondary"} size="sm">
-            <a href="/ui/" aria-current={workspace ? undefined : "page"}>{tr("策略")}</a>
+          <Button asChild variant={view === "strategies" ? "secondary" : "ghost"} size="sm">
+            <a href="/ui/" aria-current={view === "strategies" ? "page" : undefined}>{tr("策略")}</a>
           </Button>
-          <Button asChild variant={workspace ? "secondary" : "ghost"} size="sm">
-            <a href="/ui/?view=workspace" aria-current={workspace ? "page" : undefined}>
+          <Button asChild variant={view === "workspace" ? "secondary" : "ghost"} size="sm">
+            <a href="/ui/?view=workspace" aria-current={view === "workspace" ? "page" : undefined}>
               <FolderCode /> {tr("工作区")}
             </a>
           </Button>
         </nav>
       )}
       <div className="ml-auto flex flex-wrap items-center gap-1">
-        {onUpdate && (
-          <Button variant="outline" size="sm" className={updateVersion ? "text-warning" : undefined} onClick={onUpdate}>
-            {updateVersion ? <Download /> : <RefreshCw />}
-            {updateVersion ? tr("有新版本 {0}", updateVersion) : tr("检查更新")}</Button>
-        )}
         <Button variant="ghost" size="icon" onClick={() => setTheme(NEXT_THEME[theme])}
           aria-label={tr("主题：{0}", THEME_LABEL[theme])} title={tr("主题：{0}", THEME_LABEL[theme])}>
           <ThemeIcon />
         </Button>
-        {onSettings && (
-          <Button variant="ghost" size="icon" onClick={onSettings} aria-label={tr("设置")} title={tr("设置")}>
-            <Settings />
+        {view && (
+          <Button asChild variant={view === "settings" ? "secondary" : "ghost"} size="icon">
+            <a href="/ui/?view=settings" aria-current={view === "settings" ? "page" : undefined}
+              aria-label={tr("设置")} title={tr("设置")}><Settings /></a>
           </Button>
         )}
         {onLogout && (
@@ -248,52 +242,48 @@ function PauseAll({ count }: { count: number }) {
   );
 }
 
-function TelegramNote({ onSettings }: { onSettings: () => void }) {
+function TelegramNote() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, staleTime: 60_000 });
   if (!settings.data || settings.data.telegram) return null;
   return (
     <Alert tone="info" className="items-center justify-between">
       <span>{tr("Telegram 没接，推送只显示在这个网页上。想在手机上收推送、点按钮，可以在设置里接上。")}</span>
-      <Button size="sm" variant="outline" onClick={onSettings}>{tr("去设置")}</Button>
+      <Button asChild size="sm" variant="outline">
+        <a href="/ui/?view=settings&tab=notifications">{tr("去设置")}</a>
+      </Button>
     </Alert>
   );
 }
 
 export function App() {
-  const workspace = new URLSearchParams(location.search).get("view") === "workspace";
+  const requested = new URLSearchParams(location.search).get("view");
+  const view: View = requested === "workspace" || requested === "settings" ? requested : "strategies";
   const overview = useQuery({ queryKey: ["overview"], queryFn: api.overview, refetchInterval: 5_000 });
   const update = useQuery({
-    queryKey: ["update"], queryFn: api.updateStatus, enabled: !!overview.data, refetchInterval: 5_000,
+    queryKey: ["update"], queryFn: api.updateStatus, enabled: !!overview.data && view === "settings", refetchInterval: 5_000,
   });
   const logout = useMutation({ mutationFn: api.logout, onSettled: () => location.reload() });
-  const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [promptOpen, setPromptOpen] = React.useState(false);
-  const [updateOpen, setUpdateOpen] = React.useState(false);
-  const [checkOnOpen, setCheckOnOpen] = React.useState(false);
   const [manage, setManage] = React.useState<StrategyView | null>();
   const [updatedFrom, setUpdatedFrom] = React.useState<string>();
   const version = update.data?.version;
-  const updateVersion = update.data?.result?.available && !update.data.updated
-    ? updateLabel(update.data.result.latest) : null;
   React.useEffect(() => {
-    if (updatedFrom && version && version !== updatedFrom && !workspace) location.reload();
-  }, [updatedFrom, version, workspace]);
+    if (updatedFrom && version && version !== updatedFrom) location.reload();
+  }, [updatedFrom, version]);
   if (overview.error instanceof ApiError && overview.error.status === 401) return <Login />;
   const strategies = overview.data?.strategies ?? [];
   const online = strategies.filter((s) => s.online).length;
   return (
     <>
-      <TopBar onLogout={() => logout.mutate()} onSettings={() => setSettingsOpen(true)}
-        workspace={overview.data ? workspace : undefined}
-        updateVersion={updateVersion}
-        onUpdate={overview.data ? () => { setCheckOnOpen(!updateVersion); setUpdateOpen(true); } : undefined} />
-      {settingsOpen && <SettingsDialog open onOpenChange={setSettingsOpen} version={version}
-        onVersion={() => { setSettingsOpen(false); setCheckOnOpen(false); setUpdateOpen(true); }} />}
-      {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} onInstalled={setUpdatedFrom} checkOnOpen={checkOnOpen} />}
+      <TopBar onLogout={() => logout.mutate()} view={overview.data ? view : undefined} />
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       {manage !== undefined && <StrategyAdminDialog strategy={manage ?? undefined} onClose={() => setManage(undefined)} />}
       <main className="view-enter mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8">
-        {workspace ? (
+        {view === "settings" ? (
+          <QueryBoundary query={overview}>
+            {() => <SettingsPage update={update.data} onInstalled={setUpdatedFrom} />}
+          </QueryBoundary>
+        ) : view === "workspace" ? (
           <>
             <PageHeader title={tr("工作区")} />
             <QueryBoundary query={overview}>
@@ -328,7 +318,7 @@ export function App() {
           <QueryBoundary query={overview} rows={4}>
             {(data) => (
               <div className="grid gap-8">
-                <TelegramNote onSettings={() => setSettingsOpen(true)} />
+                <TelegramNote />
                 {data.strategies.length === 0 ? (
                   <Card>
                     <EmptyState title={tr("还没有策略")}
