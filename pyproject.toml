@@ -1,6 +1,6 @@
 [project]
 name = "quantbot"
-version = "0.3.0"
+version = "0.3.1"
 description = "One Telegram bot to control all your trading programs"
 readme = "README.md"
 license = { text = "MIT" }
