@@ -8,10 +8,12 @@ import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
 import { SettingsPage } from "@/components/SettingsPage";
+import { WorkspaceSetup } from "@/components/WorkspaceSetup";
 import { StrategyAdminDialog } from "@/components/StrategyAdminDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Table, Td, Th,
 } from "@/components/ui/primitives";
@@ -265,6 +267,7 @@ export function App() {
   const logout = useMutation({ mutationFn: api.logout, onSettled: () => location.reload() });
   const [promptOpen, setPromptOpen] = React.useState(false);
   const [manage, setManage] = React.useState<StrategyView | null>();
+  const [workspaceSetup, setWorkspaceSetup] = React.useState(false);
   const [updatedFrom, setUpdatedFrom] = React.useState<string>();
   const version = update.data?.version;
   React.useEffect(() => {
@@ -285,20 +288,26 @@ export function App() {
           </QueryBoundary>
         ) : view === "workspace" ? (
           <>
-            <PageHeader title={tr("工作区")} />
+            <PageHeader title={tr("工作区")} actions={
+              overview.data?.editor_enabled && !overview.data.workspace_managed
+                ? <Button variant="outline" onClick={() => setWorkspaceSetup(true)}>{tr("初始化工作区")}</Button>
+                : undefined
+            } />
+            {workspaceSetup && (
+              <Dialog open onOpenChange={setWorkspaceSetup}>
+                <DialogContent title={tr("初始化工作区")}
+                  description={tr("初始化后，网页将打开所选目录。")}>
+                  <WorkspaceSetup onDone={() => setWorkspaceSetup(false)} />
+                </DialogContent>
+              </Dialog>
+            )}
             <QueryBoundary query={overview}>
               {(data) => data.editor_enabled ? (
                 <React.Suspense fallback={<LoadingState />}>
                   <WorkspaceEditor managed={data.workspace_managed} />
                 </React.Suspense>
               ) : (
-                <Card className="p-5">
-                  <EmptyState icon={FolderCode} title={tr("设置工作区")}
-                    description={tr("在运行 QuantBot 的服务器上选定目录后，即可在这里编辑代码并绑定 GitHub。")} />
-                  <pre className="mx-auto max-w-fit overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs">
-                    quantbot workspace init
-                  </pre>
-                </Card>
+                <Card className="max-w-2xl p-5"><WorkspaceSetup /></Card>
               )}
             </QueryBoundary>
           </>

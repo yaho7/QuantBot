@@ -91,7 +91,7 @@ QuantBot 启动后每小时查看一次检查缓存，每 6 小时向 GitHub 查
 
 ### 网页工作区
 
-Linux 上以 root 安装时，可以在向导里初始化工作区。已有安装可以在服务器上运行：
+QuantBot 在 Linux 上以 root 运行时，可登录网页「工作区」，在 `/srv/quantbot` 下选择或新建一个空文件夹，点击「初始化此文件夹」。也可以在安装向导里初始化，或在服务器上运行：
 
 ```bash
 quantbot workspace init

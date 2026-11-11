@@ -26,6 +26,7 @@ import hmac
 import json
 import re
 import secrets
+import subprocess
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -57,7 +58,7 @@ from quantbot.hub import Hub, Result
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
 from quantbot.service import Service, ServiceError
 from quantbot.updates import Updater
-from quantbot.workspace import WORKSPACE_FILE
+from quantbot.workspace import WORKSPACE_FILE, web_create_directory, web_directories, web_initialize
 from quantbot.workspace_runtime import WorkspaceRuntime
 from quantbot.workspace_terminal import TerminalProcess
 
@@ -365,6 +366,49 @@ def _editor(store: Store) -> Editor:
     if editor is None:
         raise EditorError(tr("网页策略编辑器已关闭。"))
     return editor
+
+
+async def workspace_setup(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    directory = request.app[STORE_KEY].dir
+    action = request.match_info.get("action")
+    if action is None:
+        try:
+            result = await asyncio.to_thread(
+                web_directories, directory, request.query.get("path", "")
+            )
+            return _answer(True, "", result)
+        except ConfigError as exc:
+            return _answer(False, str(exc))
+        except OSError:
+            return _answer(False, tr("无法打开目录，请检查目录和权限。"))
+    body = await _args(request)
+    path = body.get("path", "")
+    name = body.get("name", "")
+    if not isinstance(path, str) or not isinstance(name, str):
+        return _answer(False, tr("请选择一个工作区文件夹。"))
+    audit = request.app[CORE_KEY].audit
+    try:
+        if action == "folder":
+            result = await asyncio.to_thread(web_create_directory, directory, path, name)
+            message = tr("文件夹已创建。")
+            data = {"path": result}
+        else:
+            workspace = await asyncio.to_thread(web_initialize, directory, path)
+            message = tr("工作区已初始化。")
+            data = {"path": str(workspace.root)}
+    except ConfigError as exc:
+        message = str(exc)
+    except subprocess.TimeoutExpired:
+        message = tr("初始化工作区超时，请在服务器上重试。")
+    except OSError:
+        message = tr("无法打开目录，请检查目录和权限。")
+    else:
+        audit.write(f"workspace_{action}", user=WEB_USER, ok=True, result=message)
+        return _answer(True, message, data)
+    audit.write(f"workspace_{action}", user=WEB_USER, ok=False, result=message)
+    return _answer(False, message)
 
 
 async def workspace_terminal(request: web.Request) -> web.StreamResponse:
@@ -1289,6 +1333,8 @@ def add_routes(
             web.get("/ui/api/editor/github", github_get),
             web.get("/ui/api/editor/git", local_git),
             web.get("/ui/api/workspace/terminal", workspace_terminal),
+            web.get("/ui/api/workspace/directories", workspace_setup),
+            web.post("/ui/api/workspace/{action:folder|init}", workspace_setup),
             web.get("/ui/api/workspace/program", workspace_program),
             web.post("/ui/api/workspace/program/{action:configure|start|stop}", workspace_program),
             web.post("/ui/api/editor/git/commit", local_git),

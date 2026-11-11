@@ -628,6 +628,50 @@ def test_workspace_link_redirects_to_workspace(tmp_path: Path) -> None:
     scenario(test, tmp_path / "audit.jsonl")
 
 
+def test_web_workspace_can_create_and_select_a_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = tmp_path / "workspace"
+    monkeypatch.setattr("quantbot.workspace.WEB_ROOT", base)
+    monkeypatch.setattr(Workspace, "supported", staticmethod(lambda: True))
+
+    def initialize(state: Path, path: Path) -> Workspace:
+        assert path == base / "策略 项目"
+        assert not any(path.iterdir())
+        Editor.enable(state, str(path))
+        Store(state, filename="workspace.json").write({"root": str(path)})
+        return Workspace(path, 123, 123, tmp_path / "home")
+
+    monkeypatch.setattr(Workspace, "initialize", staticmethod(initialize))
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        url = "/ui/api/workspace"
+        assert (await client.get(url + "/directories")).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        listing = await (await client.get(url + "/directories")).json()
+        assert listing["data"]["folders"] == [] and not base.exists()
+        assert (await client.post(url + "/folder", json={"name": "策略 项目"})).status == 403
+        created = await (
+            await client.post(url + "/folder", json={"name": "策略 项目"}, headers=CSRF)
+        ).json()
+        assert created["data"]["path"] == "策略 项目"
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (base / "escape").symlink_to(outside, target_is_directory=True)
+        listing = await (await client.get(url + "/directories")).json()
+        assert listing["data"]["folders"] == ["策略 项目"]
+        for path in ("../outside", str(outside), "escape"):
+            response = await client.post(url + "/init", json={"path": path}, headers=CSRF)
+            assert not (await response.json())["ok"]
+        assert not any(outside.iterdir())
+        result = await client.post(url + "/init", json={"path": "策略 项目"}, headers=CSRF)
+        assert (await result.json())["ok"]
+        overview = await (await client.get("/ui/api/overview")).json()
+        assert overview["workspace_managed"] and overview["editor_enabled"]
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 def test_workspace_terminal_requires_session_and_origin_and_reports_latency(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -308,5 +308,17 @@
   "保存启动命令": "Save startup command",
   "启动工作区程序": "Start workspace program",
   "停止工作区程序": "Stop workspace program",
-  "已连接": "Connected"
+  "已连接": "Connected",
+  "上一级": "Parent folder",
+  "网页初始化适用于以 root 运行的 Linux 服务器。其他环境可用 quantbot editor on --root 选择编辑目录。": "Web setup requires a Linux server running QuantBot as root. In other environments, use quantbot editor on --root to select an editing directory.",
+  "打开已初始化的工作区": "Open the configured workspace",
+  "新建文件夹": "New folder",
+  "文件夹名称": "Folder name",
+  "创建": "Create",
+  "没有可选的子文件夹。": "No folders to choose from.",
+  "请进入或新建一个空文件夹。": "Open or create an empty folder.",
+  "选择一个空文件夹作为工作区。": "Select an empty folder for the workspace.",
+  "初始化此文件夹": "Initialize this folder",
+  "初始化工作区": "Initialize workspace",
+  "初始化后，网页将打开所选目录。": "The console will open the selected directory after setup."
 }

@@ -118,6 +118,10 @@ export interface WorkspaceProgramStatus {
   logs: string;
 }
 
+type WorkspaceDirectories = { supported: false }
+  | { supported: true; configured: string }
+  | { supported: true; base: string; folders: string[]; empty: boolean };
+
 export interface GitHubAuthorization {
   url: string;
   code: string;
@@ -194,6 +198,12 @@ export const api = {
   gitCommit: (paths: string[], message: string) =>
     answerData<{ revision: string }>("POST", "editor/git/commit", { paths, message }),
   workspaceProgram: () => answerData<WorkspaceProgramStatus>("GET", "workspace/program"),
+  workspaceDirectories: (path: string) =>
+    answerData<WorkspaceDirectories>("GET", `workspace/directories?${new URLSearchParams({ path })}`),
+  createWorkspaceFolder: (path: string, name: string) =>
+    answerData<{ path: string }>("POST", "workspace/folder", { path, name }),
+  initializeWorkspace: (path: string) =>
+    answerData<{ path: string }>("POST", "workspace/init", { path }),
   changeWorkspaceProgram: (action: "configure" | "start" | "stop", command?: string) =>
     answerData<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
   githubBind: (form: { repo: string; branch: string; client_id: string }) =>

@@ -8,7 +8,8 @@ import shutil
 import signal
 import subprocess
 import sys
-from contextlib import suppress
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,119 @@ WORKSPACE_FILE = "workspace.json"
 WORKSPACE_USER = "quantbot-workspace"
 WORKSPACE_HOME = Path("/var/lib/quantbot-workspace")
 DEFAULT_ROOT = Path("/srv/quantbot/strategies")
+WEB_ROOT = DEFAULT_ROOT.parent
+
+
+def _web_parts(path: str) -> list[str]:
+    parts = path.split("/") if path else []
+    try:
+        if any(
+            not part.strip()
+            or part.startswith(".")
+            or "\\" in part
+            or len(part.encode("utf-8")) > 255
+            or any(ord(char) < 32 or ord(char) == 127 for char in part)
+            for part in parts
+        ):
+            raise ValueError
+    except ValueError as exc:
+        raise ConfigError(tr("请选择工作区范围内的目录，并使用有效的文件夹名称。")) from exc
+    return parts
+
+
+def _protected(info: os.stat_result) -> bool:
+    return info.st_uid == os.geteuid() and not info.st_mode & 0o022
+
+
+@contextmanager
+def _web_directory(parts: list[str], *, create_base: bool = False) -> Iterator[int]:
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    if create_base:
+        WEB_ROOT.parent.mkdir(mode=0o755, exist_ok=True)
+    fd = os.open(WEB_ROOT.parent, flags)
+    try:
+        if not _protected(os.fstat(fd)):
+            raise ConfigError(tr("目录需要由 QuantBot 服务账号管理。"))
+        if create_base:
+            with suppress(FileExistsError):
+                os.mkdir(WEB_ROOT.name, mode=0o755, dir_fd=fd)
+        for name in [WEB_ROOT.name, *parts]:
+            next_fd = os.open(name, flags, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+            if not _protected(os.fstat(fd)):
+                raise ConfigError(tr("目录需要由 QuantBot 服务账号管理。"))
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def _web_location(data_dir: Path, parts: list[str]) -> Path:
+    path = WEB_ROOT.joinpath(*parts)
+    if path.is_relative_to(data_dir.resolve()):
+        raise ConfigError(tr("请选择 QuantBot 数据目录之外的策略文件夹。"))
+    return path
+
+
+def web_directories(data_dir: Path, path: str) -> dict[str, Any]:
+    supported = Workspace.supported()
+    if not supported:
+        return {"supported": False}
+    saved = Store(data_dir, filename=WORKSPACE_FILE).read().get("root")
+    if isinstance(saved, str) and saved:
+        return {"supported": True, "configured": saved}
+    parts = _web_parts(path)
+    location = _web_location(data_dir, parts)
+    folders = []
+    empty = True
+    try:
+        with _web_directory(parts) as fd, os.scandir(fd) as entries:
+            for entry in entries:
+                empty = False
+                if (
+                    not entry.name.startswith(".")
+                    and entry.is_dir(follow_symlinks=False)
+                    and _protected(entry.stat(follow_symlinks=False))
+                    and not (location / entry.name).is_relative_to(data_dir.resolve())
+                ):
+                    folders.append(entry.name)
+    except FileNotFoundError:
+        if parts:
+            raise
+    return {"supported": True, "base": str(WEB_ROOT), "folders": sorted(folders), "empty": empty}
+
+
+def web_create_directory(data_dir: Path, path: str, name: str) -> str:
+    if not Workspace.supported():
+        raise ConfigError(tr("请在 Linux 服务器上以 root 初始化工作区。"))
+    parts, child = _web_parts(path), _web_parts(name)
+    if len(child) != 1:
+        raise ConfigError(tr("请输入单个文件夹名称。"))
+    if Store(data_dir, filename=WORKSPACE_FILE).read().get("root"):
+        raise ConfigError(tr("工作区已经初始化。"))
+    _web_location(data_dir, parts + child)
+    try:
+        with _web_directory(parts, create_base=True) as fd:
+            os.mkdir(name, mode=0o755, dir_fd=fd)
+    except FileExistsError as exc:
+        raise ConfigError(tr("同名文件夹或文件已存在。")) from exc
+    return "/".join(parts + child)
+
+
+def web_initialize(data_dir: Path, path: str) -> Workspace:
+    if not Workspace.supported():
+        raise ConfigError(tr("请在 Linux 服务器上以 root 初始化工作区。"))
+    saved = Store(data_dir, filename=WORKSPACE_FILE).read().get("root")
+    if saved:
+        if path or not isinstance(saved, str):
+            raise ConfigError(tr("工作区已经初始化。"))
+        return Workspace.initialize(data_dir, Path(saved))
+    parts = _web_parts(path)
+    if not parts:
+        raise ConfigError(tr("请选择一个工作区文件夹。"))
+    location = _web_location(data_dir, parts)
+    with _web_directory(parts):
+        return Workspace.initialize(data_dir, location)
 
 
 @dataclass(frozen=True)
