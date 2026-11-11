@@ -129,7 +129,7 @@ quantbot workspace run stop
 
 #### 绑定 GitHub 策略仓库
 
-在「设置 → 常规 → 连接 GitHub」或「工作区 → Git → GitHub」点「使用 GitHub 登录」。把显示的一次性验证码输入 GitHub 的 **Authorize your device** 页面，授权后在 QuantBot 选择账号可访问的私有或公开仓库。仓库会克隆到已初始化的空工作区。已有 GitHub 仓库的工作区可以直接使用其远端。[GitHub CLI 登录](https://cli.github.com/manual/gh_auth_login)
+在「设置 → 常规 → 连接 GitHub」或「工作区 → 从 GitHub 导入」点「使用 GitHub 登录」。把显示的一次性验证码输入 GitHub 的 **Authorize your device** 页面，授权后在 QuantBot 选择账号可访问的私有或公开仓库。默认会为仓库创建一个独立工作区，也可从 Git 面板选择导入到当前空目录。GitHub 上尚未提交的空仓库也能导入。已有项目可以继续使用它的远端。[GitHub CLI 登录](https://cli.github.com/manual/gh_auth_login)
 
 网页和 CLI 共用服务器工作区账号的 GitHub CLI 登录状态。GitHub CLI 管理凭据，GitHub 组织的访问策略仍适用。退出登录后，已克隆的文件和本地提交仍可使用。
 

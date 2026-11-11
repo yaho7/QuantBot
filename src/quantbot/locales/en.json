@@ -680,5 +680,8 @@
   "请选择空目录，或由工作区账号拥有的现有项目目录。": "Choose an empty folder or an existing project owned by the workspace account.",
   "找不到此工作区。请从工作区列表重新打开。": "Workspace not found. Open it again from the workspace list.",
   "工作区 ID，可用 quantbot workspace list 查看": "Workspace ID shown by quantbot workspace list",
-  "列出工作区": "List workspaces"
+  "列出工作区": "List workspaces",
+  "工作区账号的主目录不可用。": "The workspace account home directory is unavailable.",
+  "当前工作区已有文件或提交。请选择新工作区导入仓库。": "The current workspace has files or commits. Import the repository into a new workspace.",
+  "目录 {0} 已创建，可以打开后重试。{1}": "Folder {0} was created. Open it and retry. {1}"
 }

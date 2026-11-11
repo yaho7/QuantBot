@@ -21,7 +21,7 @@ const StrategyCodeEditor = lazy(() => import("@/components/StrategyCodeEditor"))
 const WorkspaceDiff = lazy(() => import("@/components/WorkspaceDiff"));
 const under = (path: string, folder: string) => path === folder || path.startsWith(folder + "/");
 
-export default function WorkspaceEditor({ onDirty }: { onDirty: (dirty: boolean) => void }) {
+export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (dirty: boolean) => void; onOpenProject: (id: string) => void }) {
   const { project, active: visible, api, key } = useWorkspace();
   const managed = project.managed;
   const toast = useToast();
@@ -233,7 +233,7 @@ export default function WorkspaceEditor({ onDirty }: { onDirty: (dirty: boolean)
           }
           setDiscard(undefined);
         }} />
-      {githubOpen && <GitHubDialog project={project.id} onClose={() => {
+      {githubOpen && <GitHubDialog project={project.id} onProject={onOpenProject} onClose={() => {
         setGithubOpen(false);
         const url = new URL(window.location.href);
         if (url.searchParams.has("github")) {

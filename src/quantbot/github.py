@@ -18,7 +18,7 @@ from git.exc import GitError
 from quantbot.config import ConfigError
 from quantbot.editor import MAX_FILE, Editor, EditorError, editor_lock
 from quantbot.i18n import tr
-from quantbot.workspace import stop_process
+from quantbot.workspace import Workspace, stop_process
 
 # Recognized by the uninstaller for installations which previously used a GitHub App.
 GITHUB_FILE = "github.json"
@@ -94,18 +94,24 @@ class GitHubEditor:
             },
         }, {"cwd": editor.root}
 
-    def _gh_command(self, editor: Editor, *args: str) -> tuple[list[str], dict[str, Any]]:
-        env, options = self._context(editor)
+    def _gh_command(self, editor: Editor | None, *args: str) -> tuple[list[str], dict[str, Any]]:
+        if editor is None and Workspace.supported():
+            workspace = Workspace.account_workspace()
+            env, options = workspace.environment(), workspace.process_options()
+        else:
+            editor = editor or Editor(Path.home(), self.data_dir)
+            workspace = editor.workspace()
+            env, options = self._context(editor)
         gh = shutil.which("gh", path=TOOLS)
         if not gh:
             raise ConfigError(tr("请在服务器上安装 GitHub CLI（gh）。"))
         command = [gh, *args]
-        if workspace := editor.workspace():
+        if workspace:
             command = workspace.command(command)
         env.update(GH_NO_UPDATE_NOTIFIER="1", GH_PROMPT_DISABLED="1", NO_COLOR="1")
         return command, {**options, "env": env}
 
-    def _gh(self, editor: Editor, *args: str, optional: bool = False) -> str:
+    def _gh(self, editor: Editor | None, *args: str, optional: bool = False) -> str:
         command, options = self._gh_command(editor, *args)
         try:
             result = subprocess.run(  # noqa: S603
@@ -125,7 +131,9 @@ class GitHubEditor:
         return "" if result.returncode else result.stdout.strip()
 
     async def begin(self) -> DeviceLogin:
-        command, options = self._gh_command(self._editor(), *LOGIN)
+        if Workspace.supported():
+            Workspace.account_workspace(provision=True)
+        command, options = self._gh_command(None, *LOGIN)
         process = await asyncio.create_subprocess_exec(
             *command,
             **options,
@@ -137,7 +145,9 @@ class GitHubEditor:
         return DeviceLogin(process, self)
 
     def login(self) -> None:
-        command, options = self._gh_command(self._editor(), *LOGIN)
+        if Workspace.supported():
+            Workspace.account_workspace(provision=True)
+        command, options = self._gh_command(None, *LOGIN)
         options["env"].pop("GH_PROMPT_DISABLED")
         result = subprocess.run(command, **options, check=False)  # noqa: S603
         if result.returncode:
@@ -145,13 +155,12 @@ class GitHubEditor:
         self.setup_git()
 
     def setup_git(self) -> None:
-        self._gh(self._editor(), "auth", "setup-git", "--hostname", "github.com")
+        self._gh(None, "auth", "setup-git", "--hostname", "github.com")
 
     def logout(self) -> None:
-        editor = self._editor()
-        self._gh(editor, "auth", "logout", "--hostname", "github.com")
+        self._gh(None, "auth", "logout", "--hostname", "github.com")
 
-    def _account(self, editor: Editor) -> dict[str, Any]:
+    def _account(self, editor: Editor | None) -> dict[str, Any]:
         result = self._gh(
             editor,
             "api",
@@ -173,18 +182,21 @@ class GitHubEditor:
         return {}
 
     def status(self) -> dict[str, Any]:
-        try:
-            editor = self._editor()
-            self._context(editor)
-        except ConfigError:
-            return {"configured": False, "available": False, "account": ""}
         available = bool(shutil.which("gh", path=TOOLS))
-        account = self._account(editor).get("login", "") if available else ""
+        account = ""
+        if available:
+            try:
+                if Workspace.supported():
+                    Workspace.account_workspace()
+            except ConfigError:
+                pass
+            else:
+                account = self._account(None).get("login", "")
         return {"configured": True, "available": available, "account": account}
 
     def repositories(self) -> list[dict[str, Any]]:
         output = self._gh(
-            self._editor(),
+            None,
             "api",
             "--hostname",
             "github.com",
@@ -195,18 +207,44 @@ class GitHubEditor:
         )
         return [json.loads(line) for line in output.splitlines() if line]
 
-    def select(self, repo: str) -> dict[str, Any]:
+    @staticmethod
+    def repository_url(repo: str) -> str:
         if not SLUG.fullmatch(repo) or repo.split("/")[1] in {".", ".."}:
             raise ConfigError(tr("请选择 GitHub 已授权的仓库。"))
+        return f"https://github.com/{repo}.git"
+
+    def select(self, repo: str) -> dict[str, Any]:
+        url = self.repository_url(repo)
         editor = self._editor()
         with editor_lock(self.data_dir, editor.root):
-            if any(editor.root.iterdir()):
-                if self._repository(editor) and self._origin(editor).casefold() == repo.casefold():
-                    self.setup_git()
-                    return self._local_status(editor)
-                raise ConfigError(tr("请选择空工作区克隆仓库，或使用当前 Git 仓库的远端。"))
-            self.setup_git()
-            self._gh(editor, "repo", "clone", repo, ".", "--", "--no-recurse-submodules")
+            entries = {entry.name for entry in editor.root.iterdir()}
+            if not entries:
+                self.setup_git()
+                self._git(editor, "clone", "--no-recurse-submodules", "--", url, ".")
+            elif self._repository(editor) and self._origin(editor).casefold() == repo.casefold():
+                self.setup_git()
+            elif (
+                entries == {".git"}
+                and self._repository(editor)
+                and not self._git(editor, "rev-parse", "--verify", "HEAD", optional=True)
+                and not self._git(editor, "remote", "get-url", "origin", optional=True)
+                and not self._local_status(editor)["files"]
+            ):
+                self.setup_git()
+                self._git(editor, "remote", "add", "origin", url)
+                try:
+                    refs = self._git(editor, "ls-remote", "--symref", "origin", "HEAD")
+                    self._git(editor, "fetch", "--no-recurse-submodules", "origin")
+                    for line in refs.splitlines():
+                        ref = line.removeprefix("ref: refs/heads/").removesuffix("\tHEAD")
+                        if line.startswith("ref: refs/heads/") and line.endswith("\tHEAD"):
+                            self._git(editor, "switch", "-C", ref, "--track", f"origin/{ref}")
+                            break
+                except ConfigError:
+                    self._git(editor, "remote", "remove", "origin", optional=True)
+                    raise
+            else:
+                raise ConfigError(tr("当前工作区已有文件或提交。请选择新工作区导入仓库。"))
             return self._local_status(editor)
 
     @staticmethod

@@ -841,14 +841,29 @@ async def github_post(request: web.Request) -> web.Response:
                 return _answer(True, "", {"repositories": repos})
             if operation == "select":
                 repo = body.get("repo")
-                if not isinstance(repo, str):
+                folder = body.get("folder", "")
+                if not isinstance(repo, str) or not isinstance(folder, str):
                     return _answer(False, tr("请选择 GitHub 已授权的仓库。"))
-                git = (
-                    GitHubEditor(request.app[STORE_KEY].dir, _project(request))
-                    if _project(request)
-                    else actions.editor
-                )
-                data = await asyncio.to_thread(git.select, repo)
+                directory = request.app[STORE_KEY].dir
+                project = _project(request)
+
+                def clone() -> dict[str, Any]:
+                    if not folder:
+                        git = GitHubEditor(directory, project) if project else actions.editor
+                        return {**git.select(repo), "project": project}
+                    GitHubEditor.repository_url(repo)
+                    path = web_create_directory(directory, "", folder)
+                    workspace = web_initialize(directory, path)
+                    created = workspace_id(workspace.root)
+                    try:
+                        result = GitHubEditor(directory, created).select(repo)
+                    except ConfigError as exc:
+                        raise ConfigError(
+                            tr("目录 {0} 已创建，可以打开后重试。{1}", path, exc)
+                        ) from exc
+                    return {**result, "project": created}
+
+                data = await asyncio.to_thread(clone)
                 audit.write("github", user=WEB_USER, ok=True, operation="clone", repo=repo)
                 return _answer(True, "", data)
             if actions.pending:

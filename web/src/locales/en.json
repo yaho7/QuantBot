@@ -410,5 +410,11 @@
   "选择要打开的项目目录。": "Choose the project folder to open.",
   "打开此文件夹": "Open this folder",
   "显示隐藏文件": "Show hidden files",
-  "包含被忽略的文件": "Include ignored files"
+  "包含被忽略的文件": "Include ignored files",
+  "从 GitHub 导入": "Import from GitHub",
+  "导入位置": "Import destination",
+  "新建工作区": "New workspace",
+  "当前工作区": "Current workspace",
+  "新工作区文件夹": "New workspace folder",
+  "导入仓库": "Import repository"
 }

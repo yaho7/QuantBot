@@ -11,11 +11,15 @@ import { tr } from "@/lib/i18n";
 
 const statusKey = ["editor", "github"];
 
-export function GitHubDialog({ project = "", onClose, onChanged }: { project?: string; onClose: () => void; onChanged: () => void }) {
+export function GitHubDialog({ project = "", onClose, onChanged, onProject }: {
+  project?: string; onClose: () => void; onChanged: () => void; onProject?: (id: string) => void;
+}) {
   const qc = useQueryClient();
   const toast = useToast();
   const [authorization, setAuthorization] = useState<GitHubAuthorization>();
   const [repository, setRepository] = useState("");
+  const [target, setTarget] = useState<"new" | "current">("new");
+  const [folder, setFolder] = useState("");
   const [filter, setFilter] = useState("");
   const [confirm, setConfirm] = useState(false);
   const status = useQuery({ queryKey: statusKey, queryFn: api.githubStatus, retry: false });
@@ -44,9 +48,11 @@ export function GitHubDialog({ project = "", onClose, onChanged }: { project?: s
     onSettled: () => setAuthorization(undefined),
   });
   const clone = useMutation({
-    mutationFn: workspaceApi(project).githubSelect,
-    onSuccess: () => {
+    mutationFn: () => workspaceApi(project).githubSelect(repository, target === "new" ? folder.trim() : undefined),
+    onSuccess: async (result) => {
+      await qc.invalidateQueries({ queryKey: ["workspace"] });
       onChanged();
+      if (result.project && result.project !== project) onProject?.(result.project);
       toast.success(tr("GitHub 仓库已就绪。"));
       onClose();
     },
@@ -109,7 +115,7 @@ export function GitHubDialog({ project = "", onClose, onChanged }: { project?: s
                   {({ repositories: items }) => items.length ? (
                     <form className="grid gap-3" onSubmit={(event) => {
                       event.preventDefault();
-                      if (repository && !busy) clone.mutate(repository);
+                      if (repository && (target === "current" || folder.trim()) && !busy) clone.mutate();
                     }}>
                       <Input aria-label={tr("搜索仓库")} placeholder={tr("搜索仓库")} value={filter}
                         onChange={(event) => {
@@ -118,7 +124,10 @@ export function GitHubDialog({ project = "", onClose, onChanged }: { project?: s
                         }} />
                       <Field label={tr("选择仓库")} htmlFor="github-repository">
                         <Select id="github-repository" value={repository}
-                          onChange={(event) => setRepository(event.target.value)}>
+                          onChange={(event) => {
+                            setRepository(event.target.value);
+                            setFolder(event.target.value.split("/").at(-1)?.replace(/^\.+/, "") || "");
+                          }}>
                           <option value="">{tr("选择已授权的仓库")}</option>
                           {items.filter((item) => item.name.toLowerCase().includes(normalized)).map((item) => (
                             <option key={item.name} value={item.name}>
@@ -127,10 +136,21 @@ export function GitHubDialog({ project = "", onClose, onChanged }: { project?: s
                           ))}
                         </Select>
                       </Field>
+                      {project && <Field label={tr("导入位置")} htmlFor="github-target">
+                        <Select id="github-target" value={target}
+                          onChange={(event) => setTarget(event.target.value === "current" ? "current" : "new")}>
+                          <option value="new">{tr("新建工作区")}</option>
+                          <option value="current">{tr("当前工作区")}</option>
+                        </Select>
+                      </Field>}
+                      {target === "new" && <Field label={tr("新工作区文件夹")} htmlFor="github-folder">
+                        <Input id="github-folder" value={folder} maxLength={100} required
+                          onChange={(event) => setFolder(event.target.value)} />
+                      </Field>}
                       <DialogFooter>
                         <Button type="button" variant="ghost" loading={repositories.isFetching}
                           onClick={() => void repositories.refetch()}><RefreshCw /> {tr("刷新仓库列表")}</Button>
-                        <Button type="submit" disabled={!repository} loading={clone.isPending}>{tr("打开仓库")}</Button>
+                        <Button type="submit" disabled={!repository || (target === "new" && !folder.trim())} loading={clone.isPending}>{tr("导入仓库")}</Button>
                       </DialogFooter>
                     </form>
                   ) : <Alert tone="info">{tr("GitHub 没有返回可用仓库。")}</Alert>}

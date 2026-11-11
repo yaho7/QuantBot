@@ -106,7 +106,8 @@ export function SettingsPage({ update, onInstalled }: { update?: UpdateStatus; o
       {serviceOpen && <ServiceDialog onClose={() => setServiceOpen(false)} />}
       {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} checkOnOpen={!latest} onInstalled={onInstalled} />}
       {githubOpen && <GitHubDialog onClose={() => setGithubOpen(false)}
-        onChanged={() => void qc.invalidateQueries({ queryKey: ["editor"] })} />}
+        onChanged={() => void qc.invalidateQueries({ queryKey: ["workbench"] })}
+        onProject={(id) => { location.href = `/ui/?view=workspace&workspace=${encodeURIComponent(id)}`; }} />}
     </>
   );
 }

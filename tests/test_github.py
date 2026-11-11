@@ -141,3 +141,46 @@ def test_gh_process_handles_official_device_login(
 
     asyncio.run(asyncio.wait_for(authorize(), 4))
     assert git_ready.exists()
+
+
+@pytest.mark.parametrize(
+    ("initialized", "remote_has_commit"), [(False, False), (True, False), (True, True)]
+)
+def test_clone_empty_workspace_and_unborn_repository(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, initialized: bool, remote_has_commit: bool
+) -> None:
+    remote = tmp_path / "origin.git"
+    root = tmp_path / "editor"
+    root.mkdir()
+    git(tmp_path, "init", "--bare", "--initial-branch=main", str(remote))
+    if remote_has_commit:
+        seed = tmp_path / "seed"
+        seed.mkdir()
+        git(seed, "init", "--initial-branch=main")
+        commit(seed, "print('remote')\n")
+        git(seed, "push", str(remote), "main")
+    state = tmp_path / "state"
+    Editor.enable(state, str(root))
+    service = GitHubEditor(state)
+    if initialized:
+        service.initialize()
+
+    original = GitHubEditor._git
+
+    def isolated(editor: Editor, *args: str, **options: Any) -> str:
+        if args[0] in {"clone", "ls-remote", "fetch"}:
+            args = (
+                "-c",
+                "protocol.file.allow=always",
+                "-c",
+                f"url.{remote.as_uri()}.insteadOf=https://github.com/acme/project.git",
+                *args,
+            )
+        return original(editor, *args, **options)
+
+    monkeypatch.setattr(GitHubEditor, "_git", staticmethod(isolated))
+    monkeypatch.setattr(GitHubEditor, "setup_git", lambda self: None)
+    result = service.select("acme/project")
+    assert result["remote"] and result["repo"] == "acme/project"
+    assert result["files"] == []
+    assert (root / "strategy.py").exists() == remote_has_commit

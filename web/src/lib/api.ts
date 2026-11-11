@@ -245,8 +245,8 @@ export function workspaceApi(project: string) {
     workspaceProgram: () => data<WorkspaceProgramStatus>("GET", "workspace/program"),
     changeWorkspaceProgram: (action: "configure" | "start" | "stop", command?: string) =>
       data<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
-    githubSelect: (repo: string) =>
-      data<LocalGitStatus>("POST", "editor/github/select", { repo }),
+    githubSelect: (repo: string, folder?: string) =>
+      data<LocalGitStatus & { project: string }>("POST", "editor/github/select", { repo, folder }),
     gitBranches: () => data<{ current: string; branches: string[] }>("GET", "editor/git/branches"),
     gitDiff: (path: string, staged: boolean) =>
       data<{ before: string; after: string }>(

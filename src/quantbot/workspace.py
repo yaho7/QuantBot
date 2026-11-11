@@ -254,6 +254,47 @@ class Workspace:
         return account
 
     @classmethod
+    def ensure_account(cls) -> Any:
+        if not cls.supported():
+            raise ConfigError(tr("请在 Linux 服务器上以 root 初始化工作区。"))
+        import pwd
+
+        try:
+            pwd.getpwnam(WORKSPACE_USER)
+        except KeyError:
+            useradd = shutil.which("useradd", path="/usr/sbin:/usr/bin:/sbin:/bin")
+            if not useradd:
+                raise ConfigError(tr("找不到 useradd，无法创建工作区系统账号。")) from None
+            done = subprocess.run(  # noqa: S603
+                [
+                    useradd,
+                    "--system",
+                    "--user-group",
+                    "--create-home",
+                    "--home-dir",
+                    str(WORKSPACE_HOME),
+                    "--shell",
+                    "/usr/sbin/nologin",
+                    WORKSPACE_USER,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+            if done.returncode:
+                raise ConfigError(tr("无法创建工作区系统账号：{0}", done.stderr.strip())) from None
+        return cls._account()
+
+    @classmethod
+    def account_workspace(cls, *, provision: bool = False) -> Workspace:
+        account = cls.ensure_account() if provision else cls._account()
+        home = Path(account.pw_dir)
+        if not home.is_dir() or home.resolve() != home or home.stat().st_uid != account.pw_uid:
+            raise ConfigError(tr("工作区账号的主目录不可用。"))
+        return cls(home, account.pw_uid, account.pw_gid, home)
+
+    @classmethod
     def initialize(cls, data_dir: Path, path: Path) -> Workspace:
         if not cls.supported():
             raise ConfigError(tr("请在 Linux 服务器上以 root 初始化工作区。"))
@@ -278,36 +319,7 @@ class Workspace:
             ):
                 raise ConfigError(tr("请先安装 util-linux，再初始化工作区。"))
             root.mkdir(parents=True, exist_ok=True, mode=0o750)
-            import pwd
-
-            try:
-                pwd.getpwnam(WORKSPACE_USER)
-            except KeyError:
-                useradd = shutil.which("useradd", path="/usr/sbin:/usr/bin:/sbin:/bin")
-                if not useradd:
-                    raise ConfigError(tr("找不到 useradd，无法创建工作区系统账号。")) from None
-                done = subprocess.run(  # noqa: S603
-                    [
-                        useradd,
-                        "--system",
-                        "--user-group",
-                        "--create-home",
-                        "--home-dir",
-                        str(WORKSPACE_HOME),
-                        "--shell",
-                        "/usr/sbin/nologin",
-                        WORKSPACE_USER,
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    check=False,
-                )
-                if done.returncode:
-                    raise ConfigError(
-                        tr("无法创建工作区系统账号：{0}", done.stderr.strip())
-                    ) from None
-            account = cls._account()
+            account = cls.ensure_account()
             if roots and (state.get("uid"), state.get("gid")) != (account.pw_uid, account.pw_gid):
                 raise ConfigError(tr("工作区系统账号已变更，请在服务器上检查配置。"))
             if root.stat().st_uid != account.pw_uid and any(root.iterdir()):

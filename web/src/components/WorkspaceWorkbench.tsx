@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Clock3, FolderCode, FolderOpen, Plus, X } from "lucide-react";
+import { Clock3, FolderCode, FolderOpen, GitBranch, Plus, X } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
+import { GitHubDialog } from "@/components/GitHubDialog";
 import { WorkspaceContext, workspaceScope } from "@/components/WorkspaceContext";
 import { WorkspaceSetup } from "@/components/WorkspaceSetup";
 import { Button } from "@/components/ui/button";
@@ -34,8 +35,8 @@ function opened(state: Session, id: string): Session {
   };
 }
 
-function ProjectView({ project, active, onDirty }: {
-  project: WorkspaceProject; active: boolean; onDirty: (id: string, dirty: boolean) => void;
+function ProjectView({ project, active, onDirty, onOpen }: {
+  project: WorkspaceProject; active: boolean; onDirty: (id: string, dirty: boolean) => void; onOpen: (id: string) => void;
 }) {
   const scope = useMemo(() => workspaceScope(project, active), [project, active]);
   const trackDirty = useCallback((dirty: boolean) => onDirty(project.id, dirty), [onDirty, project.id]);
@@ -44,7 +45,7 @@ function ProjectView({ project, active, onDirty }: {
       aria-labelledby={`workspace-tab-${project.id}`}>
       <WorkspaceContext.Provider value={scope}>
         <Suspense fallback={<LoadingState />}>
-          <WorkspaceEditor onDirty={trackDirty} />
+          <WorkspaceEditor onDirty={trackDirty} onOpenProject={onOpen} />
         </Suspense>
       </WorkspaceContext.Provider>
     </div>
@@ -75,6 +76,7 @@ export default function WorkspaceWorkbench() {
   const [session, setSession] = useState(readSession);
   const [picker, setPicker] = useState<"recent" | "folder">();
   const [filter, setFilter] = useState("");
+  const [github, setGithub] = useState(false);
   const [closing, setClosing] = useState<WorkspaceProject>();
   const [dirty, setDirty] = useState<Record<string, boolean>>({});
   const requested = useRef(new URLSearchParams(location.search).get("workspace"));
@@ -139,6 +141,7 @@ export default function WorkspaceWorkbench() {
   return (
     <>
       <PageHeader title={tr("工作区")} description={current?.path} actions={<>
+        <Button variant="outline" onClick={() => setGithub(true)}><GitBranch /> {tr("从 GitHub 导入")}</Button>
         <Button variant="outline" onClick={() => showPicker("recent")}><Clock3 /> {tr("最近打开")}</Button>
         <Button variant="outline" onClick={() => showPicker("folder")}><FolderOpen /> {tr("打开文件夹")}</Button>
       </>} />
@@ -177,7 +180,7 @@ export default function WorkspaceWorkbench() {
                 title={tr("打开另一个工作区")} onClick={() => showPicker("recent")}><Plus /></Button>
             </div>
             {projects.map((project) => <ProjectView key={project.id} project={project}
-              active={current?.id === project.id} onDirty={reportDirty} />)}
+              active={current?.id === project.id} onDirty={reportDirty} onOpen={open} />)}
           </div>
         ) : recent.length || known.length ? (
           <div className="max-w-xl space-y-2">
@@ -209,6 +212,7 @@ export default function WorkspaceWorkbench() {
           )}
         </DialogContent>
       </Dialog>
+      {github && <GitHubDialog onClose={() => setGithub(false)} onChanged={() => {}} onProject={open} />}
       <ConfirmDialog open={!!closing} onOpenChange={(open) => { if (!open) setClosing(undefined); }}
         title={tr("关闭工作区并放弃草稿？")} description={closing?.path} confirmLabel={tr("关闭工作区")} destructive
         onConfirm={() => { if (closing) close(closing.id); }} />
