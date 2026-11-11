@@ -18,6 +18,8 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check . && uv run ruff format --check .
       - run: uv run pytest
+      - name: Verify the workspace terminal drops Linux root privileges
+        run: sudo "$PWD/.venv/bin/python" -m pytest -p no:cacheprovider tests/test_workspace_linux.py
       - run: shellcheck install.sh
       - name: Build both packages
         run: uv build . && uv build client
