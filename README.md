@@ -52,6 +52,8 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 忘了密码，在服务器上运行 `quantbot password`。也可以运行 `quantbot web`，或在 Telegram 里给 bot 发 `/web`，拿一个不用密码的一次性链接（5 分钟内有效，只能用一次）。
 
+已经登录时，在“设置 → 网页管理员”可用当前密码更新用户名和密码，也可生成一次性登录链接。更新后，当前浏览器会继续保持登录，其他会话需要重新登录。
+
 | 网页上 | 能做什么 |
 |---|---|
 | 策略卡片 | 在线状态、状态快照、暂停开仓、恢复开仓 |

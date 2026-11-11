@@ -14,7 +14,9 @@ import re
 import secrets
 import socket
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -107,6 +109,15 @@ def data_dir(env: Mapping[str, str] | None = None) -> Path:
 
 def new_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def set_web_admin(data: dict[str, Any], admin: dict[str, str]) -> bool:
+    """Rotate the session secret when the administrator credentials change."""
+    if data.get("web_admin") == admin:
+        return False
+    data["web_admin"] = admin
+    data["web_secret"] = new_token()
+    return True
 
 
 def check_strategy_id(sid: str) -> str:
@@ -203,6 +214,21 @@ class Store:
             if os.path.exists(tmp):
                 os.unlink(tmp)
 
+    @contextmanager
+    def edit(self) -> Iterator[dict[str, Any]]:
+        """Merge edits against the current settings under a short process lock."""
+        self.dir.mkdir(parents=True, exist_ok=True)
+        with self.path.with_name(f".{self.path.name}.lock").open("a") as lock:
+            if os.name == "posix":
+                import fcntl
+
+                fcntl.flock(lock, fcntl.LOCK_EX)
+            data = self.read()
+            before = deepcopy(data)
+            yield data
+            if data != before:
+                self.write(data)
+
     # ------------------------------------------------------------ settings
 
     def ensure_listen(self, env: Mapping[str, str] | None = None) -> str:
@@ -213,17 +239,20 @@ class Store:
         data = self.read()
         if data.get("listen"):
             return check_listen(str(data["listen"]))
-        data["listen"] = f"{LOCALHOST}:{free_port()}"
-        self.write(data)
-        return str(data["listen"])
+        with self.edit() as data:
+            if not data.get("listen"):
+                data["listen"] = f"{LOCALHOST}:{free_port()}"
+            return check_listen(str(data["listen"]))
 
     def web_secret(self) -> str:
         """The key that signs web login links and cookies. Made the first time it is needed."""
         data = self.read()
-        if not data.get("web_secret"):
-            data["web_secret"] = secrets.token_urlsafe(32)
-            self.write(data)
-        return str(data["web_secret"])
+        if data.get("web_secret"):
+            return str(data["web_secret"])
+        with self.edit() as data:
+            if not data.get("web_secret"):
+                data["web_secret"] = new_token()
+            return str(data["web_secret"])
 
     def strategies(self, data: dict[str, Any] | None = None) -> tuple[StrategyConfig, ...]:
         data = self.read() if data is None else data

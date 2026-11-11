@@ -1,6 +1,7 @@
 /** The Telegram link and notice settings, the same ones `quantbot setup` asks for. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
+import { AccountDialog } from "@/components/AccountDialog";
 import { QueryBoundary } from "@/components/common";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ export function SettingsDialog({ open, onOpenChange, version, onVersion }: {
   onVersion: () => void;
 }) {
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, enabled: open });
+  const [accountOpen, setAccountOpen] = React.useState(false);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="设置" className="max-w-lg"
@@ -26,14 +28,25 @@ export function SettingsDialog({ open, onOpenChange, version, onVersion }: {
           </Button>
         </div>
         <QueryBoundary query={settings}>
-          {(data) => <SettingsForm key={JSON.stringify(data)} data={data} onDone={() => onOpenChange(false)} />}
+          {({ admin_username, ...data }) => (
+            <>
+              <div className="flex items-center justify-between gap-3 border-b border-border pb-3 text-sm">
+                <span>网页管理员</span>
+                <Button variant="ghost" size="sm" onClick={() => setAccountOpen(true)}>
+                  {admin_username ? `${admin_username} · 修改密码` : "设置管理员"}
+                </Button>
+              </div>
+              <SettingsForm key={JSON.stringify(data)} data={data} onDone={() => onOpenChange(false)} />
+              {accountOpen && <AccountDialog username={admin_username} onClose={() => setAccountOpen(false)} />}
+            </>
+          )}
         </QueryBoundary>
       </DialogContent>
     </Dialog>
   );
 }
 
-function SettingsForm({ data, onDone }: { data: Settings; onDone: () => void }) {
+function SettingsForm({ data, onDone }: { data: Omit<Settings, "admin_username">; onDone: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [token, setToken] = React.useState("");

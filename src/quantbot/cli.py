@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import re
-import secrets
 import shutil
 import subprocess
 import sys
@@ -42,6 +41,7 @@ from quantbot.config import (
     free_port,
     new_token,
     port_free,
+    set_web_admin,
 )
 from quantbot.editor import EDITOR_FILE, Editor, editor_lock
 from quantbot.github import GitHubEditor
@@ -203,15 +203,6 @@ def _ask_admin(io: Console, data: dict[str, Any]) -> dict[str, str]:
         return {"username": username, "password": hash_password(password)}
 
 
-def _save_admin(data: dict[str, Any], admin: dict[str, str]) -> bool:
-    """Store the admin. A changed account gets a new web secret, signing everyone out."""
-    if data.get("web_admin") == admin:
-        return False
-    data["web_admin"] = admin
-    data["web_secret"] = secrets.token_urlsafe(32)
-    return True
-
-
 def _ask_telegram(
     io: Console, api: Api, data: dict[str, Any]
 ) -> tuple[dict[str, Any] | None, str | None, str]:
@@ -262,9 +253,11 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     if args.if_needed and done_before:
         if not (data.get("web_admin") or {}).get("password") and io.interactive():
             io.say("网页现在用账号密码登录。先设一个管理员：")
-            _save_admin(data, _ask_admin(io, data))
-            store.write(data)
-            io.say("✓ 已保存管理员账号。")
+            admin = _ask_admin(io, data)
+            with store.edit() as fresh:
+                if not (fresh.get("web_admin") or {}).get("password"):
+                    set_web_admin(fresh, admin)
+                    io.say("✓ 已保存管理员账号。")
         if service is not None and service.installed():
             service.restart()
             io.say("✓ 已经设置过了，后台服务已重启，用上新版本。要改设置，运行 quantbot setup")
@@ -274,6 +267,7 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     if not io.interactive():
         raise Abort("setup 要在终端里交互运行：quantbot setup")
     old_tg = data.get("telegram") or {}
+    old_admin = data.get("web_admin")
     ask_service = service is not None and not service.installed()
     steps = 5 if ask_service else 4
     io.say("QuantBot 设置。直接回车会用方括号里的值。")
@@ -335,26 +329,28 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         io.say("已取消，什么都没改。")
         return 1
 
-    port_changed = bool(data.get("listen")) and data.get("listen") != listen
-    data.update(
-        listen=listen,
-        quiet_hours=quiet,
-        timezone=timezone,
-        heartbeat_url=heartbeat,
-        setup_done=True,
-    )
-    if public_url:
-        data.update(public_url=public_url, web_tunnel=True)
-    else:
-        data.pop("public_url", None)
-        data.pop("web_tunnel", None)
-    if telegram:
-        data["telegram"] = telegram
-    else:
-        data.pop("telegram", None)
-    data.setdefault("strategies", [])
-    signed_out = _save_admin(data, admin) and done_before
-    store.write(data)
+    with store.edit() as data:
+        if data.get("web_admin") != old_admin:
+            raise Abort("管理员账号已变更，请重新运行 quantbot setup。")
+        port_changed = bool(data.get("listen")) and data.get("listen") != listen
+        data.update(
+            listen=listen,
+            quiet_hours=quiet,
+            timezone=timezone,
+            heartbeat_url=heartbeat,
+            setup_done=True,
+        )
+        if public_url:
+            data.update(public_url=public_url, web_tunnel=True)
+        else:
+            data.pop("public_url", None)
+            data.pop("web_tunnel", None)
+        if telegram:
+            data["telegram"] = telegram
+        else:
+            data.pop("telegram", None)
+        data.setdefault("strategies", [])
+        signed_out = set_web_admin(data, admin) and done_before
     sent = ""
     if telegram:
         try:
@@ -423,10 +419,13 @@ def cmd_password(store: Store, io: Console, api: Api, args: argparse.Namespace) 
         raise Abort("要在终端里交互运行：quantbot password")
     data = store.read()
     io.say("设置网页管理员的用户名和密码。")
-    if not _save_admin(data, _ask_admin(io, data)):
-        io.say("没有改动。")
-        return 0
-    store.write(data)
+    admin = _ask_admin(io, data)
+    with store.edit() as fresh:
+        if fresh.get("web_admin") != data.get("web_admin"):
+            raise Abort("管理员账号已变更，请重试。")
+        if not set_web_admin(fresh, admin):
+            io.say("没有改动。")
+            return 0
     from quantbot.audit import Audit
 
     Audit(store.dir).write("password", user="cli", ok=True, result="改了网页管理员账号")
@@ -617,14 +616,13 @@ def _set_listen(store: Store, io: Console, port: int | None, listen: str | None)
         host = (listen or LOCALHOST).rpartition(":")[0] if listen else LOCALHOST
         listen = f"{host}:{port}"
     new = check_listen(str(listen))
-    data = store.read()
-    if data.get("listen") == new:
-        return
-    host, _, port_text = new.rpartition(":")
-    if not port_free(int(port_text), "0.0.0.0" if host == "0.0.0.0" else LOCALHOST):  # noqa: S104
-        raise Abort(f"端口 {port_text} 已经被别的程序占用，换一个")
-    data["listen"] = new
-    store.write(data)
+    with store.edit() as data:
+        if data.get("listen") == new:
+            return
+        host, _, port_text = new.rpartition(":")
+        if not port_free(int(port_text), "0.0.0.0" if host == "0.0.0.0" else LOCALHOST):  # noqa: S104
+            raise Abort(f"端口 {port_text} 已经被别的程序占用，换一个")
+        data["listen"] = new
     if data.get("strategies"):
         io.say("  改了端口：已经在跑的策略要重启一下，才会连到新端口。")
 

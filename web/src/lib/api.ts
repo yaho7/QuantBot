@@ -67,6 +67,7 @@ export interface Settings {
   listen: string;
   public_url: string;
   telegram: boolean;
+  admin_username: string;
 }
 
 export interface UpdateResult {
@@ -137,6 +138,9 @@ export const api = {
   login: (username: string, password: string) =>
     request<Answer>("POST", "login", { username, password }),
   logout: () => request<{ ok: boolean }>("POST", "logout"),
+  changePassword: (body: { username: string; current: string; password: string; confirm: string }) =>
+    request<Answer>("POST", "password", body),
+  webLink: () => request<Answer<{ url: string }>>("POST", "web-link"),
   pauseAll: () => request<Answer>("POST", "pause-all"),
   prompt: (id: string, name: string) =>
     request<{ text: string }>("GET", `prompt?${new URLSearchParams({ id, name })}`),

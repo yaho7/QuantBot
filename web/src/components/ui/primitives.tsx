@@ -26,7 +26,7 @@ export function CardContent({ className, ...p }: React.HTMLAttributes<HTMLDivEle
   return <div className={cn("p-5 pt-2", className)} {...p} />;
 }
 
-export function Input({ className, ...p }: React.InputHTMLAttributes<HTMLInputElement>) {
+export function Input({ className, ...p }: React.ComponentProps<"input">) {
   return (
     <input
       className={cn(

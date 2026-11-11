@@ -403,6 +403,49 @@ def test_tunnel_login_secure_cookie_and_per_client_lockout(tmp_path: Path) -> No
     assert _login_client(req, False, public_url) == "127.0.0.1"
 
 
+def test_web_admin_can_change_password_and_create_login_link(tmp_path: Path) -> None:
+    from quantbot.web import check_password, hash_password
+
+    store = Store(tmp_path / "settings")
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        with store.edit() as data:
+            data["web_admin"] = {"username": "old", "password": hash_password("right-pass")}
+        old_cookie = auth.session()
+        old_link = auth.link_token()
+        change = {
+            "username": "new",
+            "current": "bad",
+            "password": "new-pass",
+            "confirm": "new-pass",
+        }
+        assert (await client.post("/ui/api/password", headers=CSRF, json=change)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        assert (await client.post("/ui/api/password", json=change)).status == 403
+        wrong = await (await client.post("/ui/api/password", headers=CSRF, json=change)).json()
+        assert not wrong["ok"] and auth.valid(old_cookie)
+        change["current"] = "right-pass"
+        response = await client.post("/ui/api/password", headers=CSRF, json=change)
+        assert (await response.json())["ok"]
+        assert COOKIE in response.cookies and auth.valid(response.cookies[COOKIE].value)
+        assert not auth.valid(old_cookie) and auth.redeem(old_link) is None
+        assert (await client.get("/ui/api/settings")).status == 200
+        admin = store.read()["web_admin"]
+        assert admin["username"] == "new" and check_password("new-pass", admin["password"])
+        assert store.read()["telegram"]["token"] == BOT
+
+        generated = await client.post("/ui/api/web-link", headers=CSRF)
+        assert generated.headers["Cache-Control"] == "no-store"
+        url = (await generated.json())["data"]["url"]
+        assert (await client.get(url, allow_redirects=False)).status == 302
+        assert (await client.get(url, allow_redirects=False)).status == 403
+        audit = tmp_path / "audit.jsonl"
+        assert [r["action"] for r in read_audit(audit, 2)] == ["web_link", "password"]
+        assert "new-pass" not in audit.read_text() and url not in audit.read_text()
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 def test_prompt_for_ai(tmp_path: Path) -> None:
     async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
         assert (await client.get("/ui/api/prompt?id=momentum")).status == 401

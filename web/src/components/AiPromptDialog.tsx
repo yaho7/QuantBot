@@ -6,21 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field, Input, Skeleton, Textarea } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
+import { copyText } from "@/lib/utils";
 
 const ID = /^[a-z0-9][a-z0-9_-]{0,31}$/;
-
-/** Copy text. The Clipboard API needs HTTPS or localhost, so fall back to a selection. */
-async function copy(text: string, area: HTMLTextAreaElement | null): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    if (!area) return false;
-    area.focus();
-    area.select();
-    return document.execCommand("copy");
-  }
-}
 
 function useDebounced<T>(value: T, ms = 300): T {
   const [v, setV] = React.useState(value);
@@ -78,7 +66,7 @@ export function AiPromptDialog({ open, onOpenChange, strategy }: {
         <DialogFooter>
           <Button disabled={!text} onClick={async () => {
             if (!text) return;
-            if (await copy(text, area.current)) toast.success("已复制。贴给 AI，再附上你的策略代码。");
+            if (await copyText(text, area.current)) toast.success("已复制。贴给 AI，再附上你的策略代码。");
             else toast.error("浏览器不让自动复制，请在框里全选后手动复制。");
           }}>
             <Copy /> 复制

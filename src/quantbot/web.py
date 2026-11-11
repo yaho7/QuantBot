@@ -45,6 +45,7 @@ from quantbot.config import (
     check_strategy_id,
     check_timezone,
     check_url,
+    set_web_admin,
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
 from quantbot.editor import EDITOR_FILE, Editor, EditorError, editor_lock
@@ -536,6 +537,7 @@ async def settings_get(request: web.Request) -> web.Response:
             "listen": data.get("listen") or "",
             "public_url": check_public_url(data.get("public_url")) or "",
             "telegram": bool(tg.get("token")),
+            "admin_username": (data.get("web_admin") or {}).get("username") or "",
         }
     )
 
@@ -549,16 +551,16 @@ async def settings_post(request: web.Request) -> web.Response:
         return denied
     body = await _args(request)
     store = request.app[STORE_KEY]
-    data = store.read()
-    tg = dict(data.get("telegram") or {})
+    tg = dict(store.read().get("telegram") or {})
     old_key = (tg.get("token"), tg.get("owner_id"))
     if body.get("remove_telegram"):
-        data.pop("telegram", None)
-        store.write(data)
+        with store.edit() as data:
+            data.pop("telegram", None)
         request.app[CORE_KEY].audit.write(
             "settings", user=WEB_USER, ok=True, result="断开了 Telegram，只用网页"
         )
         return _answer(True, "已断开 Telegram。QuantBot 几秒后重启，之后只用网页。")
+    changes: dict[str, Any] = {}
     try:
         token = str(body.get("token") or "").strip()
         if token:
@@ -578,11 +580,11 @@ async def settings_post(request: web.Request) -> web.Response:
         if "quiet_hours" in body:
             quiet = str(body["quiet_hours"] or "").strip()
             parse_quiet(quiet)
-            data["quiet_hours"] = quiet or None
+            changes["quiet_hours"] = quiet or None
         if "timezone" in body:
-            data["timezone"] = check_timezone(str(body["timezone"] or "Asia/Shanghai").strip())
+            changes["timezone"] = check_timezone(str(body["timezone"] or "Asia/Shanghai").strip())
         if "heartbeat_url" in body:
-            data["heartbeat_url"] = check_url(str(body["heartbeat_url"] or "").strip())
+            changes["heartbeat_url"] = check_url(str(body["heartbeat_url"] or "").strip())
     except (ValueError, ConfigError) as exc:
         return _answer(False, str(exc))
     if bool(tg.get("token")) != isinstance(tg.get("owner_id"), int):
@@ -601,9 +603,14 @@ async def settings_post(request: web.Request) -> web.Response:
             note = "已用新设置发了一条测试消息。"
         except TelegramError as exc:
             return _answer(False, f"测试消息发不出去，没有保存：{exc}。先给 bot 发一条消息再试。")
-    if tg.get("token"):
-        data["telegram"] = tg
-    store.write(data)
+    with store.edit() as data:
+        if token or "owner_id" in body:
+            fresh_tg = data.get("telegram") or {}
+            if (fresh_tg.get("token"), fresh_tg.get("owner_id")) != old_key:
+                return _answer(False, "Telegram 设置已变更，请刷新后再试。")
+            if tg.get("token"):
+                data["telegram"] = tg
+        data.update(changes)
     request.app[CORE_KEY].audit.write(
         "settings",
         user=WEB_USER,
@@ -709,15 +716,74 @@ async def password_login(request: web.Request) -> web.Response:
     if wait := auth.locked(who):
         return _answer(False, f"密码错了太多次，{(wait + 59) // 60} 分钟后再试。")
     auth.failed(who)  # Reserve an attempt before yielding to the password checker.
-    loop = asyncio.get_running_loop()
-    good = await loop.run_in_executor(None, check_password, password, str(admin["password"]))
+    good = await asyncio.to_thread(check_password, password, str(admin["password"]))
     good = hmac.compare_digest(username.encode(), str(admin.get("username")).encode()) and good
+    good = good and request.app[STORE_KEY].read().get("web_admin") == admin
     request.app[CORE_KEY].audit.write("login", user=WEB_USER, ok=good, client=who)
     if not good:
         return _answer(False, "用户名或密码不对。")
     auth.succeeded(who)
     response = _answer(True, "已登录")
     _set_session(response, auth.session(), secure=_secure_session(request, public_url))
+    return response
+
+
+async def password_change(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    body = await _args(request)
+    username, password = body.get("username"), body.get("password")
+    if not isinstance(username, str) or not USERNAME.fullmatch(username):
+        return _answer(False, "用户名可用字母、数字和 _ . -，最多 32 个字符。")
+    if not isinstance(password, str) or len(password) < MIN_PASSWORD:
+        return _answer(False, f"密码至少 {MIN_PASSWORD} 位。")
+    if body.get("confirm") != password:
+        return _answer(False, "两次输入的新密码不同。")
+
+    store = request.app[STORE_KEY]
+    auth = request.app[AUTH_KEY]
+    audit = request.app[CORE_KEY].audit
+    settings = store.read()
+    old_admin = settings.get("web_admin")
+    old_hash = (old_admin or {}).get("password")
+    public_url = check_public_url(settings.get("public_url"))
+    if old_hash:
+        current = body.get("current")
+        if not isinstance(current, str) or not current:
+            return _answer(False, "请输入当前密码。")
+        who = _login_client(request, bool(settings.get("web_tunnel")), public_url)
+        if wait := auth.locked(who):
+            return _answer(False, f"密码错了太多次，{(wait + 59) // 60} 分钟后再试。")
+        auth.failed(who)
+        if not await asyncio.to_thread(check_password, current, str(old_hash)):
+            audit.write("password", user=WEB_USER, ok=False, result="当前密码错误")
+            return _answer(False, "当前密码不对。")
+        auth.succeeded(who)
+
+    hashed = await asyncio.to_thread(hash_password, password)
+    with store.edit() as data:
+        if data.get("web_admin") != old_admin:
+            return _answer(False, "管理员账号已变更，请重新登录。")
+        set_web_admin(data, {"username": username, "password": hashed})
+        secret = data["web_secret"]
+        public_url = check_public_url(data.get("public_url"))
+    auth.secret = secret
+    audit.write("password", user=WEB_USER, ok=True, result="改了网页管理员账号")
+    response = _answer(True, "管理员账号已更新，其他会话需要重新登录。")
+    _set_session(response, auth.session(), secure=_secure_session(request, public_url))
+    return response
+
+
+async def web_link(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    public_url = check_public_url(request.app[STORE_KEY].read().get("public_url")) or ""
+    token = request.app[AUTH_KEY].link_token()
+    request.app[CORE_KEY].audit.write(
+        "web_link", user=WEB_USER, ok=True, result="生成一次性登录链接"
+    )
+    response = _answer(True, "", {"url": f"{public_url}/ui/login?t={token}"})
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 
@@ -853,6 +919,8 @@ def add_routes(
             web.get("/ui/login", login),
             web.post("/ui/api/login", password_login),
             web.post("/ui/api/logout", logout),
+            web.post("/ui/api/password", password_change),
+            web.post("/ui/api/web-link", web_link),
             web.get("/ui/api/overview", overview),
             web.get("/ui/api/audit", audit),
             web.post("/ui/api/pause-all", pause_all),
