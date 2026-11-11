@@ -41,11 +41,12 @@ const highlighting = syntaxHighlighting(HighlightStyle.define([
   { tag: [tags.className, tags.function(tags.definition(tags.variableName))], fontWeight: "600" },
 ]));
 
-export function StrategyCodeEditor({ path, initial, onChange, disabled }: {
+export function StrategyCodeEditor({ path, initial, onChange, disabled, jump }: {
   path: string;
   initial: string;
   onChange: (code: string) => void;
   disabled: boolean;
+  jump?: { line: number; request: number };
 }) {
   const parent = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView>(null);
@@ -75,6 +76,13 @@ export function StrategyCodeEditor({ path, initial, onChange, disabled }: {
       EditorState.readOnly.of(disabled), EditorView.editable.of(!disabled),
     ]) });
   }, [disabled]);
+  useEffect(() => {
+    const editor = view.current;
+    if (!jump || !editor || jump.line > editor.state.doc.lines) return;
+    const anchor = editor.state.doc.line(jump.line).from;
+    editor.dispatch({ selection: { anchor }, scrollIntoView: true });
+    editor.focus();
+  }, [jump]);
 
   function insert(code: string) {
     const editor = view.current;

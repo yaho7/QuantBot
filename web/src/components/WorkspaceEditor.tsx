@@ -1,224 +1,225 @@
-import { tr } from "@/lib/i18n";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { structuredPatch } from "diff";
-import { ChevronRight, FileCode, Folder, FolderOpen, GitBranch, Play, RefreshCw, Save, SquareTerminal } from "lucide-react";
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { ConfirmDialog, EmptyState, LoadingState, QueryBoundary } from "@/components/common";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import { FileCode, Files, GitBranch, Play, Search, SquareTerminal, X } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
+import { ConfirmDialog, EmptyState, LoadingState } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
 import { StrategyCodeEditor } from "@/components/StrategyCodeEditor";
+import { WorkspaceDiff } from "@/components/WorkspaceDiff";
+import { WorkspaceExplorer, WorkspaceSearch } from "@/components/WorkspaceExplorer";
 import { WorkspaceProgram } from "@/components/WorkspaceProgram";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/primitives";
-import { api, type SourceFile } from "@/lib/api";
+import { api, type FileAction, type SourceFile } from "@/lib/api";
+import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-type TreeProps = { selected?: string; disabled: boolean; onFile: (path: string) => void };
 const WorkspaceTerminal = lazy(() => import("@/components/WorkspaceTerminal"));
-
-function FileTree({ path, ...props }: TreeProps & { path: string }) {
-  const entries = useQuery({ queryKey: ["editor", "tree", path], queryFn: () => api.editorTree(path), retry: false });
-  return (
-    <QueryBoundary query={entries} rows={2}>
-      {({ entries }) => entries.length ? (
-        <ul className="grid gap-0.5">
-          {entries.map(({ kind, name }) => {
-            const target = path ? `${path}/${name}` : name;
-            return kind === "directory" ? (
-              <FolderRow key={name} name={name} path={target} {...props} />
-            ) : (
-              <li key={name}>
-                <Button variant={props.selected === target ? "secondary" : "ghost"} size="sm"
-                  className="w-full justify-start gap-2 rounded-md px-2 font-normal" title={name}
-                  aria-current={props.selected === target ? "true" : undefined}
-                  disabled={props.disabled} onClick={() => props.onFile(target)}>
-                  <FileCode className="text-muted-foreground" />
-                  <span className="truncate">{name}</span>
-                </Button>
-              </li>
-            );
-          })}
-        </ul>
-      ) : <p className="px-2 py-2 text-xs text-muted-foreground">{tr("文件夹为空")}</p>}
-    </QueryBoundary>
-  );
-}
-
-function FolderRow({ name, path, ...props }: TreeProps & { name: string; path: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <li>
-      <Button variant="ghost" size="sm" className="w-full justify-start gap-2 rounded-md px-2 font-normal"
-        title={name} aria-expanded={open} onClick={() => setOpen(!open)}>
-        <ChevronRight className={cn("text-muted-foreground transition-transform", open && "rotate-90")} />
-        {open ? <FolderOpen /> : <Folder />}
-        <span className="truncate">{name}</span>
-      </Button>
-      {open && <div className="ml-3 border-l border-border pl-2"><FileTree path={path} {...props} /></div>}
-    </li>
-  );
-}
-
-type File = SourceFile & { path: string; opened: number };
-
-function preview(file: File, draft: string) {
-  const patch = structuredPatch(file.path, file.path, file.content, draft, undefined, undefined, {
-    context: 3, timeout: 250,
-  });
-  const lines = patch?.hunks.flatMap((hunk) => [
-    `@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`, ...hunk.lines,
-  ]);
-  return lines ? (
-    <pre className="max-h-[44vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs leading-relaxed">
-      {lines.map((line, i) => (
-        <span key={i} className={cn("block min-h-[1em] w-max min-w-full",
-          line.startsWith("+") && "bg-gain/10 text-gain",
-          line.startsWith("-") && "bg-loss/10 text-loss",
-          line.startsWith("@@") && "text-muted-foreground",
-        )}>{line}</span>
-      ))}
-    </pre>
-  ) : (
-    <div className="grid gap-3 md:grid-cols-2">
-      {[[tr("保存前"), file.content], [tr("保存后"), draft]].map(([label, code]) => (
-        <section key={label} className="min-w-0">
-          <h3 className="mb-1 text-xs font-medium">{label}</h3>
-          <pre className="max-h-[42vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs">{code}</pre>
-        </section>
-      ))}
-    </div>
-  );
-}
+const under = (path: string, folder: string) => path === folder || path.startsWith(folder + "/");
 
 export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const toast = useToast();
   const qc = useQueryClient();
-  const [file, setFile] = useState<File>();
-  const [draft, setDraft] = useState("");
-  const [error, setError] = useState("");
-  const [review, setReview] = useState<ReactNode>(null);
-  const [discard, setDiscard] = useState<string>();
-  const [githubOpen, setGithubOpen] = useState(() => new URLSearchParams(location.search).has("github"));
+  const [tabs, setTabs] = useState<string[]>([]);
+  const [active, setActive] = useState<string>();
+  const [drafts, setDrafts] = useState<Record<string, { base: SourceFile; text: string }>>({});
+  const [location, setLocation] = useState<{ path: string; line: number; request: number }>();
+  const [sidebar, setSidebar] = useState<"files" | "search">("files");
+  const [review, setReview] = useState(false);
+  const [discard, setDiscard] = useState<{ path: string; close: boolean }>();
+  const [githubOpen, setGithubOpen] = useState(() => new URLSearchParams(window.location.search).has("github"));
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [programOpen, setProgramOpen] = useState(false);
-  const showTerminal = managed && terminalOpen;
-  const dirty = !!file && file.content !== draft;
+  const dirty = Object.keys(drafts).length > 0;
+  const files = useQueries({ queries: tabs.map((path) => ({
+    queryKey: ["editor", "file", path],
+    queryFn: () => api.editorFile(path),
+    retry: false,
+  })) });
+  const fileQuery = active === undefined ? undefined : files[tabs.indexOf(active)];
+  const disk = fileQuery?.data;
+  const draft = active === undefined ? undefined : drafts[active];
+  const base = draft?.base ?? disk;
+  const conflicted = !!draft && (fileQuery?.isError || (disk && disk.revision !== draft.base.revision));
+
+  const refresh = useCallback(() => {
+    for (const key of ["tree", "file", "search", "git", "github"]) {
+      void qc.invalidateQueries({ queryKey: ["editor", key] });
+    }
+  }, [qc]);
+  useEffect(() => {
+    const events = new EventSource("/ui/api/editor/events");
+    events.onmessage = refresh;
+    return () => events.close();
+  }, [refresh]);
   useEffect(() => {
     if (!dirty) return;
     function warn(event: BeforeUnloadEvent) { event.preventDefault(); }
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [dirty]);
-  const load = useMutation({
-    mutationFn: api.editorFile,
-    onSuccess: (source, path) => {
-      setFile((previous) => ({ ...source, path, opened: (previous?.opened ?? 0) + 1 }));
-      setDraft(source.content);
-    },
-    onError: (err) => setError(err.message),
-  });
+  const edit = useCallback((text: string) => {
+    if (!active || !base) return;
+    setDrafts((previous) => {
+      const next = { ...previous };
+      if (text === base.content) delete next[active];
+      else next[active] = { base, text };
+      return next;
+    });
+  }, [active, base]);
+  function dropDraft(path: string) {
+    setDrafts((previous) => {
+      const next = { ...previous };
+      delete next[path];
+      return next;
+    });
+  }
   const save = useMutation({
     mutationFn: api.saveEditorFile,
-    onSuccess: (source) => {
-      setFile((current) => current && { ...current, ...source });
+    onSuccess: (source, { path }) => {
+      qc.setQueryData(["editor", "file", path], source);
+      dropDraft(path);
+      setReview(false);
       toast.success(tr("文件已保存。"));
     },
-    onError: (err) => setError(err.message),
-    onSettled: () => setReview(null),
   });
-  const busy = load.isPending || save.isPending;
-
-  function go(target: string) {
-    setError("");
-    load.mutate(target);
+  function open(path: string, line?: number) {
+    setTabs((previous) => previous.includes(path) ? previous : [...previous, path]);
+    setActive(path);
+    save.reset();
+    if (line) setLocation((previous) => ({ path, line, request: (previous?.request ?? 0) + 1 }));
   }
-  function choose(target: string) {
-    if (busy) return;
-    if (dirty) setDiscard(target);
-    else go(target);
+  function close(path: string) {
+    const index = tabs.indexOf(path);
+    const remaining = tabs.filter((item) => item !== path);
+    setTabs(remaining);
+    if (active === path) setActive(remaining[Math.min(index, remaining.length - 1)]);
+    dropDraft(path);
   }
-
+  function changed(action: FileAction, path: string, destination?: string) {
+    if (action === "move" && destination) {
+      const rename = (tab: string) => under(tab, path) ? destination + tab.slice(path.length) : tab;
+      setTabs((previous) => [...new Set(previous.map(rename))]);
+      setActive((previous) => previous && rename(previous));
+    } else if (action === "delete") {
+      const remaining = tabs.filter((tab) => !under(tab, path));
+      setTabs(remaining);
+      if (active && under(active, path)) setActive(remaining.at(-1));
+    }
+    refresh();
+  }
+  const showTerminal = managed && terminalOpen;
+  const showProgram = managed && programOpen;
+  const jump = location && location.path === active ? location : undefined;
   return (
     <>
-      <div className="grid gap-4">
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="outline" size="sm" disabled={busy} onClick={() => setGithubOpen(true)}>
-            <GitBranch /> Git</Button>
-          {managed && (
-            <>
-              <Button variant={programOpen ? "secondary" : "outline"} size="sm" aria-pressed={programOpen}
-                onClick={() => setProgramOpen((open) => !open)}><Play /> {tr("运行")}</Button>
-              <Button variant={showTerminal ? "secondary" : "outline"} size="sm" aria-pressed={showTerminal}
-                onClick={() => setTerminalOpen((open) => !open)}><SquareTerminal /> {tr("终端")}</Button>
-            </>
-          )}
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex flex-wrap justify-between gap-2 border-b px-2 py-1.5">
+          <div className="flex gap-1">
+            <Button size="sm" variant={sidebar === "files" ? "secondary" : "ghost"} aria-pressed={sidebar === "files"}
+              onClick={() => setSidebar("files")}><Files /> {tr("文件")}</Button>
+            <Button size="sm" variant={sidebar === "search" ? "secondary" : "ghost"} aria-pressed={sidebar === "search"}
+              onClick={() => setSidebar("search")}><Search /> {tr("搜索")}</Button>
+            <Button size="sm" variant="ghost" onClick={() => setGithubOpen(true)}><GitBranch /> Git</Button>
+          </div>
+          {managed && <div className="flex gap-1">
+            <Button size="sm" variant={showTerminal ? "secondary" : "ghost"} aria-pressed={showTerminal}
+              onClick={() => { setTerminalOpen(!terminalOpen); setProgramOpen(false); }}><SquareTerminal /> {tr("终端")}</Button>
+            <Button size="sm" variant={showProgram ? "secondary" : "ghost"} aria-pressed={showProgram}
+              onClick={() => { setProgramOpen(!programOpen); setTerminalOpen(false); }}><Play /> {tr("运行")}</Button>
+          </div>}
         </div>
-        <div className={cn("items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]", showTerminal ? "hidden md:grid" : "grid")}>
-          <nav aria-label={tr("策略文件")} className="max-h-44 overflow-auto rounded-lg border bg-card p-2 md:max-h-[58vh]">
-            <FileTree path="" selected={file?.path} disabled={busy} onFile={(path) => {
-              if (path !== file?.path) choose(path);
-            }} />
-          </nav>
-          <section className="grid min-w-0 gap-3" aria-label={tr("编辑文件")}>
-            {error && <Alert tone="loss">{error}</Alert>}
-            {file ? (
-              <>
-                <div className="flex items-center justify-between gap-2">
-                  <code className="min-w-0 break-all text-xs">{file.path}</code>
-                  <Button variant="ghost" size="sm" disabled={busy} onClick={() => choose(file.path)}>
-                    <RefreshCw /> {tr("重新读取")}</Button>
-                </div>
-                <StrategyCodeEditor key={file.opened} path={file.path} initial={file.content}
-                  onChange={setDraft} disabled={busy || !!review || !!discard} />
-                <DialogFooter className="sm:items-center">
-                  {dirty && <span className="mr-auto text-xs text-warning">{tr("有未保存的改动")}</span>}
-                  <Button disabled={busy || !dirty} onClick={() => {
-                    setError("");
-                    setReview(preview(file, draft));
-                  }}>
-                    <Save /> {tr("预览并保存")}</Button>
-                </DialogFooter>
-              </>
-            ) : <EmptyState icon={FileCode} title={load.isPending ? tr("正在读取文件") : tr("选择要编辑的文件")} />}
-          </section>
-        </div>
-        {showTerminal && <Suspense fallback={<LoadingState />}><WorkspaceTerminal /></Suspense>}
-        {managed && programOpen && <WorkspaceProgram />}
+        <Group className="h-[min(62vh,42rem)] min-h-[24rem]">
+          <Panel id="workspace-sidebar" defaultSize="24%" minSize="7rem" maxSize="55%">
+            <div className={cn("h-full", sidebar !== "files" && "hidden")}>
+              <WorkspaceExplorer selected={active} onOpen={open}
+                canChange={(path) => !Object.keys(drafts).some((item) => under(item, path))} onChange={changed} />
+            </div>
+            {sidebar === "search" && <WorkspaceSearch onOpen={open} />}
+          </Panel>
+          <Separator aria-label={tr("调整文件栏宽度")} className="w-px bg-border hover:bg-ring focus-visible:bg-ring" />
+          <Panel id="workspace-source" minSize="10rem">
+            <section className="flex h-full min-w-0 flex-col bg-background" aria-label={tr("编辑文件")}
+              onKeyDown={(event) => {
+                if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+                  event.preventDefault();
+                  if (draft && !conflicted) setReview(true);
+                }
+              }}>
+              {tabs.length > 0 && <div className="flex shrink-0 overflow-x-auto border-b bg-card">
+                {tabs.map((path) => (
+                  <div key={path} className={cn("flex shrink-0 items-center border-r", path === active && "bg-background")}>
+                    <button type="button" title={path} aria-pressed={path === active}
+                      className="cursor-pointer px-2.5 py-2 text-xs" onClick={() => open(path)}>
+                      {path.slice(path.lastIndexOf("/") + 1)}{drafts[path] && <span className="ml-1 text-warning">●</span>}
+                    </button>
+                    <Button variant="ghost" size="icon" className="mr-1 size-6" aria-label={tr("关闭 {0}", path)}
+                      disabled={save.isPending} onClick={() => drafts[path] ? setDiscard({ path, close: true }) : close(path)}>
+                      <X />
+                    </Button>
+                  </div>
+                ))}
+              </div>}
+              {!active ? <EmptyState icon={FileCode} title={tr("选择要编辑的文件")} /> :
+                <div className="min-h-0 flex-1 space-y-2 overflow-auto p-2.5">
+                  {fileQuery?.isPending && !base && <LoadingState rows={2} />}
+                  {fileQuery?.error && !draft && <Alert tone="loss">{fileQuery.error.message}</Alert>}
+                  {base && <>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <code className="break-all text-xs text-muted-foreground">{active}</code>
+                      <Button size="sm" variant="outline" disabled={!draft || !!conflicted || save.isPending}
+                        onClick={() => { save.reset(); setReview(true); }}>{tr("预览并保存")}</Button>
+                    </div>
+                    {conflicted && <Alert tone="warning">
+                      {tr("磁盘上的文件已变更，草稿仍保留。")}
+                      <Button variant="ghost" size="sm" onClick={() => setDiscard({ path: active, close: false })}>
+                        {tr("重新读取")}
+                      </Button>
+                    </Alert>}
+                    <StrategyCodeEditor key={active + ":" + base.revision} path={active} initial={draft?.text ?? base.content}
+                      onChange={edit} disabled={save.isPending} jump={jump} />
+                  </>}
+                </div>}
+            </section>
+          </Panel>
+        </Group>
+        {(showTerminal || showProgram) && <div className="border-t p-2">
+          {showTerminal && <Suspense fallback={<LoadingState />}><WorkspaceTerminal /></Suspense>}
+          {showProgram && <WorkspaceProgram />}
+        </div>}
       </div>
-      <Dialog open={!!review} onOpenChange={(open) => { if (!open && !save.isPending) setReview(null); }}>
-        <DialogContent title={tr("确认保存")} description={file?.path} className="max-w-4xl">
-          {review}
+      <Dialog open={review && !!draft} onOpenChange={(open) => { if (!open && !save.isPending) setReview(false); }}>
+        <DialogContent title={tr("确认保存")} description={active} className="max-w-4xl">
+          {draft && <WorkspaceDiff before={draft.base.content} after={draft.text} labels={[tr("保存前"), tr("保存后")]} />}
+          {save.error && <Alert tone="loss">{save.error.message}</Alert>}
           <DialogFooter>
-            <Button variant="outline" disabled={save.isPending} onClick={() => setReview(null)}>{tr("返回编辑")}</Button>
-            <Button loading={save.isPending} onClick={() => {
-              if (file) save.mutate({ path: file.path, content: draft, revision: file.revision });
+            <Button variant="outline" disabled={save.isPending} onClick={() => setReview(false)}>{tr("返回编辑")}</Button>
+            <Button loading={save.isPending} disabled={!!conflicted} onClick={() => {
+              if (active && draft) save.mutate({ path: active, content: draft.text, revision: draft.base.revision });
             }}>{tr("保存文件")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <ConfirmDialog open={!!discard} onOpenChange={(open) => { if (!open) setDiscard(undefined); }}
-        title={tr("放弃未保存的改动？")} description={file?.path} confirmLabel={tr("放弃改动")}
-        destructive onConfirm={() => {
-          if (discard) go(discard);
+        title={tr("放弃未保存的改动？")} description={discard?.path} confirmLabel={tr("放弃改动")} destructive
+        onConfirm={() => {
+          if (discard?.close) close(discard.path);
+          else if (discard) {
+            dropDraft(discard.path);
+            void qc.invalidateQueries({ queryKey: ["editor", "file", discard.path] });
+          }
           setDiscard(undefined);
         }} />
       {githubOpen && <GitHubDialog dirty={dirty} onClose={() => {
         setGithubOpen(false);
-        const url = new URL(location.href);
+        const url = new URL(window.location.href);
         if (url.searchParams.has("github")) {
           url.searchParams.delete("github");
           history.replaceState(null, "", url);
         }
-      }}
-        onChanged={() => {
-          void qc.invalidateQueries({ queryKey: ["editor", "tree"] });
-          if (file && !dirty) {
-            setFile(undefined);
-            setDraft("");
-            load.mutate(file.path);
-          }
-        }} />}
+      }} onChanged={refresh} />}
     </>
   );
 }

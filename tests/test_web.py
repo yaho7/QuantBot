@@ -301,6 +301,53 @@ def test_editor_requires_local_enable_and_refuses_unsafe_paths(tmp_path: Path) -
     scenario(test, audit)
 
 
+def test_workspace_file_operations_and_external_refresh(tmp_path: Path) -> None:
+    root = tmp_path / "strategies"
+    root.mkdir()
+    Editor.enable(tmp_path / "settings", str(root))
+    outside = tmp_path / "outside"
+    outside.write_text("keep me")
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        endpoint = "/ui/api/editor/events"
+        assert (await client.get(endpoint)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+
+        async def change(action: str, path: str, **extra: str) -> bool:
+            response = await client.post(
+                f"/ui/api/editor/files/{action}", json={"path": path, **extra}, headers=CSRF
+            )
+            return (await response.json())["ok"]
+
+        async with client.get(endpoint) as events, client.get(endpoint) as other:
+            for stream in (events, other):
+                assert await stream.content.readuntil(b"\n\n") == b"data: refresh\n\n"
+            # This mutation bypasses the web server, as mkdir from the terminal would.
+            await asyncio.sleep(0.2)
+            (root / "from-terminal").mkdir()
+            for stream in (events, other):
+                assert (
+                    await asyncio.wait_for(stream.content.readuntil(b"\n\n"), 4)
+                    == b"data: refresh\n\n"
+                )
+        assert await change("folder", "project")
+        assert await change("file", "project/code.py")
+        assert not await change("file", "project/code.py")
+        (root / "project" / "code.py").write_text("print('test')")
+        assert not await change("copy", "project", destination="project/child")
+        assert await change("copy", "project", destination="duplicate")
+        assert await change("move", "duplicate/code.py", destination="from-terminal/new.py")
+        assert (root / "from-terminal" / "new.py").read_text() == "print('test')"
+        (root / "project" / "escape").symlink_to(outside)
+        assert not await change("move", "project/escape", destination="escape")
+        assert not await change("file", "../invalid")
+        assert await change("delete", "project")
+        assert not (root / "project").exists()
+        assert outside.read_text() == "keep me"
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 def test_github_web_authorization_and_sync(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     pending = Authorization(
         "acme/strategy",

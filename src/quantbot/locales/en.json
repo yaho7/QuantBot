@@ -629,5 +629,13 @@
   "🔴 离线：{0} 秒没有来取命令": "🔴 Offline: no command poll for {0} seconds",
   "🟢 QuantBot 已启动。策略：{0}": "🟢 QuantBot started. Strategies: {0}",
   "🟢 恢复在线": "🟢 Back online",
-  "🧹 平仓": "🧹 Flatten"
+  "🧹 平仓": "🧹 Flatten",
+  "这个路径包含 QuantBot 数据目录。": "This path contains the QuantBot data directory.",
+  "只能操作工作区内的普通文件和目录。": "Choose a regular file or directory inside the workspace.",
+  "请选择另一个目标路径。": "Choose a different destination.",
+  "请在服务器上安装 ripgrep 后使用搜索。": "Install ripgrep on the server to search the workspace.",
+  "搜索超时，请缩小搜索范围。": "The search timed out. Try a narrower query.",
+  "目标路径已存在。": "The destination already exists.",
+  "无法更改路径，请检查文件和目录权限。": "Could not change the path. Check file and directory permissions.",
+  "无法搜索工作区。": "Could not search the workspace."
 }

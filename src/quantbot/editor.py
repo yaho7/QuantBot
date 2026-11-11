@@ -1,10 +1,11 @@
-"""Read and replace existing UTF-8 files under a server-selected root."""
+"""Manage files under a server-selected root."""
 
 from __future__ import annotations
 
 import hashlib
 import os
 import secrets
+import shutil
 import stat
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -119,6 +120,126 @@ class Editor:
                 ):
                     items.append({"name": entry.name, "kind": "file"})
         return sorted(items, key=lambda item: (item["kind"], item["name"].casefold()))
+
+    def _mutable_parts(self, path: str) -> tuple[list[str], str]:
+        parts, name = self._file_parts(path)
+        if self.data_dir.is_relative_to(self.root.joinpath(*parts, name)):
+            raise EditorError(tr("这个路径包含 QuantBot 数据目录。"))
+        return parts, name
+
+    @staticmethod
+    def _entry(fd: int, name: str) -> os.stat_result:
+        info = os.stat(name, dir_fd=fd, follow_symlinks=False)
+        if not (stat.S_ISDIR(info.st_mode) or (stat.S_ISREG(info.st_mode) and info.st_nlink == 1)):
+            raise EditorError(tr("只能操作工作区内的普通文件和目录。"))
+        return info
+
+    @staticmethod
+    def _create(fd: int, name: str, directory: bool, workspace: Workspace | None) -> None:
+        if directory:
+            os.mkdir(name, 0o750, dir_fd=fd)
+            if workspace:
+                os.chown(name, workspace.uid, workspace.gid, dir_fd=fd, follow_symlinks=False)
+        else:
+            with os.fdopen(
+                os.open(name, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o640, dir_fd=fd), "wb"
+            ) as out:
+                if workspace:
+                    os.fchown(out.fileno(), workspace.uid, workspace.gid)
+
+    @staticmethod
+    def _remove(fd: int, name: str, directory: bool) -> None:
+        if directory:
+            # fwalk anchors recursive removal to an open directory on Python 3.10 as well.
+            for _, directories, files, child_fd in os.fwalk(name, topdown=False, dir_fd=fd):
+                for file in files:
+                    os.unlink(file, dir_fd=child_fd)
+                for child in directories:
+                    if stat.S_ISLNK(os.stat(child, dir_fd=child_fd, follow_symlinks=False).st_mode):
+                        os.unlink(child, dir_fd=child_fd)
+                    else:
+                        os.rmdir(child, dir_fd=child_fd)
+            os.rmdir(name, dir_fd=fd)
+        else:
+            os.unlink(name, dir_fd=fd)
+
+    def _copy(
+        self, source: int, name: str, target: int, dest: str, workspace: Workspace | None
+    ) -> None:
+        info = self._entry(source, name)
+        directory = stat.S_ISDIR(info.st_mode)
+        if not directory:
+            with os.fdopen(
+                os.open(name, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=source), "rb"
+            ) as incoming:
+                opened = os.fstat(incoming.fileno())
+                if not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1:
+                    raise EditorError(tr("只能操作工作区内的普通文件和目录。"))
+                output = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=target)
+                try:
+                    with os.fdopen(output, "wb") as out:
+                        shutil.copyfileobj(incoming, out)
+                        if workspace:
+                            os.fchown(out.fileno(), workspace.uid, workspace.gid)
+                        os.fchmod(out.fileno(), stat.S_IMODE(opened.st_mode) & 0o777)
+                except BaseException:
+                    os.unlink(dest, dir_fd=target)
+                    raise
+            return
+        self._create(target, dest, True, workspace)
+        try:
+            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+            with (
+                self._directory_from(source, name, flags) as child,
+                self._directory_from(target, dest, flags) as copied,
+            ):
+                for entry in os.listdir(child):
+                    if entry.casefold() != ".git":
+                        self._copy(child, entry, copied, entry, workspace)
+        except BaseException:
+            self._remove(target, dest, directory)
+            raise
+
+    @staticmethod
+    @contextmanager
+    def _directory_from(fd: int, name: str, flags: int) -> Iterator[int]:
+        child = os.open(name, flags, dir_fd=fd)
+        try:
+            yield child
+        finally:
+            os.close(child)
+
+    def change(self, action: str, path: str, destination: str = "") -> None:
+        parts, name = self._mutable_parts(path)
+        workspace = self.workspace()
+        with self._directory(parts) as fd:
+            if action in {"file", "folder"}:
+                self._create(fd, name, action == "folder", workspace)
+                return
+            info = self._entry(fd, name)
+            directory = stat.S_ISDIR(info.st_mode)
+            if action == "delete":
+                self._remove(fd, name, directory)
+                return
+            parents, dest = self._mutable_parts(destination)
+            if destination == path or destination.startswith(path + "/"):
+                raise EditorError(tr("请选择另一个目标路径。"))
+            if directory and action == "copy":
+                for depth in range(1, len(parents) + 1):
+                    with self._directory(parents[:depth]) as ancestor:
+                        if os.path.samestat(info, os.fstat(ancestor)):
+                            raise EditorError(tr("请选择另一个目标路径。"))
+            with self._directory(parents) as target:
+                if action == "copy":
+                    self._copy(fd, name, target, dest, workspace)
+                else:
+                    # Reserve a new name first so moving never replaces an existing entry.
+                    self._create(target, dest, directory, workspace)
+                    try:
+                        os.rename(name, dest, src_dir_fd=fd, dst_dir_fd=target)
+                    except OSError:
+                        self._remove(target, dest, directory)
+                        raise
 
     def _read(self, fd: int, name: str) -> tuple[SourceFile, int]:
         with os.fdopen(

@@ -150,6 +150,9 @@ install_packages() {
 
 missing=()
 for tool in git curl; do command -v "$tool" >/dev/null || missing+=("$tool"); done
+if [ "$(uname)" = Linux ] && ! command -v rg >/dev/null; then
+  missing+=(ripgrep)
+fi
 if [ "$(uname)" = Linux ] && ! command -v update-ca-certificates >/dev/null \
    && [ ! -d /etc/ssl/certs ]; then
   missing+=(ca-certificates)

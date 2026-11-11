@@ -59,6 +59,7 @@ from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language,
 from quantbot.service import Service, ServiceError
 from quantbot.updates import Updater
 from quantbot.workspace import WORKSPACE_FILE, web_create_directory, web_directories, web_initialize
+from quantbot.workspace_files import WorkspaceChanges, search
 from quantbot.workspace_runtime import WorkspaceRuntime
 from quantbot.workspace_terminal import TerminalProcess
 
@@ -351,6 +352,8 @@ class GitHubActions:
 GITHUB_KEY = web.AppKey("web_github", GitHubActions)
 TERMINALS_KEY = web.AppKey("web_workspace_terminals", set)
 RUNTIME_KEY = web.AppKey("web_workspace_runtime", WorkspaceRuntime)
+CHANGES_KEY = web.AppKey("web_workspace_changes", WorkspaceChanges)
+CHANGES_CLOSING_KEY = web.AppKey("web_workspace_changes_closing", asyncio.Event)
 
 
 def _telegram(request: web.Request) -> Any:
@@ -586,6 +589,91 @@ async def editor_save(request: web.Request) -> web.Response:
             "editor_save", user=WEB_USER, ok=ok, result=f"{path}：{message}"
         )
     return _answer(ok, message, result)
+
+
+async def editor_change(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    store = request.app[STORE_KEY]
+    body = await _args(request)
+    action = request.match_info["action"]
+    path, destination = body.get("path"), body.get("destination", "")
+    if not isinstance(path, str) or not isinstance(destination, str):
+        return _answer(False, tr("请选择编辑目录内的相对路径。"))
+
+    def change() -> None:
+        with editor_lock(store.dir):
+            _editor(store).change(action, path, destination)
+
+    async with request.app[EDITOR_LOCK]:
+        try:
+            await asyncio.to_thread(change)
+        except FileExistsError:
+            return _answer(False, tr("目标路径已存在。"))
+        except ConfigError as exc:
+            return _answer(False, str(exc))
+        except OSError:
+            return _answer(False, tr("无法更改路径，请检查文件和目录权限。"))
+        request.app[CORE_KEY].audit.write(
+            "editor_change",
+            user=WEB_USER,
+            ok=True,
+            operation=action,
+            path=path,
+            destination=destination,
+        )
+    return _answer(True, "", {"path": destination or path})
+
+
+async def editor_search(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    query = request.query.get("q", "").strip()
+    if not query or len(query) > 200 or "\0" in query:
+        return _answer(True, "", [])
+    try:
+        editor = await asyncio.to_thread(_editor, request.app[STORE_KEY])
+        return _answer(
+            True, "", await search(editor, query, request.query.get("mode") == "content")
+        )
+    except ConfigError as exc:
+        return _answer(False, str(exc))
+    except OSError:
+        return _answer(False, tr("无法搜索工作区。"))
+
+
+async def editor_events(request: web.Request) -> web.StreamResponse:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    try:
+        editor = await asyncio.to_thread(_editor, request.app[STORE_KEY])
+    except ConfigError as exc:
+        return _answer(False, str(exc))
+    response = web.StreamResponse(
+        headers={
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+        }
+    )
+    async with request.app[CHANGES_KEY].subscribe(editor.root) as changed:
+        await response.prepare(request)
+        try:
+            while _need_login(request) is None and not request.app[CHANGES_CLOSING_KEY].is_set():
+                await response.write(b"data: refresh\n\n")
+                try:
+                    await asyncio.wait_for(changed.wait(), 15)
+                except asyncio.TimeoutError:
+                    pass
+                changed.clear()
+        except ConnectionError:
+            pass
+    return response
+
+
+async def _close_workspace_changes(app: web.Application) -> None:
+    app[CHANGES_CLOSING_KEY].set()
+    await app[CHANGES_KEY].close()
 
 
 async def github_get(request: web.Request) -> web.Response:
@@ -1393,6 +1481,9 @@ def add_routes(
     app[GITHUB_KEY] = GitHubActions(GitHubEditor(store.dir))
     app[TERMINALS_KEY] = set()
     app[RUNTIME_KEY] = WorkspaceRuntime(store.dir)
+    app[CHANGES_KEY] = WorkspaceChanges()
+    app[CHANGES_CLOSING_KEY] = asyncio.Event()
+    app.on_shutdown.append(_close_workspace_changes)
     app.on_shutdown.append(_close_terminals)
     app.on_shutdown.append(_stop_workspace_program)
     app.add_routes(
@@ -1422,6 +1513,9 @@ def add_routes(
             web.post("/ui/api/service/restart", service_restart),
             web.get("/ui/api/editor/{kind:tree|file}", editor_read),
             web.post("/ui/api/editor/file", editor_save),
+            web.post("/ui/api/editor/files/{action:file|folder|move|copy|delete}", editor_change),
+            web.get("/ui/api/editor/search", editor_search),
+            web.get("/ui/api/editor/events", editor_events),
             web.get("/ui/api/editor/github", github_get),
             web.get("/ui/api/editor/git", local_git),
             web.get("/ui/api/workspace/terminal", workspace_terminal),

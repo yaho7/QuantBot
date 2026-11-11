@@ -92,6 +92,8 @@ export interface SourceFile {
   revision: string;
 }
 
+export type FileAction = "file" | "folder" | "move" | "copy" | "delete";
+
 export interface GitHubStatus {
   bound: boolean;
   app_configured?: boolean;
@@ -198,6 +200,12 @@ export const api = {
     answerData<SourceFile>("GET", `editor/file?${new URLSearchParams({ path })}`),
   saveEditorFile: (file: SourceFile & { path: string }) =>
     answerData<SourceFile>("POST", "editor/file", file),
+  changeEditorPath: (action: FileAction, path: string, destination?: string) =>
+    answerData<{ path: string }>("POST", `editor/files/${action}`, { path, destination }),
+  searchWorkspace: (q: string, content: boolean) =>
+    answerData<{ path: string; line?: number; text?: string }[]>(
+      "GET", `editor/search?${new URLSearchParams({ q, mode: content ? "content" : "name" })}`,
+    ),
   githubStatus: () => answerData<GitHubStatus>("GET", "editor/github"),
   gitStatus: () => answerData<LocalGitStatus>("GET", "editor/git"),
   gitCommit: (paths: string[], message: string) =>
