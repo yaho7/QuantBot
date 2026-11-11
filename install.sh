@@ -69,16 +69,17 @@ export PATH="$BIN:$PATH"
 uv tool update-shell >/dev/null 2>&1 || true  # new terminals find `quantbot`
 
 if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-  # First time: the setup questions (bot, account, port, quiet hours, background).
+  # First time: the setup questions (port, optional Telegram, heartbeat, background).
   # Already set up: restart the background service on the new version.
   QUANTBOT_PORT="$PORT" quantbot setup --if-needed </dev/tty >/dev/tty || true
 else
   say "没有终端，跳过设置问题。"
   quantbot service install ${PORT:+--port "$PORT"} || say "没能装成后台服务。"
-  echo "  之后请运行：quantbot setup"
+  echo "  之后请运行：quantbot setup。打开网页：quantbot web"
 fi
 
 say ""
 say "✓ QuantBot 装好了。"
+echo "  打开网页：quantbot web（打印一个登录链接）"
 echo "  连接一个策略：cd 你的策略项目 && quantbot link"
 echo "  新开一个终端，quantbot 命令就能直接用。"

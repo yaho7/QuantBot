@@ -15,8 +15,9 @@ from quantbot.hub import Hub
 from quantbot.service import ServiceError
 
 BOT = "123456789:" + "A" * 35
-# token, wait for a message, confirm owner, port, quiet hours, time zone, heartbeat, save
-SETUP = [BOT, "", "", "", "-", "", "-", ""]
+# port, Telegram yes, token, wait for a message, confirm owner, quiet hours, time zone,
+# heartbeat, save
+SETUP = ["", "y", BOT, "", "", "-", "", "-", ""]
 
 
 @pytest.fixture(autouse=True)
@@ -88,13 +89,14 @@ def run(
 def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
     store = Store(tmp_path)
     api = FakeTelegram([message()])
-    # bad token, good token, wait, confirm owner, port, quiet, tz, heartbeat, save
-    code, io = run(store, ["setup"], ["nope", BOT, "", "", "", "23-07", "", "", ""], api=api)
+    # port, Telegram yes, bad token, good token, wait, confirm owner, quiet, tz, heartbeat, save
+    answers = ["", "y", "nope", BOT, "", "", "23-07", "", "", ""]
+    code, io = run(store, ["setup"], answers, api=api)
     assert code == 0, io.text()
     assert "✓ 连上了 @my_quant_bot" in io.text() and "收到 Ya @ya（id 42）" in io.text()
     assert "就这样设置" in io.text() and "后台运行" not in io.text()  # no service manager
     settings = store.settings({})
-    assert (settings.owner_id, settings.quiet_hours, settings.timezone) == (
+    assert settings.telegram and (settings.owner_id, settings.quiet_hours, settings.timezone) == (
         42,
         (23, 7),
         "Asia/Shanghai",
@@ -105,18 +107,33 @@ def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
         {"chat_id": 42, "text": "✅ QuantBot 配置好了。发 /menu 看所有策略。"},
     ) in api.calls
     assert stat.S_IMODE(os.stat(store.path).st_mode) == 0o600
-    assert "quantbot link" in io.text()
+    assert "/ui/login?t=" in io.text() and "quantbot link" in io.text()
+
+
+def test_setup_without_telegram_is_web_only(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    api = FakeTelegram()
+    code, io = run(store, ["setup"], ["", "", "-", ""], api=api)  # port, no Telegram, hb, save
+    assert code == 0, io.text()
+    assert "不接，只用网页" in io.text() and "/ui/login?t=" in io.text()
+    assert api.calls == []
+    settings = store.settings({})
+    assert not settings.telegram and settings.tg_token is None and settings.owner_id is None
+    assert store.read()["setup_done"] is True
+    code, io = run(store, ["setup", "--if-needed"])
+    assert code == 0 and "已经设置过了" in io.text()
 
 
 def test_setup_again_keeps_values_and_typed_id_works(tmp_path: Path) -> None:
     store = Store(tmp_path)
-    run(store, ["setup"], [BOT, "", "", "", "23-07", "", "", ""])
+    run(store, ["setup"], ["", "y", BOT, "", "", "23-07", "", "", ""])
     port = store.settings({}).port
-    # keep token, not the same owner, type id, keep port, keep quiet, new tz, bad url, none, save
+    # keep port, keep Telegram, keep token, not the same owner, type id, keep quiet,
+    # new tz, bad url, none, save
     code, io = run(
         store,
         ["setup"],
-        ["", "n", "99", "", "", "America/New_York", "ftp://x", "-", ""],
+        ["", "", "", "n", "99", "", "America/New_York", "ftp://x", "-", ""],
         api=FakeTelegram(conflict=True),
     )
     assert code == 0, io.text()
@@ -127,13 +144,16 @@ def test_setup_again_keeps_values_and_typed_id_works(tmp_path: Path) -> None:
         (23, 7),
         "America/New_York",
     )
+    # And now drop Telegram: port, no, heartbeat, save
+    code, io = run(store, ["setup"], ["", "n", "", ""])
+    assert code == 0 and not store.settings({}).telegram and "telegram" not in store.read()
 
 
 def test_setup_while_running_asks_for_the_id(tmp_path: Path) -> None:
     code, io = run(
         Store(tmp_path),
         ["setup"],
-        [BOT, "", "42", "", "-", "", "-", ""],
+        ["", "y", BOT, "", "42", "-", "", "-", ""],
         api=FakeTelegram(conflict=True),
     )
     assert code == 0 and "没法自动识别" in io.text()
@@ -146,12 +166,12 @@ def test_setup_port_choice_and_cancel(tmp_path: Path) -> None:
     with socket.socket() as busy:
         busy.bind(("127.0.0.1", 0))
         taken = str(busy.getsockname()[1])
-        # token, wait, owner, bad port, taken port, good port, quiet, tz, hb, do not save
-        answers = [BOT, "", "", "80", taken, "31555", "-", "", "-", "n"]
+        # bad port, taken port, good port, no Telegram, hb, do not save
+        answers = ["80", taken, "31555", "n", "-", "n"]
         code, io = run(store, ["setup"], answers)
     assert code == 1 and "已取消" in io.text() and not store.exists()
     assert "1024 到 65535" in io.text() and "占用" in io.text()
-    code, io = run(store, ["setup"], [BOT, "", "", "31555", "-", "", "-", ""])
+    code, io = run(store, ["setup"], ["31555", "n", "-", ""])
     assert code == 0 and store.read()["listen"] == "127.0.0.1:31555"
 
 
@@ -167,7 +187,7 @@ def test_setup_installs_the_background_service(
     store = Store(tmp_path / "data")
     code, io = run(store, ["setup"], [*SETUP[:-1], "", ""])  # yes to background, save
     assert code == 0, io.text()
-    assert "6/6  后台运行" in io.text() and service.installed()
+    assert "4/4  后台运行" in io.text() and service.installed()
     assert "QuantBot 已在后台运行" in io.text()
     calls.calls.clear()
     code, io = run(store, ["setup", "--if-needed"])  # the installer, run again
@@ -207,10 +227,12 @@ def test_add_list_token_rename_remove(tmp_path: Path) -> None:
     assert run(store, ["token", "nope"])[0] == 1
 
 
-def test_settings_say_what_is_missing(tmp_path: Path) -> None:
+def test_settings_start_web_only_and_say_what_is_broken(tmp_path: Path) -> None:
     store = Store(tmp_path)
-    with pytest.raises(ConfigError, match="quantbot setup"):
-        store.settings({})
+    fresh = store.settings({})  # nothing set up yet: web page and strategy API only
+    assert not fresh.telegram and fresh.port and store.read()["listen"]
+    store.write({"telegram": {"token": BOT}})  # half a Telegram setting counts as none
+    assert not store.settings({}).telegram
     store.path.write_text("{broken")
     with pytest.raises(ConfigError, match="读不出来"):
         store.settings({})

@@ -93,7 +93,7 @@ class Core:
         hub: Hub,
         audit: Audit,
         *,
-        owner_id: int,
+        owner_id: int | None,
         notify: Callable[[str, str, str], None],
         command_timeout: float = 15.0,
         confirm_ttl: float = 30.0,
@@ -114,7 +114,7 @@ class Core:
     # ------------------------------------------------------------ helpers
 
     def allowed(self, user_id: int | None) -> bool:
-        return user_id == self.owner_id
+        return self.owner_id is not None and user_id == self.owner_id
 
     def _ticket(
         self, action: str, sid: str, args: dict[str, Any], *, confirm: bool, prompt: str = ""
@@ -263,7 +263,7 @@ class Core:
         note = (message or default) if ok else message
         return Reply(self.page_text(s, note), self.page_buttons(s))
 
-    async def pause_all(self, user_id: int) -> Reply:
+    async def pause_all(self, user_id: int | str) -> Reply:
         targets = [
             s
             for s in self.hub.strategies.values()

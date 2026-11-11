@@ -22,6 +22,24 @@ jobs:
       - name: Build both packages
         run: uv build . && uv build client
 
+  web:
+    # The page is built into src/quantbot/web so installs need no Node; check it is current.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - name: Built page matches the source
+        run: git diff --exit-code -- ../src/quantbot/web || (echo "Run npm run build in web/ and commit src/quantbot/web" && exit 1)
+
   install:
     # The one-line installer on a clean Ubuntu, without the interactive setup.
     needs: test

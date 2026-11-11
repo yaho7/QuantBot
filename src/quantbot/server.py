@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from aiohttp import web
@@ -24,8 +25,8 @@ def _error(status: int, message: str) -> web.Response:
 
 @web.middleware
 async def authenticate(request: web.Request, handler: Any) -> web.StreamResponse:
-    if request.path == "/healthz":
-        return await handler(request)
+    if request.path in {"/", "/healthz", "/ui"} or request.path.startswith("/ui/"):
+        return await handler(request)  # the web page checks its own cookie
     header = request.headers.get("Authorization", "")
     scheme, _, token = header.partition(" ")
     strategy = request.app[HUB_KEY].by_token(token.strip()) if scheme == "Bearer" else None
@@ -82,9 +83,11 @@ async def healthz(request: web.Request) -> web.Response:
     return web.json_response({"ok": True})
 
 
-def make_app(hub: Hub) -> web.Application:
+def make_app(hub: Hub, page: Callable[[web.Application], None] | None = None) -> web.Application:
     app = web.Application(middlewares=[authenticate], client_max_size=MAX_BODY)
     app[HUB_KEY] = hub
+    if page is not None:
+        page(app)
     app.add_routes(
         [
             web.get("/healthz", healthz),

@@ -1,6 +1,6 @@
 # QuantBot 设计
 
-QuantBot 是一个 Telegram 远程控制中心。一个 bot 管理你所有的量化程序。每个程序用自己的券商、策略和框架，比如一个用 LumiBot 加 Schwab 和 Alpaca，另一个是普通 Python 脚本。
+QuantBot 是一个远程控制中心，管理你所有的量化程序。网页一定有，Telegram 可选。每个程序用自己的券商、策略和框架，比如一个用 LumiBot 加 Schwab 和 Alpaca，另一个是普通 Python 脚本。
 
 它不是交易框架。它不连接券商，不计算净值，不判断交易日，也不替程序做决定。它只做四件事：列出程序、转发按钮、显示程序报上来的状态、推送程序发来的消息。
 
@@ -46,7 +46,9 @@ QuantBot 不启停你的策略。策略用什么环境、怎么启动，由你�
 | `hub.py` | 每个策略的在线状态、快照、能力、命令队列、等待结果 |
 | `server.py` | 给策略用的 HTTP 接口，按策略 token 认证 |
 | `core.py` | 菜单、按钮、二次确认、审计，不含 Telegram 类型 |
-| `bot.py` | 把 Telegram 消息和按钮接到 `core.py` |
+| `bot.py` | 运行 QuantBot；接了 Telegram 就把消息和按钮接到 `core.py`，没接就只跑网页和策略接口 |
+| `web.py` | 网页：一次性登录链接、会话 cookie、和 Telegram 同样的命令、设置 |
+| `web/` | 网页前端源码（React、Vite、Tailwind，组件和配色取自 AntQuant），构建到 `src/quantbot/web/` 随包发布 |
 | `notices.py` | 静音时段、授权到期提醒 |
 | `heartbeat.py` | QuantBot 自己向外部监控报心跳 |
 | `client/quantbot_client.py` | 给 Python 策略用的单文件客户端，只用标准库 |
@@ -79,7 +81,22 @@ quantbot add momentum --name 动量策略   # id 用小写字母、数字、- �
 | `chart` | 无 | 净值图 |
 | `stop` | 无 | 停止程序（确认） |
 
-## Telegram 里怎么用
+## 网页
+
+网页和策略接口共用一个端口，路径是 `/ui/`。
+
+| 部分 | 做法 |
+|---|---|
+| 登录 | `quantbot web` 或 Telegram `/web` 给一个一次性链接，5 分钟有效。打开后设置 HttpOnly、SameSite=Strict 的 cookie，12 小时有效 |
+| 签名 | 链接和 cookie 都用 `quantbot.json` 里的 `web_secret` 做 HMAC 签名，所以命令行生成的链接，运行中的 QuantBot 也认 |
+| 防跨站 | 所有 POST 都要带 `X-QuantBot: 1` 请求头 |
+| 命令 | `POST /ui/api/strategies/{id}/{命令}`，走和 Telegram 一样的 `Core.call`，检查参数的规则也一样；改动写进审计记录，`user` 是 `web` |
+| 设置 | `GET/POST /ui/api/settings`：接上、换掉、断开 Telegram，静音时段、时区、心跳。换 bot 或主人时先发一条测试消息，发不出去就不保存 |
+| 推送 | 最近 300 条推送存在内存里，网页的“推送”页显示它们 |
+
+打开网页要先连 SSH 隧道或 Tailscale，因为 QuantBot 默认只监听 127.0.0.1。
+
+## Telegram 里怎么用（接了的话）
 
 - `/menu` 列出所有策略：🟢 在线或 🔴 离线、状态第一行、快照多久以前。只注册了一个策略时，直接打开它。
 - 点一个策略，看它的状态和按钮。它也会成为“当前策略”，`/set`、`/buy`、`/positions` 这些命令都作用在它上面。`/use <id>` 也能切换。

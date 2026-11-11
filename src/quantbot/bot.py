@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
+import signal
 import time
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -27,6 +29,7 @@ from quantbot.heartbeat import Heartbeat
 from quantbot.hub import Hub, Strategy
 from quantbot.notices import LOUD, is_quiet
 from quantbot.server import make_app
+from quantbot.web import Feed, WebAuth, add_routes, login_url
 
 log = logging.getLogger("quantbot")
 
@@ -43,7 +46,8 @@ HELP = """/menu 所有策略
 /flatten 平仓（要确认）
 /stop 让策略停止（要确认）
 /set <名字> <值> 改参数（要确认）
-/buy /sell <代码> <数量> 手动下单（要确认）"""
+/buy /sell <代码> <数量> 手动下单（要确认）
+/web 网页登录链接"""
 
 COMMANDS = [
     ("menu", "所有策略"),
@@ -59,6 +63,7 @@ COMMANDS = [
     ("set", "改参数"),
     ("buy", "手动买入"),
     ("sell", "手动卖出"),
+    ("web", "打开网页"),
     ("help", "命令说明"),
 ]
 
@@ -91,7 +96,11 @@ def serve(store: Store, wait_every: float = 3.0) -> int:
                 log.warning("%s", exc)
                 told = True
             time.sleep(wait_every)
-    log.info("Starting QuantBot with %d strategies", len(settings.strategies))
+    log.info(
+        "Starting QuantBot with %d strategies, %s",
+        len(settings.strategies),
+        "Telegram on" if settings.telegram else "web page only (no Telegram set up)",
+    )
     bot = QuantBot(settings, store)
     bot.run()
     return 0
@@ -111,17 +120,27 @@ class QuantBot:
             notify=lambda name, text, kind: self._hub_notice(name, text, kind, None),
         )
         self.heartbeat = Heartbeat(settings.heartbeat_url, min_interval=HEARTBEAT_EVERY - 5)
+        self.feed = Feed()
+        secret = store.web_secret() if store else secrets.token_urlsafe(32)
+        self.web_auth = WebAuth(secret)
+        self._runner: web.AppRunner | None = None
+        self._upkeep: asyncio.Task[None] | None = None
+        self._tasks: set[asyncio.Task[None]] = set()
+        self._stop: asyncio.Event | None = None
+        self.app: Application | None = None
+        if settings.telegram:
+            self._build_telegram()
+
+    def _build_telegram(self) -> None:
+        settings = self.settings
         self.app = (
             Application.builder()
-            .token(settings.tg_token)
+            .token(str(settings.tg_token))
             .concurrent_updates(True)  # a slow strategy must not hold up the others
             .post_init(self._started)
             .post_shutdown(self._stopped)
             .build()
         )
-        self._runner: web.AppRunner | None = None
-        self._upkeep: asyncio.Task[None] | None = None
-        self._tasks: set[asyncio.Task[None]] = set()
         owner = filters.User(user_id=settings.owner_id)
         handlers = {
             "start": self._menu,
@@ -139,6 +158,7 @@ class QuantBot:
             "set": self._set,
             "buy": self._buy,
             "sell": self._sell,
+            "web": self._web,
         }
         for name, handler in handlers.items():
             self.app.add_handler(CommandHandler(name, handler, filters=owner))
@@ -146,25 +166,61 @@ class QuantBot:
         self.app.add_error_handler(self._error)
 
     def run(self) -> None:
+        if self.app is None:
+            asyncio.run(self._run_without_telegram())
+            return
         # Taps sent while QuantBot was down are dropped instead of run late.
         self.app.run_polling(
             drop_pending_updates=True, allowed_updates=["message", "callback_query"]
         )
 
+    async def _run_without_telegram(self) -> None:
+        """Only the web page and the strategy API, until a signal or a settings change."""
+        self._stop = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, self._stop.set)
+            except (NotImplementedError, RuntimeError):
+                pass
+        await self._started(None)
+        try:
+            await self._stop.wait()
+        finally:
+            await self._stopped(None)
+
+    def stop(self) -> None:
+        if self.app is not None:
+            self.app.stop_running()
+        elif self._stop is not None:
+            self._stop.set()
+
     # ------------------------------------------------------------ lifecycle
 
-    async def _started(self, app: Application) -> None:
-        server = make_app(self.hub)
+    async def _started(self, app: Application | None) -> None:
+        audit_path = self.settings.data_dir / "audit.jsonl"
+        server = make_app(
+            self.hub,
+            lambda app: add_routes(
+                app,
+                self.core,
+                self.web_auth,
+                self.feed,
+                audit_path,
+                self.store or Store(self.settings.data_dir),
+            ),
+        )
         self._runner = web.AppRunner(server, access_log=None, shutdown_timeout=2)
         await self._runner.setup()
         await web.TCPSite(self._runner, self.settings.host, self.settings.port).start()
         log.info("Strategy API on %s:%s", self.settings.host, self.settings.port)
-        await app.bot.set_my_commands([BotCommand(n, d) for n, d in COMMANDS])
+        if app is not None:
+            await app.bot.set_my_commands([BotCommand(n, d) for n, d in COMMANDS])
         self._upkeep = asyncio.create_task(self._upkeep_loop())
         names = "、".join(s.name for s in self.hub.strategies.values()) or "还没有"
         await self._send(f"🟢 QuantBot 已启动。策略：{names}", "info")
 
-    async def _stopped(self, app: Application) -> None:
+    async def _stopped(self, app: Application | None) -> None:
         if self._upkeep:
             self._upkeep.cancel()
         if self._runner:
@@ -194,8 +250,8 @@ class QuantBot:
             log.error("Ignoring the changed settings file: %s", exc)
             return
         if fresh.telegram_key() != self.settings.telegram_key():
-            log.info("Telegram settings changed; stopping so the container restarts with them")
-            self.app.stop_running()
+            log.info("Settings changed; stopping so the service restarts with them")
+            self.stop()
             return
         for change in self.hub.sync(fresh.strategies):
             log.info("Strategies: %s", change)
@@ -204,11 +260,14 @@ class QuantBot:
     # ------------------------------------------------------------- sending
 
     def _hub_notice(self, name: str, text: str, kind: str, image: bytes | None) -> None:
+        self.feed.add(name, text, kind)
         task = asyncio.get_running_loop().create_task(self._send(f"[{name}] {text}", kind, image))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
     async def _send(self, text: str, kind: str, image: bytes | None = None) -> None:
+        if self.app is None or self.settings.owner_id is None:
+            return  # no Telegram: the notice is only on the web page
         quiet = silent(kind, self.settings.quiet_hours, datetime.now(self.tz))
         owner = self.settings.owner_id
         try:
@@ -309,6 +368,18 @@ class QuantBot:
     async def _sell(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         raw = " ".join(context.args or [])
         await self._with_target(update, lambda s: _now(self.core.request_order(s, "sell", raw)))
+
+    async def _web(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        listen = f"{self.settings.host}:{self.settings.port}"
+        url = login_url(listen, self.web_auth.link_token())
+        port = self.settings.port
+        text = (
+            f"🌐 网页登录链接，5 分钟内有效，只能用一次：\n{url}\n\n"
+            f"它只在服务器本机能打开。先在你的电脑上连一条隧道：\n"
+            f"ssh -L {port}:127.0.0.1:{port} 你的服务器\n"
+            "再点上面的链接。"
+        )
+        await self._show(update, Reply(text))
 
     async def _error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.error("Handler failed", exc_info=context.error)

@@ -68,8 +68,8 @@ class StrategyConfig:
 
 @dataclass(frozen=True)
 class Settings:
-    tg_token: str = field(repr=False)
-    owner_id: int
+    tg_token: str | None = field(repr=False)  # None: no Telegram, the web page only
+    owner_id: int | None
     strategies: tuple[StrategyConfig, ...]
     data_dir: Path
     host: str = "127.0.0.1"
@@ -77,6 +77,10 @@ class Settings:
     quiet_hours: tuple[int, int] | None = None
     timezone: str = "Asia/Shanghai"
     heartbeat_url: str | None = None
+
+    @property
+    def telegram(self) -> bool:
+        return bool(self.tg_token) and self.owner_id is not None
 
     def telegram_key(self) -> tuple[Any, ...]:
         """Everything that needs a restart to change. Strategies reload on their own."""
@@ -177,6 +181,14 @@ class Store:
         self.write(data)
         return str(data["listen"])
 
+    def web_secret(self) -> str:
+        """The key that signs web login links and cookies. Made the first time it is needed."""
+        data = self.read()
+        if not data.get("web_secret"):
+            data["web_secret"] = secrets.token_urlsafe(32)
+            self.write(data)
+        return str(data["web_secret"])
+
     def strategies(self, data: dict[str, Any] | None = None) -> tuple[StrategyConfig, ...]:
         data = self.read() if data is None else data
         found = []
@@ -192,9 +204,10 @@ class Store:
         env = os.environ if env is None else env
         data = self.read()
         telegram = data.get("telegram") or {}
-        token, owner = str(telegram.get("token") or ""), telegram.get("owner_id")
-        if not token or not isinstance(owner, int):
-            raise ConfigError("还没配置 Telegram。运行：quantbot setup")
+        token = str(telegram.get("token") or "") or None
+        owner = telegram.get("owner_id") if isinstance(telegram.get("owner_id"), int) else None
+        if not (token and owner is not None):
+            token, owner = None, None  # Telegram is optional; half a setting counts as none
         host, _, port = self.ensure_listen(env).rpartition(":")
         try:
             quiet = parse_quiet(data.get("quiet_hours"))
