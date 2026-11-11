@@ -416,5 +416,8 @@
   "新建工作区": "New workspace",
   "当前工作区": "Current workspace",
   "新工作区文件夹": "New workspace folder",
-  "导入仓库": "Import repository"
+  "导入仓库": "Import repository",
+  "外观": "Appearance",
+  "主题": "Theme",
+  "其他时区": "Other time zones"
 }

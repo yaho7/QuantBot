@@ -50,6 +50,7 @@ from quantbot.config import (
     new_token,
     require_strategy,
     set_web_admin,
+    timezones,
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
 from quantbot.editor import EDITOR_FILE, Editor, editor_lock
@@ -1031,6 +1032,12 @@ async def service_restart(request: web.Request) -> web.Response:
         )
 
 
+async def timezone_list(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    return web.json_response(await asyncio.to_thread(timezones))
+
+
 async def settings_get(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
@@ -1533,6 +1540,7 @@ def add_routes(
             ),
             web.get("/ui/api/prompt", prompt),
             web.get("/ui/api/settings", settings_get),
+            web.get("/ui/api/timezones", timezone_list),
             web.post("/ui/api/settings", settings_post),
             web.get("/ui/api/update", update_get),
             web.post("/ui/api/update/check", update_check),

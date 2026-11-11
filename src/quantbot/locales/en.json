@@ -683,5 +683,8 @@
   "列出工作区": "List workspaces",
   "工作区账号的主目录不可用。": "The workspace account home directory is unavailable.",
   "当前工作区已有文件或提交。请选择新工作区导入仓库。": "The current workspace has files or commits. Import the repository into a new workspace.",
-  "目录 {0} 已创建，可以打开后重试。{1}": "Folder {0} was created. Open it and retry. {1}"
+  "目录 {0} 已创建，可以打开后重试。{1}": "Folder {0} was created. Open it and retry. {1}",
+  "选择时区（编号或城市名称）": "Choose a time zone (number or city)",
+  "找不到匹配的时区。": "No matching time zone.",
+  "请输入更具体的城市名称。": "Enter a more specific city name."
 }

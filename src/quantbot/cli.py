@@ -50,6 +50,7 @@ from quantbot.config import (
     require_strategy,
     set_web_admin,
     strategy_item,
+    timezones,
 )
 from quantbot.editor import EDITOR_FILE, Editor, editor_lock
 from quantbot.github import GitHubEditor
@@ -287,6 +288,38 @@ def _ask_admin(
         return {"username": username, "password": hash_password(password)}, None
 
 
+def _choose_timezone(io: Console, current: str) -> str:
+    options = list(
+        dict.fromkeys(
+            [
+                current,
+                "Asia/Shanghai",
+                "Asia/Hong_Kong",
+                "Asia/Tokyo",
+                "UTC",
+                "America/New_York",
+                "Europe/London",
+                "Europe/Paris",
+            ]
+        )
+    )
+    while True:
+        for index, zone in enumerate(options, 1):
+            io.say(f"  {index}. {zone}")
+        answer = io.ask(tr("选择时区（编号或城市名称）"), "1")
+        if answer.isascii() and answer.isdecimal() and 1 <= int(answer) <= len(options):
+            return check_timezone(options[int(answer) - 1])
+        if answer in timezones():
+            return answer
+        matches = [zone for zone in timezones() if answer.casefold() in zone.casefold()]
+        if not matches:
+            io.status("warn", tr("找不到匹配的时区。"))
+        elif len(matches) > 20:
+            io.status("warn", tr("请输入更具体的城市名称。"))
+        else:
+            options = matches
+
+
 def _ask_telegram(
     io: Console, api: Api, data: dict[str, Any]
 ) -> tuple[dict[str, Any] | None, str | None, str]:
@@ -315,9 +348,7 @@ def _ask_telegram(
         quiet = "" if quiet == "-" else quiet
         try:
             parse_quiet(quiet)
-            timezone = check_timezone(
-                io.ask(tr("时区"), str(data.get("timezone") or "Asia/Shanghai"))
-            )
+            timezone = _choose_timezone(io, str(data.get("timezone") or "Asia/Shanghai"))
             break
         except (ValueError, ConfigError) as exc:
             io.status("warn", str(exc))

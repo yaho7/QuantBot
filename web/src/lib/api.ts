@@ -193,6 +193,7 @@ export const api = {
   prompt: (id: string, name: string) =>
     request<{ text: string }>("GET", `prompt?${new URLSearchParams({ id, name })}`),
   settings: () => request<Settings>("GET", "settings"),
+  timezones: () => request<string[]>("GET", "timezones"),
   updateStatus: () => request<UpdateStatus>("GET", "update"),
   checkUpdate: () => request<Answer<UpdateResult | null>>("POST", "update/check"),
   installUpdate: () => request<Answer>("POST", "update"),

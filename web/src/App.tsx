@@ -1,7 +1,7 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronRight, CircleDashed, FolderCode, LogOut, Monitor, Moon, Pause, Plus, Radio, Settings, Sparkles, Sun,
+  Bell, ChevronRight, CircleDashed, ClipboardList, FolderCode, LayoutGrid, LogOut, Pause, Plus, Radio, Settings, SlidersHorizontal, Sparkles,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
@@ -16,14 +16,10 @@ import {
   Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Table, Td, Th,
 } from "@/components/ui/primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { type Theme, useTheme } from "@/hooks/useTheme";
+import { useTheme } from "@/hooks/useTheme";
 import { api, ApiError, type Notice, type StrategyView } from "@/lib/api";
 import { actionLabel, ago, dateTime, NA } from "@/lib/format";
 import { cn } from "@/lib/utils";
-
-const NEXT_THEME: Record<Theme, Theme> = { light: "dark", dark: "system", system: "light" };
-const THEME_ICON = { light: Sun, dark: Moon, system: Monitor };
-const THEME_LABEL = { light: tr("浅色"), dark: tr("深色"), system: tr("跟随系统") };
 
 const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "loss" } as const;
 const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
@@ -31,45 +27,45 @@ const WorkspaceWorkbench = React.lazy(() => import("@/components/WorkspaceWorkbe
 
 type View = "strategies" | "workspace" | "settings";
 
-function TopBar({ onLogout, view }: {
+function TopBar({ onLogout, view, actions }: {
   onLogout?: () => void;
   view?: View;
+  actions?: React.ReactNode;
 }) {
-  const [theme, setTheme] = useTheme();
-  const ThemeIcon = THEME_ICON[theme];
+  const navButton = "size-8 shrink-0 px-0 sm:w-auto sm:px-3";
   return (
-    <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-5 pt-6 sm:px-8">
-      <div className="flex items-center gap-2">
+    <header className="mx-auto flex max-w-6xl items-center gap-1 px-3 pt-6 sm:gap-3 sm:px-8">
+      <div className="flex shrink-0 items-center gap-2" aria-label="QuantBot">
         <BrandIcon className="size-6" />
-        <span className="font-display text-lg">QuantBot</span>
+        <span className="hidden font-display text-lg min-[460px]:inline">QuantBot</span>
       </div>
       {view && (
-        <nav aria-label={tr("主导航")} className="order-last flex w-full gap-1 sm:order-none sm:ml-3 sm:w-auto">
-          <Button asChild variant={view === "strategies" ? "secondary" : "ghost"} size="sm">
-            <a href="/ui/" aria-current={view === "strategies" ? "page" : undefined}>{tr("策略")}</a>
+        <nav aria-label={tr("主导航")} className="flex items-center gap-0.5 sm:gap-1">
+          <Button asChild variant={view === "strategies" ? "secondary" : "ghost"} size="sm" className={navButton}>
+            <a href="/ui/" aria-label={tr("策略")} title={tr("策略")}
+              aria-current={view === "strategies" ? "page" : undefined}>
+              <LayoutGrid /> <span className="hidden sm:inline">{tr("策略")}</span>
+            </a>
           </Button>
-          <Button asChild variant={view === "workspace" ? "secondary" : "ghost"} size="sm">
-            <a href="/ui/?view=workspace" aria-current={view === "workspace" ? "page" : undefined}>
-              <FolderCode /> {tr("工作区")}
+          <Button asChild variant={view === "workspace" ? "secondary" : "ghost"} size="sm" className={navButton}>
+            <a href="/ui/?view=workspace" aria-label={tr("工作区")} title={tr("工作区")}
+              aria-current={view === "workspace" ? "page" : undefined}>
+              <FolderCode /> <span className="hidden sm:inline">{tr("工作区")}</span>
             </a>
           </Button>
         </nav>
       )}
-      <div className="ml-auto flex flex-wrap items-center gap-1">
-        <Button variant="ghost" size="icon" onClick={() => setTheme(NEXT_THEME[theme])}
-          aria-label={tr("主题：{0}", THEME_LABEL[theme])} title={tr("主题：{0}", THEME_LABEL[theme])}>
-          <ThemeIcon />
-        </Button>
+      <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:gap-1">
+        {actions && <div className="flex items-center gap-0.5 sm:hidden">{actions}</div>}
         {view && (
-          <Button asChild variant={view === "settings" ? "secondary" : "ghost"} size="icon">
+          <Button asChild variant={view === "settings" ? "secondary" : "ghost"} size="icon" className="size-8">
             <a href="/ui/?view=settings" aria-current={view === "settings" ? "page" : undefined}
               aria-label={tr("设置")} title={tr("设置")}><Settings /></a>
           </Button>
         )}
         {onLogout && (
-          <Button variant="ghost" size="icon" onClick={onLogout} aria-label={tr("退出登录")} title={tr("退出登录")}>
-            <LogOut />
-          </Button>
+          <Button variant="ghost" size="icon" className="size-8" onClick={onLogout}
+            aria-label={tr("退出登录")} title={tr("退出登录")}><LogOut /></Button>
         )}
       </div>
     </header>
@@ -161,7 +157,7 @@ function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }
           <PauseButton s={s} />
           <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>{tr("更多操作")} <ChevronRight />
           </Button>
-          <Button size="sm" variant="ghost" onClick={onManage}>{tr("管理")}</Button>
+          <Button size="sm" variant="ghost" onClick={onManage}><SlidersHorizontal /> {tr("管理")}</Button>
         </div>
       </CardContent>
       {open && <StrategyPanel s={s} open onOpenChange={setOpen} />}
@@ -222,7 +218,7 @@ function AuditLog() {
   );
 }
 
-function PauseAll({ count }: { count: number }) {
+function PauseAll({ count, compact }: { count: number; compact: boolean }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [asking, setAsking] = React.useState(false);
@@ -238,11 +234,32 @@ function PauseAll({ count }: { count: number }) {
   });
   return (
     <>
-      <Button variant="outline" disabled={!count} onClick={() => setAsking(true)}>
-        <Pause /> {tr("全部暂停开仓")}</Button>
+      <Button variant={compact ? "ghost" : "outline"} size={compact ? "icon" : "default"}
+        className={compact ? "size-8" : undefined} disabled={!count} onClick={() => setAsking(true)}
+        aria-label={tr("全部暂停开仓")} title={tr("全部暂停开仓")}>
+        <Pause /> {!compact && tr("全部暂停开仓")}</Button>
       <ConfirmDialog open={asking} onOpenChange={setAsking} title={tr("全部暂停开仓？")}
         description={tr("{0} 个在线策略都不再开新仓。已有仓位和止损照常。", count)}
         confirmLabel={tr("全部暂停")} loading={pause.isPending} onConfirm={() => pause.mutate()} />
+    </>
+  );
+}
+
+function StrategyActions({ compact = false, online, onAdd, onPrompt }: {
+  compact?: boolean; online: number; onAdd: () => void; onPrompt: () => void;
+}) {
+  const size = compact ? "icon" : "default";
+  const variant = compact ? "ghost" : "outline";
+  const iconSize = compact ? "size-8" : undefined;
+  return (
+    <>
+      <Button variant={variant} size={size} className={iconSize} onClick={onAdd}
+        aria-label={tr("添加策略")} title={tr("添加策略")}><Plus /> {!compact && tr("添加策略")}</Button>
+      <Button variant={variant} size={size} className={iconSize} onClick={onPrompt}
+        aria-label={tr("让 AI 接入策略")} title={tr("让 AI 接入策略")}>
+        <Sparkles /> {!compact && tr("让 AI 接入策略")}
+      </Button>
+      <PauseAll count={online} compact={compact} />
     </>
   );
 }
@@ -269,6 +286,7 @@ function TelegramNote() {
 }
 
 export function App() {
+  const [theme, setTheme] = useTheme();
   const requested = new URLSearchParams(location.search).get("view");
   const view: View = requested === "workspace" || requested === "settings" ? requested : "strategies";
   const overview = useQuery({
@@ -295,15 +313,17 @@ export function App() {
   if (signedOut) return <Login />;
   const strategies = overview.data?.strategies ?? [];
   const online = strategies.filter((s) => s.online).length;
+  const actions = { online, onAdd: () => setManage(null), onPrompt: () => setPromptOpen(true) };
   return (
     <>
-      <TopBar onLogout={() => logout.mutate()} view={overview.data ? view : undefined} />
+      <TopBar onLogout={overview.data ? () => logout.mutate() : undefined} view={overview.data ? view : undefined}
+        actions={overview.data && view === "strategies" ? <StrategyActions compact {...actions} /> : undefined} />
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       {manage !== undefined && <StrategyAdminDialog strategy={manage ?? undefined} onClose={() => setManage(undefined)} />}
       <main className={cn("view-enter mx-auto px-5 pb-16 pt-10 sm:px-8", view === "workspace" ? "max-w-[100rem]" : "max-w-6xl")}>
         {view === "settings" ? (
           <QueryBoundary query={overview}>
-            {() => <SettingsPage update={update.data} onInstalled={setUpdatedFrom} />}
+            {() => <SettingsPage update={update.data} onInstalled={setUpdatedFrom} theme={theme} onTheme={setTheme} />}
           </QueryBoundary>
         ) : view === "workspace" ? (
           overview.data ? <React.Suspense fallback={<LoadingState />}><WorkspaceWorkbench /></React.Suspense>
@@ -312,14 +332,7 @@ export function App() {
           <PageHeader
             title={tr("策略")}
             description={overview.data ? tr("{0} 个策略，{1} 个在线 · 每 5 秒刷新", strategies.length, online) : undefined}
-            actions={
-              <div className="flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => setManage(null)}><Plus /> {tr("添加策略")}</Button>
-                <Button variant="outline" onClick={() => setPromptOpen(true)}>
-                  <Sparkles /> {tr("让 AI 接入策略")}</Button>
-                <PauseAll count={online} />
-              </div>
-            }
+            actions={<div className="hidden flex-wrap gap-2 sm:flex"><StrategyActions {...actions} /></div>}
           />
           <QueryBoundary query={overview} rows={4}>
             {(data) => (
@@ -337,8 +350,8 @@ export function App() {
                 )}
                 <Tabs defaultValue="feed">
                   <TabsList>
-                    <TabsTrigger value="feed">{tr("推送")}</TabsTrigger>
-                    <TabsTrigger value="audit">{tr("操作记录")}</TabsTrigger>
+                    <TabsTrigger value="feed"><Bell className="size-3.5" /> {tr("推送")}</TabsTrigger>
+                    <TabsTrigger value="audit"><ClipboardList className="size-3.5" /> {tr("操作记录")}</TabsTrigger>
                   </TabsList>
                   <TabsContent value="feed">
                     <Card><Feed items={data.feed} /></Card>

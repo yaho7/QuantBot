@@ -18,10 +18,11 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError, available_timezones
 
 from quantbot.i18n import DEFAULT_LANGUAGE, normalize_language, tr
 from quantbot.notices import parse_quiet
@@ -164,6 +165,11 @@ def check_strategy_id(sid: str) -> str:
     if not STRATEGY_ID.match(sid):
         raise ConfigError(tr("id 只能用小写字母、数字、- 和 _，最多 32 个字符，例如 momentum"))
     return sid
+
+
+@lru_cache(maxsize=1)
+def timezones() -> tuple[str, ...]:
+    return tuple(sorted(available_timezones(), key=str.casefold))
 
 
 def check_timezone(name: str) -> str:

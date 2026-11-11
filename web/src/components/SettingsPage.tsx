@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, GitBranch, Globe, Languages, Radio, RefreshCw, Server, ShieldCheck, SlidersHorizontal, Wrench } from "lucide-react";
+import { Download, GitBranch, Globe, Languages, Radio, RefreshCw, Server, ShieldCheck, SlidersHorizontal, SunMoon, Wrench } from "lucide-react";
 import { useState } from "react";
 import { AccountDialog } from "@/components/AccountDialog";
 import { PageHeader, QueryBoundary } from "@/components/common";
@@ -10,10 +10,13 @@ import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
+import { type Theme } from "@/hooks/useTheme";
 import { api, type Settings, type UpdateStatus } from "@/lib/api";
 import { tr, type Language } from "@/lib/i18n";
 
-export function SettingsPage({ update, onInstalled }: { update?: UpdateStatus; onInstalled: (version: string) => void }) {
+export function SettingsPage({ update, onInstalled, theme, onTheme }: {
+  update?: UpdateStatus; onInstalled: (version: string) => void; theme: Theme; onTheme: (theme: Theme) => void;
+}) {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
   const [accountOpen, setAccountOpen] = useState(false);
@@ -43,6 +46,18 @@ export function SettingsPage({ update, onInstalled }: { update?: UpdateStatus; o
             {(data) => (
               <div className="grid gap-4 md:grid-cols-2">
                 <LanguageCard key={data.language} initial={data.language} />
+                <Card>
+                  <CardHeader><CardTitle className="flex items-center gap-2"><SunMoon className="size-4 text-muted-foreground" /> {tr("外观")}</CardTitle></CardHeader>
+                  <CardContent>
+                    <Field label={tr("主题")} htmlFor="settings-theme">
+                      <Select id="settings-theme" value={theme} onChange={(event) => onTheme(event.target.value as Theme)}>
+                        <option value="system">{tr("跟随系统")}</option>
+                        <option value="light">{tr("浅色")}</option>
+                        <option value="dark">{tr("深色")}</option>
+                      </Select>
+                    </Field>
+                  </CardContent>
+                </Card>
                 <Card>
                   <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck className="size-4 text-muted-foreground" /> {tr("网页管理员")}</CardTitle></CardHeader>
                   <CardContent className="flex flex-wrap items-center justify-between gap-3">
@@ -148,6 +163,12 @@ function Notifications({ data }: { data: Settings }) {
   const [owner, setOwner] = useState(String(data.owner_id ?? ""));
   const [quiet, setQuiet] = useState(data.quiet_hours);
   const [timezone, setTimezone] = useState(data.timezone);
+  const zones = useQuery({ queryKey: ["timezones"], queryFn: api.timezones, staleTime: Infinity });
+  const regions = new Map<string, string[]>();
+  for (const zone of new Set([data.timezone, ...(zones.data ?? [])])) {
+    const region = zone.includes("/") ? zone.split("/")[0] ?? "" : tr("其他时区");
+    regions.set(region, [...(regions.get(region) ?? []), zone]);
+  }
   const [heartbeat, setHeartbeat] = useState(data.heartbeat_url);
   const changes: Partial<Record<keyof Settings | "token", string>> = {};
   if (token.trim()) changes.token = token.trim();
@@ -207,7 +228,14 @@ function Notifications({ data }: { data: Settings }) {
                   onChange={(event) => setQuiet(event.target.value)} />
               </Field>
               <Field label={tr("时区")} htmlFor="sz">
-                <Input id="sz" value={timezone} onChange={(event) => setTimezone(event.target.value)} />
+                <Select id="sz" value={timezone} onChange={(event) => setTimezone(event.target.value)}>
+                  {[...regions].map(([region, names]) => (
+                    <optgroup key={region} label={region}>
+                      {names.map((name) => <option key={name} value={name}>{name.replaceAll("_", " ")}</option>)}
+                    </optgroup>
+                  ))}
+                </Select>
+                {zones.error && <Alert tone="loss">{zones.error.message}</Alert>}
               </Field>
             </CardContent>
           </Card>
