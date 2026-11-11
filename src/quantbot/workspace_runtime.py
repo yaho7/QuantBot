@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import shlex
+import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +19,107 @@ RUN_FILE = "workspace-run.json"
 LOG_LIMIT = 65_536
 
 
+class SystemdProgram:
+    """Use the system manager and journal on Linux hosts booted with systemd."""
+
+    def __init__(self, data_dir: Path) -> None:
+        instance = hashlib.sha256(str(data_dir.resolve()).encode()).hexdigest()[:16]
+        self.unit = f"quantbot-workspace-{instance}.service"
+        self.stopped = False
+
+    @staticmethod
+    async def _call(*args: str) -> tuple[int, str]:
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdin=asyncio.subprocess.DEVNULL,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        try:
+            output, _ = await asyncio.wait_for(process.communicate(), 25)
+        except BaseException:
+            if process.returncode is None:
+                with suppress(ProcessLookupError):
+                    process.kill()
+                await process.wait()
+            raise
+        return process.returncode or 0, output[-LOG_LIMIT:].decode(errors="replace")
+
+    async def state(self) -> tuple[bool, int | None]:
+        code, result = await self._call(
+            "/usr/bin/systemctl",
+            "show",
+            "--property=LoadState,SubState,ExecMainCode,ExecMainStatus",
+            self.unit,
+        )
+        props = dict(line.split("=", 1) for line in result.splitlines() if "=" in line)
+        if props.get("LoadState") == "not-found":
+            return False, -15 if self.stopped else None
+        if code:
+            raise ConfigError(tr("无法读取工作区程序状态。"))
+        running = props.get("SubState") in {
+            "start",
+            "running",
+            "stop",
+            "stop-sigterm",
+            "stop-sigkill",
+        }
+        status = props.get("ExecMainStatus", "0")
+        main_code = props.get("ExecMainCode", "0")
+        if running or not status.isdecimal() or main_code == "0":
+            return running, None
+        return False, int(status) if main_code == "1" else -int(status)
+
+    async def start(self, workspace: Workspace, arguments: list[str]) -> None:
+        # A completed or failed transient service can retain its name until it is stopped.
+        await self._call("/usr/bin/systemctl", "stop", self.unit)
+        await self._call("/usr/bin/systemctl", "reset-failed", self.unit)
+        environment = {**workspace.environment(), "PYTHONUNBUFFERED": "1"}
+        code, _ = await self._call(
+            "/usr/bin/systemd-run",
+            "--quiet",
+            "--remain-after-exit",
+            f"--unit={self.unit}",
+            "--property=Type=exec",
+            f"--property=User={workspace.uid}",
+            f"--property=Group={workspace.gid}",
+            "--property=NoNewPrivileges=yes",
+            "--property=UMask=0077",
+            "--property=KillMode=control-group",
+            f"--working-directory={workspace.root}",
+            *(f"--setenv={key}={value}" for key, value in environment.items()),
+            "--",
+            "/usr/bin/env",
+            "--",
+            *(arg.replace("$", "$$") for arg in arguments),
+        )
+        if code:
+            raise ConfigError(tr("systemd 无法启动工作区程序，请检查启动命令和服务日志。"))
+        self.stopped = False
+
+    async def stop(self) -> None:
+        running, _ = await self.state()
+        if running:
+            code, _ = await self._call("/usr/bin/systemctl", "stop", self.unit)
+            if code:
+                raise ConfigError(tr("systemd 无法停止工作区程序。"))
+            self.stopped = True
+
+    async def logs(self, since: int) -> str:
+        if not since:
+            return ""
+        _, output = await self._call(
+            "/usr/bin/journalctl",
+            "--quiet",
+            "--no-pager",
+            "--output=cat",
+            "--lines=200",
+            f"--since=@{since}",
+            f"--unit={self.unit}",
+        )
+        return output
+
+
 class WorkspaceRuntime:
     def __init__(self, data_dir: Path) -> None:
         self.store = Store(data_dir, filename=RUN_FILE)
@@ -23,6 +127,11 @@ class WorkspaceRuntime:
         self.process: asyncio.subprocess.Process | None = None
         self.capture: asyncio.Task[None] | None = None
         self.log = bytearray()
+        self.systemd = (
+            SystemdProgram(data_dir)
+            if Workspace.supported() and Path("/run/systemd/system").is_dir()
+            else None
+        )
 
     def workspace(self) -> Workspace:
         editor = Editor.configured(self.store.dir)
@@ -42,7 +151,17 @@ class WorkspaceRuntime:
     def running(self) -> bool:
         return self.process is not None and self.process.returncode is None
 
-    def status(self, workspace: Workspace) -> dict[str, Any]:
+    async def status(self, workspace: Workspace) -> dict[str, Any]:
+        if self.systemd:
+            running, exit_code = await self.systemd.state()
+            data = self.store.read()
+            since = data.get("started_at", 0) if data.get("root") == str(workspace.root) else 0
+            return {
+                "command": self._saved(workspace),
+                "running": running,
+                "exit_code": exit_code,
+                "logs": await self.systemd.logs(since if isinstance(since, int) else 0),
+            }
         return {
             "command": self._saved(workspace),
             "running": self.running,
@@ -62,20 +181,36 @@ class WorkspaceRuntime:
             raise ConfigError(tr("请输入有效的启动命令。"))
         return arguments
 
-    def configure(self, workspace: Workspace, command: str) -> None:
-        if self.running:
+    async def configure(self, workspace: Workspace, command: str) -> None:
+        running = (await self.systemd.state())[0] if self.systemd else self.running
+        if running:
             raise ConfigError(tr("请先停止程序，再修改启动命令。"))
         self._arguments(command)
-        self.store.write({"root": str(workspace.root), "command": command.strip()})
+        data = self.store.read()
+        self.store.write(
+            {
+                "root": str(workspace.root),
+                "command": command.strip(),
+                "started_at": data.get("started_at", 0)
+                if data.get("root") == str(workspace.root)
+                else 0,
+            }
+        )
 
     async def start(self, workspace: Workspace) -> None:
-        if self.running:
+        running = (await self.systemd.state())[0] if self.systemd else self.running
+        if running:
             raise ConfigError(tr("工作区程序已经在运行。"))
         command = self._saved(workspace)
         if not command:
             raise ConfigError(tr("请先保存启动命令。"))
-        await self._finish_capture()
         arguments = self._arguments(command)
+        if self.systemd:
+            since = int(time.time())
+            await self.systemd.start(workspace, arguments)
+            self.store.write({"root": str(workspace.root), "command": command, "started_at": since})
+            return
+        await self._finish_capture()
         process = await asyncio.create_subprocess_exec(
             *workspace.command(arguments),
             stdin=asyncio.subprocess.DEVNULL,
@@ -106,6 +241,9 @@ class WorkspaceRuntime:
         self.capture = None
 
     async def stop(self) -> None:
+        if self.systemd:
+            await self.systemd.stop()
+            return
         if self.process is not None:
             await stop_process(self.process)
         await self._finish_capture()

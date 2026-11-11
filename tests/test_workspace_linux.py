@@ -28,6 +28,8 @@ def test_linux_workspace_uses_an_unprivileged_controlling_terminal(
     account = pwd.getpwnam("nobody")
     if not shutil.which("setpriv") or not shutil.which("setsid"):
         pytest.skip("util-linux is unavailable")
+    if not shutil.which("ttyd"):
+        pytest.skip("ttyd is unavailable")
     assert account.pw_uid != 0 and account.pw_gid != 0
 
     with TemporaryDirectory(prefix="quantbot-pty-") as directory:
@@ -55,7 +57,7 @@ def test_linux_workspace_uses_an_unprivileged_controlling_terminal(
         async def verify() -> None:
             terminal = await TerminalProcess.start(workspace)
             try:
-                terminal.resize(91, 27)
+                await terminal.resize(91, 27)
                 await terminal.write(
                     b"printf 'uid:%s\\n' \"$(id -u)\"; "
                     b"printf 'size:%s\\n' \"$(stty size)\"; "

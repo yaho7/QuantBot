@@ -30,7 +30,8 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const [review, setReview] = useState(false);
   const [discard, setDiscard] = useState<{ path: string; close: boolean }>();
   const [githubOpen, setGithubOpen] = useState(() => new URLSearchParams(window.location.search).has("github"));
-  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [directory, setDirectory] = useState("");
+  const [terminalPath, setTerminalPath] = useState<string>();
   const [programOpen, setProgramOpen] = useState(false);
   const dirty = Object.keys(drafts).length > 0;
   const files = useQueries({ queries: tabs.map((path) => ({
@@ -88,6 +89,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   function open(path: string, line?: number) {
     setTabs((previous) => previous.includes(path) ? previous : [...previous, path]);
     setActive(path);
+    setDirectory(path.slice(0, Math.max(0, path.lastIndexOf("/"))));
     save.reset();
     if (line) setLocation((previous) => ({ path, line, request: (previous?.request ?? 0) + 1 }));
   }
@@ -103,14 +105,16 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
       const rename = (tab: string) => under(tab, path) ? destination + tab.slice(path.length) : tab;
       setTabs((previous) => [...new Set(previous.map(rename))]);
       setActive((previous) => previous && rename(previous));
+      setDirectory((previous) => rename(previous));
     } else if (action === "delete") {
       const remaining = tabs.filter((tab) => !under(tab, path));
       setTabs(remaining);
       if (active && under(active, path)) setActive(remaining.at(-1));
+      setDirectory((previous) => under(previous, path) ? "" : previous);
     }
     refresh();
   }
-  const showTerminal = managed && terminalOpen;
+  const showTerminal = managed && terminalPath !== undefined && !programOpen;
   const showProgram = managed && programOpen;
   const jump = location && location.path === active ? location : undefined;
   return (
@@ -126,15 +130,19 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
           </div>
           {managed && <div className="flex gap-1">
             <Button size="sm" variant={showTerminal ? "secondary" : "ghost"} aria-pressed={showTerminal}
-              onClick={() => { setTerminalOpen(!terminalOpen); setProgramOpen(false); }}><SquareTerminal /> {tr("终端")}</Button>
+              onClick={() => {
+                if (showTerminal) setTerminalPath(undefined);
+                else setTerminalPath(terminalPath ?? directory);
+                setProgramOpen(false);
+              }}><SquareTerminal /> {tr("终端")}</Button>
             <Button size="sm" variant={showProgram ? "secondary" : "ghost"} aria-pressed={showProgram}
-              onClick={() => { setProgramOpen(!programOpen); setTerminalOpen(false); }}><Play /> {tr("运行")}</Button>
+              onClick={() => setProgramOpen(!programOpen)}><Play /> {tr("运行")}</Button>
           </div>}
         </div>
         <Group className="h-[min(62vh,42rem)] min-h-[24rem]">
           <Panel id="workspace-sidebar" defaultSize="24%" minSize="7rem" maxSize="55%">
             <div className={cn("h-full", sidebar !== "files" && "hidden")}>
-              <WorkspaceExplorer selected={active} onOpen={open}
+              <WorkspaceExplorer selected={active} onOpen={open} onDirectory={setDirectory}
                 canChange={(path) => !Object.keys(drafts).some((item) => under(item, path))} onChange={changed} />
             </div>
             {sidebar === "search" && <WorkspaceSearch onOpen={open} />}
@@ -185,8 +193,10 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
             </section>
           </Panel>
         </Group>
-        {(showTerminal || showProgram) && <div className="border-t p-2">
-          {showTerminal && <Suspense fallback={<LoadingState />}><WorkspaceTerminal /></Suspense>}
+        {(terminalPath !== undefined || showProgram) && <div className="border-t p-2">
+          {terminalPath !== undefined && <div hidden={!showTerminal}>
+            <Suspense fallback={<LoadingState />}><WorkspaceTerminal path={terminalPath} /></Suspense>
+          </div>}
           {showProgram && <WorkspaceProgram />}
         </div>}
       </div>

@@ -162,6 +162,33 @@ if [ "${#missing[@]}" -gt 0 ]; then
   install_packages "${missing[@]}" || die "$(msg "系统依赖安装失败。请检查上方输出后重试。" "Could not install system dependencies. Review the output above and retry.")"
 fi
 
+# Debian 12 does not package ttyd. Use the upstream release on supported architectures.
+install_ttyd() {
+  local arch hash download code=0
+  case "$(uname -m)" in
+    x86_64) arch=x86_64; hash=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55 ;;
+    aarch64) arch=aarch64; hash=b38acadd89d1d396a0f5649aa52c539edbad07f4bc7348b27b4f4b7219dd4165 ;;
+    armv7l) arch=armhf; hash=8240c8438b68d3b10b0e1a4e7c914d70fca6a7606b516f40bf40adfa1044d801 ;;
+    *) install_packages ttyd; return ;;
+  esac
+  download="$(mktemp)" || return
+  if curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/1.7.7/ttyd.$arch" -o "$download" &&
+     printf '%s  %s\n' "$hash" "$download" | sha256sum -c --status; then
+    as_root install -m 0755 "$download" /usr/local/bin/ttyd || code=$?
+  else
+    code=1
+  fi
+  rm -f -- "$download"
+  return "$code"
+}
+
+if [ "$(uname)" = Linux ] && ! PATH=/usr/local/bin:/usr/bin:/bin command -v ttyd >/dev/null; then
+  status step '1;36' "$(msg "安装网页终端依赖 ttyd。" "Installing ttyd for the web terminal.")"
+  if ! install_ttyd; then
+    status info '1;36' "$(msg "请在服务器上安装 ttyd 后使用网页终端。" "Install ttyd on the server to use the web terminal.")"
+  fi
+fi
+
 terminal_path="$PATH"
 export PATH="$PATH:$HOME/.local/bin:$HOME/.cargo/bin"
 if ! command -v uv >/dev/null; then

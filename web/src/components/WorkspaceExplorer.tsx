@@ -18,11 +18,12 @@ const parentOf = (path: string) => path.slice(0, Math.max(0, path.lastIndexOf("/
 const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 const join = (parent: string, name: string) => parent ? parent + "/" + name : name;
 
-export function WorkspaceExplorer({ selected, onOpen, canChange, onChange }: {
+export function WorkspaceExplorer({ selected, onOpen, canChange, onChange, onDirectory }: {
   selected?: string;
   onOpen: (path: string) => void;
   canChange: (path: string) => boolean;
   onChange: (action: FileAction, path: string, destination?: string) => void;
+  onDirectory: (path: string) => void;
 }) {
   const qc = useQueryClient();
   const tree = useRef<TreeApi<Entry>>(null);
@@ -166,7 +167,10 @@ export function WorkspaceExplorer({ selected, onOpen, canChange, onChange }: {
               <Tree<Entry> ref={tree} data={data} width="100%" height={height} rowHeight={29}
                 indent={16} openByDefault={false} selection={focus || selected} disableMultiSelection
                 onToggle={loadDirectory}
-                onFocus={(node) => setFocus(node.id)}
+                onFocus={(node) => {
+                  setFocus(node.id);
+                  onDirectory(node.isInternal ? node.id : parentOf(node.id));
+                }}
                 onActivate={(node) => { if (node.isLeaf) onOpen(node.id); }}
                 disableDrop={({ parentNode, dragNodes }) =>
                   dragNodes.length !== 1 || parentOf(dragNodes[0]?.id ?? "") === (parentNode.data.id ?? "")}

@@ -9,12 +9,12 @@ import { tr } from "@/lib/i18n";
 
 type Connection = "connecting" | "connected" | "closed";
 
-export default function WorkspaceTerminal() {
+export default function WorkspaceTerminal({ path }: { path: string }) {
   const [attempt, setAttempt] = useState(0);
-  return <TerminalSession key={attempt} onReconnect={() => setAttempt((count) => count + 1)} />;
+  return <TerminalSession key={attempt} path={path} onReconnect={() => setAttempt((count) => count + 1)} />;
 }
 
-function TerminalSession({ onReconnect }: { onReconnect: () => void }) {
+function TerminalSession({ path, onReconnect }: { path: string; onReconnect: () => void }) {
   const host = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [latency, setLatency] = useState<number>();
@@ -36,6 +36,7 @@ function TerminalSession({ onReconnect }: { onReconnect: () => void }) {
     observer.observe(document.documentElement, { attributeFilter: ["class"] });
 
     const url = new URL("/ui/api/workspace/terminal", location.href);
+    if (path) url.searchParams.set("path", path);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url);
     socket.binaryType = "arraybuffer";
@@ -99,7 +100,7 @@ function TerminalSession({ onReconnect }: { onReconnect: () => void }) {
       input.dispose();
       terminal.dispose();
     };
-  }, []);
+  }, [path]);
 
   const status = {
     connecting: tr("正在连接…"),
@@ -110,7 +111,10 @@ function TerminalSession({ onReconnect }: { onReconnect: () => void }) {
   return (
     <Card className="min-w-0 overflow-hidden">
       <header className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b px-3 py-1.5">
-        <h2 className="flex items-center gap-2 text-sm font-medium"><SquareTerminal className="size-4" /> {tr("终端")}</h2>
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-medium">
+          <SquareTerminal className="size-4 shrink-0" /> {tr("终端")}
+          {path && <code className="truncate text-xs text-muted-foreground" title={path}>{path}</code>}
+        </h2>
         <div className="flex items-center gap-2">
           <Badge tone={connection === "connected" ? "gain" : "neutral"}>{status}</Badge>
           {connection === "connected" && (

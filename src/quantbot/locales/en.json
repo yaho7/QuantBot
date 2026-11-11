@@ -637,5 +637,10 @@
   "搜索超时，请缩小搜索范围。": "The search timed out. Try a narrower query.",
   "目标路径已存在。": "The destination already exists.",
   "无法更改路径，请检查文件和目录权限。": "Could not change the path. Check file and directory permissions.",
-  "无法搜索工作区。": "Could not search the workspace."
+  "无法搜索工作区。": "Could not search the workspace.",
+  "请在服务器上安装 ttyd 后打开网页终端。": "Install ttyd on the server to open the web terminal.",
+  "无法连接 ttyd，请检查服务器上的 ttyd 安装。": "Could not connect to ttyd. Check its installation on the server.",
+  "无法读取工作区程序状态。": "Could not read the workspace program status.",
+  "systemd 无法启动工作区程序，请检查启动命令和服务日志。": "systemd could not start the workspace program. Check the launch command and service logs.",
+  "systemd 无法停止工作区程序。": "systemd could not stop the workspace program."
 }

@@ -811,7 +811,7 @@ def test_workspace_terminal_requires_session_and_origin_and_reports_latency(
         async def write(self, data: bytes) -> None:
             await self.output.put(data)
 
-        def resize(self, cols: int, rows: int) -> None:
+        async def resize(self, cols: int, rows: int) -> None:
             self.size = (cols, rows)
 
         async def close(self) -> None:
@@ -819,17 +819,19 @@ def test_workspace_terminal_requires_session_and_origin_and_reports_latency(
 
     terminal = Terminal()
 
-    async def start(workspace: Workspace) -> Terminal:
+    async def start(workspace: Workspace, cwd: Path) -> Terminal:
         assert workspace.uid == 123
+        assert cwd == root / "nested"
         return terminal
 
     monkeypatch.setattr("quantbot.web.TerminalProcess.start", start)
     monkeypatch.setattr(Editor, "workspace", lambda self: Workspace(self.root, 123, 123, tmp_path))
     root = tmp_path / "workspace"
     root.mkdir()
+    (root / "nested").mkdir()
 
     async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
-        url = "/ui/api/workspace/terminal"
+        url = "/ui/api/workspace/terminal?path=nested"
         assert (await client.get(url)).status == 401
         await client.get(f"/ui/login?t={auth.link_token()}")
         denied = await client.get(url, headers={"Origin": "https://untrusted.example"})

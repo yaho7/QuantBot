@@ -434,9 +434,13 @@ async def workspace_terminal(request: web.Request) -> web.StreamResponse:
     if not socket.can_prepare(request).ok:
         return _answer(False, tr("终端需要 WebSocket 连接。"))
     try:
-        workspace = _editor(store).workspace()
+        editor = _editor(store)
+        workspace = editor.workspace()
         if workspace is None:
             raise ConfigError(tr("请先在服务器上运行 quantbot workspace init。"))
+        parts = editor._parts(request.query.get("path", ""))
+        with editor._directory(parts):
+            cwd = workspace.root.joinpath(*parts)
     except (ConfigError, OSError) as exc:
         return _answer(False, str(exc))
 
@@ -445,7 +449,7 @@ async def workspace_terminal(request: web.Request) -> web.StreamResponse:
     try:
         await socket.prepare(request)
         try:
-            terminal = await TerminalProcess.start(workspace)
+            terminal = await TerminalProcess.start(workspace, cwd)
         except (ConfigError, OSError) as exc:
             audit.write("terminal_open", user=WEB_USER, ok=False, result=str(exc))
             await socket.send_json({"type": "error", "message": str(exc)})
@@ -486,7 +490,7 @@ async def _bridge_terminal(
                 if kind == "resize":
                     columns, rows = payload.get("cols"), payload.get("rows")
                     if type(columns) is int and type(rows) is int:
-                        terminal.resize(columns, rows)
+                        await terminal.resize(columns, rows)
                 elif kind == "ping" and type(payload.get("sent")) in {float, int}:
                     sent = payload["sent"]
                     if 0 <= sent < 10**12:
@@ -513,7 +517,7 @@ async def workspace_program(request: web.Request) -> web.Response:
     audit = request.app[CORE_KEY].audit
     try:
         if not action:
-            return _answer(True, "", runtime.status(runtime.workspace()))
+            return _answer(True, "", await runtime.status(runtime.workspace()))
         body = await _args(request)
         async with runtime.lock:
             workspace = runtime.workspace()
@@ -521,7 +525,7 @@ async def workspace_program(request: web.Request) -> web.Response:
                 command = body.get("command")
                 if not isinstance(command, str):
                     return _answer(False, tr("请输入有效的启动命令。"))
-                runtime.configure(workspace, command)
+                await runtime.configure(workspace, command)
                 message = tr("启动命令已保存。")
             elif action == "start":
                 await runtime.start(workspace)
@@ -529,8 +533,8 @@ async def workspace_program(request: web.Request) -> web.Response:
             else:
                 await runtime.stop()
                 message = tr("已停止工作区程序。")
-            status = runtime.status(workspace)
-    except (ConfigError, OSError) as exc:
+            status = await runtime.status(workspace)
+    except (ConfigError, OSError, asyncio.TimeoutError) as exc:
         if action:
             audit.write(f"workspace_{action}", user=WEB_USER, ok=False, result=str(exc))
         return _answer(False, str(exc))
@@ -541,7 +545,8 @@ async def workspace_program(request: web.Request) -> web.Response:
 async def _stop_workspace_program(app: web.Application) -> None:
     runtime = app[RUNTIME_KEY]
     async with runtime.lock:
-        await runtime.stop()
+        if runtime.store.path.exists():
+            await runtime.stop()
 
 
 async def editor_read(request: web.Request) -> web.Response:
