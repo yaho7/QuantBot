@@ -36,10 +36,10 @@ export function SettingsPage({ update, onInstalled, theme, onTheme }: {
           url.searchParams.set("tab", tab);
           history.replaceState(null, "", url);
         }}>
-        <TabsList className="w-full justify-start sm:w-auto">
-          <TabsTrigger value="general" className="gap-1.5"><SlidersHorizontal className="size-3.5" /> {tr("常规")}</TabsTrigger>
-          <TabsTrigger value="notifications" className="gap-1.5"><Radio className="size-3.5" /> {tr("通知")}</TabsTrigger>
-          <TabsTrigger value="maintenance" className="gap-1.5"><Wrench className="size-3.5" /> {tr("维护")}</TabsTrigger>
+        <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
+          <TabsTrigger value="general" className="gap-1.5 px-2 sm:px-3"><SlidersHorizontal className="hidden size-3.5 min-[400px]:block" /> {tr("常规")}</TabsTrigger>
+          <TabsTrigger value="notifications" className="gap-1.5 px-2 sm:px-3"><Radio className="hidden size-3.5 min-[400px]:block" /> {tr("通知")}</TabsTrigger>
+          <TabsTrigger value="maintenance" className="gap-1.5 px-2 sm:px-3"><Wrench className="hidden size-3.5 min-[400px]:block" /> {tr("维护")}</TabsTrigger>
         </TabsList>
         <TabsContent value="general">
           <QueryBoundary query={settings}>
