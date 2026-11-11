@@ -7,7 +7,9 @@ import { SettingsDialog } from "@/components/SettingsDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
-import { Alert, Badge, Card, CardContent, CardHeader, CardTitle, Table, Td, Th } from "@/components/ui/primitives";
+import {
+  Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Table, Td, Th,
+} from "@/components/ui/primitives";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { type Theme, useTheme } from "@/hooks/useTheme";
 import { api, ApiError, type Notice, type StrategyView } from "@/lib/api";
@@ -50,16 +52,44 @@ function TopBar({ onLogout, onSettings }: { onLogout?: () => void; onSettings?: 
   );
 }
 
+const code = "rounded bg-muted px-1.5 py-0.5 font-mono text-xs";
+
 function Login() {
+  const qc = useQueryClient();
+  const [username, setUsername] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const login = useMutation({
+    mutationFn: () => api.login(username.trim(), password),
+    onSuccess: (answer) => {
+      if (answer.ok) void qc.invalidateQueries();
+      else setPassword("");
+    },
+  });
+  const failed = login.data && !login.data.ok ? login.data.message : login.error?.message;
   return (
     <>
       <TopBar />
-      <main className="mx-auto max-w-md px-5 pt-24 text-center">
+      <main className="view-enter mx-auto max-w-md px-5 pt-20">
         <h1 className="font-display text-3xl font-medium">登录 QuantBot</h1>
-        <p className="mt-4 text-sm text-muted-foreground">
-          在服务器上运行 <code className="rounded bg-muted px-1.5 py-0.5">quantbot web</code>，
-          再打开它给的链接。接了 Telegram 的话，也可以给 bot 发
-          <code className="rounded bg-muted px-1.5 py-0.5">/web</code>。链接 5 分钟内有效，只能用一次。
+        <p className="mb-5 mt-1 text-sm text-muted-foreground">用安装时设的管理员账号登录。</p>
+        <Card className="p-5">
+          <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
+            <Field label="用户名" htmlFor="u">
+              <Input id="u" autoComplete="username" value={username} autoFocus required
+                onChange={(e) => setUsername(e.target.value)} />
+            </Field>
+            <Field label="密码" htmlFor="p">
+              <Input id="p" type="password" autoComplete="current-password" value={password} required
+                onChange={(e) => setPassword(e.target.value)} />
+            </Field>
+            {failed && <Alert tone="loss">{failed}</Alert>}
+            <Button type="submit" loading={login.isPending}>登录</Button>
+          </form>
+        </Card>
+        <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
+          忘了密码：在服务器上运行 <code className={code}>quantbot password</code>。
+          也可以运行 <code className={code}>quantbot web</code>，或给 bot 发 <code className={code}>/web</code>，
+          拿一个不用密码的一次性链接。
         </p>
       </main>
     </>

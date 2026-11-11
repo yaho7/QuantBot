@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -130,21 +131,67 @@ def _service_or_none() -> Service | None:
         return None
 
 
+ANY_HOST = "0.0.0.0"  # noqa: S104 - only when the user picks it
+
+
 def _ask_port(io: Console, data: dict[str, Any]) -> str:
-    """Ask for the port. The default is the current one, QUANTBOT_PORT, or a free random one."""
+    """Ask who may connect and the port. Defaults: the current values, QUANTBOT_PORT,
+    or this machine only on a free random port."""
     current = str(data.get("listen") or "")
-    host = current.rpartition(":")[0] if current else LOCALHOST
-    current_port = current.rpartition(":")[2] if current else ""
+    current_host, _, current_port = current.rpartition(":") if current else ("", "", "")
+    io.say("     谁能打开网页：")
+    io.say("     1. 只有这台机器（从别处打开用 SSH 隧道或 Tailscale）")
+    io.say("     2. 任何能连到这台机器的地方（公网 IP 或局域网直接打开）")
+    while True:
+        picked = io.ask("     选择", "2" if current_host == ANY_HOST else "1")
+        if picked in {"1", "2"}:
+            break
+        io.say("     ✗ 输入 1 或 2")
+    host = LOCALHOST if picked == "1" else ANY_HOST
     default = current_port or os.environ.get("QUANTBOT_PORT") or str(free_port())
     while True:
-        typed = io.ask("     端口（只有本机能连，回车用这个）", default)
+        typed = io.ask("     端口（回车用这个）", default)
         if not typed.isdigit() or not 1024 <= int(typed) <= 65535:
             io.say("     ✗ 端口是 1024 到 65535 之间的数字")
             continue
-        if typed != current_port and not port_free(int(typed)):
+        # The current port may be held by the running QuantBot itself; it frees it on restart.
+        if typed != current_port and not port_free(int(typed), host):
             io.say(f"     ✗ 端口 {typed} 已经被别的程序占用，换一个")
             continue
         return f"{host}:{int(typed)}"
+
+
+def _ask_admin(io: Console, data: dict[str, Any]) -> dict[str, str]:
+    """The web admin's username and password hash. Enter keeps the current password."""
+    from quantbot.web import MIN_PASSWORD, USERNAME, hash_password
+
+    old = data.get("web_admin") or {}
+    while True:
+        username = io.ask("     用户名", str(old.get("username") or "admin"))
+        if USERNAME.match(username):
+            break
+        io.say("     ✗ 用户名只能用字母、数字和 _ . -，最多 32 个")
+    keep = "（回车保留现在的）" if old.get("password") else ""
+    while True:
+        password = io.secret(f"     密码，至少 {MIN_PASSWORD} 位{keep}")
+        if not password and keep:
+            return {"username": username, "password": str(old["password"])}
+        if len(password) < MIN_PASSWORD:
+            io.say(f"     ✗ 密码至少 {MIN_PASSWORD} 位")
+            continue
+        if io.secret("     再输一次密码") != password:
+            io.say("     ✗ 两次不一样，重新输")
+            continue
+        return {"username": username, "password": hash_password(password)}
+
+
+def _save_admin(data: dict[str, Any], admin: dict[str, str]) -> bool:
+    """Store the admin. A changed account gets a new web secret, signing everyone out."""
+    if data.get("web_admin") == admin:
+        return False
+    data["web_admin"] = admin
+    data["web_secret"] = secrets.token_urlsafe(32)
+    return True
 
 
 def _ask_telegram(
@@ -195,6 +242,11 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     service = _service_or_none()
     done_before = bool(data.get("setup_done") or (data.get("telegram") or {}).get("token"))
     if args.if_needed and done_before:
+        if not (data.get("web_admin") or {}).get("password") and io.interactive():
+            io.say("网页现在用账号密码登录。先设一个管理员：")
+            _save_admin(data, _ask_admin(io, data))
+            store.write(data)
+            io.say("✓ 已保存管理员账号。")
         if service is not None and service.installed():
             service.restart()
             io.say("✓ 已经设置过了，后台服务已重启，用上新版本。要改设置，运行 quantbot setup")
@@ -205,23 +257,27 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         raise Abort("setup 要在终端里交互运行：quantbot setup")
     old_tg = data.get("telegram") or {}
     ask_service = service is not None and not service.installed()
-    steps = 4 if ask_service else 3
+    steps = 5 if ask_service else 4
     io.say("QuantBot 设置。直接回车会用方括号里的值。")
     io.say("网页一定有；Telegram 可以不接，以后在网页的设置里再加。")
     io.say()
 
-    io.say(f"1/{steps}  端口：网页和你的策略都通过它连 QuantBot。")
+    io.say(f"1/{steps}  地址：网页和你的策略都通过它连 QuantBot。")
     listen = _ask_port(io, data)
 
     io.say()
-    io.say(f"2/{steps}  Telegram：在手机上看推送、点按钮。")
+    io.say(f"2/{steps}  网页管理员：登录网页用的用户名和密码。")
+    admin = _ask_admin(io, data)
+
+    io.say()
+    io.say(f"3/{steps}  Telegram：在手机上看推送、点按钮。")
     telegram: dict[str, Any] | None = None
     quiet, timezone = data.get("quiet_hours"), str(data.get("timezone") or "Asia/Shanghai")
     if io.confirm("     要接 Telegram 吗？", default=bool(old_tg.get("token"))):
         telegram, quiet, timezone = _ask_telegram(io, api, data)
 
     io.say()
-    io.say(f"3/{steps}  QuantBot 自己的心跳：填 Healthchecks.io 的 ping 地址，挂了会报警。")
+    io.say(f"4/{steps}  QuantBot 自己的心跳：填 Healthchecks.io 的 ping 地址，挂了会报警。")
     while True:
         heartbeat = io.ask("     地址，输入 - 不设", str(data.get("heartbeat_url") or "-"))
         try:
@@ -233,12 +289,12 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     background = False
     if ask_service:
         io.say()
-        io.say(f"4/{steps}  后台运行：开机自动启动，挂了自动重启。")
+        io.say(f"5/{steps}  后台运行：开机自动启动，挂了自动重启。")
         background = io.confirm("     要在后台运行 QuantBot 吗？")
 
     io.say()
     io.say("就这样设置：")
-    rows = [("地址", f"http://{listen}")]
+    rows = [("地址", f"http://{listen}"), ("网页管理员", admin["username"])]
     if telegram:
         rows += [
             ("Telegram", f"@{telegram['bot_username']}"),
@@ -272,6 +328,7 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     else:
         data.pop("telegram", None)
     data.setdefault("strategies", [])
+    signed_out = _save_admin(data, admin) and done_before
     store.write(data)
     sent = ""
     if telegram:
@@ -303,10 +360,46 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         io.say("  运行：quantbot run，或 quantbot service install 放到后台")
     if port_changed and data["strategies"]:
         io.say("  端口变了：已经在跑的策略要重启一下，才会连到新端口。")
+    if signed_out:
+        io.say("  管理员账号改了：已登录的网页都要重新登录。")
     io.say()
-    _print_web_link(store, io)
+    _print_web_address(store, io, admin["username"])
     if not data["strategies"]:
         io.say("连接一个策略：cd 你的策略项目 && quantbot link")
+    return 0
+
+
+def _print_web_address(store: Store, io: Console, username: str) -> None:
+    listen = store.ensure_listen()
+    host, _, port = listen.rpartition(":")
+    if host in {ANY_HOST, "::", ""}:
+        io.say(f"网页：http://<这台机器的 IP 或域名>:{port}/ui/ ，用 {username} 和你的密码登录。")
+        io.say(f"  云服务器要在防火墙或安全组里放行 {port} 端口。")
+        io.say("  风险：这是明文 HTTP。走公网的话，建议在前面加一层 HTTPS（例如 Caddy）。")
+    else:
+        io.say(f"网页：http://{host}:{port}/ui/ ，用 {username} 和你的密码登录。")
+        io.say("  只有这台机器能直接打开。在你自己的电脑上，可以先运行：")
+        io.say(f"  ssh -L {port}:127.0.0.1:{port} 这台服务器")
+        io.say("  再打开上面的地址。想直接打开，运行 quantbot setup 改成第 2 种。")
+    io.say("忘了密码：quantbot password")
+    io.say()
+
+
+def cmd_password(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    if not store.exists():
+        raise Abort("还没设置。先运行：quantbot setup")
+    if not io.interactive():
+        raise Abort("要在终端里交互运行：quantbot password")
+    data = store.read()
+    io.say("设置网页管理员的用户名和密码。")
+    if not _save_admin(data, _ask_admin(io, data)):
+        io.say("没有改动。")
+        return 0
+    store.write(data)
+    from quantbot.audit import Audit
+
+    Audit(store.dir).write("password", user="cli", ok=True, result="改了网页管理员账号")
+    io.say("✓ 已保存。已登录的网页都要重新登录。")
     return 0
 
 
@@ -314,12 +407,14 @@ def _print_web_link(store: Store, io: Console) -> None:
     from quantbot.web import WebAuth, login_url
 
     listen = store.ensure_listen()
-    port = listen.rpartition(":")[2]
-    io.say("网页登录链接，5 分钟内有效，只能用一次（过期了运行 quantbot web 再拿一个）：")
+    host, _, port = listen.rpartition(":")
+    io.say("一次性登录链接，不用密码，5 分钟内有效，只能用一次：")
     io.say(f"  {login_url(listen, WebAuth(store.web_secret()).link_token())}")
-    io.say("它只在这台服务器上能打开。在你自己的电脑上先运行：")
-    io.say(f"  ssh -L {port}:127.0.0.1:{port} 这台服务器")
-    io.say("再在电脑的浏览器里打开上面的链接。")
+    if host in {ANY_HOST, "::", ""}:
+        io.say("从别的电脑打开时，把 127.0.0.1 换成这台机器的 IP 或域名。")
+    else:
+        io.say("只有这台机器能直接打开。在你自己的电脑上，可以先运行：")
+        io.say(f"  ssh -L {port}:127.0.0.1:{port} 这台服务器")
     io.say()
 
 
@@ -678,7 +773,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action="version", version=f"quantbot {__version__}")
     sub = p.add_subparsers(dest="command", metavar="命令")
     sub.add_parser("run", help="在前台运行 QuantBot（后台服务也是用它）").set_defaults(fn=cmd_run)
-    setup = sub.add_parser("setup", help="设置 Telegram bot、你的账号和静音时段")
+    setup = sub.add_parser("setup", help="交互式设置：地址、网页管理员、Telegram（可选）、心跳")
     setup.add_argument("--if-needed", action="store_true", help="已经设置过就跳过")
     setup.set_defaults(fn=cmd_setup)
     service = sub.add_parser("service", help="后台服务：install、uninstall、restart、status")
@@ -690,7 +785,8 @@ def parser() -> argparse.ArgumentParser:
     link.add_argument("--name", help="策略 id，默认用文件夹名")
     link.set_defaults(fn=cmd_link)
     sub.add_parser("update", help="更新到最新版并重启后台服务").set_defaults(fn=cmd_update)
-    sub.add_parser("web", help="打印网页的登录链接").set_defaults(fn=cmd_web)
+    sub.add_parser("web", help="打印一次性的网页登录链接").set_defaults(fn=cmd_web)
+    sub.add_parser("password", help="改网页管理员的用户名和密码").set_defaults(fn=cmd_password)
     service.set_defaults(fn=cmd_service)
     logs = sub.add_parser("logs", help="看后台服务的日志")
     logs.add_argument("-f", "--follow", action="store_true", help="一直看新日志")

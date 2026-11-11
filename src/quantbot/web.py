@@ -1,9 +1,11 @@
 """The web page: the strategies, their buttons, recent notices and the audit log.
 
-It shares QuantBot's port and only listens on 127.0.0.1 by default, so you open it
-through an SSH tunnel or Tailscale. There is no password: `/web` in Telegram or
-`quantbot web` on the server gives a one-time login link that is valid for
-5 minutes. The link sets a session cookie for 12 hours.
+It shares QuantBot's port. `quantbot setup` asks whether it listens on this machine
+only (open it through an SSH tunnel or Tailscale) or on every address. You sign in
+with the admin username and password set in `quantbot setup` (or `quantbot password`).
+Five wrong tries lock the form for 15 minutes. As a fallback, `/web` in Telegram or
+`quantbot web` on the server gives a one-time login link that is valid for 5 minutes.
+Either way you get a session cookie for 12 hours.
 
 Every action goes through the same Core.call as Telegram, so a strategy sees the
 same commands, and each change is written to the audit log with `user: "web"`.
@@ -11,7 +13,8 @@ POSTs must carry the X-QuantBot header, which other sites cannot add, on top of 
 SameSite=Strict cookie.
 
 Links and cookies are signed with `web_secret` from quantbot.json, so the CLI can
-make a link the running bot accepts. Removing `web_secret` signs everyone out.
+make a link the running bot accepts. Changing the password makes a new `web_secret`,
+which signs everyone out; so does removing it.
 """
 
 from __future__ import annotations
@@ -21,6 +24,7 @@ import collections
 import hashlib
 import hmac
 import json
+import re
 import secrets
 import time
 from collections.abc import Callable
@@ -41,6 +45,38 @@ SESSION_TTL = 12 * 3600
 COOKIE = "quantbot_session"
 FEED_SIZE = 300
 AUDIT_LIMIT = 500
+USERNAME = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
+MIN_PASSWORD = 8
+LOGIN_TRIES = 5
+LOGIN_LOCK = 15 * 60
+SCRYPT_N, SCRYPT_R, SCRYPT_P = 2**14, 8, 1
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(
+        password.encode(), salt=salt, n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P, dklen=32
+    )
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${digest.hex()}"
+
+
+def check_password(password: str, stored: str) -> bool:
+    try:
+        kind, n, r, p, salt, digest = stored.split("$")
+        if kind != "scrypt":
+            return False
+        expected = bytes.fromhex(digest)
+        got = hashlib.scrypt(
+            password.encode(),
+            salt=bytes.fromhex(salt),
+            n=int(n),
+            r=int(r),
+            p=int(p),
+            dklen=len(expected),
+        )
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(got, expected)
 
 
 def static_dir() -> Path:
@@ -69,6 +105,25 @@ class WebAuth:
         self.secret = secret
         self.clock = clock
         self._used: dict[str, float] = {}  # login nonce -> expiry
+        self._fails: dict[str, list[float]] = {}  # client -> times of wrong passwords
+
+    def session(self) -> str:
+        """A fresh session cookie value."""
+        expires = int(self.clock()) + SESSION_TTL
+        return f"{expires}.{_sign(self.secret, f'session.{expires}')}"
+
+    def locked(self, who: str) -> int:
+        """Seconds until `who` may try a password again; 0 if they may now."""
+        now = self.clock()
+        fails = [t for t in self._fails.get(who, []) if t > now - LOGIN_LOCK]
+        self._fails[who] = fails
+        return 0 if len(fails) < LOGIN_TRIES else int(fails[0] + LOGIN_LOCK - now) + 1
+
+    def failed(self, who: str) -> None:
+        self._fails.setdefault(who, []).append(self.clock())
+
+    def succeeded(self, who: str) -> None:
+        self._fails.pop(who, None)
 
     def link_token(self) -> str:
         expires = int(self.clock()) + LINK_TTL
@@ -89,8 +144,7 @@ class WebAuth:
         if not good or expires <= now or nonce in self._used:
             return None
         self._used[nonce] = expires
-        session_expires = int(now) + SESSION_TTL
-        return f"{session_expires}.{_sign(self.secret, f'session.{session_expires}')}"
+        return self.session()
 
     def valid(self, cookie: str | None) -> bool:
         if not cookie:
@@ -349,10 +403,40 @@ async def login(request: web.Request) -> web.StreamResponse:
             ),
         )
     redirect = web.HTTPFound("/ui/")
-    redirect.set_cookie(
+    _set_session(redirect, cookie)
+    raise redirect
+
+
+def _set_session(response: web.StreamResponse, cookie: str) -> None:
+    response.set_cookie(
         COOKIE, cookie, max_age=SESSION_TTL, path="/ui", httponly=True, samesite="Strict"
     )
-    raise redirect
+
+
+async def password_login(request: web.Request) -> web.Response:
+    """POST /ui/api/login with {username, password}."""
+    if request.headers.get(CSRF_HEADER) != "1":
+        return web.json_response({"ok": False, "error": "missing X-QuantBot header"}, status=403)
+    auth = request.app[AUTH_KEY]
+    who = request.remote or "?"
+    if wait := auth.locked(who):
+        return _answer(False, f"密码错了太多次，{(wait + 59) // 60} 分钟后再试。")
+    admin = request.app[STORE_KEY].read().get("web_admin") or {}
+    if not admin.get("password"):
+        return _answer(False, "还没设管理员账号。在服务器上运行 quantbot password。")
+    body = await _args(request)
+    username, password = str(body.get("username") or ""), str(body.get("password") or "")
+    loop = asyncio.get_running_loop()
+    good = await loop.run_in_executor(None, check_password, password, str(admin["password"]))
+    good = hmac.compare_digest(username.encode(), str(admin.get("username")).encode()) and good
+    request.app[CORE_KEY].audit.write("login", user=WEB_USER, ok=good, client=who)
+    if not good:
+        auth.failed(who)
+        return _answer(False, "用户名或密码不对。")
+    auth.succeeded(who)
+    response = _answer(True, "已登录")
+    _set_session(response, auth.session())
+    return response
 
 
 async def logout(request: web.Request) -> web.Response:
@@ -476,6 +560,7 @@ def add_routes(
             web.get("/", redirect_root),
             web.get("/ui", redirect_root),
             web.get("/ui/login", login),
+            web.post("/ui/api/login", password_login),
             web.post("/ui/api/logout", logout),
             web.get("/ui/api/overview", overview),
             web.get("/ui/api/audit", audit),

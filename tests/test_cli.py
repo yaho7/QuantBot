@@ -13,11 +13,17 @@ from quantbot.cli import Console, TelegramError, main
 from quantbot.config import ConfigError, Store, StrategyConfig
 from quantbot.hub import Hub
 from quantbot.service import ServiceError
+from quantbot.web import check_password
 
 BOT = "123456789:" + "A" * 35
-# port, Telegram yes, token, wait for a message, confirm owner, quiet hours, time zone,
+PW = "correct-horse"
+# Who may connect, port, admin name, password twice.
+ADDRESS_ADMIN = ["", "", "", PW, PW]
+# ... then Telegram yes, token, wait for a message, confirm owner, quiet hours, time zone,
 # heartbeat, save
-SETUP = ["", "y", BOT, "", "", "-", "", "-", ""]
+SETUP = [*ADDRESS_ADMIN, "y", BOT, "", "", "-", "", "-", ""]
+# Who may connect, port, admin name, keep the password.
+KEEP = ["", "", "", ""]
 
 
 @pytest.fixture(autouse=True)
@@ -90,9 +96,12 @@ def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
     store = Store(tmp_path)
     api = FakeTelegram([message()])
     # port, Telegram yes, bad token, good token, wait, confirm owner, quiet, tz, heartbeat, save
-    answers = ["", "y", "nope", BOT, "", "", "23-07", "", "", ""]
+    answers = [*ADDRESS_ADMIN, "y", "nope", BOT, "", "", "23-07", "", "", ""]
     code, io = run(store, ["setup"], answers, api=api)
     assert code == 0, io.text()
+    admin = store.read()["web_admin"]
+    assert admin["username"] == "admin" and PW not in store.path.read_text()
+    assert check_password(PW, admin["password"]) and not check_password("wrong", admin["password"])
     assert "✓ 连上了 @my_quant_bot" in io.text() and "收到 Ya @ya（id 42）" in io.text()
     assert "就这样设置" in io.text() and "后台运行" not in io.text()  # no service manager
     settings = store.settings({})
@@ -107,15 +116,16 @@ def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
         {"chat_id": 42, "text": "✅ QuantBot 配置好了。发 /menu 看所有策略。"},
     ) in api.calls
     assert stat.S_IMODE(os.stat(store.path).st_mode) == 0o600
-    assert "/ui/login?t=" in io.text() and "quantbot link" in io.text()
+    assert "/ui/ ，用 admin 和你的密码登录" in io.text() and "ssh -L" in io.text()
+    assert "quantbot link" in io.text()
 
 
 def test_setup_without_telegram_is_web_only(tmp_path: Path) -> None:
     store = Store(tmp_path)
     api = FakeTelegram()
-    code, io = run(store, ["setup"], ["", "", "-", ""], api=api)  # port, no Telegram, hb, save
+    code, io = run(store, ["setup"], [*ADDRESS_ADMIN, "", "-", ""], api=api)  # no TG, hb, save
     assert code == 0, io.text()
-    assert "不接，只用网页" in io.text() and "/ui/login?t=" in io.text()
+    assert "不接，只用网页" in io.text() and "用 admin 和你的密码登录" in io.text()
     assert api.calls == []
     settings = store.settings({})
     assert not settings.telegram and settings.tg_token is None and settings.owner_id is None
@@ -126,17 +136,20 @@ def test_setup_without_telegram_is_web_only(tmp_path: Path) -> None:
 
 def test_setup_again_keeps_values_and_typed_id_works(tmp_path: Path) -> None:
     store = Store(tmp_path)
-    run(store, ["setup"], ["", "y", BOT, "", "", "23-07", "", "", ""])
+    run(store, ["setup"], [*ADDRESS_ADMIN, "y", BOT, "", "", "23-07", "", "", ""])
     port = store.settings({}).port
-    # keep port, keep Telegram, keep token, not the same owner, type id, keep quiet,
-    # new tz, bad url, none, save
+    secret = store.read()["web_secret"]
+    # keep address and admin, keep Telegram, keep token, not the same owner, type id,
+    # keep quiet, new tz, bad url, none, save
     code, io = run(
         store,
         ["setup"],
-        ["", "", "", "n", "99", "", "America/New_York", "ftp://x", "-", ""],
+        [*KEEP, "", "", "n", "99", "", "America/New_York", "ftp://x", "-", ""],
         api=FakeTelegram(conflict=True),
     )
     assert code == 0, io.text()
+    assert store.read()["web_secret"] == secret  # same admin: nobody is signed out
+    assert "重新登录" not in io.text()
     settings = store.settings({})
     assert (settings.owner_id, settings.port, settings.quiet_hours, settings.timezone) == (
         99,
@@ -144,8 +157,8 @@ def test_setup_again_keeps_values_and_typed_id_works(tmp_path: Path) -> None:
         (23, 7),
         "America/New_York",
     )
-    # And now drop Telegram: port, no, heartbeat, save
-    code, io = run(store, ["setup"], ["", "n", "", ""])
+    # And now drop Telegram: keep address and admin, no, heartbeat, save
+    code, io = run(store, ["setup"], [*KEEP, "n", "", ""])
     assert code == 0 and not store.settings({}).telegram and "telegram" not in store.read()
 
 
@@ -153,7 +166,7 @@ def test_setup_while_running_asks_for_the_id(tmp_path: Path) -> None:
     code, io = run(
         Store(tmp_path),
         ["setup"],
-        ["", "y", BOT, "", "42", "-", "", "-", ""],
+        [*ADDRESS_ADMIN, "y", BOT, "", "42", "-", "", "-", ""],
         api=FakeTelegram(conflict=True),
     )
     assert code == 0 and "没法自动识别" in io.text()
@@ -166,13 +179,51 @@ def test_setup_port_choice_and_cancel(tmp_path: Path) -> None:
     with socket.socket() as busy:
         busy.bind(("127.0.0.1", 0))
         taken = str(busy.getsockname()[1])
-        # bad port, taken port, good port, no Telegram, hb, do not save
-        answers = ["80", taken, "31555", "n", "-", "n"]
+        # bad choice, this machine, bad port, taken port, good port, admin, no Telegram,
+        # hb, do not save
+        answers = ["3", "1", "80", taken, "31555", "", PW, PW, "n", "-", "n"]
         code, io = run(store, ["setup"], answers)
     assert code == 1 and "已取消" in io.text() and not store.exists()
+    assert "输入 1 或 2" in io.text()
     assert "1024 到 65535" in io.text() and "占用" in io.text()
-    code, io = run(store, ["setup"], ["31555", "n", "-", ""])
+    code, io = run(store, ["setup"], ["", "31555", "", PW, PW, "n", "-", ""])
     assert code == 0 and store.read()["listen"] == "127.0.0.1:31555"
+    # Open to every address: no tunnel hint, but the plain-HTTP risk and the firewall.
+    code, io = run(store, ["setup"], ["2", "", "", "", "n", "-", ""])
+    assert code == 0 and store.read()["listen"] == "0.0.0.0:31555", io.text()
+    assert "IP 或域名" in io.text() and "HTTPS" in io.text() and "ssh -L" not in io.text()
+    assert store.settings({}).host == "0.0.0.0"  # noqa: S104
+    code, io = run(store, ["setup"], [*KEEP, "n", "-", ""])  # Enter keeps the current choice
+    assert code == 0 and store.read()["listen"] == "0.0.0.0:31555"
+
+
+def test_setup_admin_password_rules_and_change(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    # too short, then two different, then right
+    answers = ["", "", "", "short", "long-enough-1", "long-enough-2", PW, PW, "n", "-", ""]
+    code, io = run(store, ["setup"], answers)
+    assert code == 0, io.text()
+    assert "至少 8 位" in io.text() and "两次不一样" in io.text()
+    secret = store.read()["web_secret"]
+
+    code, io = run(store, ["password"], ["", ""])  # same name, keep the password
+    assert code == 0 and "没有改动" in io.text() and store.read()["web_secret"] == secret
+    code, io = run(store, ["password"], ["boss", "new-password", "new-password"])
+    assert code == 0 and "重新登录" in io.text()
+    data = store.read()
+    assert data["web_admin"]["username"] == "boss" and data["web_secret"] != secret
+    assert check_password("new-password", data["web_admin"]["password"])
+    assert run(Store(tmp_path / "none"), ["password"])[0] == 1
+
+
+def test_installer_rerun_asks_for_a_missing_admin(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    store.write({"setup_done": True, "listen": "127.0.0.1:31557"})  # set up before passwords
+    code, io = run(store, ["setup", "--if-needed"], ["", PW, PW])
+    assert code == 0 and "先设一个管理员" in io.text()
+    assert check_password(PW, store.read()["web_admin"]["password"])
+    code, io = run(store, ["setup", "--if-needed"])
+    assert code == 0 and "管理员" not in io.text()
 
 
 def test_setup_installs_the_background_service(
@@ -187,7 +238,7 @@ def test_setup_installs_the_background_service(
     store = Store(tmp_path / "data")
     code, io = run(store, ["setup"], [*SETUP[:-1], "", ""])  # yes to background, save
     assert code == 0, io.text()
-    assert "4/4  后台运行" in io.text() and service.installed()
+    assert "5/5  后台运行" in io.text() and service.installed()
     assert "QuantBot 已在后台运行" in io.text()
     calls.calls.clear()
     code, io = run(store, ["setup", "--if-needed"])  # the installer, run again

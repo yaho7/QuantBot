@@ -20,7 +20,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError(0, "连不上 QuantBot。隧道断了，或者 QuantBot 没在运行。");
+    throw new ApiError(0, "连不上 QuantBot。网络或隧道断了，或者 QuantBot 没在运行。");
   }
   if (!res.ok) throw new ApiError(res.status, res.status === 401 ? "需要登录" : `${res.status} ${res.statusText}`);
   return (await res.json()) as T;
@@ -83,6 +83,8 @@ export type Command =
 export const api = {
   overview: () => request<{ strategies: StrategyView[]; feed: Notice[] }>("GET", "overview"),
   audit: () => request<{ records: AuditRecord[] }>("GET", "audit?limit=200"),
+  login: (username: string, password: string) =>
+    request<Answer>("POST", "login", { username, password }),
   logout: () => request<{ ok: boolean }>("POST", "logout"),
   pauseAll: () => request<Answer>("POST", "pause-all"),
   settings: () => request<Settings>("GET", "settings"),

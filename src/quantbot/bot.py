@@ -245,6 +245,9 @@ class QuantBot:
             return
         self._config_mtime = mtime
         try:
+            secret = self.store.read().get("web_secret")
+            if secret and secret != self.web_auth.secret:
+                self.web_auth.secret = str(secret)  # a new password signs the web out
             fresh = self.store.settings()
         except ConfigError as exc:
             log.error("Ignoring the changed settings file: %s", exc)
@@ -373,12 +376,14 @@ class QuantBot:
         listen = f"{self.settings.host}:{self.settings.port}"
         url = login_url(listen, self.web_auth.link_token())
         port = self.settings.port
-        text = (
-            f"🌐 网页登录链接，5 分钟内有效，只能用一次：\n{url}\n\n"
-            f"它只在服务器本机能打开。先在你的电脑上连一条隧道：\n"
-            f"ssh -L {port}:127.0.0.1:{port} 你的服务器\n"
-            "再点上面的链接。"
-        )
+        if self.settings.host in {"0.0.0.0", "::"}:  # noqa: S104
+            where = "从别的电脑打开时，把 127.0.0.1 换成服务器的 IP 或域名。"
+        else:
+            where = (
+                "它只在服务器本机能直接打开。可以先在你的电脑上连一条隧道：\n"
+                f"ssh -L {port}:127.0.0.1:{port} 你的服务器"
+            )
+        text = f"🌐 一次性登录链接，不用密码，5 分钟内有效，只能用一次：\n{url}\n\n{where}"
         await self._show(update, Reply(text))
 
     async def _error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

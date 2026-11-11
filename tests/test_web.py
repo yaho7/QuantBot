@@ -137,6 +137,44 @@ def test_api_needs_the_cookie_and_returns_strategies(tmp_path: Path) -> None:
     scenario(test, audit)
 
 
+def test_password_login_and_lock(tmp_path: Path) -> None:
+    from quantbot.web import LOGIN_TRIES, hash_password
+
+    store = Store(tmp_path / "settings")
+
+    async def login(client: TestClient, username: str, password: str) -> Any:
+        r = await client.post(
+            "/ui/api/login", json={"username": username, "password": password}, headers=CSRF
+        )
+        return r, await r.json()
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        r, body = await login(client, "admin", "whatever1")
+        assert not body["ok"] and "quantbot password" in body["message"]  # no admin yet
+        data = store.read()
+        data["web_admin"] = {"username": "admin", "password": hash_password("right-pass")}
+        store.write(data)
+
+        no_header = await client.post("/ui/api/login", json={"username": "admin"})
+        assert no_header.status == 403
+        r, body = await login(client, "admin", "wrong-pass")
+        assert not body["ok"] and COOKIE not in r.headers.get("Set-Cookie", "")
+        assert (await client.get("/ui/api/overview")).status == 401
+        r, body = await login(client, "admin", "right-pass")
+        assert body["ok"] and COOKIE in r.headers["Set-Cookie"]
+        assert (await client.get("/ui/api/overview")).status == 200
+        client.session.cookie_jar.clear()
+
+        for _ in range(LOGIN_TRIES):
+            await login(client, "admin", "wrong-pass")
+        r, body = await login(client, "admin", "right-pass")  # locked, even with the right one
+        assert not body["ok"] and "分钟后再试" in body["message"]
+        records = [json.loads(line) for line in (tmp_path / "audit.jsonl").read_text().splitlines()]
+        assert [r["ok"] for r in records if r["action"] == "login"][:3] == [False, True, False]
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 def test_page_is_served_and_paths_stay_inside(tmp_path: Path) -> None:
     async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
         root = await client.get("/", allow_redirects=False)

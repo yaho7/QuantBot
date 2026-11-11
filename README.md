@@ -7,7 +7,7 @@
 ```text
 网页 ──┐
        ├─▶ QuantBot（装在 VPS 上，后台运行）
-Telegram（可选）┘    ▲  http://127.0.0.1:<随机端口>，只有本机能连
+Telegram（可选）┘    ▲  http://<地址>:<随机端口>，安装时选只给本机还是对外
               ┌──────┴──────┐
          策略 A（uv）   策略 B（conda）
 ```
@@ -28,30 +28,26 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 | 步骤 | 问什么 | 直接回车 |
 |---|---|---|
-| 1 | 端口：网页和策略都通过它连 QuantBot | 用随机选好的空闲端口（20000 到 39999） |
-| 2 | 要不要接 Telegram。要的话再问：bot token（先在 [@BotFather](https://t.me/BotFather) 发 `/newbot`）、你的账号（给 bot 发条消息就能认出）、静音时段和时区 | 不接 |
-| 3 | 心跳地址（Healthchecks.io） | 不设 |
-| 4 | 要不要在后台运行：开机自启，挂了自动重启 | 要 |
+| 1 | 地址：谁能打开网页（只有这台机器，或任何能连到它的地方），再问端口 | 只有这台机器；随机选好的空闲端口（20000 到 39999） |
+| 2 | 网页管理员：用户名和密码（至少 8 位，输两次） | 用户名 `admin` |
+| 3 | 要不要接 Telegram。要的话再问：bot token（先在 [@BotFather](https://t.me/BotFather) 发 `/newbot`）、你的账号（给 bot 发条消息就能认出）、静音时段和时区 | 不接 |
+| 4 | 心跳地址（Healthchecks.io） | 不设 |
+| 5 | 要不要在后台运行：开机自启，挂了自动重启 | 要 |
 
-最后列出你的选择，确认后才保存，并打印一个网页登录链接。接了 Telegram 的话，还会给你发一条测试消息。
+最后列出你的选择，确认后才保存，并打印网页地址。接了 Telegram 的话，还会给你发一条测试消息。
 
 不接 Telegram 也能用全部功能。以后想接，在网页的“设置”里填，或者再运行 `quantbot setup`。
 
 ## 网页
 
-登录链接这样拿，都是 5 分钟内有效、只能用一次：
+打开 `http://<地址>:<端口>/ui/`，用安装时设的管理员账号登录。密码连错 5 次，锁 15 分钟。
 
-```bash
-quantbot web          # 在服务器上
-```
+| 安装时选的 | 怎么打开 |
+|---|---|
+| 只有这台机器 | 用 SSH 隧道（`ssh -L <端口>:127.0.0.1:<端口> 你的服务器`）或 Tailscale，再开 `http://127.0.0.1:<端口>/ui/` |
+| 任何地方 | 直接开 `http://<服务器 IP 或域名>:<端口>/ui/`。云服务器要在防火墙或安全组里放行这个端口 |
 
-或者在 Telegram 里给 bot 发 `/web`。
-
-QuantBot 只在服务器本机监听，所以先在你自己的电脑上连一条隧道，再打开链接：
-
-```bash
-ssh -L <端口>:127.0.0.1:<端口> 你的服务器
-```
+忘了密码，在服务器上运行 `quantbot password`。也可以运行 `quantbot web`，或在 Telegram 里给 bot 发 `/web`，拿一个不用密码的一次性链接（5 分钟内有效，只能用一次）。
 
 | 网页上 | 能做什么 |
 |---|---|
@@ -141,7 +137,8 @@ with qb:                               # 出错会推送报错，再抛出
 
 | 命令 | 作用 |
 |---|---|
-| `quantbot setup` | 改 Telegram 设置 |
+| `quantbot setup` | 改设置：地址、网页管理员、Telegram、心跳 |
+| `quantbot password` | 改网页管理员的用户名和密码 |
 | `quantbot link [文件夹]` | 连接一个策略项目 |
 | `quantbot list` | 列出策略 |
 | `quantbot rename <id> <名字>` | 改显示名称 |
@@ -149,19 +146,20 @@ with qb:                               # 出错会推送报错，再抛出
 | `quantbot token <id> [--new]` | 看或换 token |
 | `quantbot service install/uninstall/restart/status` | 后台服务；`install --port` 换端口 |
 | `quantbot logs -f` | 看日志 |
-| `quantbot web` | 打印网页登录链接 |
+| `quantbot web` | 打印一次性的网页登录链接 |
 | `quantbot update` | 更新 |
 
 设置和操作记录存在 `~/.config/quantbot/`。
 
 ## 安全
 
-- 网页没有密码，靠一次性登录链接：5 分钟内有效，只能用一次，登录后 12 小时有效。能拿到链接的人，就能平仓和下单，所以别把链接转给别人。
+- 网页用管理员账号密码登录，登录后 12 小时有效。密码用 scrypt 加盐存，不存明文。连错 5 次锁 15 分钟，每次登录都写进操作记录。改密码会让所有已登录的网页失效。
+- 一次性登录链接不用密码，能拿到链接的人就能平仓和下单，所以别把链接转给别人。
 - 网页的按钮请求要带一个专门的请求头，别的网站发不出来。
 - Telegram 只认 `setup` 里认出的账号。
 - 每个策略一个 token，不能冒充别的策略。
 - `~/.config/quantbot/quantbot.json` 里有 bot token、策略 token 和网页的签名密钥，只有你自己的账号能读。删掉里面的 `web_secret`，所有网页登录都会失效。
-- QuantBot 只监听 `127.0.0.1`，外网连不进来。要让别的机器连，用 `quantbot service install --listen 0.0.0.0:<端口>`，并走 Tailscale 或 HTTPS。
+- 只给本机还是对外，在 `quantbot setup` 里选。对外时网页和策略接口都是明文 HTTP，走公网建议在前面加一层 HTTPS（例如 Caddy）。
 - QuantBot 不连券商，不启停你的策略。实盘策略崩了不要自动重启，先在券商端核对订单和持仓。
 - QuantBot 自己挂了怎么办：在 `setup` 里填心跳地址，由 [Healthchecks.io](https://healthchecks.io) 报警。
 

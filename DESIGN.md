@@ -8,7 +8,7 @@ QuantBot 是一个远程控制中心，管理你所有的量化程序。网页�
 
 ```text
 Telegram ⇄ QuantBot（装在 VPS 上，long polling，不开公网端口）
-              ▲  HTTP，默认只监听 127.0.0.1
+              ▲  HTTP，setup 时选只给本机还是对外
               │
    ┌──────────┴──────────┐
 策略 A（uv）           策略 B（conda）
@@ -87,14 +87,16 @@ quantbot add momentum --name 动量策略   # id 用小写字母、数字、- �
 
 | 部分 | 做法 |
 |---|---|
-| 登录 | `quantbot web` 或 Telegram `/web` 给一个一次性链接，5 分钟有效。打开后设置 HttpOnly、SameSite=Strict 的 cookie，12 小时有效 |
-| 签名 | 链接和 cookie 都用 `quantbot.json` 里的 `web_secret` 做 HMAC 签名，所以命令行生成的链接，运行中的 QuantBot 也认 |
+| 登录 | `POST /ui/api/login` 用 `setup` 或 `quantbot password` 设的管理员账号。密码存成 scrypt 哈希（`web_admin`）。同一来源连错 5 次锁 15 分钟，每次登录写审计 |
+| 备用登录 | `quantbot web` 或 Telegram `/web` 给一个一次性链接，5 分钟有效，不用密码 |
+| 会话 | 两种登录都设置 HttpOnly、SameSite=Strict 的 cookie，12 小时有效 |
+| 签名 | 链接和 cookie 都用 `quantbot.json` 里的 `web_secret` 做 HMAC 签名，所以命令行生成的链接，运行中的 QuantBot 也认。改管理员账号会换一个 `web_secret`，运行中的 QuantBot 读到后，旧 cookie 全部失效 |
 | 防跨站 | 所有 POST 都要带 `X-QuantBot: 1` 请求头 |
 | 命令 | `POST /ui/api/strategies/{id}/{命令}`，走和 Telegram 一样的 `Core.call`，检查参数的规则也一样；改动写进审计记录，`user` 是 `web` |
 | 设置 | `GET/POST /ui/api/settings`：接上、换掉、断开 Telegram，静音时段、时区、心跳。换 bot 或主人时先发一条测试消息，发不出去就不保存 |
 | 推送 | 最近 300 条推送存在内存里，网页的“推送”页显示它们 |
 
-打开网页要先连 SSH 隧道或 Tailscale，因为 QuantBot 默认只监听 127.0.0.1。
+监听地址由 `setup` 让用户选：只给本机（127.0.0.1，用 SSH 隧道或 Tailscale 打开），或所有地址（0.0.0.0）。
 
 ## Telegram 里怎么用（接了的话）
 
@@ -118,7 +120,7 @@ quantbot add momentum --name 动量策略   # id 用小写字母、数字、- �
 | 停止 | `stop` 只请求策略退出，保护性止损单留着 |
 | 不自动重启实盘 | QuantBot 不启停策略；你自己跑策略时，崩了不要自动重启 |
 
-风险：接口是明文 HTTP，所以默认只监听 127.0.0.1。策略在别的机器上时，要走 HTTPS 或 Tailscale。
+风险：接口是明文 HTTP。选了对外监听、要走公网时，前面要加 HTTPS 或用 Tailscale。
 
 ## 推送
 
@@ -169,7 +171,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 | `quantbot link` | 策略的 id、名字、token |
 | `quantbot rename/remove` | 改名、删除 |
 | `quantbot token <id> --new` | 换 token |
-| `quantbot service install --port/--listen` | 监听地址。没指定时，第一次 `setup` 或 `service install` 在 127.0.0.1 上随机选一个 20000 到 39999 之间的空闲端口 |
+| `quantbot service install --port/--listen` | 监听地址。`setup` 先问只给本机（127.0.0.1）还是所有地址（0.0.0.0），再问端口；默认随机选一个 20000 到 39999 之间的空闲端口 |
 
 `setup` 认主人的方法：用户给 bot 发一条消息，`setup` 用 `getUpdates` 读到发件人。QuantBot 已经在收消息时 Telegram 会报冲突，这时改为手动输入 id。
 

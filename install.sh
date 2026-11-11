@@ -7,7 +7,8 @@
 # `quantbot` command, asks the setup questions the first time, and runs
 # QuantBot in the background (systemd on Linux, launchd on macOS).
 # Running it again updates QuantBot. QUANTBOT_REF picks a tag or branch.
-# QuantBot listens on a random free port on 127.0.0.1 unless QUANTBOT_PORT is set:
+# Setup asks who may open the web page (this machine only, or anywhere) and the port,
+# offering a random free one unless QUANTBOT_PORT is set:
 #
 #   curl -fsSL .../install.sh | QUANTBOT_PORT=23456 bash
 set -euo pipefail
@@ -69,7 +70,8 @@ export PATH="$BIN:$PATH"
 uv tool update-shell >/dev/null 2>&1 || true  # new terminals find `quantbot`
 
 if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-  # First time: the setup questions (port, optional Telegram, heartbeat, background).
+  # First time: the setup questions (address, web admin, optional Telegram, heartbeat,
+  # background).
   # Already set up: restart the background service on the new version.
   QUANTBOT_PORT="$PORT" quantbot setup --if-needed </dev/tty >/dev/tty || true
 else
@@ -80,6 +82,6 @@ fi
 
 say ""
 say "✓ QuantBot 装好了。"
-echo "  打开网页：quantbot web（打印一个登录链接）"
+echo "  打开网页：用管理员账号登录；忘了密码运行 quantbot password"
 echo "  连接一个策略：cd 你的策略项目 && quantbot link"
 echo "  新开一个终端，quantbot 命令就能直接用。"
