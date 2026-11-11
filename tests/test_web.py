@@ -78,6 +78,20 @@ def test_login_url_and_secret(tmp_path: Path) -> None:
     assert len(secret) >= 32 and store.web_secret() == secret
 
 
+def test_restarting_preserves_used_login_links(tmp_path: Path) -> None:
+    clock = Clock()
+    used = Store(tmp_path, filename="used-web-links.json")
+    auth = WebAuth(SECRET, clock, used_links=used)
+    link = auth.link_token()
+    session = auth.redeem(link)
+    restarted = WebAuth(SECRET, clock, used_links=used)
+    assert restarted.valid(session)
+    assert restarted.redeem(link) is None
+    clock.now += 301
+    assert restarted.redeem(restarted.link_token())
+    assert len(used.read()) == 1
+
+
 def test_read_audit_newest_first(tmp_path: Path) -> None:
     path = tmp_path / "audit.jsonl"
     path.write_text('{"action": "pause"}\nbroken\n{"action": "flatten"}\n')
@@ -491,6 +505,38 @@ def test_web_strategy_configuration_and_token_revocation(tmp_path: Path) -> None
         assert token not in audit.read_text() and new_token not in audit.read_text()
 
     scenario(test, tmp_path / "audit.jsonl")
+
+
+def test_web_service_status_logs_and_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = Store(tmp_path / "settings")
+    log_token = "ghu_examplecredential"
+    manager = SimpleNamespace(
+        status=lambda: "state = running",
+        recent_logs=lambda: f"Started QuantBot\ncredentials: {BOT} {log_token}",
+    )
+    monkeypatch.setattr("quantbot.web._service", lambda: manager)
+    restarted = []
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        url = "/ui/api/service"
+        assert (await client.get(url + "/status")).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        status = await (await client.get(url + "/status")).json()
+        assert status["data"] == {"installed": True, "text": "state = running"}
+        with store.edit() as data:
+            data["telegram"] = {"token": BOT, "owner_id": 42}
+        response = await client.get(url + "/logs")
+        logs = (await response.json())["data"]["text"]
+        assert "Started QuantBot" in logs and BOT not in logs and log_token not in logs
+        assert response.headers["Cache-Control"] == "no-store"
+        assert (await client.post(url + "/restart")).status == 403 and not restarted
+        result = await (await client.post(url + "/restart", headers=CSRF)).json()
+        assert result["ok"] and restarted == [True]
+        assert read_audit(tmp_path / "audit.jsonl", 1)[0]["action"] == "service_restart"
+
+    scenario(test, tmp_path / "audit.jsonl", restart=lambda: restarted.append(True))
 
 
 def test_prompt_for_ai(tmp_path: Path) -> None:

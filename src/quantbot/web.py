@@ -118,9 +118,16 @@ def _sign(secret: str, message: str) -> str:
 
 
 class WebAuth:
-    def __init__(self, secret: str, clock: Callable[[], float] = time.time) -> None:
+    def __init__(
+        self,
+        secret: str,
+        clock: Callable[[], float] = time.time,
+        *,
+        used_links: Store | None = None,
+    ) -> None:
         self.secret = secret
         self.clock = clock
+        self.used_links = used_links
         self._used: dict[str, float] = {}  # login nonce -> expiry
         self._fails: dict[str, list[float]] = {}  # client -> times of wrong passwords
 
@@ -156,12 +163,26 @@ class WebAuth:
         except ValueError:
             return None
         now = self.clock()
-        self._used = {k: v for k, v in self._used.items() if v > now}
         good = hmac.compare_digest(sig, _sign(self.secret, f"login.{expires}.{nonce}"))
-        if not good or expires <= now or nonce in self._used:
+        if not good or expires <= now:
             return None
-        self._used[nonce] = expires
+        if self.used_links is not None:
+            with self.used_links.edit() as used:
+                if not self._consume_link(used, nonce, expires, now):
+                    return None
+        elif not self._consume_link(self._used, nonce, expires, now):
+            return None
         return self.session()
+
+    @staticmethod
+    def _consume_link(used: dict[str, Any], nonce: str, expires: int, now: float) -> bool:
+        for key, expiry in list(used.items()):
+            if expiry <= now:
+                del used[key]
+        if nonce in used:
+            return False
+        used[nonce] = expires
+        return True
 
     def valid(self, cookie: str | None) -> bool:
         if not cookie:
@@ -452,11 +473,28 @@ async def github_post(request: web.Request) -> web.Response:
         return _answer(True, message, {"status": status})
 
 
-def _service_installed() -> bool:
+def _service() -> Service | None:
     try:
-        return Service.detect().installed()
+        service = Service.detect()
     except ServiceError:
-        return False
+        return None
+    return service if service.installed() else None
+
+
+def _service_installed() -> bool:
+    return _service() is not None
+
+
+async def _reply_and_restart(
+    request: web.Request, restart: Callable[[], None], message: str
+) -> web.Response:
+    response = _answer(True, message)
+    try:
+        await response.prepare(request)
+        await response.write_eof()
+    finally:
+        restart()
+    return response
 
 
 async def update_get(request: web.Request) -> web.Response:
@@ -515,13 +553,67 @@ async def update_post(request: web.Request) -> web.Response:
         restart = actions.restart if _service_installed() else None
         if restart is None:
             return _answer(True, "已更新。请在服务器上停止 QuantBot，再运行 quantbot run。")
-        response = _answer(True, "已更新，后台服务即将重启。网页会自动重连。")
-        try:
-            await response.prepare(request)
-            await response.write_eof()
-        finally:
-            restart()
-        return response
+        return await _reply_and_restart(
+            request, restart, "已更新，后台服务即将重启。网页会自动重连。"
+        )
+
+
+def _redact_diagnostics(text: str, store: Store) -> str:
+    settings = store.read()
+    values = [
+        settings.get("web_secret"),
+        (settings.get("telegram") or {}).get("token"),
+        (settings.get("web_admin") or {}).get("password"),
+        *(item.get("token") for item in settings.get("strategies") or [] if isinstance(item, dict)),
+    ]
+    for value in values:
+        if isinstance(value, str) and value:
+            text = text.replace(value, "[已隐藏]")
+    return re.sub(
+        r"(?:gh[oprstu]_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|\d{5,}:[A-Za-z0-9_-]{30,})",
+        "[已隐藏]",
+        text,
+    )
+
+
+async def service_get(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    service = _service()
+    diagnostics = request.match_info["kind"]
+    try:
+        text = ""
+        if service:
+            load = service.status if diagnostics == "status" else service.recent_logs
+            text = await asyncio.to_thread(load)
+            text = _redact_diagnostics(text, request.app[STORE_KEY])[-24_000:]
+    except (ServiceError, OSError) as exc:
+        message = _redact_diagnostics(str(exc), request.app[STORE_KEY])
+        return _answer(False, message)
+    response = _answer(True, "", {"installed": service is not None, "text": text})
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+async def service_restart(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    actions = request.app[UPDATE_KEY]
+    if actions.restart is None or not _service_installed():
+        return _answer(False, "请在服务器上重启当前运行的 QuantBot。")
+    if (
+        actions.lock.locked()
+        or request.app[EDITOR_LOCK].locked()
+        or request.app[GITHUB_KEY].lock.locked()
+    ):
+        return _answer(False, "有更新或文件操作正在进行，请稍后再试。")
+    async with actions.lock:
+        request.app[CORE_KEY].audit.write(
+            "service_restart", user=WEB_USER, ok=True, result="请求重启后台服务"
+        )
+        return await _reply_and_restart(
+            request, actions.restart, "正在重启后台服务，网页会自动重连。"
+        )
 
 
 async def settings_get(request: web.Request) -> web.Response:
@@ -987,6 +1079,8 @@ def add_routes(
             web.get("/ui/api/update", update_get),
             web.post("/ui/api/update/check", update_check),
             web.post("/ui/api/update", update_post),
+            web.get("/ui/api/service/{kind:status|logs}", service_get),
+            web.post("/ui/api/service/restart", service_restart),
             web.get("/ui/api/editor/{kind:tree|file}", editor_read),
             web.post("/ui/api/editor/file", editor_save),
             web.get("/ui/api/editor/github", github_get),

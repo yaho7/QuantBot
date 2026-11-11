@@ -63,6 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 | 推送 | QuantBot 这次启动后的所有推送 |
 | 操作记录 | 网页和 Telegram 上点过的每个按钮 |
 | 设置 | 查看网页地址和版本，管理 Telegram、静音时段、时区和心跳地址 |
+| 设置 → 后台服务 | 查看服务状态和最近日志，确认后重启服务 |
 
 平仓、撤单、改参数、下单、停止都要再确认一次。登录后 12 小时有效。
 
@@ -187,6 +188,8 @@ with qb:                               # 出错会推送报错，再抛出
 | `quantbot editor on/off/status` | 管理网页策略编辑器 |
 
 设置和操作记录存在 `~/.config/quantbot/`。
+
+在服务器终端可以安装或卸载后台服务、修改监听端口、启停策略编辑器，或用 `quantbot link` 安装策略项目的客户端依赖。
 
 ## 安全
 

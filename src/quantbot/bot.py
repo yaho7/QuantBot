@@ -127,7 +127,9 @@ class QuantBot:
         version = installed()
         self.updater = Updater(settings.data_dir, current=lambda: version)
         secret = store.web_secret() if store else secrets.token_urlsafe(32)
-        self.web_auth = WebAuth(secret)
+        self.web_auth = WebAuth(
+            secret, used_links=Store(settings.data_dir, filename="used-web-links.json")
+        )
         self._runner: web.AppRunner | None = None
         self._upkeep: asyncio.Task[None] | None = None
         self._update_task: asyncio.Task[None] | None = None

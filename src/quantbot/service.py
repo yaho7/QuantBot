@@ -191,3 +191,10 @@ class Service:
             "100",
             *(["-f"] if follow else ["--no-pager"]),
         ]
+
+    def recent_logs(self) -> str:
+        if self.kind == "launchd" and not self.log_file.exists():
+            return ""
+        result = self.run(self.logs_command(follow=False))
+        self._check(result, "读取日志")
+        return result.stdout

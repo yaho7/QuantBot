@@ -118,6 +118,11 @@ export interface StrategyConfigResult {
   url?: string;
 }
 
+export interface ServiceDiagnostics {
+  installed: boolean;
+  text: string;
+}
+
 interface DirectoryEntry {
   name: string;
   kind: "directory" | "file";
@@ -130,7 +135,7 @@ export interface Answer<T = unknown> {
   data: T;
 }
 
-async function editorRequest<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function answerData<T>(method: string, path: string, body?: unknown): Promise<T> {
   const answer = await request<Answer<T>>(method, path, body);
   if (!answer.ok) throw new Error(answer.message);
   return answer.data;
@@ -159,19 +164,22 @@ export const api = {
   updateStatus: () => request<UpdateStatus>("GET", "update"),
   checkUpdate: () => request<Answer<UpdateResult | null>>("POST", "update/check"),
   installUpdate: () => request<Answer>("POST", "update"),
+  service: (kind: "status" | "logs") =>
+    answerData<ServiceDiagnostics>("GET", `service/${kind}`),
+  restartService: () => request<Answer>("POST", "service/restart"),
   editorTree: (path: string) =>
-    editorRequest<{ entries: DirectoryEntry[] }>("GET", `editor/tree?${new URLSearchParams({ path })}`),
+    answerData<{ entries: DirectoryEntry[] }>("GET", `editor/tree?${new URLSearchParams({ path })}`),
   editorFile: (path: string) =>
-    editorRequest<SourceFile>("GET", `editor/file?${new URLSearchParams({ path })}`),
+    answerData<SourceFile>("GET", `editor/file?${new URLSearchParams({ path })}`),
   saveEditorFile: (file: SourceFile & { path: string }) =>
-    editorRequest<SourceFile>("POST", "editor/file", file),
-  githubStatus: () => editorRequest<GitHubStatus>("GET", "editor/github"),
+    answerData<SourceFile>("POST", "editor/file", file),
+  githubStatus: () => answerData<GitHubStatus>("GET", "editor/github"),
   githubBind: (form: { repo: string; branch: string; client_id: string }) =>
-    editorRequest<GitHubAuthorization>("POST", "editor/github/bind", form),
+    answerData<GitHubAuthorization>("POST", "editor/github/bind", form),
   githubAuthorize: (state: string) =>
-    editorRequest<{ status?: GitHubStatus; interval?: number }>("POST", "editor/github/authorize", { state }),
+    answerData<{ status?: GitHubStatus; interval?: number }>("POST", "editor/github/authorize", { state }),
   githubSync: (action: "check" | "pull" | "push" | "unbind") =>
-    editorRequest<{ status: GitHubStatus }>("POST", `editor/github/${action}`),
+    answerData<{ status: GitHubStatus }>("POST", `editor/github/${action}`),
   saveSettings: (body: Partial<Record<keyof Settings | "token" | "remove_telegram", unknown>>) =>
     request<Answer>("POST", "settings", body),
   command: <T = unknown>(sid: string, name: Command, args: Record<string, unknown> = {}) =>

@@ -44,6 +44,7 @@ const ACTIONS: Record<string, string> = {
   strategy_remove: "移除策略",
   strategy_credentials: "查看连接信息",
   strategy_rotate: "换发策略令牌",
+  service_restart: "重启后台服务",
 };
 
 export function actionLabel(action: string): string {

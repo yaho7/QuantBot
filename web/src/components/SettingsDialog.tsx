@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 import { AccountDialog } from "@/components/AccountDialog";
 import { QueryBoundary } from "@/components/common";
+import { ServiceDialog } from "@/components/ServiceDialog";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
@@ -17,31 +18,38 @@ export function SettingsDialog({ open, onOpenChange, version, onVersion }: {
 }) {
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, enabled: open });
   const [accountOpen, setAccountOpen] = React.useState(false);
+  const [serviceOpen, setServiceOpen] = React.useState(false);
+  const username = settings.data?.admin_username;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="设置" className="max-w-lg"
         description="Telegram 可以不接，只用网页。保存后 QuantBot 会自己重启一下。">
-        <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3 text-sm">
-          <span>版本</span>
-          <Button variant="ghost" size="sm" className="font-mono" onClick={onVersion}>
-            {version || "查看版本"}
-          </Button>
+        <div className="divide-y divide-border rounded-lg border bg-card px-3 text-sm">
+          <div className="flex items-center justify-between gap-3 py-1.5">
+            <span>版本</span>
+            <Button variant="ghost" size="sm" className="font-mono" onClick={onVersion}>
+              {version || "查看版本"}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-1.5">
+            <span>网页管理员</span>
+            <Button variant="ghost" size="sm" disabled={username === undefined} onClick={() => setAccountOpen(true)}>
+              {username ? `${username} · 修改密码` : "设置管理员"}
+            </Button>
+          </div>
+          <div className="flex items-center justify-between gap-3 py-1.5">
+            <span>后台服务</span>
+            <Button variant="ghost" size="sm" onClick={() => setServiceOpen(true)}>状态与日志</Button>
+          </div>
         </div>
         <QueryBoundary query={settings}>
           {({ admin_username, ...data }) => (
-            <>
-              <div className="flex items-center justify-between gap-3 border-b border-border pb-3 text-sm">
-                <span>网页管理员</span>
-                <Button variant="ghost" size="sm" onClick={() => setAccountOpen(true)}>
-                  {admin_username ? `${admin_username} · 修改密码` : "设置管理员"}
-                </Button>
-              </div>
-              <SettingsForm key={JSON.stringify(data)} data={data} onDone={() => onOpenChange(false)} />
-              {accountOpen && <AccountDialog username={admin_username} onClose={() => setAccountOpen(false)} />}
-            </>
+            <SettingsForm key={JSON.stringify(data)} data={data} onDone={() => onOpenChange(false)} />
           )}
         </QueryBoundary>
       </DialogContent>
+      {accountOpen && username !== undefined && <AccountDialog username={username} onClose={() => setAccountOpen(false)} />}
+      {serviceOpen && <ServiceDialog onClose={() => setServiceOpen(false)} />}
     </Dialog>
   );
 }
