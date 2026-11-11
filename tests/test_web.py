@@ -403,7 +403,9 @@ def test_github_web_registers_app_and_lists_authorized_repositories(
         url = "/ui/api/editor/github"
         await client.get(f"/ui/login?t={auth.link_token()}")
         registration = await (await client.post(url + "/register", headers=CSRF)).json()
-        assert registration["data"]["manifest"]["redirect_url"].endswith("/ui/github/app")
+        manifest = registration["data"]["manifest"]
+        assert manifest["redirect_url"].endswith("/ui/github/app")
+        assert manifest["hook_attributes"] == {"url": manifest["redirect_url"], "active": False}
         state = parse_qs(urlsplit(registration["data"]["url"]).query)["state"][0]
         callback = "/ui/github/app?code=registered-code&state="
         assert (await client.get(callback + "wrong", allow_redirects=False)).status == 403

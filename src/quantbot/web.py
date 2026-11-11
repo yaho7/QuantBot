@@ -647,6 +647,7 @@ async def github_post(request: web.Request) -> web.Response:
                     request.app[STORE_KEY].read().get("public_url")
                     or f"{request.scheme}://{request.host}"
                 )
+                callback = f"{origin}/ui/github/app"
                 state = secrets.token_urlsafe(24)
                 actions.registration = state, time.monotonic() + 600
                 return _answer(
@@ -657,9 +658,9 @@ async def github_post(request: web.Request) -> web.Response:
                         "manifest": {
                             "name": f"QuantBot {secrets.token_hex(3)}",
                             "url": "https://github.com/yaho7/QuantBot",
-                            "redirect_url": f"{origin}/ui/github/app",
+                            "redirect_url": callback,
                             "public": False,
-                            "hook_attributes": {"active": False},
+                            "hook_attributes": {"url": callback, "active": False},
                             "default_permissions": {"contents": "write", "metadata": "read"},
                         },
                     },
