@@ -34,6 +34,7 @@ const ACTIONS: Record<string, string> = {
   set_param: "改参数",
   manual_order: "手动下单",
   settings: "改设置",
+  update: "安装更新",
 };
 
 export function actionLabel(action: string): string {

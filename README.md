@@ -62,7 +62,13 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 想改设置，运行 `quantbot setup`，会用现在的值当默认。
 
-更新：再运行一次安装命令，它不会再问问题，只更新并重启后台服务。也可以运行 `quantbot update`。
+### 更新 QuantBot
+
+QuantBot 启动后每小时查看一次检查缓存，每 6 小时向 GitHub 查询一次。有新版本时，顶栏显示“有新版本”，推送里也会收到提醒。已接 Telegram 的账号也会收到这条提醒。按分支安装时显示新增提交，按版本标签安装时检查最新 GitHub Release。
+
+- 在网页点“有新版本”，或从“设置 → 版本”打开更新窗口。点“检查更新”可以立即查询，每分钟最多一次。确认“一键更新”后，已安装的后台服务会重启，网页会自动重连。前台运行时，请在服务器上停止 QuantBot，再运行 `quantbot run`。
+- 在终端运行 `quantbot update --check` 只检查更新。运行 `quantbot update` 会先列出变更再询问是否安装，`--yes` 跳过确认。`quantbot --version` 显示 Git 安装的提交。
+- 也可以再运行一次安装命令，它会更新并重启后台服务。
 
 ## 连接你的策略
 

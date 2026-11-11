@@ -381,3 +381,24 @@ def test_prompt_for_ai_has_links_and_the_way_in_but_no_token(tmp_path: Path) -> 
     assert "qb.process()" in text and "qb.can_open()" in text and "quantbot token momentum" in text
     assert token not in text and BOT not in text
     assert run(store, ["prompt", "Bad Id"])[0] == 1
+
+
+def test_update_check_only_and_cached_hint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from quantbot.updates import Installed, Updater
+
+    store = Store(tmp_path)
+    current = Installed("0.1.0", "1" * 40, "main")
+
+    def fetch(path: str) -> dict[str, Any]:
+        assert path == f"/compare/{current.commit}...main"
+        return {"ahead_by": 1, "commits": [{"sha": "2" * 40, "commit": {"message": "新功能"}}]}
+
+    def no_install(*args: Any, **kwargs: Any) -> Any:
+        pytest.fail("--check must not install")
+
+    updater = Updater(tmp_path, fetch=fetch, current=lambda: current, run=no_install)
+    monkeypatch.setattr("quantbot.cli.Updater", lambda directory: updater)
+    code, io = run(store, ["update", "--check"], tty=False)
+    assert code == 0
+    assert "1111111" in io.text() and "2222222 新功能" in io.text()
+    assert "有新版本" in run(store, ["list"])[1].text()

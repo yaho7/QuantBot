@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronRight, CircleDashed, LogOut, Monitor, Moon, Pause, Radio, Settings, Sparkles, Sun,
+  ChevronRight, CircleDashed, Download, LogOut, Monitor, Moon, Pause, Radio, Settings, Sparkles, Sun,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
@@ -8,6 +8,7 @@ import { BrandIcon } from "@/components/BrandIcon";
 import { ConfirmDialog, EmptyState, PageHeader, QueryBoundary } from "@/components/common";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
+import { UpdateDialog } from "@/components/UpdateDialog";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +27,11 @@ const THEME_LABEL = { light: "浅色", dark: "深色", system: "跟随系统" };
 const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "loss" } as const;
 const KIND_LABEL = { info: "消息", trade: "成交", alert: "提醒", error: "报错" };
 
-function TopBar({ onLogout, onSettings }: { onLogout?: () => void; onSettings?: () => void }) {
+function TopBar({ onLogout, onSettings, onUpdate }: {
+  onLogout?: () => void;
+  onSettings?: () => void;
+  onUpdate?: () => void;
+}) {
   const [theme, setTheme] = useTheme();
   const ThemeIcon = THEME_ICON[theme];
   return (
@@ -36,6 +41,11 @@ function TopBar({ onLogout, onSettings }: { onLogout?: () => void; onSettings?: 
         <span className="font-display text-lg">QuantBot</span>
       </div>
       <div className="flex items-center gap-1">
+        {onUpdate && (
+          <Button variant="outline" size="sm" className="text-warning" onClick={onUpdate}>
+            <Download /> 有新版本
+          </Button>
+        )}
         <Button variant="ghost" size="icon" onClick={() => setTheme(NEXT_THEME[theme])}
           aria-label={`主题：${THEME_LABEL[theme]}`} title={`主题：${THEME_LABEL[theme]}`}>
           <ThemeIcon />
@@ -235,16 +245,28 @@ function TelegramNote({ onSettings }: { onSettings: () => void }) {
 
 export function App() {
   const overview = useQuery({ queryKey: ["overview"], queryFn: api.overview, refetchInterval: 5_000 });
+  const update = useQuery({
+    queryKey: ["update"], queryFn: api.updateStatus, enabled: !!overview.data, refetchInterval: 5_000,
+  });
   const logout = useMutation({ mutationFn: api.logout, onSettled: () => location.reload() });
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [promptOpen, setPromptOpen] = React.useState(false);
+  const [updateOpen, setUpdateOpen] = React.useState(false);
+  const [updatedFrom, setUpdatedFrom] = React.useState<string>();
+  const version = update.data?.version;
+  React.useEffect(() => {
+    if (updatedFrom && version && version !== updatedFrom) location.reload();
+  }, [updatedFrom, version]);
   if (overview.error instanceof ApiError && overview.error.status === 401) return <Login />;
   const strategies = overview.data?.strategies ?? [];
   const online = strategies.filter((s) => s.online).length;
   return (
     <>
-      <TopBar onLogout={() => logout.mutate()} onSettings={() => setSettingsOpen(true)} />
-      {settingsOpen && <SettingsDialog open onOpenChange={setSettingsOpen} />}
+      <TopBar onLogout={() => logout.mutate()} onSettings={() => setSettingsOpen(true)}
+        onUpdate={update.data?.result?.available && !update.data.updated ? () => setUpdateOpen(true) : undefined} />
+      {settingsOpen && <SettingsDialog open onOpenChange={setSettingsOpen} version={version}
+        onVersion={() => { setSettingsOpen(false); setUpdateOpen(true); }} />}
+      {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} onInstalled={setUpdatedFrom} />}
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       <main className="view-enter mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8">
         <PageHeader

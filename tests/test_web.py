@@ -6,6 +6,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
+from subprocess import CompletedProcess
 from typing import Any
 
 import pytest
@@ -16,6 +17,7 @@ from quantbot.config import Store, StrategyConfig
 from quantbot.core import Core
 from quantbot.hub import Hub
 from quantbot.server import make_app
+from quantbot.updates import Installed, Updater
 from quantbot.web import COOKIE, Feed, WebAuth, add_routes, login_url, read_audit, static_dir
 
 SECRET = "s" * 32
@@ -81,7 +83,7 @@ def test_read_audit_newest_first(tmp_path: Path) -> None:
 
 
 def scenario(
-    test: Callable[[Hub, WebAuth, Feed, TestClient], Awaitable[None]], audit: Path
+    test: Callable[[Hub, WebAuth, Feed, TestClient], Awaitable[None]], audit: Path, **options: Any
 ) -> None:
     async def main() -> None:
         hub = Hub((StrategyConfig("momentum", "动量", "m" * 20),), lambda *n: None)
@@ -89,11 +91,63 @@ def scenario(
         auth, feed = WebAuth(SECRET), Feed()
         store = Store(audit.parent / "settings")
         store.write({"telegram": {"token": BOT, "owner_id": 42, "bot_username": "old_bot"}})
-        app = make_app(hub, lambda a: add_routes(a, core, auth, feed, audit, store, FakeTelegram()))
+        app = make_app(
+            hub, lambda a: add_routes(a, core, auth, feed, audit, store, FakeTelegram(), **options)
+        )
         async with TestClient(TestServer(app)) as client:
             await test(hub, auth, feed, client)
 
     asyncio.run(main())
+
+
+@pytest.mark.parametrize("service", [True, False])
+def test_update_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, service: bool) -> None:
+    audit = tmp_path / "audit.jsonl"
+    fetches, restarts, commands = [], [], []
+    current = Installed("0.1.0", "1" * 40, "main")
+
+    def fetch(path: str) -> dict[str, Any]:
+        fetches.append(path)
+        return {"ahead_by": 1, "commits": [{"sha": "2" * 40}]}
+
+    def run(command: list[str], **kwargs: Any) -> CompletedProcess[str]:
+        commands.append(command)
+        return CompletedProcess(command, 0, "done", "")
+
+    updater = Updater(tmp_path, fetch=fetch, current=lambda: current, run=run, uv=lambda: "/bin/uv")
+    monkeypatch.setattr("quantbot.web._service_installed", lambda: service)
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        url = "/ui/api/update"
+        assert (await client.get(url)).status == 401
+        assert (await client.post(url + "/check", headers=CSRF)).status == 401
+        assert (await client.post(url, headers=CSRF)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        status = await (await client.get(url)).json()
+        assert status == {
+            "version": current.label,
+            "result": None,
+            "uv": True,
+            "service": service,
+            "updated": False,
+        }
+        assert (await client.post(url + "/check")).status == 403
+        assert (await client.post(url)).status == 403
+        assert not (await (await client.post(url, headers=CSRF)).json())["ok"]
+        assert (await (await client.post(url + "/check", headers=CSRF)).json())["ok"]
+        cached = await (await client.get(url)).json()
+        assert cached["result"]["available"]
+        throttled = await (await client.post(url + "/check", headers=CSRF)).json()
+        assert not throttled["ok"] and "每分钟" in throttled["message"]
+        assert len(fetches) == 1
+        updated = await (await client.post(url, headers=CSRF)).json()
+        assert updated["ok"] and len(commands) == 1
+        assert bool(restarts) == service
+        assert ("自动重连" if service else "quantbot run") in updated["message"]
+        assert read_audit(audit, 1)[0]["action"] == "update"
+        assert read_audit(audit, 1)[0]["ok"]
+
+    scenario(test, audit, updater=updater, restart=lambda: restarts.append(True))
 
 
 def test_api_needs_the_cookie_and_returns_strategies(tmp_path: Path) -> None:

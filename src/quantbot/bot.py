@@ -8,6 +8,7 @@ import secrets
 import signal
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -29,6 +30,7 @@ from quantbot.heartbeat import Heartbeat
 from quantbot.hub import Hub, Strategy
 from quantbot.notices import LOUD, is_quiet
 from quantbot.server import make_app
+from quantbot.updates import Updater, installed
 from quantbot.web import Feed, WebAuth, add_routes, login_url
 
 log = logging.getLogger("quantbot")
@@ -37,6 +39,7 @@ MAX_MESSAGE = 4000
 MAX_CAPTION = 1000
 SWEEP_EVERY = 5.0
 HEARTBEAT_EVERY = 60.0
+UPDATE_EVERY = 3600.0
 
 HELP = """/menu 所有策略
 /use <id> 切换当前策略
@@ -121,12 +124,15 @@ class QuantBot:
         )
         self.heartbeat = Heartbeat(settings.heartbeat_url, min_interval=HEARTBEAT_EVERY - 5)
         self.feed = Feed()
+        version = installed()
+        self.updater = Updater(settings.data_dir, current=lambda: version)
         secret = store.web_secret() if store else secrets.token_urlsafe(32)
         self.web_auth = WebAuth(secret)
         self._runner: web.AppRunner | None = None
         self._upkeep: asyncio.Task[None] | None = None
+        self._update_task: asyncio.Task[None] | None = None
         self._tasks: set[asyncio.Task[None]] = set()
-        self._stop: asyncio.Event | None = None
+        self._stop_event: asyncio.Event | None = None
         self.app: Application | None = None
         if settings.telegram:
             self._build_telegram()
@@ -176,24 +182,24 @@ class QuantBot:
 
     async def _run_without_telegram(self) -> None:
         """Only the web page and the strategy API, until a signal or a settings change."""
-        self._stop = asyncio.Event()
+        self._stop_event = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             try:
-                loop.add_signal_handler(sig, self._stop.set)
+                loop.add_signal_handler(sig, self._stop_event.set)
             except (NotImplementedError, RuntimeError):
                 pass
         await self._started(None)
         try:
-            await self._stop.wait()
+            await self._stop_event.wait()
         finally:
             await self._stopped(None)
 
     def stop(self) -> None:
         if self.app is not None:
             self.app.stop_running()
-        elif self._stop is not None:
-            self._stop.set()
+        elif self._stop_event is not None:
+            self._stop_event.set()
 
     # ------------------------------------------------------------ lifecycle
 
@@ -208,6 +214,8 @@ class QuantBot:
                 self.feed,
                 audit_path,
                 self.store or Store(self.settings.data_dir),
+                restart=self.stop,
+                updater=self.updater,
             ),
         )
         self._runner = web.AppRunner(server, access_log=None, shutdown_timeout=2)
@@ -217,12 +225,17 @@ class QuantBot:
         if app is not None:
             await app.bot.set_my_commands([BotCommand(n, d) for n, d in COMMANDS])
         self._upkeep = asyncio.create_task(self._upkeep_loop())
+        self._update_task = asyncio.create_task(self._update_loop())
         names = "、".join(s.name for s in self.hub.strategies.values()) or "还没有"
         await self._send(f"🟢 QuantBot 已启动。策略：{names}", "info")
 
     async def _stopped(self, app: Application | None) -> None:
         if self._upkeep:
             self._upkeep.cancel()
+        if self._update_task:
+            self._update_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._update_task
         if self._runner:
             await self._runner.cleanup()
 
@@ -235,6 +248,24 @@ class QuantBot:
             except Exception:  # noqa: BLE001 - upkeep must keep going
                 log.exception("Upkeep failed")
             await asyncio.sleep(SWEEP_EVERY)
+
+    async def _update_loop(self) -> None:
+        def check() -> str | None:
+            self.updater.check_if_due()
+            return self.updater.take_notice()
+
+        while True:
+            try:
+                if revision := await asyncio.to_thread(check):
+                    self._hub_notice(
+                        "QuantBot",
+                        f"有新版本（{revision}）。在网页或运行 quantbot update 查看。",
+                        "info",
+                        None,
+                    )
+            except Exception:  # noqa: BLE001 - retry on the next scheduled check
+                log.exception("Update check failed")
+            await asyncio.sleep(UPDATE_EVERY)
 
     def reload(self) -> None:
         """Pick up `quantbot add/remove/...` at once; restart for new Telegram settings."""

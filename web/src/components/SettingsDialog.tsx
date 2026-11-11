@@ -8,12 +8,23 @@ import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field, Input } from "@/components/ui/primitives";
 import { api, type Settings } from "@/lib/api";
 
-export function SettingsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+export function SettingsDialog({ open, onOpenChange, version, onVersion }: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  version?: string;
+  onVersion: () => void;
+}) {
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, enabled: open });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title="设置" className="max-w-lg"
         description="Telegram 可以不接，只用网页。保存后 QuantBot 会自己重启一下。">
+        <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3 text-sm">
+          <span>版本</span>
+          <Button variant="ghost" size="sm" className="font-mono" onClick={onVersion}>
+            {version || "查看版本"}
+          </Button>
+        </div>
         <QueryBoundary query={settings}>
           {(data) => <SettingsForm key={JSON.stringify(data)} data={data} onDone={() => onOpenChange(false)} />}
         </QueryBoundary>

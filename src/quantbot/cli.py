@@ -27,7 +27,6 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from quantbot import __version__
 from quantbot.config import (
     BOT_TOKEN,
     LOCALHOST,
@@ -46,6 +45,7 @@ from quantbot.config import (
 from quantbot.notices import parse_quiet
 from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable
+from quantbot.updates import Updater, installed
 
 OWNER_WAIT = 120
 
@@ -606,21 +606,36 @@ def cmd_logs(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
 
 
 def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
-    uv = shutil.which("uv")
-    if not uv:
-        raise Abort("没找到 uv。重新运行安装命令，也能更新到最新版。")
+    updater = Updater(store.dir)
+    result = updater.check()
+    io.say(f"当前版本：{result['version']}")
+    if result["error"]:
+        raise Abort(result["error"])
+    if not result["available"]:
+        io.say("已经是最新版本。")
+        return 0
+    count = result["behind"]
+    io.say(f"有新版本（{count} 个新提交）：" if count else "有新版本：")
+    for commit in result["commits"]:
+        io.say(f"  {commit['sha']} {commit['message']}".rstrip())
+    if args.check:
+        return 0
+    if not args.yes:
+        if not io.interactive():
+            raise Abort("请在终端确认更新，或运行 quantbot update --yes。")
+        if not io.confirm("安装更新吗？", default=False):
+            io.say("已取消更新。")
+            return 0
     io.say("正在更新 QuantBot…")
-    if subprocess.call([uv, "tool", "upgrade", "--reinstall", "quantbot"]):  # noqa: S603
-        raise Abort("更新失败，见上面的输出。")
-    try:
-        service = detect_service()
-    except ServiceError:
-        service = None
+    ok, output = updater.upgrade()
+    if not ok:
+        raise Abort(f"更新失败。{output}")
+    service = _service_or_none()
     if service is not None and service.installed():
         service.restart()
         io.say("✓ 已更新，后台服务已重启。")
     else:
-        io.say("✓ 已更新。")
+        io.say("✓ 已更新。如果 QuantBot 正在前台运行，请重新运行 quantbot run。")
     return 0
 
 
@@ -780,7 +795,7 @@ def cmd_run(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="quantbot", description="一个 Telegram bot 管理所有量化程序")
-    p.add_argument("--version", action="version", version=f"quantbot {__version__}")
+    p.add_argument("--version", action="version", version=f"quantbot {installed().label}")
     sub = p.add_subparsers(dest="command", metavar="命令")
     sub.add_parser("run", help="在前台运行 QuantBot（后台服务也是用它）").set_defaults(fn=cmd_run)
     setup = sub.add_parser("setup", help="交互式设置：地址、网页管理员、Telegram（可选）、心跳")
@@ -798,7 +813,10 @@ def parser() -> argparse.ArgumentParser:
     prompt.add_argument("id", nargs="?", help="策略 id，默认用当前文件夹名")
     prompt.add_argument("--name", help="显示名称")
     prompt.set_defaults(fn=cmd_prompt)
-    sub.add_parser("update", help="更新到最新版并重启后台服务").set_defaults(fn=cmd_update)
+    update = sub.add_parser("update", help="检查版本或安装更新")
+    update.add_argument("--check", action="store_true", help="只检查，不安装")
+    update.add_argument("--yes", action="store_true", help="直接安装，无需确认")
+    update.set_defaults(fn=cmd_update)
     sub.add_parser("web", help="打印一次性的网页登录链接").set_defaults(fn=cmd_web)
     sub.add_parser("password", help="改网页管理员的用户名和密码").set_defaults(fn=cmd_password)
     service.set_defaults(fn=cmd_service)
@@ -837,7 +855,12 @@ def main(
     io = io or Console()
     store = store or Store(data_dir())
     try:
-        return int(fn(store, io, api, args))
+        code = int(fn(store, io, api, args))
+        if code == 0 and args.command in {"list", "link", "web", "setup"}:
+            update = Updater(store.dir).cached()
+            if update and update.get("available"):
+                io.say("有新版本，运行 quantbot update 查看。")
+        return code
     except (Abort, ConfigError, ServiceError) as exc:
         io.say(f"✗ {exc}")
         return 1

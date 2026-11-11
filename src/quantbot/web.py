@@ -46,6 +46,8 @@ from quantbot.config import (
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
 from quantbot.hub import Hub, Result
+from quantbot.service import Service, ServiceError
+from quantbot.updates import Updater
 
 LINK_TTL = 5 * 60
 SESSION_TTL = 12 * 3600
@@ -186,6 +188,18 @@ CHANGES = {"pause", "resume", "cancel", "flatten", "set_param", "manual_order", 
 READS = {"status", "positions", "orders", "params", "chart"}
 
 
+@dataclass
+class UpdateActions:
+    updater: Updater
+    restart: Callable[[], None] | None
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    next_check: float = 0
+    updated: bool = False
+
+
+UPDATE_KEY = web.AppKey("web_update", UpdateActions)
+
+
 def _need_login(request: web.Request) -> web.Response | None:
     if not request.app[AUTH_KEY].valid(request.cookies.get(COOKIE)):
         return web.json_response({"ok": False, "error": "login required"}, status=401)
@@ -292,6 +306,78 @@ async def _bot_call(request: web.Request, token: str, method: str, **params: Any
     call = _telegram(request)
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: call(token, method, **params))
+
+
+def _service_installed() -> bool:
+    try:
+        return Service.detect().installed()
+    except ServiceError:
+        return False
+
+
+async def update_get(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    actions = request.app[UPDATE_KEY]
+    updater = actions.updater
+    return web.json_response(
+        {
+            "version": updater.current().label,
+            "result": updater.cached(),
+            "uv": updater.uv() is not None,
+            "service": _service_installed(),
+            "updated": actions.updated,
+        }
+    )
+
+
+async def update_check(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    actions = request.app[UPDATE_KEY]
+    if actions.updated or actions.lock.locked():
+        return _answer(False, "更新正在进行，或正在等待重启。")
+    now = time.monotonic()
+    if now < actions.next_check:
+        return _answer(False, "每分钟可以检查一次，请稍后再试。")
+    actions.next_check = now + 60
+    async with actions.lock:
+        result = await asyncio.to_thread(actions.updater.check)
+    return _answer(not result["error"], result["error"] or "已检查更新。", result)
+
+
+async def update_post(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    actions = request.app[UPDATE_KEY]
+    if actions.updated or actions.lock.locked():
+        return _answer(False, "更新正在进行，或正在等待重启。")
+    async with actions.lock:
+        result = actions.updater.cached() or {}
+        if not result.get("available"):
+            return _answer(False, "没有可安装的更新，请先检查更新。")
+        ok, output = await asyncio.to_thread(actions.updater.upgrade)
+        actions.updated = ok
+        request.app[CORE_KEY].audit.write(
+            "update",
+            user=WEB_USER,
+            ok=ok,
+            revision=result.get("latest"),
+            result="已安装更新" if ok else "安装更新失败",
+            output=output,
+        )
+        if not ok:
+            return _answer(False, f"更新失败。{output}")
+        restart = actions.restart if _service_installed() else None
+        if restart is None:
+            return _answer(True, "已更新。请在服务器上停止 QuantBot，再运行 quantbot run。")
+        response = _answer(True, "已更新，后台服务即将重启。网页会自动重连。")
+        try:
+            await response.prepare(request)
+            await response.write_eof()
+        finally:
+            restart()
+        return response
 
 
 async def settings_get(request: web.Request) -> web.Response:
@@ -565,6 +651,9 @@ def add_routes(
     audit_path: Path,
     store: Store,
     telegram: Callable[..., Any] | None = None,
+    *,
+    restart: Callable[[], None] | None = None,
+    updater: Updater | None = None,
 ) -> None:
     if telegram is None:
         from quantbot.cli import telegram as telegram_api
@@ -578,6 +667,7 @@ def add_routes(
     app[AUTH_KEY] = auth
     app[FEED_KEY] = feed
     app[AUDIT_KEY] = audit_path
+    app[UPDATE_KEY] = UpdateActions(updater or Updater(store.dir), restart)
     app.add_routes(
         [
             web.get("/", redirect_root),
@@ -591,6 +681,9 @@ def add_routes(
             web.get("/ui/api/prompt", prompt),
             web.get("/ui/api/settings", settings_get),
             web.post("/ui/api/settings", settings_post),
+            web.get("/ui/api/update", update_get),
+            web.post("/ui/api/update/check", update_check),
+            web.post("/ui/api/update", update_post),
             web.post("/ui/api/strategies/{sid}/{command}", command),
             web.get("/ui/", page),
             web.get("/ui/{path:.+}", page),

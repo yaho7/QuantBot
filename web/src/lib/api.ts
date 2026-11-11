@@ -68,6 +68,22 @@ export interface Settings {
   telegram: boolean;
 }
 
+export interface UpdateResult {
+  available: boolean;
+  behind: number;
+  checked_at: string;
+  commits: { sha: string; message: string; date: string | null }[];
+  error: string | null;
+}
+
+export interface UpdateStatus {
+  version: string;
+  result: UpdateResult | null;
+  uv: boolean;
+  service: boolean;
+  updated: boolean;
+}
+
 /** What a strategy answered. `ok: false` with a message is a normal answer, not an error. */
 export interface Answer<T = unknown> {
   ok: boolean;
@@ -90,6 +106,9 @@ export const api = {
   prompt: (id: string, name: string) =>
     request<{ text: string }>("GET", `prompt?${new URLSearchParams({ id, name })}`),
   settings: () => request<Settings>("GET", "settings"),
+  updateStatus: () => request<UpdateStatus>("GET", "update"),
+  checkUpdate: () => request<Answer<UpdateResult | null>>("POST", "update/check"),
+  installUpdate: () => request<Answer>("POST", "update"),
   saveSettings: (body: Partial<Record<keyof Settings | "token" | "remove_telegram", unknown>>) =>
     request<Answer>("POST", "settings", body),
   command: <T = unknown>(sid: string, name: Command, args: Record<string, unknown> = {}) =>
