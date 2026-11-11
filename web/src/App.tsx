@@ -245,14 +245,22 @@ function PauseAll({ count }: { count: number }) {
 }
 
 function TelegramNote() {
-  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, staleTime: 60_000 });
-  if (!settings.data || settings.data.telegram) return null;
+  const key = "quantbot-hide-telegram-tip";
+  const [dismissed, setDismissed] = React.useState(() => localStorage.getItem(key) === "1");
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, staleTime: 60_000, enabled: !dismissed });
+  if (dismissed || !settings.data || settings.data.telegram) return null;
   return (
-    <Alert tone="info" className="items-center justify-between">
+    <Alert tone="info" className="flex-wrap items-center justify-between">
       <span>{tr("Telegram 没接，推送只显示在这个网页上。想在手机上收推送、点按钮，可以在设置里接上。")}</span>
-      <Button asChild size="sm" variant="outline">
-        <a href="/ui/?view=settings&tab=notifications">{tr("去设置")}</a>
-      </Button>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="ghost" onClick={() => {
+          localStorage.setItem(key, "1");
+          setDismissed(true);
+        }}>{tr("不再显示")}</Button>
+        <Button asChild size="sm" variant="outline">
+          <a href="/ui/?view=settings&tab=notifications">{tr("去设置")}</a>
+        </Button>
+      </div>
     </Alert>
   );
 }

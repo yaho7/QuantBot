@@ -341,5 +341,6 @@
   "已切换到分支 {0}。": "Switched to branch {0}.",
   "选择分支": "Choose branch",
   "选择远端分支": "Choose a remote branch",
-  "切换分支": "Switch branch"
+  "切换分支": "Switch branch",
+  "不再显示": "Don't show again"
 }
