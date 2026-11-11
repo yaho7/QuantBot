@@ -22,21 +22,27 @@ Telegram（可选）┘    ▲  http://<地址>:<随机端口>，安装时选只
 curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash
 ```
 
-它先装好缺的依赖：git、curl、[uv](https://docs.astral.sh/uv/)，以及 QuantBot 用的 Python 3.12。不会动你的系统 Python 和策略环境。
-
-然后一步步问你：
+脚本检查 git、curl 和 [uv](https://docs.astral.sh/uv/)，再用 uv 安装 QuantBot 和独立的 Python 3.12 环境。首次安装会逐项确认配置。
 
 | 步骤 | 问什么 | 直接回车 |
 |---|---|---|
-| 1 | 网页访问方式和端口。可选本机、直接连接或通过 Cloudflare Tunnel | 只有这台机器；随机选好的空闲端口（20000 到 39999） |
-| 2 | 网页管理员：用户名和密码（至少 8 位，输两次） | 用户名 `admin` |
-| 3 | 要不要接 Telegram。要的话再问：bot token（先在 [@BotFather](https://t.me/BotFather) 发 `/newbot`）、你的账号（给 bot 发条消息就能认出）、静音时段和时区 | 不接 |
-| 4 | 心跳地址（Healthchecks.io） | 不设 |
-| 5 | 要不要在后台运行：开机自启，挂了自动重启 | 要 |
+| 1 | 网页访问方式和端口，可选本机 / SSH、网络直连或 Cloudflare Tunnel | 本机 / SSH，随机空闲端口（20000 到 39999） |
+| 2 | 网页管理员用户名和密码，自设密码至少 8 位 | 用户名 `admin`，生成初始密码 |
+| 3 | Telegram 和 Healthchecks.io 心跳，可在网页设置中补配 | 跳过 |
+| 4 | 安装并启动后台服务 | 支持 systemd 或 launchd 时启动 |
+| 5 | 启用可选短命令 `qb` | 跳过 |
 
-最后列出你的选择，确认后才保存，并打印网页地址。接了 Telegram 的话，还会给你发一条测试消息。
+确认清单后才保存配置。选择后台服务时，安装程序通过本机健康检查后显示网页地址、管理员和运维命令。自动生成的初始密码只在本次终端显示。服务未通过检查时，结果会给出查看日志和重试的命令。
 
-不接 Telegram 也能用全部功能。以后想接，在网页的“设置”里填，或者再运行 `quantbot setup`。
+交互式重跑安装脚本时，可选择更新程序、重新配置当前版本或退出。`quantbot setup` 也可直接启动配置向导。
+
+无终端时自动采用非交互模式，也可以显式传入参数：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash -s -- --non-interactive
+```
+
+首次安装可用 `QUANTBOT_PORT` 指定端口。非交互安装可通过 `QUANTBOT_ADMIN_USERNAME` 和 `QUANTBOT_ADMIN_PASSWORD` 设置管理员，或之后运行 `quantbot password`。只需安装程序并保存配置时，加上 `--no-service`。
 
 ## 网页
 

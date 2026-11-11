@@ -20,9 +20,10 @@ BOT = "123456789:" + "A" * 35
 PW = "correct-horse"
 # Who may connect, port, admin name, password twice.
 ADDRESS_ADMIN = ["", "", "", PW, PW]
-# ... then Telegram yes, token, wait for a message, confirm owner, quiet hours, time zone,
-# heartbeat, save
-SETUP = [*ADDRESS_ADMIN, "y", BOT, "", "", "-", "", "-", ""]
+# Keep qb disabled, then apply settings.
+FINISH = ["", ""]
+# Telegram yes, token, wait for message, confirm owner, quiet hours, time zone, heartbeat.
+SETUP = [*ADDRESS_ADMIN, "y", BOT, "", "", "-", "", "-", *FINISH]
 # Who may connect, port, admin name, keep the password.
 KEEP = ["", "", "", ""]
 
@@ -35,6 +36,21 @@ def no_service_manager(monkeypatch: pytest.MonkeyPatch) -> None:
         raise ServiceError("no service manager in tests")
 
     monkeypatch.setattr("quantbot.cli.detect_service", missing)
+
+
+@pytest.fixture(autouse=True)
+def command_in_test_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import shutil
+
+    # Each test owns the executable and any qb link created by setup.
+    command = tmp_path / "bin" / "quantbot"
+    command.parent.mkdir()
+    command.touch(mode=0o700)
+    monkeypatch.setattr("sys.argv", [str(command)])
+    path = [
+        item for item in os.environ["PATH"].split(os.pathsep) if not shutil.which("qb", path=item)
+    ]
+    monkeypatch.setenv("PATH", os.pathsep.join([str(command.parent), *path]))
 
 
 class Script(Console):
@@ -54,6 +70,9 @@ class Script(Console):
     def secret(self, prompt: str) -> str:
         self.out.append(f"? {prompt}")
         return self.answers.pop(0)
+
+    def reveal(self, label: str, value: str) -> None:
+        self.rows([(label, value)])
 
     def interactive(self) -> bool:
         return self.tty
@@ -149,14 +168,16 @@ def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
     store = Store(tmp_path)
     api = FakeTelegram([message()])
     # port, Telegram yes, bad token, good token, wait, confirm owner, quiet, tz, heartbeat, save
-    answers = [*ADDRESS_ADMIN, "y", "nope", BOT, "", "", "23-07", "", "", ""]
+    answers = [*ADDRESS_ADMIN, "y", "nope", BOT, "", "", "23-07", "", "", *FINISH]
     code, io = run(store, ["setup"], answers, api=api)
     assert code == 0, io.text()
     admin = store.read()["web_admin"]
     assert admin["username"] == "admin" and PW not in store.path.read_text()
     assert check_password(PW, admin["password"]) and not check_password("wrong", admin["password"])
-    assert "✓ 连上了 @my_quant_bot" in io.text() and "收到 Ya @ya（id 42）" in io.text()
-    assert "就这样设置" in io.text() and "后台运行" not in io.text()  # no service manager
+    assert (
+        "已验证 Telegram 机器人 @my_quant_bot" in io.text() and "授权 Ya @ya（ID 42）" in io.text()
+    )
+    assert "确认配置" in io.text() and "跳过启动" in io.text()
     settings = store.settings({})
     assert settings.telegram and (settings.owner_id, settings.quiet_hours, settings.timezone) == (
         42,
@@ -169,27 +190,27 @@ def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
         {"chat_id": 42, "text": "✅ QuantBot 配置好了。发 /menu 看所有策略。"},
     ) in api.calls
     assert stat.S_IMODE(os.stat(store.path).st_mode) == 0o600
-    assert "/ui/ ，用 admin 和你的密码登录" in io.text() and "ssh -L" in io.text()
+    assert "/ui/" in io.text() and "admin" in io.text() and "ssh -L" in io.text()
     assert "quantbot link" in io.text()
 
 
 def test_setup_without_telegram_is_web_only(tmp_path: Path) -> None:
     store = Store(tmp_path)
     api = FakeTelegram()
-    code, io = run(store, ["setup"], [*ADDRESS_ADMIN, "", "-", ""], api=api)  # no TG, hb, save
+    code, io = run(store, ["setup"], [*ADDRESS_ADMIN, "", "-", *FINISH], api=api)  # no TG, hb, save
     assert code == 0, io.text()
-    assert "不接，只用网页" in io.text() and "用 admin 和你的密码登录" in io.text()
+    assert "未配置" in io.text() and "admin" in io.text()
     assert api.calls == []
     settings = store.settings({})
     assert not settings.telegram and settings.tg_token is None and settings.owner_id is None
     assert store.read()["setup_done"] is True
     code, io = run(store, ["setup", "--if-needed"])
-    assert code == 0 and "已经设置过了" in io.text()
+    assert code == 0 and "已读取现有配置" in io.text()
 
 
 def test_setup_again_keeps_values_and_typed_id_works(tmp_path: Path) -> None:
     store = Store(tmp_path)
-    run(store, ["setup"], [*ADDRESS_ADMIN, "y", BOT, "", "", "23-07", "", "", ""])
+    run(store, ["setup"], [*ADDRESS_ADMIN, "y", BOT, "", "", "23-07", "", "", *FINISH])
     port = store.settings({}).port
     secret = store.read()["web_secret"]
     # keep address and admin, keep Telegram, keep token, not the same owner, type id,
@@ -197,7 +218,7 @@ def test_setup_again_keeps_values_and_typed_id_works(tmp_path: Path) -> None:
     code, io = run(
         store,
         ["setup"],
-        [*KEEP, "", "", "n", "99", "", "America/New_York", "ftp://x", "-", ""],
+        [*KEEP, "", "", "n", "99", "", "America/New_York", "ftp://x", "-", *FINISH],
         api=FakeTelegram(conflict=True),
     )
     assert code == 0, io.text()
@@ -211,7 +232,7 @@ def test_setup_again_keeps_values_and_typed_id_works(tmp_path: Path) -> None:
         "America/New_York",
     )
     # And now drop Telegram: keep address and admin, no, heartbeat, save
-    code, io = run(store, ["setup"], [*KEEP, "n", "", ""])
+    code, io = run(store, ["setup"], [*KEEP, "n", "", *FINISH])
     assert code == 0 and not store.settings({}).telegram and "telegram" not in store.read()
 
 
@@ -219,10 +240,10 @@ def test_setup_while_running_asks_for_the_id(tmp_path: Path) -> None:
     code, io = run(
         Store(tmp_path),
         ["setup"],
-        [*ADDRESS_ADMIN, "y", BOT, "", "42", "-", "", "-", ""],
+        [*ADDRESS_ADMIN, "y", BOT, "", "42", "-", "", "-", *FINISH],
         api=FakeTelegram(conflict=True),
     )
-    assert code == 0 and "没法自动识别" in io.text()
+    assert code == 0 and "已有接收进程" in io.text()
 
 
 def test_setup_port_choice_and_cancel(tmp_path: Path) -> None:
@@ -234,19 +255,19 @@ def test_setup_port_choice_and_cancel(tmp_path: Path) -> None:
         taken = str(busy.getsockname()[1])
         # bad choice, this machine, bad port, taken port, good port, admin, no Telegram,
         # hb, do not save
-        answers = ["4", "1", "80", taken, "31555", "", PW, PW, "n", "-", "n"]
+        answers = ["4", "1", "80", taken, "31555", "", PW, PW, "n", "-", "n", "n"]
         code, io = run(store, ["setup"], answers)
     assert code == 1 and "已取消" in io.text() and not store.exists()
     assert "输入 1、2 或 3" in io.text()
     assert "1024 到 65535" in io.text() and "占用" in io.text()
-    code, io = run(store, ["setup"], ["", "31555", "", PW, PW, "n", "-", ""])
+    code, io = run(store, ["setup"], ["", "31555", "", PW, PW, "n", "-", *FINISH])
     assert code == 0 and store.read()["listen"] == "127.0.0.1:31555"
     # Open to every address: no tunnel hint, but the plain-HTTP risk and the firewall.
-    code, io = run(store, ["setup"], ["2", "", "", "", "n", "-", ""])
+    code, io = run(store, ["setup"], ["2", "", "", "", "n", "-", *FINISH])
     assert code == 0 and store.read()["listen"] == "0.0.0.0:31555", io.text()
-    assert "IP 或域名" in io.text() and "HTTPS" in io.text() and "ssh -L" not in io.text()
+    assert "IP 或域名" in io.text() and "直连使用 HTTP" in io.text() and "ssh -L" not in io.text()
     assert store.settings({}).host == "0.0.0.0"  # noqa: S104
-    code, io = run(store, ["setup"], [*KEEP, "n", "-", ""])  # Enter keeps the current choice
+    code, io = run(store, ["setup"], [*KEEP, "n", "-", *FINISH])  # Enter keeps the current choice
     assert code == 0 and store.read()["listen"] == "0.0.0.0:31555"
 
 
@@ -265,7 +286,7 @@ def test_setup_tunnel_and_links(tmp_path: Path) -> None:
             PW,
             "n",
             "-",
-            "",
+            *FINISH,
         ],
     )
     assert code == 0 and "请填写 Tunnel 的 HTTPS 地址" in io.text()
@@ -273,19 +294,19 @@ def test_setup_tunnel_and_links(tmp_path: Path) -> None:
     assert store.read()["web_tunnel"] and store.settings({}).public_url == "https://bot.example.com"
     assert "https://bot.example.com/ui/" in io.text() and "http://127.0.0.1:31555" in io.text()
     assert "https://bot.example.com/ui/login?t=" in run(store, ["web"])[1].text()
-    assert run(store, ["setup"], ["", "", "", "", "", "n", "-", ""])[0] == 0
+    assert run(store, ["setup"], ["", "", "", "", "", "n", "-", *FINISH])[0] == 0
     assert store.read()["web_tunnel"]
-    assert run(store, ["setup"], ["1", "", "", "", "n", "-", ""])[0] == 0
+    assert run(store, ["setup"], ["1", "", "", "", "n", "-", *FINISH])[0] == 0
     assert "public_url" not in store.read() and "web_tunnel" not in store.read()
 
 
 def test_setup_admin_password_rules_and_change(tmp_path: Path) -> None:
     store = Store(tmp_path)
     # too short, then two different, then right
-    answers = ["", "", "", "short", "long-enough-1", "long-enough-2", PW, PW, "n", "-", ""]
+    answers = ["", "", "", "short", "long-enough-1", "long-enough-2", PW, PW, "n", "-", *FINISH]
     code, io = run(store, ["setup"], answers)
     assert code == 0, io.text()
-    assert "至少 8 位" in io.text() and "两次不一样" in io.text()
+    assert "至少 8 位" in io.text() and "两次输入不一致" in io.text()
     secret = store.read()["web_secret"]
 
     code, io = run(store, ["password"], ["", ""])  # same name, keep the password
@@ -302,10 +323,10 @@ def test_installer_rerun_asks_for_a_missing_admin(tmp_path: Path) -> None:
     store = Store(tmp_path)
     store.write({"setup_done": True, "listen": "127.0.0.1:31557"})  # set up before passwords
     code, io = run(store, ["setup", "--if-needed"], ["", PW, PW])
-    assert code == 0 and "先设一个管理员" in io.text()
+    assert code == 0 and "配置网页管理员" in io.text()
     assert check_password(PW, store.read()["web_admin"]["password"])
     code, io = run(store, ["setup", "--if-needed"])
-    assert code == 0 and "管理员" not in io.text()
+    assert code == 0 and "配置网页管理员" not in io.text()
 
 
 def test_setup_installs_the_background_service(
@@ -317,20 +338,83 @@ def test_setup_installs_the_background_service(
     calls = Recorder()
     service = Service("launchd", tmp_path, calls)
     monkeypatch.setattr("quantbot.cli.detect_service", lambda: service)
+    checks = []
+    monkeypatch.setattr("quantbot.cli.wait_until_ready", checks.append)
     store = Store(tmp_path / "data")
-    code, io = run(store, ["setup"], [*SETUP[:-1], "", ""])  # yes to background, save
+    code, io = run(store, ["setup"], [*SETUP[:-2], "", *FINISH])  # yes to background, save
     assert code == 0, io.text()
-    assert "5/5  后台运行" in io.text() and service.installed()
-    assert "QuantBot 已在后台运行" in io.text()
+    assert "4/5  后台服务" in io.text() and service.installed()
+    assert "后台服务已就绪" in io.text()
     calls.calls.clear()
     code, io = run(store, ["setup", "--if-needed"])  # the installer, run again
-    assert code == 0 and "已重启" in io.text()
+    assert code == 0 and "后台服务已就绪" in io.text()
     assert calls.calls[0][:2] == ["launchctl", "kickstart"]
+    assert checks == [f"http://{store.read()['listen']}"] * 2
 
 
 def test_setup_needs_a_terminal(tmp_path: Path) -> None:
     code, io = run(Store(tmp_path), ["setup"], tty=False)
     assert code == 1 and "交互" in io.text()
+
+
+def test_setup_applies_qb_and_reveals_generated_password_once(tmp_path: Path) -> None:
+    store = Store(tmp_path / "data")
+    shortcut = tmp_path / "bin" / "qb"
+    answers = ["", "", "", "", "", "", "y"]
+    code, io = run(store, ["setup"], [*answers, "n"])
+    assert code == 1 and "已取消配置" in io.text()
+    assert not store.exists() and not shortcut.is_symlink()
+    assert "初始密码   " not in io.text()
+
+    code, io = run(store, ["setup"], [*answers, ""])
+    assert code == 0 and shortcut.readlink() == Path("quantbot")
+    assert "quantbot / qb" in io.text()
+    (row,) = [line for line in io.out if line.strip().startswith("初始密码   ")]
+    initial = row.split()[-1]
+    assert check_password(initial, store.read()["web_admin"]["password"])
+    assert initial not in store.path.read_text()
+    assert initial not in run(store, ["setup", "--if-needed"], tty=False)[1].text()
+
+
+def test_setup_reports_service_health_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from quantbot.service import Service
+    from tests.test_service import Recorder
+
+    def unavailable(origin: str) -> None:
+        raise ServiceError(f"服务未通过健康检查（{origin}/healthz）。")
+
+    service = Service("launchd", tmp_path, Recorder())
+    monkeypatch.setattr("quantbot.cli.detect_service", lambda: service)
+    monkeypatch.setattr("quantbot.cli.wait_until_ready", unavailable)
+    store = Store(tmp_path / "data")
+    code, io = run(store, ["setup"], [*ADDRESS_ADMIN, "n", "-", "", *FINISH])
+    assert code == 1 and store.read()["setup_done"]
+    assert "配置已保存" in io.text() and "未通过健康检查" in io.text()
+    assert "后台服务已就绪" not in io.text()
+    assert "quantbot service install 重试" in io.text()
+
+
+def test_setup_noninteractive_uses_explicit_credentials_without_printing_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from quantbot.config import free_port
+
+    port = free_port()
+    monkeypatch.setenv("QUANTBOT_PORT", str(port))
+    monkeypatch.setenv("QUANTBOT_ADMIN_USERNAME", "operator")
+    monkeypatch.setenv("QUANTBOT_ADMIN_PASSWORD", PW)
+    store = Store(tmp_path / "data")
+    args = ["setup", "--if-needed", "--non-interactive", "--no-service"]
+    code, io = run(store, args, tty=False)
+    assert code == 0 and "跳过启动" in io.text() and PW not in io.text()
+    data = store.read()
+    assert data["listen"] == f"127.0.0.1:{port}"
+    assert data["web_admin"]["username"] == "operator"
+    assert check_password(PW, data["web_admin"]["password"])
+    monkeypatch.setenv("QUANTBOT_ADMIN_PASSWORD", "different-password")
+    assert run(store, args, tty=False)[0] == 0 and store.read() == data
 
 
 def test_add_list_token_rename_remove(tmp_path: Path) -> None:

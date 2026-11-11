@@ -3,22 +3,61 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash
 #
-# Installs what it needs (git, uv and a Python for QuantBot), installs the
-# `quantbot` command, asks the setup questions the first time, and runs
-# QuantBot in the background (systemd on Linux, launchd on macOS).
-# Running it again updates QuantBot. QUANTBOT_REF picks a tag or branch.
-# Setup asks how to access the web page (local, direct, or through a tunnel) and the port,
-# offering a random free one unless QUANTBOT_PORT is set:
-#
-#   curl -fsSL .../install.sh | QUANTBOT_PORT=23456 bash
+# Pass --non-interactive for automation or --no-service to install without starting a service.
 set -euo pipefail
 
 REPO="${QUANTBOT_REPO:-https://github.com/yaho7/QuantBot}"
 REF="${QUANTBOT_REF:-main}"
-PORT="${QUANTBOT_PORT:-}"
+non_interactive=false
+no_service=false
 
-say() { printf '\033[1m%s\033[0m\n' "$*"; }
-die() { printf '✗ %s\n' "$*" >&2; exit 1; }
+usage() {
+  cat <<'EOF'
+用法  bash install.sh [--non-interactive] [--no-service]
+  -y, --non-interactive  使用默认配置，跳过交互问答
+  --no-service           只安装程序并保存配置，跳过服务启动
+  -h, --help             显示帮助
+
+QUANTBOT_PORT 可指定首次安装的端口。
+QUANTBOT_REF 可指定安装分支、标签或提交。
+非交互安装可通过 QUANTBOT_ADMIN_USERNAME 和 QUANTBOT_ADMIN_PASSWORD 设置管理员。
+EOF
+}
+
+status() {
+  local label="$1" color="$2"
+  shift 2
+  if [[ -t 1 && -z "${NO_COLOR+x}" && "${TERM:-}" != dumb ]]; then
+    printf '\033[%sm[%s]\033[0m %s\n' "$color" "$label" "$*"
+  else
+    printf '[%s] %s\n' "$label" "$*"
+  fi
+}
+
+die() {
+  status 失败 '1;31' "$*" >&2
+  exit 1
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --non-interactive|-y) non_interactive=true ;;
+    --no-service) no_service=true ;;
+    --help|-h) usage; exit 0 ;;
+    *) die "不支持的参数 $1。运行 bash install.sh --help 查看用法。" ;;
+  esac
+  shift
+done
+
+if [[ "$non_interactive" == false ]]; then
+  if ! { exec 3<>/dev/tty; } 2>/dev/null; then
+    non_interactive=true
+  fi
+fi
+
+printf '\n==================== QuantBot 安装 ====================\n\n'
+status 进行 '1;36' "检查系统依赖。"
+
 
 as_root() {
   if [ "$(id -u)" -eq 0 ]; then "$@"
@@ -51,37 +90,69 @@ if [ "$(uname)" = Linux ] && ! command -v update-ca-certificates >/dev/null \
   missing+=(ca-certificates)
 fi
 if [ "${#missing[@]}" -gt 0 ]; then
-  say "安装依赖：${missing[*]}…"
-  install_packages "${missing[@]}"
+  status 进行 '1;36' "安装系统依赖  ${missing[*]}"
+  install_packages "${missing[@]}" || die "系统依赖安装失败。请检查上方输出后重试。"
 fi
 
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 if ! command -v uv >/dev/null; then
-  say "安装 uv…"
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+  status 进行 '1;36' "安装 uv。"
+  curl -fsSL https://astral.sh/uv/install.sh | sh || die "uv 安装失败。请检查上方输出后重试。"
 fi
-command -v uv >/dev/null || die "装好了 uv 但找不到它，请开一个新终端再运行一次。"
+command -v uv >/dev/null || die "当前终端找不到 uv。请重新打开终端后重试。"
+status 完成 '1;32' "系统依赖已就绪。"
 
-# uv downloads Python 3.12 for QuantBot if this machine does not have it.
-say "安装 QuantBot（${REF}）…"
-uv tool install --force --reinstall --python 3.12 "quantbot @ git+${REPO}@${REF}"
-BIN="$(uv tool dir --bin)"
+BIN="$(uv tool dir --bin)" || die "无法读取 uv 的命令目录。"
 export PATH="$BIN:$PATH"
-uv tool update-shell >/dev/null 2>&1 || true  # new terminals find `quantbot`
-
-if [ -r /dev/tty ] && [ -w /dev/tty ]; then
-  # First time: the setup questions (address, web admin, optional Telegram, heartbeat,
-  # background).
-  # Already set up: restart the background service on the new version.
-  QUANTBOT_PORT="$PORT" quantbot setup --if-needed </dev/tty >/dev/tty || true
-else
-  say "没有终端，跳过设置问题。"
-  quantbot service install ${PORT:+--port "$PORT"} || say "没能装成后台服务。"
-  echo "  之后请运行：quantbot setup。打开网页：quantbot web"
+command_path="$BIN/quantbot"
+setup_args=(setup)
+if [[ "$no_service" == true ]]; then
+  setup_args+=(--no-service)
 fi
 
-say ""
-say "✓ QuantBot 装好了。"
-echo "  打开网页：用管理员账号登录；忘了密码运行 quantbot password"
-echo "  连接一个策略：cd 你的策略项目 && quantbot link"
-echo "  新开一个终端，quantbot 命令就能直接用。"
+if [[ "$non_interactive" == false && -x "$command_path" ]]; then
+  printf '\n检测到已安装的 QuantBot\n  1. 更新程序并应用现有配置\n  2. 重新配置当前版本\n  3. 退出\n' >&3
+  while true; do
+    printf '› 请选择 [1] ' >&3
+    if ! IFS= read -r choice <&3; then
+      choice=3
+    fi
+    case "${choice:-1}" in
+      1) break ;;
+      2) exec "$command_path" "${setup_args[@]}" <&3 >&3 ;;
+      3) status 提示 '1;36' "已退出安装。"; exit 0 ;;
+      *) status 注意 '1;33' "请输入 1、2 或 3。" >&3 ;;
+    esac
+  done
+fi
+
+# uv provisions Python 3.12 as needed.
+status 进行 '1;36' "安装 QuantBot（${REF}）。"
+uv tool install --quiet --force --reinstall --python 3.12 "quantbot @ git+${REPO}@${REF}" \
+  || die "QuantBot 安装失败。请检查上方输出后重试。"
+[[ -x "$command_path" ]] || die "安装后未找到命令 ${command_path}。"
+uv tool update-shell >/dev/null 2>&1 || true
+status 完成 '1;32' "程序已安装  $command_path"
+
+setup_args+=(--if-needed)
+if [[ "$non_interactive" == false && "$no_service" == false ]]; then
+  exec "$command_path" "${setup_args[@]}" <&3 >&3
+fi
+
+setup_help="$("$command_path" setup --help)" || die "无法读取当前版本的配置命令。"
+case "$setup_help" in
+  *--non-interactive*)
+    if [[ "$non_interactive" == true ]]; then
+      exec "$command_path" "${setup_args[@]}" --non-interactive
+    fi
+    exec "$command_path" "${setup_args[@]}" <&3 >&3
+    ;;
+  *)
+    # Older pinned releases have no unattended setup command.
+    if [[ "$no_service" == true ]]; then
+      status 提示 '1;36' "当前版本的交互配置命令为 quantbot setup。"
+      exit 0
+    fi
+    exec "$command_path" service install ${QUANTBOT_PORT:+--port "$QUANTBOT_PORT"}
+    ;;
+esac

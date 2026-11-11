@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bash install.sh < /dev/null
+      - run: bash install.sh --non-interactive --no-service < /dev/null
         env:
           QUANTBOT_REPO: ${{ github.server_url }}/${{ github.repository }}
           QUANTBOT_REF: ${{ github.sha }}

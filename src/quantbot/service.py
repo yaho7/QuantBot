@@ -8,12 +8,15 @@
 
 from __future__ import annotations
 
+import json
 import os
 import plistlib
 import shlex
 import shutil
 import subprocess
 import sys
+import time
+import urllib.request
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -30,6 +33,22 @@ def _run(cmd: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 class ServiceError(Exception):
     pass
+
+
+def wait_until_ready(origin: str, timeout: float = 25) -> None:
+    url = f"{origin}/healthz"
+    deadline = time.monotonic() + timeout
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    while True:
+        try:
+            with opener.open(url, timeout=1) as response:
+                if json.loads(response.read(256)) == {"ok": True}:
+                    return
+        except (OSError, ValueError):
+            pass
+        if time.monotonic() >= deadline:
+            raise ServiceError(f"服务未通过健康检查（{url}）。")
+        time.sleep(0.5)
 
 
 def executable() -> str:
