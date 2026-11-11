@@ -50,4 +50,7 @@ jobs:
         env:
           QUANTBOT_REPO: ${{ github.server_url }}/${{ github.repository }}
           QUANTBOT_REF: ${{ github.sha }}
-      - run: ~/.local/bin/quantbot --version && ~/.local/bin/quantbot list
+          SHELL: /bin/bash
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/quantbot-bin
+      - name: Find QuantBot in a new login shell
+        run: bash -lc 'test "$(command -v quantbot)" = "$RUNNER_TEMP/quantbot-bin/quantbot" && quantbot --version && quantbot list'

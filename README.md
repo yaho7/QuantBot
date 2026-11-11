@@ -19,7 +19,7 @@ Telegram（可选）┘    ▲  http://<地址>:<随机端口>，安装时选只
 在 VPS 上运行：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash
+(set -o pipefail; curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash) && export PATH="${UV_TOOL_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 ```
 
 脚本检查 git、curl 和 [uv](https://docs.astral.sh/uv/)，再用 uv 安装 QuantBot 和独立的 Python 3.12 环境。首次安装会逐项确认配置。
@@ -39,6 +39,8 @@ For English, select **2. English** when the installer opens. To switch later, us
 确认清单后才保存配置。选择后台服务时，安装程序通过本机健康检查后显示网页地址、管理员和运维命令。自动生成的初始密码只在本次终端显示。服务未通过检查时，结果会给出查看日志和重试的命令。
 
 交互式重跑安装脚本时，可选择更新程序、重新配置当前版本或退出。`quantbot setup` 也可直接启动配置向导。
+
+一键命令会在安装成功后刷新当前 Bash / Zsh 的 PATH。若已用旧命令安装，或 uv 使用了不同的目录，可运行安装结果末尾显示的 `export PATH=…` 命令。默认目录对应 `export PATH="$HOME/.local/bin:$PATH"`。启用可选的 `qb` 入口请运行 `quantbot alias enable`。
 
 无终端时自动采用非交互模式，也可以显式传入参数：
 

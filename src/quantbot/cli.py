@@ -437,6 +437,8 @@ def _setup_result(
         return 1
     if not data.get("strategies"):
         io.rows([(tr("接入策略"), tr("在策略项目目录运行 quantbot link"))])
+    if entry == "quantbot" and not shutil.which("qb"):
+        io.rows([(tr("启用短命令 qb"), "quantbot alias enable")])
     return 0
 
 

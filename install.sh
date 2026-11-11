@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install or update QuantBot for the current user:
 #
-#   curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash
+#   (set -o pipefail; curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash) && export PATH="${UV_TOOL_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
 #
 # Pass --non-interactive for automation or --no-service to install without starting a service.
 set -euo pipefail
@@ -158,17 +158,40 @@ if [ "${#missing[@]}" -gt 0 ]; then
   install_packages "${missing[@]}" || die "$(msg "系统依赖安装失败。请检查上方输出后重试。" "Could not install system dependencies. Review the output above and retry.")"
 fi
 
+terminal_path="$PATH"
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 if ! command -v uv >/dev/null; then
   status step '1;36' "$(msg "安装 uv。" "Installing uv.")"
   curl -fsSL https://astral.sh/uv/install.sh | sh || die "$(msg "uv 安装失败。请检查上方输出后重试。" "Could not install uv. Review the output above and retry.")"
 fi
-command -v uv >/dev/null || die "$(msg "当前终端找不到 uv。请重新打开终端后重试。" "uv was not found. Open a new terminal and retry.")"
+uv_path="$(command -v uv)" || die "$(msg "当前终端找不到 uv。请重新打开终端后重试。" "uv was not found. Open a new terminal and retry.")"
 status ok '1;32' "$(msg "系统依赖已就绪。" "System dependencies are ready.")"
 
 BIN="$(uv tool dir --bin)" || die "$(msg "无法读取 uv 的命令目录。" "Could not locate the uv executable directory.")"
 export PATH="$BIN:$PATH"
 command_path="$BIN/quantbot"
+
+activate_commands() {
+  if [[ ":$terminal_path:" == *":$BIN:"* ]]; then
+    return
+  fi
+  # uv checks its caller's PATH before updating shell profiles.
+  PATH="$terminal_path" "$uv_path" tool update-shell >/dev/null 2>&1 || true
+  status info '1;36' "$(msg '在当前 Bash / Zsh 终端运行以下命令以启用命令入口。' 'Run this in your current Bash or Zsh session to make the commands available.')"
+  printf '  export PATH=%q:"%s"\n' "$BIN" "\$PATH"
+}
+
+finish_setup() {
+  local code=0
+  if [[ "$non_interactive" == false ]]; then
+    "$command_path" "$@" <&3 >&3 || code=$?
+  else
+    "$command_path" "$@" || code=$?
+  fi
+  activate_commands
+  exit "$code"
+}
+
 setup_args=(setup)
 if [[ "$no_service" == true ]]; then
   setup_args+=(--no-service)
@@ -189,7 +212,7 @@ if [[ "$non_interactive" == false && -x "$command_path" ]]; then
     fi
     case "${choice:-1}" in
       1) break ;;
-      2) exec "$command_path" "${setup_args[@]}" <&3 >&3 ;;
+      2) finish_setup "${setup_args[@]}" ;;
       3) status info '1;36' "$(msg "已退出安装。" "Installer exited.")"; exit 0 ;;
       *) status warn '1;33' "$(msg "请输入 1、2 或 3。" "Enter 1, 2, or 3.")" >&3 ;;
     esac
@@ -201,28 +224,28 @@ status step '1;36' "$(msg "安装 QuantBot（${REF}）。" "Installing QuantBot 
 uv tool install --quiet --force --reinstall --python 3.12 "quantbot @ git+${REPO}@${REF}" \
   || die "$(msg "QuantBot 安装失败。请检查上方输出后重试。" "Could not install QuantBot. Review the output above and retry.")"
 [[ -x "$command_path" ]] || die "$(msg "安装后未找到命令 ${command_path}。" "The executable was not found after installation: ${command_path}.")"
-uv tool update-shell >/dev/null 2>&1 || true
 status ok '1;32' "$(msg "程序已安装  $command_path" "Executable installed  $command_path")"
 
 setup_args+=(--if-needed)
 if [[ "$non_interactive" == false && "$no_service" == false ]]; then
-  exec "$command_path" "${setup_args[@]}" <&3 >&3
+  finish_setup "${setup_args[@]}"
 fi
 
 setup_help="$("$command_path" setup --help)" || die "$(msg "无法读取当前版本的配置命令。" "Could not read the setup options for this version.")"
 case "$setup_help" in
   *--non-interactive*)
     if [[ "$non_interactive" == true ]]; then
-      exec "$command_path" "${setup_args[@]}" --non-interactive
+      setup_args+=(--non-interactive)
     fi
-    exec "$command_path" "${setup_args[@]}" <&3 >&3
+    finish_setup "${setup_args[@]}"
     ;;
   *)
     # Older pinned releases have no unattended setup command.
     if [[ "$no_service" == true ]]; then
       status info '1;36' "$(msg "当前版本的交互配置命令为 quantbot setup。" "Run quantbot setup to configure this version interactively.")"
+      activate_commands
       exit 0
     fi
-    exec "$command_path" service install ${QUANTBOT_PORT:+--port "$QUANTBOT_PORT"}
+    finish_setup service install ${QUANTBOT_PORT:+--port "$QUANTBOT_PORT"}
     ;;
 esac
