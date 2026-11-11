@@ -53,8 +53,13 @@ async def _body(request: web.Request) -> dict[str, Any]:
 
 async def events(request: web.Request) -> web.Response:
     strategy: Strategy = request[STRATEGY_KEY]
+    hub = request.app[HUB_KEY]
+    token = strategy.token
     try:
-        request.app[HUB_KEY].event(strategy, await _body(request))
+        body = await _body(request)
+        if not hub.authorized(strategy, token):
+            return _error(401, "unknown token")
+        hub.event(strategy, body)
     except EventError as exc:
         return _error(400, str(exc))
     return web.json_response({"ok": True})
@@ -67,13 +72,17 @@ async def commands(request: web.Request) -> web.Response:
         return _error(400, "wait must be a number of seconds")
     wait = min(max(wait, 0.0), MAX_WAIT)
     reply = await request.app[HUB_KEY].poll(request[STRATEGY_KEY], wait)
-    return web.json_response(reply)
+    return _error(401, "unknown token") if reply is None else web.json_response(reply)
 
 
 async def result(request: web.Request) -> web.Response:
-    found = request.app[HUB_KEY].result(
-        request[STRATEGY_KEY], request.match_info["command_id"], await _body(request)
-    )
+    strategy = request[STRATEGY_KEY]
+    hub = request.app[HUB_KEY]
+    token = strategy.token
+    body = await _body(request)
+    if not hub.authorized(strategy, token):
+        return _error(401, "unknown token")
+    found = hub.result(strategy, request.match_info["command_id"], body)
     if not found:
         return _error(404, "unknown or finished command")
     return web.json_response({"ok": True})

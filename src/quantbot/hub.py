@@ -128,6 +128,7 @@ class Hub:
                 continue
             if current.token != config.token:
                 current.token = config.token
+                current.wake.set()
                 changes.append(f"换了 {sid} 的 token")
             if current.name != config.name:
                 current.name = config.name
@@ -190,28 +191,33 @@ class Hub:
             command.delivered_at = now
         return ready
 
-    async def poll(self, strategy: Strategy, wait: float) -> dict[str, Any]:
+    def authorized(self, strategy: Strategy, token: str) -> bool:
+        return self.strategies.get(strategy.id) is strategy and strategy.token == token
+
+    async def poll(self, strategy: Strategy, wait: float) -> dict[str, Any] | None:
         self._seen(strategy)
         strategy.polling += 1
+        token = strategy.token
         try:
             deadline = self.clock() + wait
-            while True:
+            while self.authorized(strategy, token):
                 ready = self._deliverable(strategy)
                 left = deadline - self.clock()
                 if ready or left <= 0:
-                    break
+                    return {
+                        "commands": [{"id": c.id, "name": c.name, "args": c.args} for c in ready],
+                        "need_hello": not strategy.said_hello,
+                    }
                 strategy.wake.clear()
                 try:
                     await asyncio.wait_for(strategy.wake.wait(), min(left, self.redeliver_after))
                 except asyncio.TimeoutError:
                     pass
+            return None
         finally:
             strategy.polling -= 1
-            self._seen(strategy)
-        return {
-            "commands": [{"id": c.id, "name": c.name, "args": c.args} for c in ready],
-            "need_hello": not strategy.said_hello,
-        }
+            if self.authorized(strategy, token):
+                self._seen(strategy)
 
     def result(self, strategy: Strategy, command_id: str, body: dict[str, Any]) -> bool:
         self._seen(strategy)

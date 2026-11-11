@@ -446,6 +446,53 @@ def test_web_admin_can_change_password_and_create_login_link(tmp_path: Path) -> 
     scenario(test, tmp_path / "audit.jsonl")
 
 
+def test_web_strategy_configuration_and_token_revocation(tmp_path: Path) -> None:
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        url = "/ui/api/strategy-config"
+        item = {"id": "grid", "name": "网格策略"}
+        assert (await client.post(url + "/add", headers=CSRF, json=item)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        assert (await client.post(url + "/add", json=item)).status == 403
+        created = await client.post(url + "/add", headers=CSRF, json=item)
+        token = (await created.json())["data"]["token"]
+        assert created.headers["Cache-Control"] == "no-store"
+        assert not (await (await client.post(url + "/add", headers=CSRF, json=item)).json())["ok"]
+        credentials = await client.post(url + "/credentials", headers=CSRF, json=item)
+        assert (await credentials.json())["data"]["token"] == token
+        overview = await client.get("/ui/api/overview")
+        assert token not in await overview.text()
+        assert (await overview.json())["strategies"][0]["name"] == "网格策略"
+
+        old = {"Authorization": f"Bearer {token}"}
+        poll = asyncio.create_task(client.get("/v1/commands?wait=10", headers=old))
+
+        async def polling() -> None:
+            while not hub.strategies["grid"].polling:
+                await asyncio.sleep(0.01)
+
+        await asyncio.wait_for(polling(), 2)
+        rotated = await client.post(url + "/rotate", headers=CSRF, json=item)
+        new_token = (await rotated.json())["data"]["token"]
+        assert new_token != token
+        assert (await asyncio.wait_for(poll, 2)).status == 401
+        assert (await client.get("/v1/commands?wait=0", headers=old)).status == 401
+        new = {"Authorization": f"Bearer {new_token}"}
+        assert (await client.get("/v1/commands?wait=0", headers=new)).status == 200
+
+        renamed = await client.post(
+            url + "/rename", headers=CSRF, json={**item, "name": "新策略名"}
+        )
+        assert (await renamed.json())["ok"] and hub.strategies["grid"].name == "新策略名"
+        removed = await client.post(url + "/remove", headers=CSRF, json=item)
+        assert (await removed.json())["ok"] and "grid" not in hub.strategies
+        assert (await client.get("/v1/commands?wait=0", headers=new)).status == 401
+        audit = tmp_path / "audit.jsonl"
+        assert read_audit(audit, 1)[0]["action"] == "strategy_remove"
+        assert token not in audit.read_text() and new_token not in audit.read_text()
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 def test_prompt_for_ai(tmp_path: Path) -> None:
     async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
         assert (await client.get("/ui/api/prompt?id=momentum")).status == 401

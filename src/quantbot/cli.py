@@ -32,6 +32,7 @@ from quantbot.config import (
     STRATEGY_ID,
     ConfigError,
     Store,
+    add_strategy,
     check_listen,
     check_public_url,
     check_strategy_id,
@@ -41,7 +42,9 @@ from quantbot.config import (
     free_port,
     new_token,
     port_free,
+    require_strategy,
     set_web_admin,
+    strategy_item,
 )
 from quantbot.editor import EDITOR_FILE, Editor, editor_lock
 from quantbot.github import GitHubEditor
@@ -502,14 +505,11 @@ def _wait_for_message(io: Console, api: Api, token: str) -> tuple[int, str] | No
 
 def cmd_add(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     sid = check_strategy_id(args.id)
-    data = store.read()
-    items = data.setdefault("strategies", [])
-    if any(item.get("id") == sid for item in items):
+    if strategy_item(store.read(), sid):
         raise Abort(f"已经有 {sid} 了。看它的 token：quantbot token {sid}")
     name = args.name or (io.ask("显示名称", sid) if io.interactive() else sid)
-    token = new_token()
-    items.append({"id": sid, "name": name, "token": token})
-    store.write(data)
+    with store.edit() as data:
+        token = add_strategy(data, sid, name)["token"]
     io.say(f"✓ 已添加 {name}（{sid}）。把下面两行交给这个策略程序：")
     io.say()
     io.say(f"  QB_URL={api_url(store)}")
@@ -539,46 +539,37 @@ def cmd_list(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
 
 
 def cmd_token(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
-    data = store.read()
-    item = _find(data, args.id)
+    item = require_strategy(store.read(), args.id)
     if args.new:
         if not args.yes and not io.confirm(
             "旧 token 会马上失效，策略要换上新的才能连上。继续吗？", False
         ):
             return 1
-        item["token"] = new_token()
-        store.write(data)
+        with store.edit() as data:
+            item = require_strategy(data, args.id)
+            item["token"] = new_token()
         io.say(f"✓ {args.id} 的新 token：")
     io.say(f"QB_TOKEN={item['token']}")
     return 0
 
 
 def cmd_rename(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
-    data = store.read()
-    _find(data, args.id)["name"] = args.name
-    store.write(data)
+    with store.edit() as data:
+        require_strategy(data, args.id)["name"] = args.name
     io.say(f"✓ {args.id} 现在叫 {args.name}")
     return 0
 
 
 def cmd_remove(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
-    data = store.read()
-    item = _find(data, args.id)
+    item = require_strategy(store.read(), args.id)
     if not args.yes and not io.confirm(
         f"删除 {item.get('name')}（{args.id}）？它的 token 会失效。", False
     ):
         return 1
-    data["strategies"] = [s for s in data["strategies"] if s.get("id") != args.id]
-    store.write(data)
+    with store.edit() as data:
+        data["strategies"].remove(require_strategy(data, args.id))
     io.say(f"✓ 已删除 {args.id}。策略程序本身不受影响，请自己停掉它。")
     return 0
-
-
-def _find(data: dict[str, Any], sid: str) -> dict[str, Any]:
-    for item in data.get("strategies") or []:
-        if item.get("id") == sid:
-            return item
-    raise Abort(f"没有策略 {sid}。看全部：quantbot list")
 
 
 detect_service: Callable[[], Service] = Service.detect
@@ -764,22 +755,21 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
     io.say()
 
     io.say("1/3  名字")
-    items = data.setdefault("strategies", [])
     while True:
         try:
             sid = check_strategy_id(io.ask("     策略 id", args.name or project_name(project)))
             break
         except ConfigError as exc:
             io.say(f"     ✗ {exc}")
-    item = next((s for s in items if s.get("id") == sid), None)
-    name = io.ask("     在 Telegram 里显示的名字", str(item["name"]) if item else sid)
-    if item is None:
-        items.append({"id": sid, "name": name, "token": new_token()})
-        io.say(f"     ✓ 已添加 {name}")
-    else:
-        item["name"] = name
-        io.say(f"     ✓ {sid} 已经连接过，沿用它的 token")
-    store.write(data)
+    item = strategy_item(data, sid)
+    name = io.ask("     策略显示名称", str(item["name"]) if item else sid)
+    with store.edit() as data:
+        item = strategy_item(data, sid)
+        if item is None:
+            add_strategy(data, sid, name)
+        else:
+            item["name"] = name
+    io.say(f"     ✓ {sid} 已经连接过，沿用它的 token" if item else f"     ✓ 已添加 {name}")
 
     io.say()
     io.say("2/3  把客户端加进项目")

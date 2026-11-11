@@ -120,6 +120,34 @@ def set_web_admin(data: dict[str, Any], admin: dict[str, str]) -> bool:
     return True
 
 
+def strategy_item(data: dict[str, Any], sid: str) -> dict[str, Any] | None:
+    return next(
+        (
+            item
+            for item in data.get("strategies") or []
+            if isinstance(item, dict) and item.get("id") == sid
+        ),
+        None,
+    )
+
+
+def require_strategy(data: dict[str, Any], sid: str) -> dict[str, Any]:
+    item = strategy_item(data, sid)
+    if item is None:
+        raise ConfigError(f"没有策略 {sid}。")
+    return item
+
+
+def add_strategy(data: dict[str, Any], sid: str, name: str) -> dict[str, Any]:
+    if strategy_item(data, sid):
+        raise ConfigError(f"已经有策略 {sid}。")
+    item = {"id": sid, "name": name, "token": new_token()}
+    items = data.get("strategies") or []
+    items.append(item)
+    data["strategies"] = items
+    return item
+
+
 def check_strategy_id(sid: str) -> str:
     if not STRATEGY_ID.match(sid):
         raise ConfigError("id 只能用小写字母、数字、- 和 _，最多 32 个字符，例如 momentum")

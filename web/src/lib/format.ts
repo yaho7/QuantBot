@@ -39,6 +39,11 @@ const ACTIONS: Record<string, string> = {
   github: "同步 GitHub",
   password: "改管理员账号",
   web_link: "生成登录链接",
+  strategy_add: "添加策略",
+  strategy_rename: "修改策略名称",
+  strategy_remove: "移除策略",
+  strategy_credentials: "查看连接信息",
+  strategy_rotate: "换发策略令牌",
 };
 
 export function actionLabel(action: string): string {

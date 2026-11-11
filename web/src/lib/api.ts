@@ -109,6 +109,15 @@ export interface GitHubAuthorization {
   interval: number;
 }
 
+export type StrategyConfigAction = "add" | "rename" | "remove" | "credentials" | "rotate";
+
+export interface StrategyConfigResult {
+  id: string;
+  name: string;
+  token?: string;
+  url?: string;
+}
+
 interface DirectoryEntry {
   name: string;
   kind: "directory" | "file";
@@ -141,6 +150,8 @@ export const api = {
   changePassword: (body: { username: string; current: string; password: string; confirm: string }) =>
     request<Answer>("POST", "password", body),
   webLink: () => request<Answer<{ url: string }>>("POST", "web-link"),
+  strategyConfig: (action: StrategyConfigAction, id: string, name?: string) =>
+    request<Answer<StrategyConfigResult>>("POST", `strategy-config/${action}`, { id, name }),
   pauseAll: () => request<Answer>("POST", "pause-all"),
   prompt: (id: string, name: string) =>
     request<{ text: string }>("GET", `prompt?${new URLSearchParams({ id, name })}`),

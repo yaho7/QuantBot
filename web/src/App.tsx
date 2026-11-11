@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  ChevronRight, CircleDashed, Download, FileCode, LogOut, Monitor, Moon, Pause, Radio, Settings, Sparkles, Sun,
+  ChevronRight, CircleDashed, Download, FileCode, LogOut, Monitor, Moon, Pause, Plus, Radio, Settings, Sparkles, Sun,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ConfirmDialog, EmptyState, PageHeader, QueryBoundary } from "@/components/common";
 import { SettingsDialog } from "@/components/SettingsDialog";
+import { StrategyAdminDialog } from "@/components/StrategyAdminDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
 import { UpdateDialog } from "@/components/UpdateDialog";
 import { useToast } from "@/components/toast";
@@ -117,7 +118,7 @@ function OnlineBadge({ s }: { s: StrategyView }) {
   return <Badge tone="loss">离线</Badge>;
 }
 
-function StrategyCard({ s }: { s: StrategyView }) {
+function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }) {
   const [open, setOpen] = React.useState(false);
   return (
     <Card className={cn(!s.online && "opacity-80")}>
@@ -148,6 +149,7 @@ function StrategyCard({ s }: { s: StrategyView }) {
           <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
             更多操作 <ChevronRight />
           </Button>
+          <Button size="sm" variant="ghost" onClick={onManage}>管理</Button>
         </div>
       </CardContent>
       {open && <StrategyPanel s={s} open onOpenChange={setOpen} />}
@@ -193,7 +195,7 @@ function AuditLog() {
                   <Td className="num text-xs text-muted-foreground">{dateTime(r.time)}</Td>
                   <Td>{actionLabel(r.action)}</Td>
                   <Td className="font-mono text-xs">{r.strategy ?? r.strategies?.join(", ") ?? NA}</Td>
-                  <Td className="text-xs">{r.user === "web" ? "网页" : r.user ? "Telegram" : NA}</Td>
+                  <Td className="text-xs">{r.user === "web" ? "网页" : r.user === "cli" ? "终端" : r.user ? "Telegram" : NA}</Td>
                   <Td className="max-w-md whitespace-normal text-xs">
                     {r.ok === false && <Badge tone="loss" className="mr-2">失败</Badge>}
                     {r.result ?? NA}
@@ -255,6 +257,7 @@ export function App() {
   const [promptOpen, setPromptOpen] = React.useState(false);
   const [updateOpen, setUpdateOpen] = React.useState(false);
   const [editorOpen, setEditorOpen] = React.useState(false);
+  const [manage, setManage] = React.useState<StrategyView | null>();
   const [updatedFrom, setUpdatedFrom] = React.useState<string>();
   const version = update.data?.version;
   React.useEffect(() => {
@@ -271,6 +274,7 @@ export function App() {
         onVersion={() => { setSettingsOpen(false); setUpdateOpen(true); }} />}
       {updateOpen && <UpdateDialog onClose={() => setUpdateOpen(false)} onInstalled={setUpdatedFrom} />}
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
+      {manage !== undefined && <StrategyAdminDialog strategy={manage ?? undefined} onClose={() => setManage(undefined)} />}
       {editorOpen && (
         <React.Suspense fallback={
           <Dialog open onOpenChange={setEditorOpen}>
@@ -286,6 +290,7 @@ export function App() {
           description={overview.data ? `${strategies.length} 个策略，${online} 个在线 · 每 5 秒刷新` : undefined}
           actions={
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setManage(null)}><Plus /> 添加策略</Button>
               {overview.data?.editor_enabled && (
                 <Button variant="outline" onClick={() => setEditorOpen(true)}>
                   <FileCode /> 策略编辑器
@@ -305,11 +310,11 @@ export function App() {
               {data.strategies.length === 0 ? (
                 <Card>
                   <EmptyState title="还没有策略"
-                    description="在策略项目里运行 quantbot link，或点上面的“让 AI 接入策略”，把说明交给 AI。" />
+                    description="添加策略可以生成连接令牌。也可以在策略项目里运行 quantbot link。" />
                 </Card>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {data.strategies.map((s) => <StrategyCard key={s.id} s={s} />)}
+                  {data.strategies.map((s) => <StrategyCard key={s.id} s={s} onManage={() => setManage(s)} />)}
                 </div>
               )}
               <Tabs defaultValue="feed">

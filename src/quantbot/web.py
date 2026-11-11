@@ -41,10 +41,13 @@ from quantbot.config import (
     BOT_TOKEN,
     ConfigError,
     Store,
+    add_strategy,
     check_public_url,
     check_strategy_id,
     check_timezone,
     check_url,
+    new_token,
+    require_strategy,
     set_web_admin,
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
@@ -646,6 +649,56 @@ async def pause_all(request: web.Request) -> web.Response:
     return _answer(True, reply.text)
 
 
+async def strategy_config(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    body = await _args(request)
+    action = request.match_info["action"]
+    store = request.app[STORE_KEY]
+    core = request.app[CORE_KEY]
+    try:
+        snapshot = store.read()
+        public_url = check_public_url(snapshot.get("public_url")) or ""
+        listen = str(snapshot.get("listen") or "")
+        url = public_url or (f"http://{listen}" if listen.startswith("127.0.0.1:") else "")
+        sid = check_strategy_id(str(body.get("id") or ""))
+        name = str(body.get("name") or "").strip()
+        if len(name) > 64 or (action == "rename" and not name):
+            raise ConfigError("请填写 1 到 64 个字符的显示名称。")
+        if action == "credentials":
+            item = require_strategy(snapshot, sid)
+        else:
+            with store.edit() as data:
+                if action == "add":
+                    item = add_strategy(data, sid, name or sid)
+                else:
+                    item = require_strategy(data, sid)
+                    if action == "rename":
+                        item["name"] = name
+                    elif action == "rotate":
+                        item["token"] = new_token()
+                    else:
+                        data["strategies"].remove(item)
+                strategies = store.strategies(data)
+            core.hub.sync(strategies)
+    except ConfigError as exc:
+        return _answer(False, str(exc))
+    message = {
+        "add": "已添加策略。",
+        "rename": "已更新显示名称。",
+        "remove": "已移除策略，连接令牌已失效。",
+        "credentials": "已查看策略连接信息。",
+        "rotate": "已换发令牌。请用新令牌重新连接策略。",
+    }[action]
+    result = {"id": sid, "name": item["name"]}
+    if action in {"add", "credentials", "rotate"}:
+        result.update(token=item["token"], url=url)
+    core.audit.write(f"strategy_{action}", user=WEB_USER, strategy=sid, ok=True, result=message)
+    response = _answer(True, message, result)
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 async def login(request: web.Request) -> web.StreamResponse:
     cookie = request.app[AUTH_KEY].redeem(request.query.get("t", ""))
     if cookie is None:
@@ -924,6 +977,10 @@ def add_routes(
             web.get("/ui/api/overview", overview),
             web.get("/ui/api/audit", audit),
             web.post("/ui/api/pause-all", pause_all),
+            web.post(
+                "/ui/api/strategy-config/{action:add|rename|remove|credentials|rotate}",
+                strategy_config,
+            ),
             web.get("/ui/api/prompt", prompt),
             web.get("/ui/api/settings", settings_get),
             web.post("/ui/api/settings", settings_post),
