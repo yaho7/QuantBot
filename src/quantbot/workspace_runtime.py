@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 from quantbot.config import ConfigError, Store
-from quantbot.editor import Editor
 from quantbot.i18n import tr
 from quantbot.workspace import Workspace, stop_process
 
@@ -22,8 +21,9 @@ LOG_LIMIT = 65_536
 class SystemdProgram:
     """Use the system manager and journal on Linux hosts booted with systemd."""
 
-    def __init__(self, data_dir: Path) -> None:
-        instance = hashlib.sha256(str(data_dir.resolve()).encode()).hexdigest()[:16]
+    def __init__(self, data_dir: Path, root: Path | None = None) -> None:
+        identity = str(data_dir.resolve()) if root is None else f"{data_dir.resolve()}\0{root}"
+        instance = hashlib.sha256(identity.encode()).hexdigest()[:16]
         self.unit = f"quantbot-workspace-{instance}.service"
         self.stopped = False
 
@@ -121,49 +121,56 @@ class SystemdProgram:
 
 
 class WorkspaceRuntime:
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, root: Path) -> None:
         self.store = Store(data_dir, filename=RUN_FILE)
+        self.root = str(root)
         self.lock = asyncio.Lock()
         self.process: asyncio.subprocess.Process | None = None
         self.capture: asyncio.Task[None] | None = None
         self.log = bytearray()
         self.systemd = (
-            SystemdProgram(data_dir)
+            SystemdProgram(data_dir, None if self.store.read().get("root") == self.root else root)
             if Workspace.supported() and Path("/run/systemd/system").is_dir()
             else None
         )
 
-    def workspace(self) -> Workspace:
-        editor = Editor.configured(self.store.dir)
-        workspace = editor.workspace() if editor else None
-        if workspace is None:
-            raise ConfigError(tr("请先在服务器上运行 quantbot workspace init。"))
-        return workspace
-
-    def _saved(self, workspace: Workspace) -> str:
+    def _settings(self) -> dict[str, Any]:
         data = self.store.read()
-        command = data.get("command")
-        return (
-            command if data.get("root") == str(workspace.root) and isinstance(command, str) else ""
+        return data.get("workspaces", {}).get(
+            self.root, data if data.get("root") == self.root else {}
         )
+
+    def _saved(self) -> str:
+        command = self._settings().get("command")
+        return command if isinstance(command, str) else ""
+
+    def _save(self, command: str, started_at: int | None = None) -> None:
+        with self.store.edit() as data:
+            workspaces = data.setdefault("workspaces", {})
+            previous = workspaces.get(self.root, data if data.get("root") == self.root else {})
+            workspaces[self.root] = {
+                "command": command,
+                "started_at": started_at
+                if started_at is not None
+                else previous.get("started_at", 0),
+            }
 
     @property
     def running(self) -> bool:
         return self.process is not None and self.process.returncode is None
 
-    async def status(self, workspace: Workspace) -> dict[str, Any]:
+    async def status(self) -> dict[str, Any]:
         if self.systemd:
             running, exit_code = await self.systemd.state()
-            data = self.store.read()
-            since = data.get("started_at", 0) if data.get("root") == str(workspace.root) else 0
+            since = self._settings().get("started_at", 0)
             return {
-                "command": self._saved(workspace),
+                "command": self._saved(),
                 "running": running,
                 "exit_code": exit_code,
                 "logs": await self.systemd.logs(since if isinstance(since, int) else 0),
             }
         return {
-            "command": self._saved(workspace),
+            "command": self._saved(),
             "running": self.running,
             "exit_code": self.process.returncode if self.process else None,
             "logs": self.log.decode("utf-8", errors="replace"),
@@ -181,34 +188,25 @@ class WorkspaceRuntime:
             raise ConfigError(tr("请输入有效的启动命令。"))
         return arguments
 
-    async def configure(self, workspace: Workspace, command: str) -> None:
+    async def configure(self, command: str) -> None:
         running = (await self.systemd.state())[0] if self.systemd else self.running
         if running:
             raise ConfigError(tr("请先停止程序，再修改启动命令。"))
         self._arguments(command)
-        data = self.store.read()
-        self.store.write(
-            {
-                "root": str(workspace.root),
-                "command": command.strip(),
-                "started_at": data.get("started_at", 0)
-                if data.get("root") == str(workspace.root)
-                else 0,
-            }
-        )
+        self._save(command.strip())
 
     async def start(self, workspace: Workspace) -> None:
         running = (await self.systemd.state())[0] if self.systemd else self.running
         if running:
             raise ConfigError(tr("工作区程序已经在运行。"))
-        command = self._saved(workspace)
+        command = self._saved()
         if not command:
             raise ConfigError(tr("请先保存启动命令。"))
         arguments = self._arguments(command)
         if self.systemd:
             since = int(time.time())
             await self.systemd.start(workspace, arguments)
-            self.store.write({"root": str(workspace.root), "command": command, "started_at": since})
+            self._save(command, since)
             return
         await self._finish_capture()
         process = await asyncio.create_subprocess_exec(

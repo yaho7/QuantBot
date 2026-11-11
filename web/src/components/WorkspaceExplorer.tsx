@@ -1,13 +1,14 @@
 import * as Menu from "@radix-ui/react-context-menu";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, FileCode, FilePlus, Folder, FolderOpen, FolderPlus, Search } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, FileCode, FilePlus, Folder, FolderOpen, FolderPlus, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Tree, type TreeApi } from "react-arborist";
+import { useWorkspace } from "@/components/WorkspaceContext";
 import { ConfirmDialog, LoadingState } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Input } from "@/components/ui/primitives";
-import { api, type FileAction } from "@/lib/api";
+import { type FileAction } from "@/lib/api";
 import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -26,9 +27,12 @@ export function WorkspaceExplorer({ selected, onOpen, canChange, onChange, onDir
   onDirectory: (path: string) => void;
 }) {
   const qc = useQueryClient();
+  const { active, api, key, project } = useWorkspace();
   const tree = useRef<TreeApi<Entry>>(null);
   const viewport = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(320);
+  const hiddenKey = `quantbot-show-dotfiles:${project.id}`;
+  const [hidden, setHidden] = useState(() => localStorage.getItem(hiddenKey) !== "false");
   const [directories, setDirectories] = useState([""]);
   const [prompt, setPrompt] = useState<Prompt>();
   const [name, setName] = useState("");
@@ -36,11 +40,11 @@ export function WorkspaceExplorer({ selected, onOpen, canChange, onChange, onDir
   const [clipboard, setClipboard] = useState<{ path: string; action: "move" | "copy" }>();
   const [error, setError] = useState("");
   const queries = useQueries({
-    queries: directories.map((path) => ({ queryKey: ["editor", "tree", path], queryFn: () => api.editorTree(path), retry: false })),
+    queries: directories.map((path) => ({ queryKey: key("tree", path), enabled: active, queryFn: () => api.editorTree(path), retry: false })),
   });
   const children = new Map(directories.map((path, i) => [path, queries[i]?.data?.entries]));
   function entries(path: string): Entry[] {
-    return (children.get(path) ?? []).map(({ kind, name }) => {
+    return (children.get(path) ?? []).filter(({ name }) => hidden || !name.startsWith(".")).map(({ kind, name }) => {
       const id = join(path, name);
       return { id, name, children: kind === "directory" ? entries(id) : undefined };
     });
@@ -86,7 +90,7 @@ export function WorkspaceExplorer({ selected, onOpen, canChange, onChange, onDir
       }
       if (action === "move" && clipboard?.path === path) setClipboard(undefined);
       onChange(action, path, destination);
-      void qc.invalidateQueries({ queryKey: ["editor", "tree"] });
+      void qc.invalidateQueries({ queryKey: key("tree") });
       if (action === "file") onOpen(result);
     },
     onError: (err) => setError(err.message),
@@ -145,6 +149,11 @@ export function WorkspaceExplorer({ selected, onOpen, canChange, onChange, onDir
       <div className="flex items-center justify-between gap-1 border-b px-2 py-1">
         <span className="truncate text-xs text-muted-foreground" title={toolbarPath}>{toolbarPath || tr("策略文件")}</span>
         <div className="flex shrink-0">
+          <Button variant="ghost" size="icon" className="size-7" title={tr("显示隐藏文件")} aria-label={tr("显示隐藏文件")}
+            aria-pressed={hidden} onClick={() => {
+              setHidden(!hidden);
+              localStorage.setItem(hiddenKey, String(!hidden));
+            }}>{hidden ? <Eye /> : <EyeOff />}</Button>
           <Button variant="ghost" size="icon" className="size-7" title={tr("新建文件")} aria-label={tr("新建文件")}
             onClick={() => ask("file", toolbarPath)}><FilePlus /></Button>
           <Button variant="ghost" size="icon" className="size-7" title={tr("新建文件夹")} aria-label={tr("新建文件夹")}
@@ -173,7 +182,7 @@ export function WorkspaceExplorer({ selected, onOpen, canChange, onChange, onDir
                 }}
                 onActivate={(node) => { if (node.isLeaf) onOpen(node.id); }}
                 disableDrop={({ parentNode, dragNodes }) =>
-                  dragNodes.length !== 1 || parentOf(dragNodes[0]?.id ?? "") === (parentNode.data.id ?? "")}
+                  dragNodes.length !== 1 || parentOf(dragNodes[0]?.id ?? "") === (parentNode.isRoot ? "" : parentNode.id)}
                 onMove={({ dragIds, parentId }) => {
                   const path = dragIds[0];
                   if (path) changePath("move", path, join(parentId ?? "", nameOf(path)));
@@ -234,17 +243,19 @@ export function WorkspaceExplorer({ selected, onOpen, canChange, onChange, onDir
 }
 
 export function WorkspaceSearch({ onOpen }: { onOpen: (path: string, line?: number) => void }) {
+  const { active, api, key } = useWorkspace();
   const [text, setText] = useState("");
   const [content, setContent] = useState(false);
+  const [ignored, setIgnored] = useState(false);
   const [term, setTerm] = useState("");
   useEffect(() => {
     const timer = window.setTimeout(() => setTerm(text.trim()), 250);
     return () => window.clearTimeout(timer);
   }, [text]);
   const results = useQuery({
-    queryKey: ["editor", "search", term, content],
-    queryFn: () => api.searchWorkspace(term, content),
-    enabled: !!term,
+    queryKey: key("search", term, content, ignored),
+    queryFn: () => api.searchWorkspace(term, content, ignored),
+    enabled: active && !!term,
     retry: false,
   });
   return (
@@ -258,6 +269,10 @@ export function WorkspaceSearch({ onOpen }: { onOpen: (path: string, line?: numb
         <Button size="sm" variant={content ? "ghost" : "secondary"} onClick={() => setContent(false)}>{tr("文件名")}</Button>
         <Button size="sm" variant={content ? "secondary" : "ghost"} onClick={() => setContent(true)}>{tr("文件内容")}</Button>
       </div>
+      <label className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
+        <input type="checkbox" checked={ignored} onChange={(event) => setIgnored(event.target.checked)} />
+        {tr("包含被忽略的文件")}
+      </label>
       {term && results.isPending && <LoadingState rows={2} />}
       {results.error && <Alert tone="loss">{results.error.message}</Alert>}
       {results.data?.length === 0 && <p className="px-1 text-xs text-muted-foreground">{tr("没有匹配结果")}</p>}

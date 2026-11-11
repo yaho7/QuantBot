@@ -3,6 +3,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { RefreshCw, SquareTerminal } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useWorkspace } from "@/components/WorkspaceContext";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card } from "@/components/ui/primitives";
 import { tr } from "@/lib/i18n";
@@ -15,6 +16,7 @@ export default function WorkspaceTerminal({ path }: { path: string }) {
 }
 
 function TerminalSession({ path, onReconnect }: { path: string; onReconnect: () => void }) {
+  const { project } = useWorkspace();
   const host = useRef<HTMLDivElement>(null);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [latency, setLatency] = useState<number>();
@@ -36,6 +38,7 @@ function TerminalSession({ path, onReconnect }: { path: string; onReconnect: () 
     observer.observe(document.documentElement, { attributeFilter: ["class"] });
 
     const url = new URL("/ui/api/workspace/terminal", location.href);
+    url.searchParams.set("workspace", project.id);
     if (path) url.searchParams.set("path", path);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url);
@@ -100,7 +103,7 @@ function TerminalSession({ path, onReconnect }: { path: string; onReconnect: () 
       input.dispose();
       terminal.dispose();
     };
-  }, [path]);
+  }, [path, project.id]);
 
   const status = {
     connecting: tr("正在连接…"),

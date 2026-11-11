@@ -23,7 +23,7 @@ from quantbot.hub import Hub
 from quantbot.server import make_app
 from quantbot.updates import Installed, Updater
 from quantbot.web import COOKIE, Feed, WebAuth, add_routes, login_url, read_audit, static_dir
-from quantbot.workspace import Workspace
+from quantbot.workspace import WORKSPACE_FILE, Workspace, workspace_id
 
 SECRET = "s" * 32
 BOT = "123456789:" + "A" * 35
@@ -724,6 +724,58 @@ def test_web_workspace_can_create_and_select_a_directory(
         assert (await result.json())["ok"]
         overview = await (await client.get("/ui/api/overview")).json()
         assert overview["workspace_managed"] and overview["editor_enabled"]
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
+def test_workspaces_keep_file_and_program_state_separate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = tmp_path / "settings"
+    first, second = tmp_path / "first", tmp_path / "second"
+    for root in (first, second):
+        root.mkdir()
+        (root / ".gitignore").write_text(".env\n")
+        (root / ".env").write_text(root.name)
+    Editor.enable(state, str(first))
+    Store(state, filename=WORKSPACE_FILE).write(
+        {"root": str(first), "roots": [str(first), str(second)]}
+    )
+    monkeypatch.setattr(Editor, "workspace", lambda self: Workspace(self.root, 123, 123, tmp_path))
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        assert (await client.get("/ui/api/workspaces")).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        listing = (await (await client.get("/ui/api/workspaces")).json())["data"]["projects"]
+        assert [item["id"] for item in listing] == [workspace_id(first), workspace_id(second)]
+        for root in (first, second):
+            params = {"workspace": workspace_id(root)}
+            tree = await (await client.get("/ui/api/editor/tree", params=params)).json()
+            assert {item["name"] for item in tree["data"]["entries"]} == {".gitignore", ".env"}
+            file = await (
+                await client.get("/ui/api/editor/file", params={**params, "path": ".env"})
+            ).json()
+            assert file["data"]["content"] == root.name
+            program = "/ui/api/workspace/program"
+            assert (
+                await (
+                    await client.post(
+                        program + "/configure",
+                        params=params,
+                        headers=CSRF,
+                        json={"command": f"echo {root.name}"},
+                    )
+                ).json()
+            )["ok"]
+        for root in (first, second):
+            status = await (
+                await client.get(program, params={"workspace": workspace_id(root)})
+            ).json()
+            assert status["data"]["command"] == f"echo {root.name}"
+        unknown = await (
+            await client.get("/ui/api/editor/tree", params={"workspace": str(first)})
+        ).json()
+        assert not unknown["ok"]
 
     scenario(test, tmp_path / "audit.jsonl")
 

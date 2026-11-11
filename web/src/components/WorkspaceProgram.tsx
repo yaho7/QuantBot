@@ -4,13 +4,14 @@ import { useState } from "react";
 import { QueryBoundary } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input } from "@/components/ui/primitives";
-import { api } from "@/lib/api";
+import { useWorkspace } from "@/components/WorkspaceContext";
 import { tr } from "@/lib/i18n";
 
 export function WorkspaceProgram() {
   const qc = useQueryClient();
-  const key = ["workspace", "program"];
-  const status = useQuery({ queryKey: key, queryFn: api.workspaceProgram, refetchInterval: 2_000 });
+  const { active, api, key: workspaceKey } = useWorkspace();
+  const key = workspaceKey("program");
+  const status = useQuery({ queryKey: key, queryFn: api.workspaceProgram, enabled: active, refetchInterval: active ? 2_000 : false });
   const [draft, setDraft] = useState<string>();
   const change = useMutation({
     mutationFn: ({ action, command }: { action: "configure" | "start" | "stop"; command?: string }) =>

@@ -59,7 +59,13 @@ from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable, wait_until_ready
 from quantbot.uninstall import UninstallPlan
 from quantbot.updates import Updater, installed, update_label
-from quantbot.workspace import DEFAULT_ROOT, WORKSPACE_FILE, Workspace
+from quantbot.workspace import (
+    DEFAULT_ROOT,
+    WORKSPACE_FILE,
+    Workspace,
+    workspace_id,
+    workspace_projects,
+)
 
 OWNER_WAIT = 120
 
@@ -631,7 +637,9 @@ def cmd_password(store: Store, io: Console, api: Api, args: argparse.Namespace) 
     return 0
 
 
-def _print_web_link(store: Store, io: Console, *, workspace: bool = False) -> None:
+def _print_web_link(
+    store: Store, io: Console, *, workspace: bool = False, project: str = ""
+) -> None:
     from quantbot.web import WebAuth, login_url
 
     listen = store.ensure_listen()
@@ -639,7 +647,7 @@ def _print_web_link(store: Store, io: Console, *, workspace: bool = False) -> No
     public_url = check_public_url(store.read().get("public_url"))
     io.say(tr("一次性登录链接，不用密码，5 分钟内有效，只能用一次："))
     token = WebAuth(store.web_secret()).link_token()
-    io.say(f"  {login_url(listen, token, public_url, workspace=workspace)}")
+    io.say(f"  {login_url(listen, token, public_url, workspace=workspace, project=project)}")
     if public_url:
         return
     if host in {ANY_HOST, "::", ""}:
@@ -882,7 +890,7 @@ def cmd_editor(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
 
 
 def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
-    github = GitHubEditor(store.dir)
+    github = GitHubEditor(store.dir, args.project)
     action = args.github_action
     if action in {"login", "bind"}:
         if not github.status()["account"]:
@@ -1090,8 +1098,12 @@ def cmd_web(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
 
 
 def cmd_workspace(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    if args.workspace_action == "list":
+        for project in workspace_projects(store.dir):
+            io.rows([(project["id"], project["path"])])
+        return 0
     if args.workspace_action == "git":
-        git = GitHubEditor(store.dir)
+        git = GitHubEditor(store.dir, args.project)
         action = args.git_action
         if action == "commit":
             revision = git.commit(args.paths, args.message)
@@ -1122,7 +1134,10 @@ def cmd_workspace(store: Store, io: Console, api: Api, args: argparse.Namespace)
             raise Abort(tr("初始化工作区超时，请在服务器上重试。")) from exc
         io.status("ok", tr("工作区已初始化。"))
         io.rows([(tr("工作区"), str(workspace.root))])
-    _print_web_link(store, io, workspace=True)
+        args.project = workspace_id(workspace.root)
+    if args.project:
+        Editor.for_project(store.dir, args.project)
+    _print_web_link(store, io, workspace=True, project=args.project)
     return 0
 
 
@@ -1143,6 +1158,7 @@ def cmd_workspace_program(store: Store, io: Console, args: argparse.Namespace) -
         "Cookie": f"{COOKIE}={WebAuth(store.web_secret()).session()}",
         CSRF_HEADER: "1",
         "Content-Type": "application/json",
+        "X-QuantBot-Workspace": args.project,
     }
     try:
         connection.request(method, path, body=body, headers=headers)
@@ -1316,6 +1332,12 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     editor_actions.add_parser("off", help=tr("关闭编辑器"))
     editor_actions.add_parser("status", help=tr("查看编辑目录"))
     github = editor_actions.add_parser("github", help=tr("绑定 GitHub 策略仓库并同步"))
+    github.add_argument(
+        "--workspace",
+        dest="project",
+        default="",
+        help=tr("工作区 ID，可用 quantbot workspace list 查看"),
+    )
     github.set_defaults(fn=cmd_editor_github)
     github_actions = github.add_subparsers(dest="github_action", required=True)
     bind = github_actions.add_parser("bind", help=tr("用 GitHub 设备授权绑定仓库"))
@@ -1334,7 +1356,14 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     sub.add_parser("web", description=tr("打印一次性的网页登录链接")).set_defaults(fn=cmd_web)
     workspace = sub.add_parser("workspace", description=tr("打开和初始化网页工作区"))
     workspace.set_defaults(fn=cmd_workspace)
+    workspace.add_argument(
+        "--workspace",
+        dest="project",
+        default="",
+        help=tr("工作区 ID，可用 quantbot workspace list 查看"),
+    )
     workspace_actions = workspace.add_subparsers(dest="workspace_action")
+    workspace_actions.add_parser("list", help=tr("列出工作区"))
     init = workspace_actions.add_parser("init", help=tr("在 Linux 服务器上初始化工作区"))
     init.add_argument("--root", default=str(DEFAULT_ROOT), help=tr("空的工作区目录"))
     git = workspace_actions.add_parser("git", help=tr("查看和提交本地 Git 改动"))

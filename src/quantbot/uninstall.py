@@ -41,13 +41,14 @@ STATE_FILES = {
     USED_LINKS_FILE,
     WORKSPACE_FILE,
     RUN_FILE,
+    f".{RUN_FILE}.lock",
     "editor.lock",
     f".{FILE_NAME}.lock",
     f".{USED_LINKS_FILE}.lock",
     f".{EDITOR_FILE}.lock",
     f".{GITHUB_FILE}.lock",
 }
-TEMP_STATE = re.compile(r"\.(?:quantbot|update)-[a-z0-9_]{8}")
+TEMP_STATE = re.compile(r"(?:\.(?:quantbot|update)-[a-z0-9_]{8}|editor-[a-f0-9]{24}\.lock)")
 
 
 def _running_instance(directory: Path) -> bool:

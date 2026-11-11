@@ -52,13 +52,21 @@ from quantbot.config import (
     set_web_admin,
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
-from quantbot.editor import EDITOR_FILE, Editor, EditorError, editor_lock
+from quantbot.editor import EDITOR_FILE, Editor, editor_lock
 from quantbot.github import DEVICE_URL, DeviceLogin, GitHubEditor
 from quantbot.hub import Hub, Result
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
 from quantbot.service import Service, ServiceError
 from quantbot.updates import Updater
-from quantbot.workspace import WORKSPACE_FILE, web_create_directory, web_directories, web_initialize
+from quantbot.workspace import (
+    WORKSPACE_FILE,
+    registered_roots,
+    web_create_directory,
+    web_directories,
+    web_initialize,
+    workspace_id,
+    workspace_projects,
+)
 from quantbot.workspace_files import WorkspaceChanges, search
 from quantbot.workspace_runtime import WorkspaceRuntime
 from quantbot.workspace_terminal import TerminalProcess
@@ -203,13 +211,21 @@ class WebAuth:
 
 
 def login_url(
-    listen: str, token: str, public_url: str | None = None, *, workspace: bool = False
+    listen: str,
+    token: str,
+    public_url: str | None = None,
+    *,
+    workspace: bool = False,
+    project: str = "",
 ) -> str:
     host, _, port = listen.rpartition(":")
     host = "127.0.0.1" if host in {"0.0.0.0", "::", ""} else host  # noqa: S104
     origin = public_url or f"http://{host}:{port}"
     view = "&view=workspace" if workspace else ""
-    return f"{origin}/ui/login?t={token}{view}"
+    project_query = (
+        f"&workspace={project}" if workspace and re.fullmatch(r"[a-f0-9]{24}", project) else ""
+    )
+    return f"{origin}/ui/login?t={token}{view}{project_query}"
 
 
 # ---------------------------------------------------------------- handlers
@@ -337,7 +353,7 @@ async def command(request: web.Request) -> web.Response:
 
 STORE_KEY = web.AppKey("web_store", Store)
 TELEGRAM_KEY = web.AppKey("web_telegram", object)  # cli.telegram, replaced in tests
-EDITOR_LOCK = web.AppKey("web_editor_lock", asyncio.Lock)
+EDITOR_LOCK = web.AppKey("web_editor_locks", dict)
 
 
 @dataclass
@@ -349,7 +365,7 @@ class GitHubActions:
 
 GITHUB_KEY = web.AppKey("web_github", GitHubActions)
 TERMINALS_KEY = web.AppKey("web_workspace_terminals", set)
-RUNTIME_KEY = web.AppKey("web_workspace_runtime", WorkspaceRuntime)
+RUNTIME_KEY = web.AppKey("web_workspace_runtimes", dict)
 CHANGES_KEY = web.AppKey("web_workspace_changes", WorkspaceChanges)
 CHANGES_CLOSING_KEY = web.AppKey("web_workspace_changes_closing", asyncio.Event)
 
@@ -364,11 +380,26 @@ async def _bot_call(request: web.Request, token: str, method: str, **params: Any
     return await loop.run_in_executor(None, lambda: call(token, method, **params))
 
 
-def _editor(store: Store) -> Editor:
-    editor = Editor.configured(store.dir)
-    if editor is None:
-        raise EditorError(tr("网页策略编辑器已关闭。"))
-    return editor
+def _project(request: web.Request) -> str:
+    return request.headers.get("X-QuantBot-Workspace") or request.query.get("workspace", "")
+
+
+def _editor(request: web.Request) -> Editor:
+    return Editor.for_project(request.app[STORE_KEY].dir, _project(request))
+
+
+def _edit_lock(request: web.Request, editor: Editor) -> asyncio.Lock:
+    return request.app[EDITOR_LOCK].setdefault(editor.root, asyncio.Lock())
+
+
+async def workspace_list(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    try:
+        projects = await asyncio.to_thread(workspace_projects, request.app[STORE_KEY].dir)
+        return _answer(True, "", {"projects": projects})
+    except ConfigError as exc:
+        return _answer(False, str(exc))
 
 
 async def workspace_setup(request: web.Request) -> web.Response:
@@ -400,7 +431,7 @@ async def workspace_setup(request: web.Request) -> web.Response:
         else:
             workspace = await asyncio.to_thread(web_initialize, directory, path)
             message = tr("工作区已初始化。")
-            data = {"path": str(workspace.root)}
+            data = {"path": str(workspace.root), "id": workspace_id(workspace.root)}
     except ConfigError as exc:
         message = str(exc)
     except subprocess.TimeoutExpired:
@@ -426,13 +457,13 @@ async def workspace_terminal(request: web.Request) -> web.StreamResponse:
     if origin not in allowed:
         return _answer(False, tr("终端连接必须来自 QuantBot 网页。"))
     terminals = request.app[TERMINALS_KEY]
-    if len(terminals) >= 4:
+    if len(terminals) >= 12:
         return _answer(False, tr("打开的终端过多，请先关闭一个。"))
     socket = web.WebSocketResponse(heartbeat=25, max_msg_size=65_536, compress=False)
     if not socket.can_prepare(request).ok:
         return _answer(False, tr("终端需要 WebSocket 连接。"))
     try:
-        editor = _editor(store)
+        editor = _editor(request)
         workspace = editor.workspace()
         if workspace is None:
             raise ConfigError(tr("请先在服务器上运行 quantbot workspace init。"))
@@ -510,20 +541,26 @@ async def _close_terminals(app: web.Application) -> None:
 async def workspace_program(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
-    runtime = request.app[RUNTIME_KEY]
     action = request.match_info.get("action", "")
     audit = request.app[CORE_KEY].audit
     try:
+        editor = _editor(request)
+        workspace = editor.workspace()
+        if workspace is None:
+            raise ConfigError(tr("请先在服务器上运行 quantbot workspace init。"))
+        runtimes = request.app[RUNTIME_KEY]
+        runtime = runtimes.get(editor.root)
+        if runtime is None:
+            runtime = runtimes[editor.root] = WorkspaceRuntime(editor.data_dir, editor.root)
         if not action:
-            return _answer(True, "", await runtime.status(runtime.workspace()))
+            return _answer(True, "", await runtime.status())
         body = await _args(request)
         async with runtime.lock:
-            workspace = runtime.workspace()
             if action == "configure":
                 command = body.get("command")
                 if not isinstance(command, str):
                     return _answer(False, tr("请输入有效的启动命令。"))
-                await runtime.configure(workspace, command)
+                await runtime.configure(command)
                 message = tr("启动命令已保存。")
             elif action == "start":
                 await runtime.start(workspace)
@@ -531,30 +568,32 @@ async def workspace_program(request: web.Request) -> web.Response:
             else:
                 await runtime.stop()
                 message = tr("已停止工作区程序。")
-            status = await runtime.status(workspace)
+            status = await runtime.status()
     except (ConfigError, OSError, asyncio.TimeoutError) as exc:
         if action:
             audit.write(f"workspace_{action}", user=WEB_USER, ok=False, result=str(exc))
         return _answer(False, str(exc))
-    audit.write(f"workspace_{action}", user=WEB_USER, ok=True, result=message)
+    audit.write(
+        f"workspace_{action}", user=WEB_USER, ok=True, project=str(editor.root), result=message
+    )
     return _answer(True, message, status)
 
 
 async def _stop_workspace_program(app: web.Application) -> None:
-    runtime = app[RUNTIME_KEY]
-    async with runtime.lock:
-        if runtime.store.path.exists():
+    async def stop(runtime: WorkspaceRuntime) -> None:
+        async with runtime.lock:
             await runtime.stop()
+
+    await asyncio.gather(*(stop(runtime) for runtime in app[RUNTIME_KEY].values()))
 
 
 async def editor_read(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
-    store = request.app[STORE_KEY]
     path = request.query.get("path", "")
 
     def read() -> dict[str, Any]:
-        editor = _editor(store)
+        editor = _editor(request)
         if request.match_info["kind"] == "tree":
             return {"entries": editor.entries(path)}
         return asdict(editor.read(path))
@@ -570,17 +609,21 @@ async def editor_read(request: web.Request) -> web.Response:
 async def editor_save(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
-    store = request.app[STORE_KEY]
     body = await _args(request)
     path, content, revision = body.get("path"), body.get("content"), body.get("revision")
     if not all(isinstance(value, str) for value in (path, content, revision)):
         return _answer(False, tr("请选择文件并确认要保存的改动。"))
 
-    def save() -> dict[str, str]:
-        with editor_lock(store.dir):
-            return asdict(_editor(store).save(path, content, revision))
+    try:
+        editor = _editor(request)
+    except ConfigError as exc:
+        return _answer(False, str(exc))
 
-    async with request.app[EDITOR_LOCK]:
+    def save() -> dict[str, str]:
+        with editor_lock(editor.data_dir, editor.root):
+            return asdict(editor.save(path, content, revision))
+
+    async with _edit_lock(request, editor):
         try:
             result = await asyncio.to_thread(save)
             ok, message = True, tr("文件已保存。")
@@ -597,18 +640,22 @@ async def editor_save(request: web.Request) -> web.Response:
 async def editor_change(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
-    store = request.app[STORE_KEY]
     body = await _args(request)
     action = request.match_info["action"]
     path, destination = body.get("path"), body.get("destination", "")
     if not isinstance(path, str) or not isinstance(destination, str):
         return _answer(False, tr("请选择编辑目录内的相对路径。"))
 
-    def change() -> None:
-        with editor_lock(store.dir):
-            _editor(store).change(action, path, destination)
+    try:
+        editor = _editor(request)
+    except ConfigError as exc:
+        return _answer(False, str(exc))
 
-    async with request.app[EDITOR_LOCK]:
+    def change() -> None:
+        with editor_lock(editor.data_dir, editor.root):
+            editor.change(action, path, destination)
+
+    async with _edit_lock(request, editor):
         try:
             await asyncio.to_thread(change)
         except FileExistsError:
@@ -635,9 +682,16 @@ async def editor_search(request: web.Request) -> web.Response:
     if not query or len(query) > 200 or "\0" in query:
         return _answer(True, "", [])
     try:
-        editor = await asyncio.to_thread(_editor, request.app[STORE_KEY])
+        editor = await asyncio.to_thread(_editor, request)
         return _answer(
-            True, "", await search(editor, query, request.query.get("mode") == "content")
+            True,
+            "",
+            await search(
+                editor,
+                query,
+                request.query.get("mode") == "content",
+                ignored=request.query.get("ignored") == "true",
+            ),
         )
     except ConfigError as exc:
         return _answer(False, str(exc))
@@ -649,7 +703,7 @@ async def editor_events(request: web.Request) -> web.StreamResponse:
     if (denied := _need_login(request)) is not None:
         return denied
     try:
-        editor = await asyncio.to_thread(_editor, request.app[STORE_KEY])
+        editor = await asyncio.to_thread(_editor, request)
     except ConfigError as exc:
         return _answer(False, str(exc))
     response = web.StreamResponse(
@@ -692,8 +746,11 @@ async def github_get(request: web.Request) -> web.Response:
 async def local_git(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
-    actions = request.app[GITHUB_KEY]
-    git = actions.editor
+    try:
+        editor = _editor(request)
+    except ConfigError as exc:
+        return _answer(False, str(exc))
+    git = GitHubEditor(editor.data_dir, _project(request))
     operation = request.match_info.get("action", "")
     if request.method == "GET":
         try:
@@ -710,7 +767,7 @@ async def local_git(request: web.Request) -> web.Response:
             return _answer(False, str(exc))
     body = await _args(request)
     audit = request.app[CORE_KEY].audit
-    async with actions.lock:
+    async with _edit_lock(request, editor):
         try:
             if operation in {"stage", "unstage", "commit"}:
                 paths = body.get("paths", [])
@@ -786,7 +843,12 @@ async def github_post(request: web.Request) -> web.Response:
                 repo = body.get("repo")
                 if not isinstance(repo, str):
                     return _answer(False, tr("请选择 GitHub 已授权的仓库。"))
-                data = await asyncio.to_thread(actions.editor.select, repo)
+                git = (
+                    GitHubEditor(request.app[STORE_KEY].dir, _project(request))
+                    if _project(request)
+                    else actions.editor
+                )
+                data = await asyncio.to_thread(git.select, repo)
                 audit.write("github", user=WEB_USER, ok=True, operation="clone", repo=repo)
                 return _answer(True, "", data)
             if actions.pending:
@@ -941,7 +1003,7 @@ async def service_restart(request: web.Request) -> web.Response:
         return _answer(False, tr("请在服务器上重启当前运行的 QuantBot。"))
     if (
         actions.lock.locked()
-        or request.app[EDITOR_LOCK].locked()
+        or any(lock.locked() for lock in request.app[EDITOR_LOCK].values())
         or request.app[GITHUB_KEY].lock.locked()
     ):
         return _answer(False, tr("有更新或文件操作正在进行，请稍后再试。"))
@@ -1153,7 +1215,11 @@ async def login(request: web.Request) -> web.StreamResponse:
             ),
         )
     workspace = request.query.get("view") == "workspace"
-    redirect = web.HTTPFound("/ui/?view=workspace" if workspace else "/ui/")
+    project = request.query.get("workspace", "")
+    target = "/ui/?view=workspace" if workspace else "/ui/"
+    if workspace and re.fullmatch(r"[a-f0-9]{24}", project):
+        target += f"&workspace={project}"
+    redirect = web.HTTPFound(target)
     public_url = check_public_url(request.app[STORE_KEY].read().get("public_url"))
     _set_session(redirect, cookie, secure=_secure_session(request, public_url))
     raise redirect
@@ -1313,13 +1379,13 @@ async def overview(request: web.Request) -> web.Response:
     feed = list(request.app[FEED_KEY].items)[::-1]
     directory = request.app[STORE_KEY].dir
     editor_root = Store(directory, filename=EDITOR_FILE).read().get("root")
-    managed_root = Store(directory, filename=WORKSPACE_FILE).read().get("root")
+    managed_roots = registered_roots(Store(directory, filename=WORKSPACE_FILE).read())
     return web.json_response(
         {
             "strategies": strategies,
             "feed": feed,
             "editor_enabled": bool(editor_root),
-            "workspace_managed": bool(editor_root and editor_root == managed_root),
+            "workspace_managed": bool(editor_root and Path(editor_root) in managed_roots),
         }
     )
 
@@ -1424,10 +1490,10 @@ def add_routes(
     app[FEED_KEY] = feed
     app[AUDIT_KEY] = audit_path
     app[UPDATE_KEY] = UpdateActions(updater or Updater(store.dir), restart)
-    app[EDITOR_LOCK] = asyncio.Lock()
+    app[EDITOR_LOCK] = {}
     app[GITHUB_KEY] = GitHubActions(GitHubEditor(store.dir))
     app[TERMINALS_KEY] = set()
-    app[RUNTIME_KEY] = WorkspaceRuntime(store.dir)
+    app[RUNTIME_KEY] = {}
     app[CHANGES_KEY] = WorkspaceChanges()
     app[CHANGES_CLOSING_KEY] = asyncio.Event()
     app.on_shutdown.append(_close_workspace_changes)
@@ -1466,6 +1532,7 @@ def add_routes(
             web.get("/ui/api/editor/github", github_get),
             web.get("/ui/api/editor/git", local_git),
             web.get("/ui/api/workspace/terminal", workspace_terminal),
+            web.get("/ui/api/workspaces", workspace_list),
             web.get("/ui/api/workspace/directories", workspace_setup),
             web.post("/ui/api/workspace/{action:folder|init}", workspace_setup),
             web.get("/ui/api/workspace/program", workspace_program),

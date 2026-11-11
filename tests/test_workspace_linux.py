@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from quantbot.workspace import Workspace, web_create_directory, web_initialize
+from quantbot.workspace import Workspace, web_create_directory, web_initialize, workspace_projects
 from quantbot.workspace_terminal import TerminalProcess
 
 
@@ -53,6 +53,10 @@ def test_linux_workspace_uses_an_unprivileged_controlling_terminal(
             os.umask(mask)
         workspace = web_initialize(data_dir, "repo")
         assert workspace.root.stat().st_uid == account.pw_uid
+        assert web_create_directory(data_dir, "", "second") == "second"
+        second = web_initialize(data_dir, "second")
+        assert Workspace.configured(data_dir, second.root) == second
+        assert [project["name"] for project in workspace_projects(data_dir)] == ["repo", "second"]
 
         async def verify() -> None:
             terminal = await TerminalProcess.start(workspace)

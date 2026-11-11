@@ -64,13 +64,12 @@ class DeviceLogin:
 
 
 class GitHubEditor:
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, project: str = "") -> None:
         self.data_dir = data_dir
+        self.project = project
 
     def _editor(self) -> Editor:
-        editor = Editor.configured(self.data_dir)
-        if editor is None:
-            raise ConfigError(tr("请先初始化工作区。"))
+        editor = Editor.for_project(self.data_dir, self.project)
         if editor.data_dir.is_relative_to(editor.root):
             raise ConfigError(tr("请选择 QuantBot 数据目录之外的 Git 仓库。"))
         if not editor.root.is_dir() or editor.root.resolve() != editor.root:
@@ -199,8 +198,8 @@ class GitHubEditor:
     def select(self, repo: str) -> dict[str, Any]:
         if not SLUG.fullmatch(repo) or repo.split("/")[1] in {".", ".."}:
             raise ConfigError(tr("请选择 GitHub 已授权的仓库。"))
-        with editor_lock(self.data_dir):
-            editor = self._editor()
+        editor = self._editor()
+        with editor_lock(self.data_dir, editor.root):
             if any(editor.root.iterdir()):
                 if self._repository(editor) and self._origin(editor).casefold() == repo.casefold():
                     self.setup_git()
@@ -329,8 +328,8 @@ class GitHubEditor:
         return self._local_status(self._editor())
 
     def initialize(self) -> dict[str, Any]:
-        with editor_lock(self.data_dir):
-            editor = self._editor()
+        editor = self._editor()
+        with editor_lock(self.data_dir, editor.root):
             if not self._repository(editor):
                 if (editor.root / ".git").exists() or (editor.root / ".git").is_symlink():
                     raise ConfigError(tr("请选择 Git 仓库的根目录。"))
@@ -349,8 +348,8 @@ class GitHubEditor:
         return files
 
     def stage(self, paths: list[str], staged: bool) -> dict[str, Any]:
-        with editor_lock(self.data_dir):
-            editor = self._editor()
+        editor = self._editor()
+        with editor_lock(self.data_dir, editor.root):
             self._validate_paths(editor, paths)
             if staged:
                 self._git(editor, "add", "--", *paths)
@@ -398,8 +397,8 @@ class GitHubEditor:
         message = message.strip()
         if not message or len(message) > 1000 or "\0" in message:
             raise ConfigError(tr("请填写有效的提交说明。"))
-        with editor_lock(self.data_dir):
-            editor = self._editor()
+        editor = self._editor()
+        with editor_lock(self.data_dir, editor.root):
             self._require_repo(editor)
             files = {row["path"]: row["status"] for row in self._local_status(editor)["files"]}
             if paths:
@@ -440,8 +439,8 @@ class GitHubEditor:
         return {"current": self._branch(editor), "branches": sorted(names, key=str.casefold)}
 
     def switch(self, branch: str) -> dict[str, Any]:
-        with editor_lock(self.data_dir):
-            editor = self._editor()
+        editor = self._editor()
+        with editor_lock(self.data_dir, editor.root):
             status = self._local_status(editor)
             self._require_repo(editor)
             if not branch or branch.startswith("-") or branch not in self.branches()["branches"]:
@@ -452,8 +451,8 @@ class GitHubEditor:
             return self._local_status(editor)
 
     def sync(self, action: str) -> dict[str, Any]:
-        with editor_lock(self.data_dir):
-            editor = self._editor()
+        editor = self._editor()
+        with editor_lock(self.data_dir, editor.root):
             status = self._local_status(editor)
             if not status["remote"]:
                 raise ConfigError(tr("请先在工作区配置 Git 远端。"))

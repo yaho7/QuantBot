@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import shutil
 import signal
@@ -22,6 +23,43 @@ WORKSPACE_USER = "quantbot-workspace"
 WORKSPACE_HOME = Path("/var/lib/quantbot-workspace")
 DEFAULT_ROOT = Path("/srv/quantbot/strategies")
 WEB_ROOT = DEFAULT_ROOT.parent
+
+
+def workspace_id(root: Path) -> str:
+    return hashlib.sha256(os.fsencode(root)).hexdigest()[:24]
+
+
+def registered_roots(data: dict[str, Any]) -> list[Path]:
+    roots = data.get("roots")
+    values = [data.get("root"), *(roots if isinstance(roots, list) else [])]
+    return list(
+        dict.fromkeys(
+            Path(value)
+            for value in values
+            if isinstance(value, str)
+            and Path(value).is_absolute()
+            and ".." not in Path(value).parts
+        )
+    )
+
+
+def workspace_projects(data_dir: Path) -> list[dict[str, Any]]:
+    from quantbot.editor import Editor
+
+    editor = Editor.configured(data_dir)
+    if not editor:
+        return []
+    managed = registered_roots(Store(data_dir, filename=WORKSPACE_FILE).read())
+    return [
+        {
+            "id": workspace_id(root),
+            "path": str(root),
+            "name": root.name or str(root),
+            "managed": root in managed and Workspace.supported(),
+            "default": root == editor.root,
+        }
+        for root in dict.fromkeys([editor.root, *managed])
+    ]
 
 
 def _web_parts(path: str) -> list[str]:
@@ -55,7 +93,9 @@ def _make_web_directory(fd: int, name: str) -> None:
 
 
 @contextmanager
-def _web_directory(parts: list[str], *, create_base: bool = False) -> Iterator[int]:
+def _web_directory(
+    parts: list[str], *, create_base: bool = False, owner: int | None = None
+) -> Iterator[int]:
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     if create_base:
         parent = os.open(WEB_ROOT.parent.parent, flags)
@@ -71,11 +111,13 @@ def _web_directory(parts: list[str], *, create_base: bool = False) -> Iterator[i
         if create_base:
             with suppress(FileExistsError):
                 _make_web_directory(fd, WEB_ROOT.name)
-        for name in [WEB_ROOT.name, *parts]:
+        for index, name in enumerate([WEB_ROOT.name, *parts]):
             next_fd = os.open(name, flags, dir_fd=fd)
             os.close(fd)
             fd = next_fd
-            if not _protected(os.fstat(fd)):
+            info = os.fstat(fd)
+            owned_leaf = bool(parts) and index == len(parts) and info.st_uid == owner
+            if not _protected(info) and not owned_leaf:
                 raise ConfigError(tr("目录需要由 QuantBot 服务账号管理。"))
         yield fd
     finally:
@@ -93,28 +135,40 @@ def web_directories(data_dir: Path, path: str) -> dict[str, Any]:
     supported = Workspace.supported()
     if not supported:
         return {"supported": False}
-    saved = Store(data_dir, filename=WORKSPACE_FILE).read().get("root")
-    if isinstance(saved, str) and saved:
-        return {"supported": True, "configured": saved}
     parts = _web_parts(path)
     location = _web_location(data_dir, parts)
+    registered = registered_roots(Store(data_dir, filename=WORKSPACE_FILE).read())
+    owner = _workspace_owner()
     folders = []
     empty = True
+    owned = False
     try:
-        with _web_directory(parts) as fd, os.scandir(fd) as entries:
+        with _web_directory(parts, owner=owner) as fd, os.scandir(fd) as entries:
+            owned = os.fstat(fd).st_uid == owner
             for entry in entries:
                 empty = False
-                if (
-                    not entry.name.startswith(".")
-                    and entry.is_dir(follow_symlinks=False)
-                    and _protected(entry.stat(follow_symlinks=False))
-                    and not (location / entry.name).is_relative_to(data_dir.resolve())
-                ):
+                if entry.name.startswith(".") or not entry.is_dir(follow_symlinks=False):
+                    continue
+                info = entry.stat(follow_symlinks=False)
+                if (_protected(info) or info.st_uid == owner) and not (
+                    location / entry.name
+                ).is_relative_to(data_dir.resolve()):
                     folders.append(entry.name)
     except FileNotFoundError:
         if parts:
             raise
-    return {"supported": True, "base": str(WEB_ROOT), "folders": sorted(folders), "empty": empty}
+    overlaps = any(
+        root != location and (root.is_relative_to(location) or location.is_relative_to(root))
+        for root in registered
+    )
+    return {
+        "supported": True,
+        "base": str(WEB_ROOT),
+        "folders": sorted(folders, key=str.casefold),
+        "empty": empty,
+        "selectable": bool(parts) and not overlaps and (empty or owned),
+        "can_create": not owned and not any(location.is_relative_to(root) for root in registered),
+    }
 
 
 def web_create_directory(data_dir: Path, path: str, name: str) -> str:
@@ -127,8 +181,12 @@ def web_create_directory(data_dir: Path, path: str, name: str) -> str:
 
     _web_location(data_dir, parts + child)
     with editor_lock(data_dir):
-        if Store(data_dir, filename=WORKSPACE_FILE).read().get("root"):
-            raise ConfigError(tr("工作区已经初始化。"))
+        location = WEB_ROOT.joinpath(*parts, name)
+        if any(
+            location.is_relative_to(root)
+            for root in registered_roots(Store(data_dir, filename=WORKSPACE_FILE).read())
+        ):
+            raise ConfigError(tr("请在已打开的工作区中管理它的子目录。"))
         try:
             with _web_directory(parts, create_base=True) as fd:
                 _make_web_directory(fd, name)
@@ -141,16 +199,21 @@ def web_initialize(data_dir: Path, path: str) -> Workspace:
     if not Workspace.supported():
         raise ConfigError(tr("请在 Linux 服务器上以 root 初始化工作区。"))
     saved = Store(data_dir, filename=WORKSPACE_FILE).read().get("root")
-    if saved:
-        if path or not isinstance(saved, str):
-            raise ConfigError(tr("工作区已经初始化。"))
+    if not path and isinstance(saved, str) and saved:
         return Workspace.initialize(data_dir, Path(saved))
     parts = _web_parts(path)
     if not parts:
         raise ConfigError(tr("请选择一个工作区文件夹。"))
     location = _web_location(data_dir, parts)
-    with _web_directory(parts):
+    with _web_directory(parts, owner=_workspace_owner()):
         return Workspace.initialize(data_dir, location)
+
+
+def _workspace_owner() -> int | None:
+    try:
+        return Workspace._account().pw_uid
+    except ConfigError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -167,7 +230,7 @@ class Workspace:
     @classmethod
     def configured(cls, data_dir: Path, root: Path) -> Workspace | None:
         data = Store(data_dir, filename=WORKSPACE_FILE).read()
-        if data.get("root") != str(root):
+        if root not in registered_roots(data):
             return None
         if not cls.supported():
             raise ConfigError(tr("工作区运行需要 Linux 上以 root 运行的 QuantBot 服务。"))
@@ -202,19 +265,19 @@ class Workspace:
             raise ConfigError(tr("请选择 QuantBot 数据目录之外的策略文件夹。"))
         store = Store(data_dir, filename=WORKSPACE_FILE)
         with editor_lock(data_dir):
-            saved_root = store.read().get("root")
-            if saved_root and saved_root != str(root):
-                raise ConfigError(tr("工作区已配置为 {0}。", saved_root))
+            state = store.read()
+            roots = registered_roots(state)
             if current := cls.configured(data_dir, root):
-                editor.write_config()
+                if not Editor.configured(data_dir):
+                    editor.write_config()
                 return current
+            if any(root.is_relative_to(other) or other.is_relative_to(root) for other in roots):
+                raise ConfigError(tr("工作区目录不能与已注册的项目重叠。"))
             if not shutil.which("setpriv", path=os.defpath) or not shutil.which(
                 "setsid", path=os.defpath
             ):
                 raise ConfigError(tr("请先安装 util-linux，再初始化工作区。"))
             root.mkdir(parents=True, exist_ok=True, mode=0o750)
-            if any(root.iterdir()):
-                raise ConfigError(tr("请为工作区选择空目录。已有策略仓库可以在初始化后绑定。"))
             import pwd
 
             try:
@@ -245,6 +308,10 @@ class Workspace:
                         tr("无法创建工作区系统账号：{0}", done.stderr.strip())
                     ) from None
             account = cls._account()
+            if roots and (state.get("uid"), state.get("gid")) != (account.pw_uid, account.pw_gid):
+                raise ConfigError(tr("工作区系统账号已变更，请在服务器上检查配置。"))
+            if root.stat().st_uid != account.pw_uid and any(root.iterdir()):
+                raise ConfigError(tr("请选择空目录，或由工作区账号拥有的现有项目目录。"))
             current = cls(root, account.pw_uid, account.pw_gid, Path(account.pw_dir))
             options = {**current.process_options(), "cwd": "/"}
             accessible = subprocess.run(  # noqa: S603
@@ -261,8 +328,16 @@ class Workspace:
             with editor._directory([]) as fd:
                 os.fchown(fd, account.pw_uid, account.pw_gid)
                 os.fchmod(fd, 0o750)
-            store.write({"root": str(root), "uid": account.pw_uid, "gid": account.pw_gid})
-            editor.write_config()
+            store.write(
+                {
+                    "root": str(roots[0] if roots else root),
+                    "roots": [str(item) for item in (*roots, root)],
+                    "uid": account.pw_uid,
+                    "gid": account.pw_gid,
+                }
+            )
+            if not Editor.configured(data_dir):
+                editor.write_config()
         return current
 
     def command(self, args: list[str]) -> list[str]:

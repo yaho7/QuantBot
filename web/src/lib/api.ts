@@ -119,9 +119,16 @@ export interface WorkspaceProgramStatus {
   logs: string;
 }
 
+export interface WorkspaceProject {
+  id: string;
+  path: string;
+  name: string;
+  managed: boolean;
+  default: boolean;
+}
+
 type WorkspaceDirectories = { supported: false }
-  | { supported: true; configured: string }
-  | { supported: true; base: string; folders: string[]; empty: boolean };
+  | { supported: true; base: string; folders: string[]; selectable: boolean; can_create: boolean };
 
 export interface GitHubAuthorization {
   url: string;
@@ -192,31 +199,14 @@ export const api = {
   service: (kind: "status" | "logs") =>
     answerData<ServiceDiagnostics>("GET", `service/${kind}`),
   restartService: () => request<Answer>("POST", "service/restart"),
-  editorTree: (path: string) =>
-    answerData<{ entries: DirectoryEntry[] }>("GET", `editor/tree?${new URLSearchParams({ path })}`),
-  editorFile: (path: string) =>
-    answerData<SourceFile>("GET", `editor/file?${new URLSearchParams({ path })}`),
-  saveEditorFile: (file: SourceFile & { path: string }) =>
-    answerData<SourceFile>("POST", "editor/file", file),
-  changeEditorPath: (action: FileAction, path: string, destination?: string) =>
-    answerData<{ path: string }>("POST", `editor/files/${action}`, { path, destination }),
-  searchWorkspace: (q: string, content: boolean) =>
-    answerData<{ path: string; line?: number; text?: string }[]>(
-      "GET", `editor/search?${new URLSearchParams({ q, mode: content ? "content" : "name" })}`,
-    ),
   githubStatus: () => answerData<GitHubStatus>("GET", "editor/github"),
-  gitStatus: () => answerData<LocalGitStatus>("GET", "editor/git"),
-  gitCommit: (paths: string[], message: string) =>
-    answerData<{ revision: string }>("POST", "editor/git/commit", { paths, message }),
-  workspaceProgram: () => answerData<WorkspaceProgramStatus>("GET", "workspace/program"),
+  workspaceProjects: () => answerData<{ projects: WorkspaceProject[] }>("GET", "workspaces"),
   workspaceDirectories: (path: string) =>
     answerData<WorkspaceDirectories>("GET", `workspace/directories?${new URLSearchParams({ path })}`),
   createWorkspaceFolder: (path: string, name: string) =>
     answerData<{ path: string }>("POST", "workspace/folder", { path, name }),
   initializeWorkspace: (path: string) =>
-    answerData<{ path: string }>("POST", "workspace/init", { path }),
-  changeWorkspaceProgram: (action: "configure" | "start" | "stop", command?: string) =>
-    answerData<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
+    answerData<{ path: string; id: string }>("POST", "workspace/init", { path }),
   githubBind: () => answerData<GitHubAuthorization>("POST", "editor/github/bind"),
   githubAuthorize: (state: string) =>
     answerData<{ ready: boolean }>("POST", "editor/github/authorize", { state }),
@@ -224,17 +214,45 @@ export const api = {
   githubLogout: () => answerData<null>("POST", "editor/github/logout"),
   githubRepositories: () =>
     answerData<{ repositories: GitHubRepository[] }>("POST", "editor/github/repositories"),
-  githubSelect: (repo: string) =>
-    answerData<LocalGitStatus>("POST", "editor/github/select", { repo }),
-  gitBranches: () => answerData<{ current: string; branches: string[] }>("GET", "editor/git/branches"),
-  gitDiff: (path: string, staged: boolean) =>
-    answerData<{ before: string; after: string }>(
-      "GET", `editor/git/diff?${new URLSearchParams({ path, staged: String(staged) })}`,
-    ),
-  gitAction: (action: GitAction, body?: { paths?: string[]; branch?: string }) =>
-    answerData<LocalGitStatus>("POST", `editor/git/${action}`, body),
   saveSettings: (body: Partial<Record<keyof Settings | "token" | "remove_telegram", unknown>>) =>
     request<Answer>("POST", "settings", body),
   command: <T = unknown>(sid: string, name: Command, args: Record<string, unknown> = {}) =>
     request<Answer<T>>("POST", `strategies/${encodeURIComponent(sid)}/${name}`, args),
 };
+
+
+export function workspaceApi(project: string) {
+  const data = <T,>(method: string, path: string, body?: unknown) => {
+    const scope = new URLSearchParams({ workspace: project });
+    return answerData<T>(method, `${path}${path.includes("?") ? "&" : "?"}${scope}`, body);
+  };
+  return {
+    editorTree: (path: string) =>
+      data<{ entries: DirectoryEntry[] }>("GET", `editor/tree?${new URLSearchParams({ path })}`),
+    editorFile: (path: string) =>
+      data<SourceFile>("GET", `editor/file?${new URLSearchParams({ path })}`),
+    saveEditorFile: (file: SourceFile & { path: string }) =>
+      data<SourceFile>("POST", "editor/file", file),
+    changeEditorPath: (action: FileAction, path: string, destination?: string) =>
+      data<{ path: string }>("POST", `editor/files/${action}`, { path, destination }),
+    searchWorkspace: (q: string, content: boolean, ignored: boolean) =>
+      data<{ path: string; line?: number; text?: string }[]>(
+        "GET", `editor/search?${new URLSearchParams({ q, mode: content ? "content" : "name", ignored: String(ignored) })}`,
+      ),
+    gitStatus: () => data<LocalGitStatus>("GET", "editor/git"),
+    gitCommit: (paths: string[], message: string) =>
+      data<{ revision: string }>("POST", "editor/git/commit", { paths, message }),
+    workspaceProgram: () => data<WorkspaceProgramStatus>("GET", "workspace/program"),
+    changeWorkspaceProgram: (action: "configure" | "start" | "stop", command?: string) =>
+      data<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
+    githubSelect: (repo: string) =>
+      data<LocalGitStatus>("POST", "editor/github/select", { repo }),
+    gitBranches: () => data<{ current: string; branches: string[] }>("GET", "editor/git/branches"),
+    gitDiff: (path: string, staged: boolean) =>
+      data<{ before: string; after: string }>(
+        "GET", `editor/git/diff?${new URLSearchParams({ path, staged: String(staged) })}`,
+      ),
+    gitAction: (action: GitAction, body?: { paths?: string[]; branch?: string }) =>
+      data<LocalGitStatus>("POST", `editor/git/${action}`, body),
+  };
+}

@@ -5,13 +5,14 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { ConfirmDialog, EmptyState, LoadingState } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
 import { WorkspaceExplorer, WorkspaceSearch } from "@/components/WorkspaceExplorer";
+import { useWorkspace } from "@/components/WorkspaceContext";
 import { WorkspaceGit } from "@/components/WorkspaceGit";
 import { WorkspaceProgram } from "@/components/WorkspaceProgram";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert } from "@/components/ui/primitives";
-import { api, type FileAction, type SourceFile } from "@/lib/api";
+import { type FileAction, type SourceFile } from "@/lib/api";
 import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +21,9 @@ const StrategyCodeEditor = lazy(() => import("@/components/StrategyCodeEditor"))
 const WorkspaceDiff = lazy(() => import("@/components/WorkspaceDiff"));
 const under = (path: string, folder: string) => path === folder || path.startsWith(folder + "/");
 
-export default function WorkspaceEditor({ managed }: { managed: boolean }) {
+export default function WorkspaceEditor({ onDirty }: { onDirty: (dirty: boolean) => void }) {
+  const { project, active: visible, api, key } = useWorkspace();
+  const managed = project.managed;
   const toast = useToast();
   const qc = useQueryClient();
   const [tabs, setTabs] = useState<string[]>([]);
@@ -30,13 +33,14 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const [sidebar, setSidebar] = useState<"files" | "search" | "git">("files");
   const [review, setReview] = useState(false);
   const [discard, setDiscard] = useState<{ path: string; close: boolean }>();
-  const [githubOpen, setGithubOpen] = useState(() => new URLSearchParams(window.location.search).has("github"));
+  const [githubOpen, setGithubOpen] = useState(() => visible && new URLSearchParams(window.location.search).has("github"));
   const [directory, setDirectory] = useState("");
   const [terminalPath, setTerminalPath] = useState<string>();
   const [programOpen, setProgramOpen] = useState(false);
   const dirty = Object.keys(drafts).length > 0;
   const files = useQueries({ queries: tabs.map((path) => ({
-    queryKey: ["editor", "file", path],
+    queryKey: key("file", path),
+    enabled: visible,
     queryFn: () => api.editorFile(path),
     retry: false,
   })) });
@@ -47,15 +51,15 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const conflicted = !!draft && (fileQuery?.isError || (disk && disk.revision !== draft.base.revision));
 
   const refresh = useCallback(() => {
-    for (const key of ["tree", "file", "search", "git"]) {
-      void qc.invalidateQueries({ queryKey: ["editor", key] });
-    }
-  }, [qc]);
+    void qc.invalidateQueries({ queryKey: key() });
+  }, [qc, key]);
   useEffect(() => {
-    const events = new EventSource("/ui/api/editor/events");
+    if (!visible) return;
+    const events = new EventSource(`/ui/api/editor/events?${new URLSearchParams({ workspace: project.id })}`);
     events.onmessage = refresh;
     return () => events.close();
-  }, [refresh]);
+  }, [refresh, visible, project.id]);
+  useEffect(() => { onDirty(dirty); }, [dirty, onDirty]);
   useEffect(() => {
     if (!dirty) return;
     function warn(event: BeforeUnloadEvent) { event.preventDefault(); }
@@ -81,7 +85,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const save = useMutation({
     mutationFn: api.saveEditorFile,
     onSuccess: (source, { path }) => {
-      qc.setQueryData(["editor", "file", path], source);
+      qc.setQueryData(key("file", path), source);
       dropDraft(path);
       setReview(false);
       toast.success(tr("文件已保存。"));
@@ -225,11 +229,11 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
           if (discard?.close) close(discard.path);
           else if (discard) {
             dropDraft(discard.path);
-            void qc.invalidateQueries({ queryKey: ["editor", "file", discard.path] });
+            void qc.invalidateQueries({ queryKey: key("file", discard.path) });
           }
           setDiscard(undefined);
         }} />
-      {githubOpen && <GitHubDialog onClose={() => {
+      {githubOpen && <GitHubDialog project={project.id} onClose={() => {
         setGithubOpen(false);
         const url = new URL(window.location.href);
         if (url.searchParams.has("github")) {

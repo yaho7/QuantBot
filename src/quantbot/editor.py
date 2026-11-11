@@ -14,7 +14,7 @@ from pathlib import Path
 
 from quantbot.config import ConfigError, Store
 from quantbot.i18n import tr
-from quantbot.workspace import Workspace
+from quantbot.workspace import Workspace, workspace_id, workspace_projects
 
 EDITOR_FILE = "editor.json"
 MAX_FILE = 256 * 1024
@@ -31,14 +31,15 @@ class SourceFile:
 
 
 @contextmanager
-def editor_lock(data_dir: Path) -> Iterator[None]:
+def editor_lock(data_dir: Path, root: Path | None = None) -> Iterator[None]:
     """Serialize editor changes from the server and CLI."""
     if os.name != "posix":
         raise EditorError(tr("网页策略编辑器支持 Linux 和 macOS。"))
     import fcntl
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    with (data_dir / "editor.lock").open("a") as lock:
+    name = f"editor-{workspace_id(root)}.lock" if root else "editor.lock"
+    with (data_dir / name).open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
 
@@ -56,6 +57,17 @@ class Editor:
     def configured(cls, data_dir: Path) -> Editor | None:
         root = Store(data_dir, filename=EDITOR_FILE).read().get("root")
         return cls(Path(root), data_dir) if isinstance(root, str) and root else None
+
+    @classmethod
+    def for_project(cls, data_dir: Path, project: str = "") -> Editor:
+        if project:
+            for item in workspace_projects(data_dir):
+                if item["id"] == project:
+                    return cls(Path(item["path"]), data_dir)
+            raise EditorError(tr("找不到此工作区。请从工作区列表重新打开。"))
+        if editor := cls.configured(data_dir):
+            return editor
+        raise EditorError(tr("网页策略编辑器已关闭。"))
 
     @classmethod
     def enable(cls, data_dir: Path, path: str) -> Path:

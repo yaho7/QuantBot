@@ -8,12 +8,10 @@ import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
 import { SettingsPage } from "@/components/SettingsPage";
-import { WorkspaceSetup } from "@/components/WorkspaceSetup";
 import { StrategyAdminDialog } from "@/components/StrategyAdminDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Table, Td, Th,
 } from "@/components/ui/primitives";
@@ -29,7 +27,7 @@ const THEME_LABEL = { light: tr("浅色"), dark: tr("深色"), system: tr("跟�
 
 const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "loss" } as const;
 const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
-const WorkspaceEditor = React.lazy(() => import("@/components/WorkspaceEditor"));
+const WorkspaceWorkbench = React.lazy(() => import("@/components/WorkspaceWorkbench"));
 
 type View = "strategies" | "workspace" | "settings";
 
@@ -289,7 +287,6 @@ export function App() {
   const logout = useMutation({ mutationFn: api.logout, onSettled: () => location.reload() });
   const [promptOpen, setPromptOpen] = React.useState(false);
   const [manage, setManage] = React.useState<StrategyView | null>();
-  const [workspaceSetup, setWorkspaceSetup] = React.useState(false);
   const [updatedFrom, setUpdatedFrom] = React.useState<string>();
   const version = update.data?.version;
   React.useEffect(() => {
@@ -303,36 +300,14 @@ export function App() {
       <TopBar onLogout={() => logout.mutate()} view={overview.data ? view : undefined} />
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       {manage !== undefined && <StrategyAdminDialog strategy={manage ?? undefined} onClose={() => setManage(undefined)} />}
-      <main className="view-enter mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8">
+      <main className={cn("view-enter mx-auto px-5 pb-16 pt-10 sm:px-8", view === "workspace" ? "max-w-[100rem]" : "max-w-6xl")}>
         {view === "settings" ? (
           <QueryBoundary query={overview}>
             {() => <SettingsPage update={update.data} onInstalled={setUpdatedFrom} />}
           </QueryBoundary>
         ) : view === "workspace" ? (
-          <>
-            <PageHeader title={tr("工作区")} actions={
-              overview.data?.editor_enabled && !overview.data.workspace_managed
-                ? <Button variant="outline" onClick={() => setWorkspaceSetup(true)}>{tr("初始化工作区")}</Button>
-                : undefined
-            } />
-            {workspaceSetup && (
-              <Dialog open onOpenChange={setWorkspaceSetup}>
-                <DialogContent title={tr("初始化工作区")}
-                  description={tr("初始化后，网页将打开所选目录。")}>
-                  <WorkspaceSetup onDone={() => setWorkspaceSetup(false)} />
-                </DialogContent>
-              </Dialog>
-            )}
-            <QueryBoundary query={overview}>
-              {(data) => data.editor_enabled ? (
-                <React.Suspense fallback={<LoadingState />}>
-                  <WorkspaceEditor managed={data.workspace_managed} />
-                </React.Suspense>
-              ) : (
-                <Card className="max-w-2xl p-5"><WorkspaceSetup /></Card>
-              )}
-            </QueryBoundary>
-          </>
+          overview.data ? <React.Suspense fallback={<LoadingState />}><WorkspaceWorkbench /></React.Suspense>
+            : <QueryBoundary query={overview}>{() => null}</QueryBoundary>
         ) : <>
           <PageHeader
             title={tr("策略")}

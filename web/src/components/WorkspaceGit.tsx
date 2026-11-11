@@ -1,37 +1,39 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownToLine, ArrowUpFromLine, GitBranch, Minus, Plus, RefreshCw } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
+import { useWorkspace } from "@/components/WorkspaceContext";
 import { ConfirmDialog, LoadingState, QueryBoundary } from "@/components/common";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Alert, Input, Select } from "@/components/ui/primitives";
-import { api, type GitAction, type LocalGitStatus } from "@/lib/api";
+import { type GitAction, type LocalGitStatus } from "@/lib/api";
 import { tr } from "@/lib/i18n";
 
-const key = ["editor", "git"];
 const WorkspaceDiff = lazy(() => import("@/components/WorkspaceDiff"));
 
 export function WorkspaceGit({ dirty, onConnect, onChanged }: {
   dirty: boolean; onConnect: () => void; onChanged: () => void;
 }) {
+  const { active, api, key: workspaceKey } = useWorkspace();
+  const key = workspaceKey("git");
   const toast = useToast();
   const qc = useQueryClient();
   const [message, setMessage] = useState("");
   const [branchOpen, setBranchOpen] = useState(false);
   const [diff, setDiff] = useState<{ path: string; staged: boolean }>();
   const [confirm, setConfirm] = useState<"pull" | "push">();
-  const status = useQuery({ queryKey: key, queryFn: api.gitStatus, retry: false });
+  const status = useQuery({ queryKey: key, queryFn: api.gitStatus, enabled: active, retry: false });
   const branches = useQuery({
     queryKey: [...key, "branches"],
     queryFn: api.gitBranches,
-    enabled: branchOpen,
+    enabled: active && branchOpen,
     retry: false,
   });
   const difference = useQuery({
     queryKey: [...key, "diff", diff?.path, diff?.staged],
     queryFn: () => api.gitDiff(diff!.path, diff!.staged),
-    enabled: !!diff,
+    enabled: active && !!diff,
     retry: false,
   });
   const change = useMutation({

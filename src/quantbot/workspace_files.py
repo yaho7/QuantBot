@@ -55,11 +55,15 @@ class WorkspaceChanges:
         await asyncio.gather(*(task for task, _ in self._watchers.values()), return_exceptions=True)
 
 
-async def search(editor: Editor, query: str, content: bool) -> list[dict[str, str | int]]:
+async def search(
+    editor: Editor, query: str, content: bool, *, ignored: bool = False
+) -> list[dict[str, str | int]]:
     rg = shutil.which("rg")
     if not rg:
         raise EditorError(tr("请在服务器上安装 ripgrep 后使用搜索。"))
     args = [rg, "--null", "--hidden", "--glob", "!.git", "--glob", "!.git/**"]
+    if ignored:
+        args.append("--no-ignore")
     if editor.data_dir.is_relative_to(editor.root):
         protected = editor.data_dir.relative_to(editor.root).as_posix()
         args.extend(["--glob", f"!/{protected}", "--glob", f"!/{protected}/**"])

@@ -6,12 +6,12 @@ import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Alert, Field, Input, Select } from "@/components/ui/primitives";
-import { api, type GitHubAuthorization } from "@/lib/api";
+import { api, workspaceApi, type GitHubAuthorization } from "@/lib/api";
 import { tr } from "@/lib/i18n";
 
 const statusKey = ["editor", "github"];
 
-export function GitHubDialog({ onClose, onChanged }: { onClose: () => void; onChanged: () => void }) {
+export function GitHubDialog({ project = "", onClose, onChanged }: { project?: string; onClose: () => void; onChanged: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
   const [authorization, setAuthorization] = useState<GitHubAuthorization>();
@@ -44,7 +44,7 @@ export function GitHubDialog({ onClose, onChanged }: { onClose: () => void; onCh
     onSettled: () => setAuthorization(undefined),
   });
   const clone = useMutation({
-    mutationFn: api.githubSelect,
+    mutationFn: workspaceApi(project).githubSelect,
     onSuccess: () => {
       onChanged();
       toast.success(tr("GitHub 仓库已就绪。"));

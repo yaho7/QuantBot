@@ -7,7 +7,7 @@ import { Alert, Field, Input } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { tr } from "@/lib/i18n";
 
-export function WorkspaceSetup({ onDone }: { onDone?: () => void }) {
+export function WorkspaceSetup({ onDone }: { onDone?: (project: string) => void }) {
   const qc = useQueryClient();
   const [path, setPath] = useState("");
   const [adding, setAdding] = useState(false);
@@ -28,11 +28,9 @@ export function WorkspaceSetup({ onDone }: { onDone?: () => void }) {
   });
   const initialize = useMutation({
     mutationFn: api.initializeWorkspace,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["overview"] });
-      void qc.invalidateQueries({ queryKey: ["editor"] });
-      void qc.invalidateQueries({ queryKey: ["workspace", "directories"] });
-      onDone?.();
+    onSuccess: async ({ id }) => {
+      await qc.invalidateQueries({ queryKey: ["workspace"] });
+      onDone?.(id);
     },
   });
   const busy = create.isPending || initialize.isPending;
@@ -57,18 +55,11 @@ export function WorkspaceSetup({ onDone }: { onDone?: () => void }) {
       <QueryBoundary query={dirs}>
         {(data) => !data.supported ? (
           <Alert tone="info">{tr("网页初始化适用于以 root 运行的 Linux 服务器。其他环境可用 quantbot editor on --root 选择编辑目录。")}</Alert>
-        ) : "configured" in data ? (
-          <>
-            <code className="break-all text-sm">{data.configured}</code>
-            <Button className="w-fit" loading={initialize.isPending} onClick={() => initialize.mutate("")}>
-              {tr("打开已初始化的工作区")}
-            </Button>
-          </>
         ) : (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <code className="min-w-0 break-all rounded-md bg-muted px-2 py-1 text-xs">{data.base}{path && `/${path}`}</code>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => { create.reset(); setAdding(!adding); }}>
+              <Button size="sm" variant="outline" disabled={busy || !data.can_create} onClick={() => { create.reset(); setAdding(!adding); }}>
                 <FolderPlus /> {tr("新建文件夹")}
               </Button>
             </div>
@@ -97,10 +88,10 @@ export function WorkspaceSetup({ onDone }: { onDone?: () => void }) {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-muted-foreground">
-                {path && !data.empty ? tr("请进入或新建一个空文件夹。") : tr("选择一个空文件夹作为工作区。")}
+                {path && !data.selectable ? tr("请选择空目录或工作区账号拥有的项目目录。") : tr("选择要打开的项目目录。")}
               </p>
-              <Button disabled={!path || !data.empty || busy} loading={initialize.isPending}
-                onClick={() => initialize.mutate(path)}>{tr("初始化此文件夹")}</Button>
+              <Button disabled={!data.selectable || busy} loading={initialize.isPending}
+                onClick={() => initialize.mutate(path)}>{tr("打开此文件夹")}</Button>
             </div>
           </>
         )}
