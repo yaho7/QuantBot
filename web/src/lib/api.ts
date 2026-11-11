@@ -87,6 +87,8 @@ export const api = {
     request<Answer>("POST", "login", { username, password }),
   logout: () => request<{ ok: boolean }>("POST", "logout"),
   pauseAll: () => request<Answer>("POST", "pause-all"),
+  prompt: (id: string, name: string) =>
+    request<{ text: string }>("GET", `prompt?${new URLSearchParams({ id, name })}`),
   settings: () => request<Settings>("GET", "settings"),
   saveSettings: (body: Partial<Record<keyof Settings | "token" | "remove_telegram", unknown>>) =>
     request<Answer>("POST", "settings", body),

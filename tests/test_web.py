@@ -175,6 +175,20 @@ def test_password_login_and_lock(tmp_path: Path) -> None:
     scenario(test, tmp_path / "audit.jsonl")
 
 
+def test_prompt_for_ai(tmp_path: Path) -> None:
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        assert (await client.get("/ui/api/prompt?id=momentum")).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}", allow_redirects=False)
+        text = (await (await client.get("/ui/api/prompt?id=momentum")).json())["text"]
+        assert 'QuantBot("momentum", display_name="动量")' in text  # the registered name
+        assert "m" * 20 not in text  # never the token
+        named = await client.get("/ui/api/prompt", params={"id": "grid", "name": "网格"})
+        assert 'display_name="网格"' in (await named.json())["text"]
+        assert (await client.get("/ui/api/prompt?id=Bad")).status == 400
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 def test_page_is_served_and_paths_stay_inside(tmp_path: Path) -> None:
     async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
         root = await client.get("/", allow_redirects=False)

@@ -140,6 +140,7 @@ with qb:                               # 出错会推送报错，再抛出
 | `quantbot setup` | 改设置：地址、网页管理员、Telegram、心跳 |
 | `quantbot password` | 改网页管理员的用户名和密码 |
 | `quantbot link [文件夹]` | 连接一个策略项目 |
+| `quantbot prompt [id]` | 打印一段给 AI 的说明：项目地址和具体接法，不含 token。网页上是“让 AI 接入策略”和“复制给 AI” |
 | `quantbot list` | 列出策略 |
 | `quantbot rename <id> <名字>` | 改显示名称 |
 | `quantbot remove <id>` | 删除策略 |

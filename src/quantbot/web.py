@@ -36,7 +36,14 @@ from typing import Any
 
 from aiohttp import web
 
-from quantbot.config import BOT_TOKEN, ConfigError, Store, check_timezone, check_url
+from quantbot.config import (
+    BOT_TOKEN,
+    ConfigError,
+    Store,
+    check_strategy_id,
+    check_timezone,
+    check_url,
+)
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
 from quantbot.hub import Hub, Result
 
@@ -381,6 +388,22 @@ async def settings_post(request: web.Request) -> web.Response:
     return _answer(True, f"已保存。{note}".strip())
 
 
+async def prompt(request: web.Request) -> web.Response:
+    """GET /ui/api/prompt?id=momentum&name=动量 -> the "copy for AI" message."""
+    from quantbot.prompt import ai_prompt
+
+    if (denied := _need_login(request)) is not None:
+        return denied
+    sid = request.query.get("id", "")
+    try:
+        check_strategy_id(sid)
+    except ConfigError as exc:
+        return web.json_response({"ok": False, "error": str(exc)}, status=400)
+    known = request.app[CORE_KEY].hub.strategies.get(sid)
+    name = request.query.get("name", "").strip()[:64] or (known.name if known else sid)
+    return web.json_response({"text": ai_prompt(sid, name)})
+
+
 async def pause_all(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
@@ -565,6 +588,7 @@ def add_routes(
             web.get("/ui/api/overview", overview),
             web.get("/ui/api/audit", audit),
             web.post("/ui/api/pause-all", pause_all),
+            web.get("/ui/api/prompt", prompt),
             web.get("/ui/api/settings", settings_get),
             web.post("/ui/api/settings", settings_post),
             web.post("/ui/api/strategies/{sid}/{command}", command),

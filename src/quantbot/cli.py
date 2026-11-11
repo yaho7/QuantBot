@@ -44,6 +44,7 @@ from quantbot.config import (
     port_free,
 )
 from quantbot.notices import parse_quiet
+from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable
 
 OWNER_WAIT = 120
@@ -625,9 +626,6 @@ def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
 
 # ---------------------------------------------------------------- link
 
-CLIENT_GIT = "git+https://github.com/yaho7/QuantBot#subdirectory=client"
-CLIENT_REQUIREMENT = f"quantbot-client @ {CLIENT_GIT}"
-
 
 def client_source() -> str:
     """The client file shipped inside the package (or next to it in a checkout)."""
@@ -747,8 +745,20 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
     io.say()
     io.say(f"然后照常运行：cd {project} && {run_command(project)}")
     io.say(
-        "在 Telegram 里发 /menu 就能看到它。不用填 token，客户端会自己找到这台机器上的 QuantBot。"
+        "在网页或 Telegram 的 /menu 里就能看到它。"
+        "不用填 token，客户端会自己找到这台机器上的 QuantBot。"
     )
+    io.say()
+    io.say(f"想让 AI 帮你接：运行 quantbot prompt {sid}，把输出整段贴给 AI。")
+    return 0
+
+
+def cmd_prompt(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
+    """Print the "copy for AI" message, so `quantbot prompt momentum | pbcopy` works."""
+    sid = check_strategy_id(args.id or project_name(Path.cwd()))
+    known = next((s for s in store.read().get("strategies") or [] if s.get("id") == sid), None)
+    name = args.name or (str(known.get("name")) if known else sid)
+    io.say(ai_prompt(sid, name).rstrip("\n"))
     return 0
 
 
@@ -784,6 +794,10 @@ def parser() -> argparse.ArgumentParser:
     link.add_argument("path", nargs="?", default=".", help="项目文件夹，默认当前文件夹")
     link.add_argument("--name", help="策略 id，默认用文件夹名")
     link.set_defaults(fn=cmd_link)
+    prompt = sub.add_parser("prompt", help="打印一段给 AI 的说明，让它帮你把程序接进来")
+    prompt.add_argument("id", nargs="?", help="策略 id，默认用当前文件夹名")
+    prompt.add_argument("--name", help="显示名称")
+    prompt.set_defaults(fn=cmd_prompt)
     sub.add_parser("update", help="更新到最新版并重启后台服务").set_defaults(fn=cmd_update)
     sub.add_parser("web", help="打印一次性的网页登录链接").set_defaults(fn=cmd_web)
     sub.add_parser("password", help="改网页管理员的用户名和密码").set_defaults(fn=cmd_password)

@@ -366,3 +366,18 @@ def test_random_port_is_picked_once_and_env_wins(tmp_path: Path) -> None:
     assert store.ensure_listen({"QB_LISTEN": "127.0.0.1:30001"}) == "127.0.0.1:30001"
     with pytest.raises(ConfigError):
         store.ensure_listen({"QB_LISTEN": "nope"})
+
+
+def test_prompt_for_ai_has_links_and_the_way_in_but_no_token(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    run(store, ["setup"], SETUP)
+    run(store, ["add", "momentum", "--name", "动量策略"])
+    token = store.read()["strategies"][0]["token"]
+    code, io = run(store, ["prompt", "momentum"])
+    text = io.text()
+    assert code == 0
+    assert "https://github.com/yaho7/QuantBot" in text and "quantbot_client.py" in text
+    assert 'QuantBot("momentum", display_name="动量策略")' in text
+    assert "qb.process()" in text and "qb.can_open()" in text and "quantbot token momentum" in text
+    assert token not in text and BOT not in text
+    assert run(store, ["prompt", "Bad Id"])[0] == 1

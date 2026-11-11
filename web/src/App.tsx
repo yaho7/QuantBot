@@ -1,6 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, CircleDashed, LogOut, Monitor, Moon, Pause, Radio, Settings, Sun } from "lucide-react";
+import {
+  ChevronRight, CircleDashed, LogOut, Monitor, Moon, Pause, Radio, Settings, Sparkles, Sun,
+} from "lucide-react";
 import * as React from "react";
+import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ConfirmDialog, EmptyState, PageHeader, QueryBoundary } from "@/components/common";
 import { SettingsDialog } from "@/components/SettingsDialog";
@@ -234,6 +237,7 @@ export function App() {
   const overview = useQuery({ queryKey: ["overview"], queryFn: api.overview, refetchInterval: 5_000 });
   const logout = useMutation({ mutationFn: api.logout, onSettled: () => location.reload() });
   const [settingsOpen, setSettingsOpen] = React.useState(false);
+  const [promptOpen, setPromptOpen] = React.useState(false);
   if (overview.error instanceof ApiError && overview.error.status === 401) return <Login />;
   const strategies = overview.data?.strategies ?? [];
   const online = strategies.filter((s) => s.online).length;
@@ -241,11 +245,19 @@ export function App() {
     <>
       <TopBar onLogout={() => logout.mutate()} onSettings={() => setSettingsOpen(true)} />
       {settingsOpen && <SettingsDialog open onOpenChange={setSettingsOpen} />}
+      {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       <main className="view-enter mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8">
         <PageHeader
           title="策略"
           description={overview.data ? `${strategies.length} 个策略，${online} 个在线 · 每 5 秒刷新` : undefined}
-          actions={<PauseAll count={online} />}
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setPromptOpen(true)}>
+                <Sparkles /> 让 AI 接入策略
+              </Button>
+              <PauseAll count={online} />
+            </div>
+          }
         />
         <QueryBoundary query={overview} rows={4}>
           {(data) => (
@@ -253,7 +265,8 @@ export function App() {
               <TelegramNote onSettings={() => setSettingsOpen(true)} />
               {data.strategies.length === 0 ? (
                 <Card>
-                  <EmptyState title="还没有策略" description="在策略项目里运行 quantbot link，就能接上。" />
+                  <EmptyState title="还没有策略"
+                    description="在策略项目里运行 quantbot link，或点上面的“让 AI 接入策略”，把说明交给 AI。" />
                 </Card>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

@@ -12,11 +12,13 @@ import {
   RefreshCw,
   ShoppingCart,
   SlidersHorizontal,
+  Sparkles,
   Square,
   Wallet,
   X,
 } from "lucide-react";
 import * as React from "react";
+import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { ConfirmDialog, EmptyState } from "@/components/common";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
@@ -89,6 +91,7 @@ export function StrategyPanel({ s, open, onOpenChange }: {
   const command = useCommand(s);
   const [view, setView] = React.useState<View>({ kind: "none" });
   const [pending, setPending] = React.useState<Pending>(null);
+  const [askAi, setAskAi] = React.useState(false);
   const has = (name: Command) => s.commands.includes(name);
 
   async function read(name: Command, title: string) {
@@ -172,7 +175,11 @@ export function StrategyPanel({ s, open, onOpenChange }: {
               <ShoppingCart /> 手动下单
             </Button>
           )}
+          <Button size="sm" variant="ghost" onClick={() => setAskAi(true)}>
+            <Sparkles /> 复制给 AI
+          </Button>
         </div>
+        {askAi && <AiPromptDialog open onOpenChange={setAskAi} strategy={{ id: s.id, name: s.name }} />}
 
         <ViewArea view={view} busy={busy} s={s}
           onCancel={(item) => confirm({
