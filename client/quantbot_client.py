@@ -28,6 +28,7 @@ import base64
 import collections
 import json
 import logging
+import math
 import os
 import queue
 import re
@@ -152,6 +153,7 @@ class QuantBot:
         self._last_beat = float("-inf")
         self._state_file = state_file or os.environ.get("QB_STATE_FILE") or None
         self._handlers: dict[str, Callable[..., Any]] = {}
+        self._actions: dict[str, dict[str, Any]] = {}
         self._commands: queue.Queue[Any] = queue.Queue()
         self._events: collections.deque[tuple[str, dict[str, Any]]] = collections.deque(
             maxlen=EVENT_BACKLOG
@@ -179,6 +181,39 @@ class QuantBot:
         if name not in COMMANDS:
             raise ValueError(f"Unknown command {name!r}. Known: {', '.join(COMMANDS)}")
         self._handlers[name] = handler
+        if self._hello_sent:
+            self._hello()
+        return self
+
+    def action(
+        self,
+        name: str,
+        handler: Callable[..., Any],
+        *,
+        label: str | None = None,
+        fields: dict[str, dict[str, Any]] | None = None,
+        confirm: bool = False,
+    ) -> QuantBot:
+        """Expose a strategy-specific operation in the web console.
+
+        Field types are text, number, boolean and select. The handler receives
+        their values as keyword arguments and may return text or JSON data.
+        """
+        if not NAME.fullmatch(name) or not callable(handler):
+            raise ValueError("action needs a valid name and a callable handler")
+        spec = {
+            "id": name,
+            "label": label or name,
+            "fields": fields or {},
+            "confirm": confirm,
+        }
+        # Validate serialization now and keep an independent copy of the field definitions.
+        spec = json.loads(json.dumps(spec, allow_nan=False))
+        with self._lock:
+            if name not in self._actions and len(self._actions) >= 16:
+                raise ValueError("a strategy can register up to 16 custom actions")
+            self._actions[name] = spec
+            self._handlers[f"action:{name}"] = handler
         if self._hello_sent:
             self._hello()
         return self
@@ -267,6 +302,22 @@ class QuantBot:
         """A snapshot shown on the strategy page. Send one each round."""
         self._event("status", text=text, paused=self.paused if paused is None else paused)
 
+    def metric(
+        self, name: str, value: int | float, *, label: str | None = None, unit: str | None = None
+    ) -> None:
+        """Send a numeric observation for a chart in the web console."""
+        if (
+            not NAME.fullmatch(name)
+            or type(value) not in (int, float)
+            or not (abs(value) <= 1e100 and math.isfinite(value))
+        ):
+            raise ValueError("metric needs a valid name and a finite numeric value")
+        if label is not None and (not isinstance(label, str) or not 1 <= len(label.strip()) <= 80):
+            raise ValueError("metric label must be 1 to 80 characters")
+        if unit is not None and (not isinstance(unit, str) or len(unit) > 24):
+            raise ValueError("metric unit must be at most 24 characters")
+        self._event("metric", name=name, value=value, label=label, unit=unit)
+
     def fill(self, message: str) -> None:
         self._event("fill", message=message)
 
@@ -317,8 +368,12 @@ class QuantBot:
         self._events_ready.set()
 
     def _hello(self) -> None:
-        names = sorted({"pause", "resume", "stop", *self._handlers})
-        self._event("hello", commands=names)
+        with self._lock:
+            names = sorted(
+                {"pause", "resume", "stop", *(name for name in self._handlers if name in COMMANDS)}
+            )
+            actions = list(self._actions.values())
+        self._event("hello", commands=names, actions=actions)
         self._hello_sent = True
 
     def _load_paused(self) -> bool:
@@ -422,6 +477,12 @@ class QuantBot:
         if name in {"pause", "resume"}:
             self._set_paused(name == "pause")
         value = handler(**args)
+        if name.startswith("action:"):
+            if isinstance(value, str):
+                return {"message": value}
+            if len(json.dumps(value, allow_nan=False)) > 64_000:
+                raise ValueError("custom action result is too large")
+            return {"data": value}
         if name not in DATA_COMMANDS:
             return {"message": "" if value is None else str(value)}
         if name == "status" and isinstance(value, str):

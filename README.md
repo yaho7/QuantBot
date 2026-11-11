@@ -196,6 +196,12 @@ with qb:                               # 出错会推送报错，再抛出
 
 策略在别的机器上、或用别的语言写：设 `QB_URL` 和 `QB_TOKEN`（`quantbot token <id>` 查看），协议见 `/PROTOCOL.md`。
 
+### 策略指标和自定义操作
+
+策略程序可用 `qb.metric("equity", equity, label="账户净值", unit="USDT")` 上报数值，网页在策略卡片内绘制曲线。每个策略最多可上报 12 个指标，每个指标保留本次服务运行的最近 240 个点。
+
+用 `qb.action("refresh", refresh_handler, label="刷新缓存", confirm=True)` 可注册网页操作。可用 `fields` 声明文本、数字、复选框和选择列表。处理函数通过关键字参数接收输入，和内置按钮一样由策略线程在 `qb.sleep()` 或 `qb.process()` 中执行。可返回文本或 JSON 数据。更新客户端源码后即可使用。[客户端示例](client/README.md)
+
 ## Telegram 里能做什么（接了的话）
 
 | 功能 | 怎么用 |

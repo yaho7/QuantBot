@@ -205,3 +205,30 @@ def test_connects_locally_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert QuantBot().name == "grid-bot"
     with pytest.raises(ValueError):
         QuantBot("Bad Name")
+
+
+def test_client_reports_metric_and_runs_custom_action(server: Server, tmp_path: Path) -> None:
+    qb = QuantBot(
+        url=f"http://127.0.0.1:{server.port}", token=TOKEN, state_file=str(tmp_path / "s")
+    )
+    qb.action(
+        "refresh",
+        lambda force: {"forced": force, "thread": threading.current_thread().name},
+        label="Refresh cache",
+        fields={"force": {"type": "boolean"}},
+        confirm=True,
+    )
+    thread = serve(qb)
+    try:
+        qb.metric("equity", 12_000, label="Equity", unit="USDT")
+        wait_until(
+            lambda: "equity" in server.strategy.metrics and "refresh" in server.strategy.actions
+        )
+        assert server.strategy.metrics["equity"].summary()["value"] == 12_000
+        assert server.strategy.actions["refresh"].confirm
+        result = server.send("action:refresh", {"force": True})
+        assert result.ok and result.data == {"forced": True, "thread": "trading"}
+    finally:
+        qb.close()
+        thread.join(5)
+        assert not thread.is_alive()

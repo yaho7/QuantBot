@@ -27,6 +27,20 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return (await res.json()) as T;
 }
 
+export interface StrategyAction {
+  id: string;
+  label: string;
+  confirm: boolean;
+  fields: Record<string, { label: string; type: "text" | "number" | "boolean" | "select"; required: boolean; options: string[] }>;
+}
+
+export interface StrategyMetric {
+  id: string;
+  label: string;
+  unit: string;
+  value: number;
+}
+
 export interface StrategyView {
   id: string;
   name: string;
@@ -37,6 +51,8 @@ export interface StrategyView {
   status_age: number | null;
   last_seen: number | null;
   commands: string[];
+  actions?: StrategyAction[];
+  metrics?: StrategyMetric[];
   pending: number;
 }
 
@@ -217,6 +233,13 @@ export const api = {
     answerData<{ repositories: GitHubRepository[] }>("POST", "editor/github/repositories"),
   saveSettings: (body: Partial<Record<keyof Settings | "token" | "remove_telegram", unknown>>) =>
     request<Answer>("POST", "settings", body),
+  strategyMetric: (sid: string, name: string) =>
+    answerData<StrategyMetric & { points: { time: number; value: number }[] }>(
+      "GET", `strategies/${encodeURIComponent(sid)}/metrics?${new URLSearchParams({ name })}`,
+    ),
+  strategyAction: (sid: string, action: string, args: Record<string, unknown>, confirmed: boolean) =>
+    request<Answer>("POST", `strategies/${encodeURIComponent(sid)}/actions/${encodeURIComponent(action)}`,
+      { args, confirmed }),
   command: <T = unknown>(sid: string, name: Command, args: Record<string, unknown> = {}) =>
     request<Answer<T>>("POST", `strategies/${encodeURIComponent(sid)}/${name}`, args),
 };

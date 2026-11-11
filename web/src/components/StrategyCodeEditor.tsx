@@ -15,6 +15,8 @@ const snippets = [
   [tr("状态"), tr("qb.status(f\"净值 {equity:.2f}\")")],
   [tr("推送消息"), tr("qb.info(\"策略已启动\")")],
   [tr("注册按钮"), 'qb.on("positions", my_positions_text)'],
+  [tr("上报指标"), 'qb.metric("equity", equity, label="Equity", unit="USDT")'],
+  [tr("自定义操作"), 'qb.action("refresh", refresh_handler, label="Refresh", confirm=True)'],
 ] as const;
 
 const theme = EditorView.theme({

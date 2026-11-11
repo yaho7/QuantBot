@@ -58,6 +58,7 @@ from quantbot.github import DEVICE_URL, DeviceLogin, GitHubEditor
 from quantbot.hub import Hub, Result
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
 from quantbot.service import Service, ServiceError
+from quantbot.strategy_features import action_arguments
 from quantbot.updates import Updater
 from quantbot.workspace import (
     WORKSPACE_FILE,
@@ -355,6 +356,49 @@ async def command(request: web.Request) -> web.Response:
 STORE_KEY = web.AppKey("web_store", Store)
 TELEGRAM_KEY = web.AppKey("web_telegram", object)  # cli.telegram, replaced in tests
 EDITOR_LOCK = web.AppKey("web_editor_locks", dict)
+
+
+async def strategy_action(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    core = request.app[CORE_KEY]
+    strategy = core.hub.strategies.get(request.match_info["sid"])
+    action = strategy.actions.get(request.match_info["action"]) if strategy else None
+    if strategy is None or action is None:
+        return _answer(False, tr("策略没有提供此操作。"))
+    if not core.hub.online(strategy):
+        return _answer(False, tr("请等策略上线后再执行此操作。"))
+    body = await _args(request)
+    if action.confirm and body.get("confirmed") is not True:
+        return _answer(False, tr("请先确认此操作。"))
+    try:
+        args = action_arguments(action, body.get("args", {}))
+    except ValueError as exc:
+        return _answer(False, str(exc))
+    ok, outcome = await core.call(strategy, f"action:{action.id}", args)
+    message = outcome.message if isinstance(outcome, Result) else str(outcome)
+    data = outcome.data if isinstance(outcome, Result) else None
+    core.audit.write(
+        "strategy_action", user=WEB_USER, strategy=strategy.id, operation=action.id, ok=ok
+    )
+    return _answer(ok, message or tr("操作已完成。"), data)
+
+
+async def strategy_metric(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    strategy = request.app[CORE_KEY].hub.strategies.get(request.match_info["sid"])
+    metric = strategy.metrics.get(request.query.get("name", "")) if strategy else None
+    if metric is None:
+        return _answer(False, tr("策略还没有上报此指标。"))
+    return _answer(
+        True,
+        "",
+        {
+            **metric.summary(),
+            "points": [{"time": time, "value": value} for time, value in metric.points],
+        },
+    )
 
 
 @dataclass
@@ -1395,6 +1439,8 @@ async def overview(request: web.Request) -> web.Response:
                 "status_age": None if (age := hub.age(s)) is None else round(age, 1),
                 "last_seen": seen,
                 "commands": list(s.commands),
+                "actions": [asdict(action) for action in s.actions.values()],
+                "metrics": [metric.summary() for metric in s.metrics.values()],
                 "pending": len(s.pending),
             }
         )
@@ -1569,6 +1615,8 @@ def add_routes(
                 "/ui/api/editor/github/{action:bind|authorize|cancel|repositories|select|logout}",
                 github_post,
             ),
+            web.post("/ui/api/strategies/{sid}/actions/{action}", strategy_action),
+            web.get("/ui/api/strategies/{sid}/metrics", strategy_metric),
             web.post("/ui/api/strategies/{sid}/{command}", command),
             web.get("/ui/", page),
             web.get("/ui/{path:.+}", page),

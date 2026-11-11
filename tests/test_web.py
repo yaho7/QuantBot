@@ -301,6 +301,51 @@ def test_editor_requires_local_enable_and_refuses_unsafe_paths(tmp_path: Path) -
     scenario(test, audit)
 
 
+def test_strategy_custom_action_and_metric_api(tmp_path: Path) -> None:
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        base = "/ui/api/strategies/momentum"
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        strategy = hub.strategies["momentum"]
+        hub.event(
+            strategy,
+            {
+                "type": "hello",
+                "commands": [],
+                "actions": [
+                    {
+                        "id": "refresh",
+                        "label": "Refresh",
+                        "confirm": True,
+                        "fields": {"limit": {"type": "number"}},
+                    }
+                ],
+            },
+        )
+        hub.event(strategy, {"type": "metric", "name": "equity", "value": 1234.5, "unit": "USDT"})
+        history = await (await client.get(base + "/metrics", params={"name": "equity"})).json()
+        assert history["data"]["points"][0]["value"] == 1234.5
+        assert history["data"]["unit"] == "USDT"
+        endpoint = base + "/actions/refresh"
+        for data in ({"args": {"limit": 3}}, {"args": {"limit": True}, "confirmed": True}):
+            answer = await (await client.post(endpoint, json=data, headers=CSRF)).json()
+            assert not answer["ok"]
+            assert not strategy.pending
+        request = asyncio.create_task(
+            client.post(endpoint, json={"args": {"limit": 3}, "confirmed": True}, headers=CSRF)
+        )
+        batch = await hub.poll(strategy, 1)
+        assert batch is not None and len(batch["commands"]) == 1
+        command = batch["commands"][0]
+        assert command["name"] == "action:refresh" and command["args"] == {"limit": 3}
+        assert hub.result(strategy, command["id"], {"ok": True, "data": {"updated": 3}})
+        response = await (await request).json()
+        assert response["ok"] and response["data"] == {"updated": 3}
+        audit = read_audit(tmp_path / "audit.jsonl", 5)
+        assert any(record["action"] == "strategy_action" and record["ok"] for record in audit)
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 def test_workspace_file_operations_and_external_refresh(tmp_path: Path) -> None:
     root = tmp_path / "strategies"
     root.mkdir()

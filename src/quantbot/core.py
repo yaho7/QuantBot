@@ -150,7 +150,12 @@ class Core:
     ) -> tuple[bool, Result | str]:
         """Send a command and wait for the result. (False, text) when it fails, is slow or
         the strategy does not support it."""
-        label = tr(LABELS[name])
+        action = (
+            strategy.actions.get(name.removeprefix("action:"))
+            if name.startswith("action:")
+            else None
+        )
+        label = action.label if action else tr(LABELS.get(name, name))
         if strategy.said_hello and not strategy.supports(name):
             return False, tr("{0} 不支持{1}。", strategy.name, label)
         online = self.hub.online(strategy)

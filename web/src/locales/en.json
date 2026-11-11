@@ -419,5 +419,13 @@
   "导入仓库": "Import repository",
   "外观": "Appearance",
   "主题": "Theme",
-  "其他时区": "Other time zones"
+  "其他时区": "Other time zones",
+  "指标": "Metrics",
+  "策略指标": "Strategy metrics",
+  "策略操作": "Strategy actions",
+  "上报指标": "Report metric",
+  "自定义操作": "Custom action",
+  "执行 {0}？": "Run {0}?",
+  "执行": "Run",
+  "请等策略上线后再执行此操作。": "Wait for the strategy to come online before running this action."
 }

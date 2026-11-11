@@ -1,7 +1,7 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Bell, ChevronRight, CircleDashed, ClipboardList, FolderCode, LayoutGrid, LogOut, Pause, Plus, Radio, Settings, SlidersHorizontal, Sparkles,
+  Bell, ChartLine, ChevronRight, CircleDashed, ClipboardList, FolderCode, LayoutGrid, LogOut, Pause, Plus, Radio, Settings, SlidersHorizontal, Sparkles, Zap,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 
 const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "loss" } as const;
 const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
+const StrategyTools = React.lazy(() => import("@/components/StrategyTools"));
 const WorkspaceWorkbench = React.lazy(() => import("@/components/WorkspaceWorkbench"));
 
 type View = "strategies" | "workspace" | "settings";
@@ -130,6 +131,7 @@ function OnlineBadge({ s }: { s: StrategyView }) {
 
 function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }) {
   const [open, setOpen] = React.useState(false);
+  const [tools, setTools] = React.useState<"metrics" | "actions">();
   return (
     <Card className={cn(!s.online && "opacity-80")}>
       <CardHeader>
@@ -155,12 +157,19 @@ function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <PauseButton s={s} />
+          {!!s.metrics?.length && <Button size="sm" variant="outline" onClick={() => setTools("metrics")}>
+            <ChartLine /> {tr("指标")}</Button>}
+          {!!s.actions?.length && <Button size="sm" variant="outline" onClick={() => setTools("actions")}>
+            <Zap /> {tr("策略操作")}</Button>}
           <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>{tr("更多操作")} <ChevronRight />
           </Button>
           <Button size="sm" variant="ghost" onClick={onManage}><SlidersHorizontal /> {tr("管理")}</Button>
         </div>
       </CardContent>
       {open && <StrategyPanel s={s} open onOpenChange={setOpen} />}
+      {tools && <React.Suspense fallback={null}>
+        <StrategyTools strategy={s} mode={tools} onClose={() => setTools(undefined)} />
+      </React.Suspense>}
     </Card>
   );
 }

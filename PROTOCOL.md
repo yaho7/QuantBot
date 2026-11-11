@@ -19,7 +19,7 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 
 | `type` | 其他字段 | 说明 |
 |---|---|---|
-| `hello` | `commands`: 支持的命令名列表 | 启动时发一次；QuantBot 说 `need_hello` 时再发 |
+| `hello` | `commands`: 支持的内置命令名列表；可选 `actions` | 启动时发一次；QuantBot 说 `need_hello` 时再发 |
 | `status` | `text`, `paused` | 状态快照；随时可以发，建议每轮发一次 |
 | `fill` | `message` | 成交 |
 | `info` | `message` | 普通消息 |
@@ -30,6 +30,10 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 | `expiry` | `name`, `expires_at`（带时区的 ISO 时间） | 授权到期时间，比如 Schwab |
 
 返回 `200 {"ok": true}`。
+
+`metric` 事件包含 `name`、有限数值 `value`，以及可选的 `label` 和 `unit`。服务按收到事件的 Unix 时间秒记录样本，每个指标保存最近 240 个样本。同一秒内以最后一个值为准。
+
+`hello.actions` 可声明网页操作，每项包含 `id`、`label`、可选的 `confirm` 和 `fields`。字段以关键字参数名称为键，描述包含 `type`（`text`、`number`、`boolean` 或 `select`）、可选 `label`、`required`（默认真）和选择项 `options`。调用自定义操作时收到的命令名为 `action:<id>`，响应沿用普通命令的 `message` 和 `data`。
 
 ## 2. 取命令
 

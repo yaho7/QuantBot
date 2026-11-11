@@ -22,6 +22,7 @@ from typing import Any
 from quantbot.config import StrategyConfig
 from quantbot.i18n import tr
 from quantbot.notices import Connections, Expiries
+from quantbot.strategy_features import ActionSpec, Metric, parse_actions, record_metric
 
 COMMANDS = (
     "status", "pause", "resume", "positions", "orders", "cancel", "flatten",
@@ -68,6 +69,8 @@ class Strategy:
     name: str
     token: str = field(repr=False)
     commands: tuple[str, ...] = ()
+    actions: dict[str, ActionSpec] = field(default_factory=dict)
+    metrics: dict[str, Metric] = field(default_factory=dict)
     said_hello: bool = False
     status_text: str | None = None
     paused: bool | None = None
@@ -79,6 +82,8 @@ class Strategy:
     wake: asyncio.Event = field(default_factory=asyncio.Event)
 
     def supports(self, name: str) -> bool:
+        if name.startswith("action:"):
+            return name.removeprefix("action:") in self.actions
         return name in self.commands
 
 
@@ -159,7 +164,7 @@ class Hub:
     # ------------------------------------------------------- bot side
 
     def send(self, strategy: Strategy, name: str, args: dict[str, Any] | None = None) -> Command:
-        if name not in COMMANDS:
+        if name not in COMMANDS and not (name.startswith("action:") and strategy.supports(name)):
             raise ValueError(f"unknown command {name}")
         command = Command(
             uuid.uuid4().hex,
@@ -239,10 +244,20 @@ class Hub:
             names = body.get("commands")
             if not isinstance(names, list):
                 raise EventError("hello needs a `commands` list")
+            try:
+                actions = parse_actions(body.get("actions", []))
+            except ValueError as exc:
+                raise EventError(str(exc)) from exc
+            strategy.actions = actions
             strategy.commands = tuple(n for n in COMMANDS if n in names)
             strategy.said_hello = True
         elif kind == "status":
             self._status(strategy, body)
+        elif kind == "metric":
+            try:
+                record_metric(strategy.metrics, body, int(time.time()))
+            except ValueError as exc:
+                raise EventError(str(exc)) from exc
         elif kind in EVENT_KINDS:
             image = None
             if kind == "summary" and body.get("image"):

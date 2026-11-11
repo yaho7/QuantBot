@@ -686,5 +686,13 @@
   "目录 {0} 已创建，可以打开后重试。{1}": "Folder {0} was created. Open it and retry. {1}",
   "选择时区（编号或城市名称）": "Choose a time zone (number or city)",
   "找不到匹配的时区。": "No matching time zone.",
-  "请输入更具体的城市名称。": "Enter a more specific city name."
+  "请输入更具体的城市名称。": "Enter a more specific city name.",
+  "操作参数与策略声明不匹配。": "The action inputs do not match the strategy schema.",
+  "请填写 {0}。": "Enter {0}.",
+  "{0} 的值无效。": "The value for {0} is invalid.",
+  "策略没有提供此操作。": "The strategy does not provide this action.",
+  "请等策略上线后再执行此操作。": "Wait for the strategy to come online before running this action.",
+  "请先确认此操作。": "Confirm the action before running it.",
+  "操作已完成。": "The action completed.",
+  "策略还没有上报此指标。": "The strategy has not reported this metric yet."
 }
