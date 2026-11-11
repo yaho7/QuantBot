@@ -7,7 +7,7 @@
 # `quantbot` command, asks the setup questions the first time, and runs
 # QuantBot in the background (systemd on Linux, launchd on macOS).
 # Running it again updates QuantBot. QUANTBOT_REF picks a tag or branch.
-# Setup asks who may open the web page (this machine only, or anywhere) and the port,
+# Setup asks how to access the web page (local, direct, or through a tunnel) and the port,
 # offering a random free one unless QUANTBOT_PORT is set:
 #
 #   curl -fsSL .../install.sh | QUANTBOT_PORT=23456 bash

@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from quantbot.notices import parse_quiet
@@ -77,6 +78,7 @@ class Settings:
     quiet_hours: tuple[int, int] | None = None
     timezone: str = "Asia/Shanghai"
     heartbeat_url: str | None = None
+    public_url: str | None = None
 
     @property
     def telegram(self) -> bool:
@@ -125,6 +127,40 @@ def check_url(url: str | None) -> str | None:
     if url and not url.startswith(("https://", "http://")):
         raise ConfigError("地址要以 https:// 或 http:// 开头")
     return url or None
+
+
+def check_public_url(url: str | None) -> str | None:
+    if not url:
+        return None
+    message = "网页地址需要是域名或 IP 的 HTTP(S) 地址，例如 https://bot.example.com。"
+    try:
+        if not isinstance(url, str):
+            raise ValueError
+        url = url.strip()
+        parsed = urlsplit(url)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.path not in {"", "/", "/ui", "/ui/"}
+            or any(char.isspace() or char in "\\%?#" or ord(char) < 32 for char in url)
+        ):
+            raise ValueError
+        port = parsed.port
+        if port == 0:
+            raise ValueError
+        host = parsed.hostname
+        if ":" in host:
+            host = f"[{host}]"
+        else:
+            host = host.encode("idna").decode("ascii")
+            if not re.fullmatch(r"[a-z0-9.-]+", host):
+                raise ValueError
+    except ValueError as exc:
+        raise ConfigError(message) from exc
+    default_port = 443 if parsed.scheme == "https" else 80
+    suffix = f":{port}" if port is not None and port != default_port else ""
+    return f"{parsed.scheme}://{host}{suffix}"
 
 
 class Store:
@@ -223,4 +259,5 @@ class Store:
             quiet_hours=quiet,
             timezone=check_timezone(str(data.get("timezone") or "Asia/Shanghai")),
             heartbeat_url=check_url(data.get("heartbeat_url")),
+            public_url=check_public_url(data.get("public_url")),
         )

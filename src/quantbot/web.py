@@ -31,6 +31,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from importlib import resources
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
@@ -40,6 +41,7 @@ from quantbot.config import (
     BOT_TOKEN,
     ConfigError,
     Store,
+    check_public_url,
     check_strategy_id,
     check_timezone,
     check_url,
@@ -168,7 +170,9 @@ class WebAuth:
         return good and expires > self.clock()
 
 
-def login_url(listen: str, token: str) -> str:
+def login_url(listen: str, token: str, public_url: str | None = None) -> str:
+    if public_url:
+        return f"{public_url}/ui/login?t={token}"
     host, _, port = listen.rpartition(":")
     host = "127.0.0.1" if host in {"0.0.0.0", "::", ""} else host  # noqa: S104
     return f"http://{host}:{port}/ui/login?t={token}"
@@ -449,6 +453,7 @@ async def settings_get(request: web.Request) -> web.Response:
             "timezone": data.get("timezone") or "Asia/Shanghai",
             "heartbeat_url": data.get("heartbeat_url") or "",
             "listen": data.get("listen") or "",
+            "public_url": check_public_url(data.get("public_url")) or "",
             "telegram": bool(tg.get("token")),
         }
     )
@@ -567,13 +572,43 @@ async def login(request: web.Request) -> web.StreamResponse:
             ),
         )
     redirect = web.HTTPFound("/ui/")
-    _set_session(redirect, cookie)
+    public_url = check_public_url(request.app[STORE_KEY].read().get("public_url"))
+    _set_session(redirect, cookie, secure=_secure_session(request, public_url))
     raise redirect
 
 
-def _set_session(response: web.StreamResponse, cookie: str) -> None:
+def _secure_session(request: web.Request, public_url: str | None) -> bool:
+    return request.secure or bool(public_url and public_url.startswith("https://"))
+
+
+def _login_client(request: web.Request, tunnel: bool, public_url: str | None) -> str:
+    peer = request.remote or "?"
+    if not tunnel or not public_url or not public_url.startswith("https://"):
+        return peer
+    forwarded = request.headers.getall("CF-Connecting-IP", ())
+    try:
+        if (
+            len(forwarded) == 1
+            and "%" not in forwarded[0]
+            and ip_address(peer).is_loopback
+            and check_public_url(f"https://{request.host}") == public_url
+        ):
+            return str(ip_address(forwarded[0]))
+    except ValueError:
+        pass
+    return peer
+
+
+def _set_session(response: web.StreamResponse, cookie: str, *, secure: bool) -> None:
+    response.headers["Cache-Control"] = "no-store"
     response.set_cookie(
-        COOKIE, cookie, max_age=SESSION_TTL, path="/ui", httponly=True, samesite="Strict"
+        COOKIE,
+        cookie,
+        max_age=SESSION_TTL,
+        path="/ui",
+        httponly=True,
+        samesite="Strict",
+        secure=secure,
     )
 
 
@@ -582,24 +617,26 @@ async def password_login(request: web.Request) -> web.Response:
     if request.headers.get(CSRF_HEADER) != "1":
         return web.json_response({"ok": False, "error": "missing X-QuantBot header"}, status=403)
     auth = request.app[AUTH_KEY]
-    who = request.remote or "?"
-    if wait := auth.locked(who):
-        return _answer(False, f"密码错了太多次，{(wait + 59) // 60} 分钟后再试。")
-    admin = request.app[STORE_KEY].read().get("web_admin") or {}
+    data = request.app[STORE_KEY].read()
+    public_url = check_public_url(data.get("public_url"))
+    who = _login_client(request, bool(data.get("web_tunnel")), public_url)
+    admin = data.get("web_admin") or {}
     if not admin.get("password"):
         return _answer(False, "还没设管理员账号。在服务器上运行 quantbot password。")
     body = await _args(request)
     username, password = str(body.get("username") or ""), str(body.get("password") or "")
+    if wait := auth.locked(who):
+        return _answer(False, f"密码错了太多次，{(wait + 59) // 60} 分钟后再试。")
+    auth.failed(who)  # Reserve an attempt before yielding to the password checker.
     loop = asyncio.get_running_loop()
     good = await loop.run_in_executor(None, check_password, password, str(admin["password"]))
     good = hmac.compare_digest(username.encode(), str(admin.get("username")).encode()) and good
     request.app[CORE_KEY].audit.write("login", user=WEB_USER, ok=good, client=who)
     if not good:
-        auth.failed(who)
         return _answer(False, "用户名或密码不对。")
     auth.succeeded(who)
     response = _answer(True, "已登录")
-    _set_session(response, auth.session())
+    _set_session(response, auth.session(), secure=_secure_session(request, public_url))
     return response
 
 

@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 | 步骤 | 问什么 | 直接回车 |
 |---|---|---|
-| 1 | 地址：谁能打开网页（只有这台机器，或任何能连到它的地方），再问端口 | 只有这台机器；随机选好的空闲端口（20000 到 39999） |
+| 1 | 网页访问方式和端口。可选本机、直接连接或通过 Cloudflare Tunnel | 只有这台机器；随机选好的空闲端口（20000 到 39999） |
 | 2 | 网页管理员：用户名和密码（至少 8 位，输两次） | 用户名 `admin` |
 | 3 | 要不要接 Telegram。要的话再问：bot token（先在 [@BotFather](https://t.me/BotFather) 发 `/newbot`）、你的账号（给 bot 发条消息就能认出）、静音时段和时区 | 不接 |
 | 4 | 心跳地址（Healthchecks.io） | 不设 |
@@ -40,12 +40,15 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 ## 网页
 
-打开 `http://<地址>:<端口>/ui/`，用安装时设的管理员账号登录。密码连错 5 次，锁 15 分钟。
+打开安装时打印的网页地址，用管理员账号登录。密码连错 5 次，锁 15 分钟。
 
 | 安装时选的 | 怎么打开 |
 |---|---|
 | 只有这台机器 | 用 SSH 隧道（`ssh -L <端口>:127.0.0.1:<端口> 你的服务器`）或 Tailscale，再开 `http://127.0.0.1:<端口>/ui/` |
 | 任何地方 | 直接开 `http://<服务器 IP 或域名>:<端口>/ui/`。云服务器要在防火墙或安全组里放行这个端口 |
+| 通过 Tunnel | 打开 `https://<你的域名>/ui/`。QuantBot 监听 `127.0.0.1`，由本机的 `cloudflared` 转发请求 |
+
+选择“通过 Tunnel”后，填写 HTTPS 域名，QuantBot 会把它保存为 `public_url`。在 Cloudflare Tunnel 添加该域名的 Published application 路由，将源站设为安装时打印的 `http://127.0.0.1:<端口>`。QuantBot 在 HTTPS 下使用 Secure 登录 Cookie，并通过 Tunnel 提供的访客 IP 分别计算登录失败次数。 [Cloudflare Tunnel 配置指南](https://developers.cloudflare.com/tunnel/get-started/)
 
 忘了密码，在服务器上运行 `quantbot password`。也可以运行 `quantbot web`，或在 Telegram 里给 bot 发 `/web`，拿一个不用密码的一次性链接（5 分钟内有效，只能用一次）。
 
@@ -56,7 +59,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 | 全部暂停开仓 | 所有在线策略一起暂停 |
 | 推送 | QuantBot 这次启动后的所有推送 |
 | 操作记录 | 网页和 Telegram 上点过的每个按钮 |
-| 设置 | 接上、换掉或断开 Telegram，静音时段、时区、心跳地址 |
+| 设置 | 查看网页地址和版本，管理 Telegram、静音时段、时区和心跳地址 |
 
 平仓、撤单、改参数、下单、停止都要再确认一次。登录后 12 小时有效。
 
@@ -168,7 +171,8 @@ with qb:                               # 出错会推送报错，再抛出
 | `quantbot service install/uninstall/restart/status` | 后台服务；`install --port` 换端口 |
 | `quantbot logs -f` | 看日志 |
 | `quantbot web` | 打印一次性的网页登录链接 |
-| `quantbot update` | 更新 |
+| `quantbot update [--check] [--yes]` | 检查或安装更新 |
+| `quantbot editor on/off/status` | 管理网页策略编辑器 |
 
 设置和操作记录存在 `~/.config/quantbot/`。
 

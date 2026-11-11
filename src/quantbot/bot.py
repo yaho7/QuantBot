@@ -405,16 +405,21 @@ class QuantBot:
 
     async def _web(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         listen = f"{self.settings.host}:{self.settings.port}"
-        url = login_url(listen, self.web_auth.link_token())
+        public_url = self.settings.public_url
+        url = login_url(listen, self.web_auth.link_token(), public_url)
         port = self.settings.port
-        if self.settings.host in {"0.0.0.0", "::"}:  # noqa: S104
+        if public_url:
+            where = ""
+        elif self.settings.host in {"0.0.0.0", "::"}:  # noqa: S104
             where = "从别的电脑打开时，把 127.0.0.1 换成服务器的 IP 或域名。"
         else:
             where = (
                 "它只在服务器本机能直接打开。可以先在你的电脑上连一条隧道：\n"
                 f"ssh -L {port}:127.0.0.1:{port} 你的服务器"
             )
-        text = f"🌐 一次性登录链接，不用密码，5 分钟内有效，只能用一次：\n{url}\n\n{where}"
+        text = f"🌐 一次性登录链接，不用密码，5 分钟内有效，只能用一次：\n{url}"
+        if where:
+            text += f"\n\n{where}"
         await self._show(update, Reply(text))
 
     async def _error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

@@ -34,6 +34,7 @@ from quantbot.config import (
     ConfigError,
     Store,
     check_listen,
+    check_public_url,
     check_strategy_id,
     check_timezone,
     check_url,
@@ -136,7 +137,7 @@ def _service_or_none() -> Service | None:
 ANY_HOST = "0.0.0.0"  # noqa: S104 - only when the user picks it
 
 
-def _ask_port(io: Console, data: dict[str, Any]) -> str:
+def _ask_address(io: Console, data: dict[str, Any]) -> tuple[str, str | None]:
     """Ask who may connect and the port. Defaults: the current values, QUANTBOT_PORT,
     or this machine only on a free random port."""
     current = str(data.get("listen") or "")
@@ -144,12 +145,14 @@ def _ask_port(io: Console, data: dict[str, Any]) -> str:
     io.say("     谁能打开网页：")
     io.say("     1. 只有这台机器（从别处打开用 SSH 隧道或 Tailscale）")
     io.say("     2. 任何能连到这台机器的地方（公网 IP 或局域网直接打开）")
+    io.say("     3. 通过 Tunnel（Cloudflare Tunnel 的 HTTPS 域名）")
+    default_mode = "3" if data.get("web_tunnel") else "2" if current_host == ANY_HOST else "1"
     while True:
-        picked = io.ask("     选择", "2" if current_host == ANY_HOST else "1")
-        if picked in {"1", "2"}:
+        picked = io.ask("     选择", default_mode)
+        if picked in {"1", "2", "3"}:
             break
-        io.say("     ✗ 输入 1 或 2")
-    host = LOCALHOST if picked == "1" else ANY_HOST
+        io.say("     ✗ 输入 1、2 或 3")
+    host = ANY_HOST if picked == "2" else LOCALHOST
     default = current_port or os.environ.get("QUANTBOT_PORT") or str(free_port())
     while True:
         typed = io.ask("     端口（回车用这个）", default)
@@ -160,7 +163,19 @@ def _ask_port(io: Console, data: dict[str, Any]) -> str:
         if typed != current_port and not port_free(int(typed), host):
             io.say(f"     ✗ 端口 {typed} 已经被别的程序占用，换一个")
             continue
-        return f"{host}:{int(typed)}"
+        listen = f"{host}:{int(typed)}"
+        break
+    if picked != "3":
+        return listen, None
+    while True:
+        address = io.ask("     Tunnel 的 HTTPS 地址", str(data.get("public_url") or ""))
+        try:
+            public_url = check_public_url(address)
+            if not public_url or not public_url.startswith("https://"):
+                raise ConfigError("请填写 Tunnel 的 HTTPS 地址，例如 https://bot.example.com。")
+            return listen, public_url
+        except ConfigError as exc:
+            io.say(f"     ✗ {exc}")
 
 
 def _ask_admin(io: Console, data: dict[str, Any]) -> dict[str, str]:
@@ -265,7 +280,7 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     io.say()
 
     io.say(f"1/{steps}  地址：网页和你的策略都通过它连 QuantBot。")
-    listen = _ask_port(io, data)
+    listen, public_url = _ask_address(io, data)
 
     io.say()
     io.say(f"2/{steps}  网页管理员：登录网页用的用户名和密码。")
@@ -297,6 +312,8 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
     io.say()
     io.say("就这样设置：")
     rows = [("地址", f"http://{listen}"), ("网页管理员", admin["username"])]
+    if public_url:
+        rows.insert(1, ("Tunnel", f"{public_url}/ui/"))
     if telegram:
         rows += [
             ("Telegram", f"@{telegram['bot_username']}"),
@@ -325,6 +342,11 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         heartbeat_url=heartbeat,
         setup_done=True,
     )
+    if public_url:
+        data.update(public_url=public_url, web_tunnel=True)
+    else:
+        data.pop("public_url", None)
+        data.pop("web_tunnel", None)
     if telegram:
         data["telegram"] = telegram
     else:
@@ -374,7 +396,13 @@ def cmd_setup(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
 def _print_web_address(store: Store, io: Console, username: str) -> None:
     listen = store.ensure_listen()
     host, _, port = listen.rpartition(":")
-    if host in {ANY_HOST, "::", ""}:
+    data = store.read()
+    public_url = check_public_url(data.get("public_url"))
+    if public_url:
+        io.say(f"网页：{public_url}/ui/ ，用 {username} 和你的密码登录。")
+        if data.get("web_tunnel"):
+            io.say(f"  在 Cloudflare Tunnel 里将该域名的源站设为 http://127.0.0.1:{port}。")
+    elif host in {ANY_HOST, "::", ""}:
         io.say(f"网页：http://<这台机器的 IP 或域名>:{port}/ui/ ，用 {username} 和你的密码登录。")
         io.say(f"  云服务器要在防火墙或安全组里放行 {port} 端口。")
         io.say("  风险：这是明文 HTTP。走公网的话，建议在前面加一层 HTTPS（例如 Caddy）。")
@@ -382,7 +410,7 @@ def _print_web_address(store: Store, io: Console, username: str) -> None:
         io.say(f"网页：http://{host}:{port}/ui/ ，用 {username} 和你的密码登录。")
         io.say("  只有这台机器能直接打开。在你自己的电脑上，可以先运行：")
         io.say(f"  ssh -L {port}:127.0.0.1:{port} 这台服务器")
-        io.say("  再打开上面的地址。想直接打开，运行 quantbot setup 改成第 2 种。")
+        io.say("  再打开上面的地址。运行 quantbot setup 可以更改访问方式。")
     io.say("忘了密码：quantbot password")
     io.say()
 
@@ -410,8 +438,11 @@ def _print_web_link(store: Store, io: Console) -> None:
 
     listen = store.ensure_listen()
     host, _, port = listen.rpartition(":")
+    public_url = check_public_url(store.read().get("public_url"))
     io.say("一次性登录链接，不用密码，5 分钟内有效，只能用一次：")
-    io.say(f"  {login_url(listen, WebAuth(store.web_secret()).link_token())}")
+    io.say(f"  {login_url(listen, WebAuth(store.web_secret()).link_token(), public_url)}")
+    if public_url:
+        return
     if host in {ANY_HOST, "::", ""}:
         io.say("从别的电脑打开时，把 127.0.0.1 换成这台机器的 IP 或域名。")
     else:
@@ -485,8 +516,7 @@ def cmd_add(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
     io.say(f"  QB_TOKEN={token}")
     io.say()
     io.say("QuantBot 几秒内就会认出它，不用重启。")
-    if not data.get("telegram"):
-        io.say("提醒：还没配置 Telegram，先运行 quantbot setup。")
+    io.say("运行 quantbot web 获取网页登录链接。")
     return 0
 
 
@@ -494,7 +524,7 @@ def cmd_list(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
     data = store.read()
     telegram_set = data.get("telegram") or {}
     owner = telegram_set.get("owner_name") or telegram_set.get("owner_id")
-    io.say(f"Telegram：{'主人 ' + str(owner) if owner else '还没配置，运行 quantbot setup'}")
+    io.say(f"Telegram：{'主人 ' + str(owner) if owner else '未接，可在网页设置里添加'}")
     if data.get("listen"):
         io.say(f"监听：{data['listen']}")
     items = store.strategies(data)
@@ -566,8 +596,8 @@ def cmd_service(store: Store, io: Console, api: Api, args: argparse.Namespace) -
         for note in notes:
             io.say(f"  {note}")
         io.say("  看日志：quantbot logs -f")
-        if not store.exists():
-            io.say("  还没设置 Telegram，它会先等着。请运行：quantbot setup")
+        if not (store.read().get("web_admin") or {}).get("password"):
+            io.say("  运行 quantbot setup 设置网页管理员，或运行 quantbot web 获取登录链接。")
     elif args.action == "uninstall":
         service.uninstall()
         io.say("✓ 已停止并删除服务。设置和策略 token 都还在。")

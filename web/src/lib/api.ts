@@ -65,6 +65,7 @@ export interface Settings {
   timezone: string;
   heartbeat_url: string;
   listen: string;
+  public_url: string;
   telegram: boolean;
 }
 

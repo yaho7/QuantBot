@@ -89,6 +89,7 @@ def test_service_command_saves_listen(tmp_path: Path, monkeypatch: pytest.Monkey
     assert main(["service", "install", "--listen", "0.0.0.0:9000"], io=io, store=store) == 0
     assert store.read()["listen"] == "0.0.0.0:9000"
     assert "还没设置 Telegram" not in io.text() and "开机自动启动" in io.text()
+    assert "设置网页管理员" in io.text()
     assert main(["service", "install", "--listen", "9000"], io=Script([]), store=store) == 1
     assert cli.api_url(store) == "http://127.0.0.1:9000"
 

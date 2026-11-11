@@ -7,10 +7,12 @@ import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from subprocess import CompletedProcess
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from multidict import CIMultiDict
 
 from quantbot.audit import Audit
 from quantbot.config import Store, StrategyConfig
@@ -292,6 +294,51 @@ def test_password_login_and_lock(tmp_path: Path) -> None:
         assert [r["ok"] for r in records if r["action"] == "login"][:3] == [False, True, False]
 
     scenario(test, tmp_path / "audit.jsonl")
+
+
+def test_tunnel_login_secure_cookie_and_per_client_lockout(tmp_path: Path) -> None:
+    from quantbot.web import LOGIN_TRIES, _login_client, hash_password
+
+    store = Store(tmp_path / "settings")
+    public_url = "https://bot.example.com"
+
+    def headers(ip: str) -> dict[str, str]:
+        return {**CSRF, "Host": "bot.example.com", "CF-Connecting-IP": ip}
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        data = store.read()
+        data.update(
+            public_url=public_url,
+            web_tunnel=True,
+            web_admin={"username": "admin", "password": hash_password("right-pass")},
+        )
+        store.write(data)
+        url = "/ui/api/login"
+        wrong = {"username": "admin", "password": "bad"}
+        right = {"username": "admin", "password": "right-pass"}
+        for _ in range(LOGIN_TRIES):
+            response = await client.post(url, headers=headers("192.0.2.1"), json=wrong)
+            assert not (await response.json())["ok"]
+        response = await client.post(url, headers=headers("192.0.2.1"), json=right)
+        assert "分钟后再试" in (await response.json())["message"]
+        response = await client.post(url, headers=headers("2001:db8::1"), json=right)
+        assert (await response.json())["ok"]
+        assert (
+            response.cookies[COOKIE]["secure"] and response.headers["Cache-Control"] == "no-store"
+        )
+        link = await client.get(f"/ui/login?t={auth.link_token()}", allow_redirects=False)
+        assert link.cookies[COOKIE]["secure"]
+        assert read_audit(tmp_path / "audit.jsonl", 1)[0]["client"] == "2001:db8::1"
+
+    scenario(test, tmp_path / "audit.jsonl")
+    req = SimpleNamespace(
+        remote="192.0.2.3", host="bot.example.com", headers=CIMultiDict(headers("192.0.2.4"))
+    )
+    assert _login_client(req, True, public_url) == "192.0.2.3"
+    req.remote, req.host = "127.0.0.1", "localhost"
+    assert _login_client(req, True, public_url) == "127.0.0.1"
+    req.host = "bot.example.com"
+    assert _login_client(req, False, public_url) == "127.0.0.1"
 
 
 def test_prompt_for_ai(tmp_path: Path) -> None:

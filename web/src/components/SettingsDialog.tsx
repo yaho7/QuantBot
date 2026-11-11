@@ -69,6 +69,11 @@ function SettingsForm({ data, onDone }: { data: Settings; onDone: () => void }) 
       setError(null);
       if (changed) save.mutate(false);
     }}>
+      <dl className="grid gap-1 rounded-lg border bg-card px-3 py-2 text-sm">
+        <dt className="font-medium">{data.public_url ? "网页地址" : "监听地址"}</dt>
+        <dd className="break-all font-mono text-xs">{data.public_url ? `${data.public_url}/ui/` : data.listen}</dd>
+        <dd className="text-xs text-muted-foreground">在服务器上运行 quantbot setup 修改。</dd>
+      </dl>
       <h4 className="text-sm font-medium">
         Telegram {data.telegram ? `· 已接 @${data.bot_username || "bot"}` : "· 没接"}
       </h4>

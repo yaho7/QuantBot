@@ -181,10 +181,10 @@ def test_setup_port_choice_and_cancel(tmp_path: Path) -> None:
         taken = str(busy.getsockname()[1])
         # bad choice, this machine, bad port, taken port, good port, admin, no Telegram,
         # hb, do not save
-        answers = ["3", "1", "80", taken, "31555", "", PW, PW, "n", "-", "n"]
+        answers = ["4", "1", "80", taken, "31555", "", PW, PW, "n", "-", "n"]
         code, io = run(store, ["setup"], answers)
     assert code == 1 and "已取消" in io.text() and not store.exists()
-    assert "输入 1 或 2" in io.text()
+    assert "输入 1、2 或 3" in io.text()
     assert "1024 到 65535" in io.text() and "占用" in io.text()
     code, io = run(store, ["setup"], ["", "31555", "", PW, PW, "n", "-", ""])
     assert code == 0 and store.read()["listen"] == "127.0.0.1:31555"
@@ -195,6 +195,35 @@ def test_setup_port_choice_and_cancel(tmp_path: Path) -> None:
     assert store.settings({}).host == "0.0.0.0"  # noqa: S104
     code, io = run(store, ["setup"], [*KEEP, "n", "-", ""])  # Enter keeps the current choice
     assert code == 0 and store.read()["listen"] == "0.0.0.0:31555"
+
+
+def test_setup_tunnel_and_links(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    code, io = run(
+        store,
+        ["setup"],
+        [
+            "3",
+            "31555",
+            "http://bot.example.com",
+            "https://Bot.Example.com/ui/",
+            "",
+            PW,
+            PW,
+            "n",
+            "-",
+            "",
+        ],
+    )
+    assert code == 0 and "请填写 Tunnel 的 HTTPS 地址" in io.text()
+    assert store.read()["listen"] == "127.0.0.1:31555"
+    assert store.read()["web_tunnel"] and store.settings({}).public_url == "https://bot.example.com"
+    assert "https://bot.example.com/ui/" in io.text() and "http://127.0.0.1:31555" in io.text()
+    assert "https://bot.example.com/ui/login?t=" in run(store, ["web"])[1].text()
+    assert run(store, ["setup"], ["", "", "", "", "", "n", "-", ""])[0] == 0
+    assert store.read()["web_tunnel"]
+    assert run(store, ["setup"], ["1", "", "", "", "n", "-", ""])[0] == 0
+    assert "public_url" not in store.read() and "web_tunnel" not in store.read()
 
 
 def test_setup_admin_password_rules_and_change(tmp_path: Path) -> None:
@@ -258,7 +287,7 @@ def test_add_list_token_rename_remove(tmp_path: Path) -> None:
     token = next(line for line in io.out if "QB_TOKEN=" in line).split("=", 1)[1]
     listen = store.read()["listen"]
     assert len(token) >= 32 and f"QB_URL=http://{listen}" in io.text()
-    assert "还没配置 Telegram" in io.text()
+    assert "quantbot web 获取网页登录链接" in io.text()
     assert run(store, ["add", "momentum"])[0] == 1
     assert run(store, ["add", "Bad!"])[0] == 1
     run(store, ["add", "grid"], ["网格"])
