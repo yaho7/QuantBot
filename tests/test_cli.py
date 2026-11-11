@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import os
 import stat
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from quantbot.cli import Console, TelegramError, main
+from quantbot.cli import Console, TelegramError, main, parser
 from quantbot.config import ConfigError, Store, StrategyConfig
 from quantbot.hub import Hub
 from quantbot.service import ServiceError
@@ -90,6 +91,29 @@ def run(
     io = Script(answers or [], tty=kw.pop("tty", True))
     api = kw.pop("api", FakeTelegram([message()]))
     return main(argv, io=io, api=api, store=store), io
+
+
+def test_cli_colors_only_terminal_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    class Terminal(StringIO):
+        def isatty(self) -> bool:
+            return True
+
+    tty = Terminal()
+    monkeypatch.setattr("sys.stdout", tty)
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm")
+    console = Console()
+    console.status("ok", "服务已启动。")
+    assert "\x1b[1;32m[完成]\x1b[0m" in tty.getvalue()
+    assert "\x1b[1;36m服务运维" in parser(console).format_help()
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert "\x1b" not in parser(console).format_help()
+    monkeypatch.delenv("NO_COLOR")
+    pipe = StringIO()
+    monkeypatch.setattr("sys.stdout", pipe)
+    console.status("ok", "服务已启动。")
+    assert pipe.getvalue() == "[完成] 服务已启动。\n"
+    assert "策略管理\n  list" in parser(console).format_help()
 
 
 def test_setup_finds_owner_from_a_message(tmp_path: Path) -> None:
@@ -359,7 +383,7 @@ def test_link_copies_the_client_and_registers(
     assert 'qb = QuantBot("my-momentum")' in io.text() and "python main.py" in io.text()
     token = store.strategies()[0].token
     code, io = run(store, ["link", str(project)], ["", "", ""])  # again: same token
-    assert code == 0 and "已经连接过" in io.text() and store.strategies()[0].token == token
+    assert code == 0 and "使用现有连接令牌" in io.text() and store.strategies()[0].token == token
 
 
 def test_link_writes_requirements(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

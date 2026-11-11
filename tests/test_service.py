@@ -88,7 +88,7 @@ def test_service_command_saves_listen(tmp_path: Path, monkeypatch: pytest.Monkey
     io = Script([])
     assert main(["service", "install", "--listen", "0.0.0.0:9000"], io=io, store=store) == 0
     assert store.read()["listen"] == "0.0.0.0:9000"
-    assert "还没设置 Telegram" not in io.text() and "开机自动启动" in io.text()
+    assert "自动启动" in io.text() and "登录时" in io.text()
     assert "设置网页管理员" in io.text()
     assert main(["service", "install", "--listen", "9000"], io=Script([]), store=store) == 1
     assert cli.api_url(store) == "http://127.0.0.1:9000"
@@ -103,7 +103,7 @@ def test_service_install_port_choice(tmp_path: Path, monkeypatch: pytest.MonkeyP
     io = Script([])
     assert main(["service", "install"], io=io, store=store) == 0  # random port
     picked = store.read()["listen"]
-    assert f"监听：{picked}" in io.text()
+    assert "监听地址" in io.text() and picked in io.text()
     assert main(["service", "install", "--port", "31234"], io=Script([]), store=store) == 0
     assert store.read()["listen"] == "127.0.0.1:31234"
     assert main(["service", "install", "--port", "80"], io=Script([]), store=store) == 1

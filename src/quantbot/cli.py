@@ -14,14 +14,16 @@ import json
 import logging
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -63,26 +65,68 @@ class Abort(Exception):
 class Console:
     """Terminal input and output. Tests replace it with scripted answers."""
 
+    def styled(self, text: str, style: str) -> str:
+        if (
+            sys.stdout.isatty()
+            and "NO_COLOR" not in os.environ
+            and os.environ.get("TERM") != "dumb"
+        ):
+            return f"\x1b[{style}m{text}\x1b[0m"
+        return text
+
     def say(self, text: str = "") -> None:
         print(text, flush=True)
+
+    def status(self, level: str, message: str) -> None:
+        label, color = {
+            "step": ("进行", "1;36"),
+            "ok": ("完成", "1;32"),
+            "note": ("提示", "1;36"),
+            "warn": ("注意", "1;33"),
+            "error": ("失败", "1;31"),
+        }[level]
+        self.say(f"{self.styled(f'[{label}]', color)} {message}")
+
+    def section(self, title: str) -> None:
+        self.say()
+        self.say(self.styled(f"── {title} ──", "1;36"))
+
+    def rows(self, rows: Sequence[tuple[str, str]]) -> None:
+        def width(label: str) -> int:
+            return sum(2 if unicodedata.east_asian_width(char) in "FW" else 1 for char in label)
+
+        label_width = max((width(label) for label, _ in rows), default=0)
+        for label, value in rows:
+            self.say(f"  {label}{' ' * (label_width - width(label) + 3)}{value}")
+
+    def _prompt(self, label: str) -> str:
+        return f"{self.styled('›', '1;36')} {label} "
 
     def ask(self, prompt: str, default: str = "") -> str:
         hint = f" [{default}]" if default else ""
         try:
-            answer = input(f"{prompt}{hint}: ").strip()
+            answer = input(self._prompt(f"{prompt.strip()}{hint}")).strip()
         except EOFError as exc:
             raise Abort("没有输入，已取消。") from exc
         return answer or default
 
     def secret(self, prompt: str) -> str:
         try:
-            return getpass.getpass(f"{prompt}: ").strip()
+            return getpass.getpass(self._prompt(prompt.strip()), stream=sys.stdout).strip()
         except EOFError as exc:
             raise Abort("没有输入，已取消。") from exc
 
     def confirm(self, prompt: str, default: bool = True) -> bool:
-        answer = self.ask(f"{prompt} {'[Y/n]' if default else '[y/N]'}").lower()
-        return default if not answer else answer in {"y", "yes", "是"}
+        choices = "[Y/n]" if default else "[y/N]"
+        while True:
+            answer = self.ask(f"{prompt} {choices}").lower()
+            if not answer:
+                return default
+            if answer in {"y", "yes", "是"}:
+                return True
+            if answer in {"n", "no", "否"}:
+                return False
+            self.status("warn", "请输入 y 或 n。")
 
     def interactive(self) -> bool:
         return sys.stdin.isatty()
@@ -421,7 +465,7 @@ def cmd_password(store: Store, io: Console, api: Api, args: argparse.Namespace) 
     if not io.interactive():
         raise Abort("要在终端里交互运行：quantbot password")
     data = store.read()
-    io.say("设置网页管理员的用户名和密码。")
+    io.section("网页管理员")
     admin = _ask_admin(io, data)
     with store.edit() as fresh:
         if fresh.get("web_admin") != data.get("web_admin"):
@@ -432,7 +476,7 @@ def cmd_password(store: Store, io: Console, api: Api, args: argparse.Namespace) 
     from quantbot.audit import Audit
 
     Audit(store.dir).write("password", user="cli", ok=True, result="改了网页管理员账号")
-    io.say("✓ 已保存。已登录的网页都要重新登录。")
+    io.status("ok", "已更新管理员账号。网页会话需要重新登录。")
     return 0
 
 
@@ -510,12 +554,12 @@ def cmd_add(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
     name = args.name or (io.ask("显示名称", sid) if io.interactive() else sid)
     with store.edit() as data:
         token = add_strategy(data, sid, name)["token"]
-    io.say(f"✓ 已添加 {name}（{sid}）。把下面两行交给这个策略程序：")
+    io.status("ok", f"已添加策略 {name}（{sid}）。")
     io.say()
     io.say(f"  QB_URL={api_url(store)}")
     io.say(f"  QB_TOKEN={token}")
     io.say()
-    io.say("QuantBot 几秒内就会认出它，不用重启。")
+    io.status("note", "连接配置会在几秒内生效。")
     io.say("运行 quantbot web 获取网页登录链接。")
     return 0
 
@@ -524,15 +568,16 @@ def cmd_list(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
     data = store.read()
     telegram_set = data.get("telegram") or {}
     owner = telegram_set.get("owner_name") or telegram_set.get("owner_id")
-    io.say(f"Telegram：{'主人 ' + str(owner) if owner else '未接，可在网页设置里添加'}")
+    rows = [("Telegram", f"管理员 {owner}" if owner else "未配置")]
     if data.get("listen"):
-        io.say(f"监听：{data['listen']}")
+        rows.append(("监听地址", str(data["listen"])))
+    io.rows(rows)
     items = store.strategies(data)
     if not items:
-        io.say("还没有策略。添加：quantbot add <id> --name <名字>")
+        io.status("note", "暂无策略。运行 quantbot add <id> --name <名称> 添加。")
         return 0
     width = max(len(s.id) for s in items)
-    io.say(f"{len(items)} 个策略：")
+    io.section(f"已注册策略（{len(items)}）")
     for s in items:
         io.say(f"  {s.id.ljust(width)}  {s.name}")
     return 0
@@ -548,7 +593,7 @@ def cmd_token(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
         with store.edit() as data:
             item = require_strategy(data, args.id)
             item["token"] = new_token()
-        io.say(f"✓ {args.id} 的新 token：")
+        io.status("ok", f"已为 {args.id} 换发连接令牌。")
     io.say(f"QB_TOKEN={item['token']}")
     return 0
 
@@ -556,7 +601,7 @@ def cmd_token(store: Store, io: Console, api: Api, args: argparse.Namespace) -> 
 def cmd_rename(store: Store, io: Console, api: Api, args: argparse.Namespace) -> int:
     with store.edit() as data:
         require_strategy(data, args.id)["name"] = args.name
-    io.say(f"✓ {args.id} 现在叫 {args.name}")
+    io.status("ok", f"已将 {args.id} 的显示名称更新为 {args.name}。")
     return 0
 
 
@@ -568,7 +613,8 @@ def cmd_remove(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
         return 1
     with store.edit() as data:
         data["strategies"].remove(require_strategy(data, args.id))
-    io.say(f"✓ 已删除 {args.id}。策略程序本身不受影响，请自己停掉它。")
+    io.status("ok", f"已移除策略 {args.id}，连接令牌已撤销。")
+    io.status("note", "可在策略所在的服务器上单独停止进程。")
     return 0
 
 
@@ -582,19 +628,25 @@ def cmd_service(store: Store, io: Console, api: Api, args: argparse.Namespace) -
             _set_listen(store, io, args.port, args.listen)
         listen = store.ensure_listen()
         notes = service.install(executable(), store.dir)
-        io.say(f"✓ QuantBot 已在后台运行，开机自动启动。服务文件：{service.path}")
-        io.say(f"  监听：{listen}")
+        io.status("ok", "已注册并启动后台服务。")
+        io.rows(
+            [
+                ("监听地址", listen),
+                ("自动启动", "登录时" if service.kind == "launchd" else "开机时"),
+                ("服务文件", str(service.path)),
+            ]
+        )
         for note in notes:
             io.say(f"  {note}")
-        io.say("  看日志：quantbot logs -f")
+        io.status("note", "查看日志  quantbot logs -f")
         if not (store.read().get("web_admin") or {}).get("password"):
             io.say("  运行 quantbot setup 设置网页管理员，或运行 quantbot web 获取登录链接。")
     elif args.action == "uninstall":
         service.uninstall()
-        io.say("✓ 已停止并删除服务。设置和策略 token 都还在。")
+        io.status("ok", "后台服务已停止并卸载。")
     elif args.action == "restart":
         service.restart()
-        io.say("✓ 已重启。")
+        io.status("ok", "后台服务已重启。")
     else:
         io.say(service.status() or "没有安装服务。安装：quantbot service install")
     return 0
@@ -633,10 +685,10 @@ def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
     if result["error"]:
         raise Abort(result["error"])
     if not result["available"]:
-        io.say("已经是最新版本。")
+        io.status("ok", "当前已是最新版本。")
         return 0
     count = result["behind"]
-    io.say(f"有新版本（{count} 个新提交）：" if count else "有新版本：")
+    io.status("note", f"有新版本（{count} 个新提交）。" if count else "有新版本。")
     for commit in result["commits"]:
         io.say(f"  {commit['sha']} {commit['message']}".rstrip())
     if args.check:
@@ -647,16 +699,17 @@ def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
         if not io.confirm("安装更新吗？", default=False):
             io.say("已取消更新。")
             return 0
-    io.say("正在更新 QuantBot…")
+    io.status("step", "正在安装 QuantBot 更新。")
     ok, output = updater.upgrade()
     if not ok:
         raise Abort(f"更新失败。{output}")
     service = _service_or_none()
     if service is not None and service.installed():
         service.restart()
-        io.say("✓ 已更新，后台服务已重启。")
+        io.status("ok", "QuantBot 已更新，后台服务已重启。")
     else:
-        io.say("✓ 已更新。如果 QuantBot 正在前台运行，请重新运行 quantbot run。")
+        io.status("ok", "QuantBot 已更新。")
+        io.status("note", "前台进程可通过 quantbot run 重新启动。")
     return 0
 
 
@@ -665,11 +718,12 @@ def cmd_editor(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
         if not args.root:
             raise Abort("请选择策略目录：quantbot editor on --root ~/strategies")
         root = Editor.enable(store.dir, args.root)
-        io.say(f"✓ 网页策略编辑器已开启，编辑目录：{root}")
+        io.status("ok", "网页策略编辑器已启用。")
+        io.rows([("编辑目录", str(root))])
     elif args.action == "off":
         with editor_lock(store.dir):
             Store(store.dir, filename=EDITOR_FILE).path.unlink(missing_ok=True)
-        io.say("✓ 网页策略编辑器已关闭。")
+        io.status("ok", "网页策略编辑器已关闭。")
     else:
         editor = Editor.configured(store.dir)
         io.say(f"编辑目录：{editor.root}" if editor else "网页策略编辑器已关闭。")
@@ -685,10 +739,10 @@ def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namesp
         io.say(f"打开 {prompt['url']}，输入验证码 {prompt['code']}。")
         while (status := github.poll(flow)) is None:
             time.sleep(flow.interval)
-        io.say("✓ GitHub 已绑定。")
+        io.status("ok", "已绑定 GitHub 仓库。")
     elif action == "unbind":
         github.unbind()
-        io.say("✓ 已解除 GitHub 绑定。")
+        io.status("ok", "已解除 GitHub 仓库绑定。")
         return 0
     elif action == "status":
         status = github.status()
@@ -701,7 +755,7 @@ def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namesp
                 return 0
         status = github.sync(action)
     if not status["bound"]:
-        io.say("还未绑定 GitHub 仓库。")
+        io.status("note", "尚未绑定 GitHub 仓库。")
     elif status.get("error"):
         raise Abort(status["error"])
     else:
@@ -751,10 +805,9 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
         raise Abort("这台机器上的 QuantBot 还没设置。先运行：quantbot setup")
     store.ensure_listen()
     data = store.read()
-    io.say(f"把 {project} 连接到 QuantBot。直接回车会用方括号里的值。")
-    io.say()
-
-    io.say("1/3  名字")
+    io.section("接入策略")
+    io.rows([("项目目录", str(project))])
+    io.section("1/3  策略信息")
     while True:
         try:
             sid = check_strategy_id(io.ask("     策略 id", args.name or project_name(project)))
@@ -769,10 +822,12 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
             add_strategy(data, sid, name)
         else:
             item["name"] = name
-    io.say(f"     ✓ {sid} 已经连接过，沿用它的 token" if item else f"     ✓ 已添加 {name}")
+    if item:
+        io.status("note", f"策略 {sid} 已注册，使用现有连接令牌。")
+    else:
+        io.status("ok", f"已注册策略 {name}（{sid}）。")
 
-    io.say()
-    io.say("2/3  把客户端加进项目")
+    io.section("2/3  安装策略客户端")
     choices = []
     if (project / "pyproject.toml").exists() and shutil.which("uv"):
         choices.append(("uv", "用 uv add 加成依赖（uv 项目，推荐）"))
@@ -790,7 +845,7 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
     if how == "uv":
         if subprocess.call(["uv", "add", CLIENT_REQUIREMENT], cwd=project):  # noqa: S603, S607
             raise Abort("uv add 失败，见上面的输出。可以重新运行 quantbot link 选复制文件。")
-        io.say("     ✓ 已加到 pyproject.toml 和 uv.lock")
+        io.status("ok", "已通过 uv 安装策略客户端。")
     elif how == "requirements":
         req = project / "requirements.txt"
         lines = req.read_text("utf-8").splitlines()
@@ -803,7 +858,8 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
                 + "\n",
                 "utf-8",
             )
-        io.say("     ✓ 已写进 requirements.txt。在你的环境里运行：pip install -r requirements.txt")
+        io.status("ok", "已更新 requirements.txt。")
+        io.status("note", "在策略环境执行 pip install -r requirements.txt。")
     else:
         target = project / "quantbot_client.py"
         source = client_source()
@@ -812,10 +868,9 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
                 source = ""
         if source:
             target.write_text(source, "utf-8")
-        io.say("     ✓ 已复制 quantbot_client.py")
+            io.status("ok", "已复制 quantbot_client.py。")
 
-    io.say()
-    io.say("3/3  在代码里加上这几行：")
+    io.section("3/3  将客户端接入策略代码")
     io.say()
     for line in (
         "from quantbot_client import QuantBot",
@@ -824,19 +879,19 @@ def cmd_link(store: Store, io: Console, api: Api, args: argparse.Namespace) -> i
         "with qb:",
         "    while not qb.stopping:",
         "        ...                          # 你的一轮交易，下开仓单前看 qb.can_open()",
-        '        qb.status("净值 10000")       # 显示在 Telegram 里',
+        '        qb.status("净值 10000")       # 更新控制台里的策略状态',
         "        if not qb.sleep(60):         # 等的时候也在响应按钮",
         "            break",
     ):
         io.say(f"    {line}")
     io.say()
-    io.say(f"然后照常运行：cd {project} && {run_command(project)}")
-    io.say(
-        "在网页或 Telegram 的 /menu 里就能看到它。"
-        "不用填 token，客户端会自己找到这台机器上的 QuantBot。"
+    io.rows(
+        [
+            ("运行策略", f"cd {shlex.quote(str(project))} && {run_command(project)}"),
+            ("AI 接入说明", f"quantbot prompt {sid}"),
+        ]
     )
-    io.say()
-    io.say(f"想让 AI 帮你接：运行 quantbot prompt {sid}，把输出整段贴给 AI。")
+    io.status("note", "本机客户端会自动读取连接配置。连接后可在网页或 Telegram /menu 查看策略。")
     return 0
 
 
@@ -865,31 +920,45 @@ def cmd_run(store: Store, io: Console, api: Api, args: argparse.Namespace) -> in
 # --------------------------------------------------------------------- main
 
 
-def parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="quantbot", description="一个 Telegram bot 管理所有量化程序")
-    p.add_argument("--version", action="version", version=f"quantbot {installed().label}")
-    sub = p.add_subparsers(dest="command", metavar="命令")
-    sub.add_parser("run", help="在前台运行 QuantBot（后台服务也是用它）").set_defaults(fn=cmd_run)
-    setup = sub.add_parser("setup", help="交互式设置：地址、网页管理员、Telegram（可选）、心跳")
+def parser(io: Console | None = None) -> argparse.ArgumentParser:
+    io = io or Console()
+    p = argparse.ArgumentParser(
+        prog="quantbot",
+        usage="%(prog)s [选项] [命令 ...]",
+        description="QuantBot · 量化策略控制台",
+        add_help=False,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    options = p.add_argument_group("选项")
+    options.add_argument("-h", "--help", action="help", help="显示帮助")
+    options.add_argument(
+        "--version",
+        action="version",
+        version=f"quantbot {installed().label}",
+        help="显示版本与提交",
+    )
+    sub = p.add_subparsers(prog=p.prog, dest="command", metavar="命令", help=argparse.SUPPRESS)
+    sub.add_parser("run", description="在前台运行 QuantBot").set_defaults(fn=cmd_run)
+    setup = sub.add_parser("setup", description="交互式配置访问、管理员与通知")
     setup.add_argument("--if-needed", action="store_true", help="已经设置过就跳过")
     setup.set_defaults(fn=cmd_setup)
-    service = sub.add_parser("service", help="后台服务：install、uninstall、restart、status")
+    service = sub.add_parser("service", description="安装、卸载、重启或查看后台服务")
     service.add_argument("action", choices=["install", "uninstall", "restart", "status"])
     service.add_argument("--port", type=int, help="端口，默认第一次安装时随机选一个空闲的")
     service.add_argument("--listen", help="完整监听地址，例如 0.0.0.0:23456（让别的机器也能连）")
-    link = sub.add_parser("link", help="把你的策略项目连接到 QuantBot（交互式）")
+    link = sub.add_parser("link", description="为策略项目安装客户端并接入 QuantBot")
     link.add_argument("path", nargs="?", default=".", help="项目文件夹，默认当前文件夹")
     link.add_argument("--name", help="策略 id，默认用文件夹名")
     link.set_defaults(fn=cmd_link)
-    prompt = sub.add_parser("prompt", help="打印一段给 AI 的说明，让它帮你把程序接进来")
+    prompt = sub.add_parser("prompt", description="输出给 AI 的策略接入说明")
     prompt.add_argument("id", nargs="?", help="策略 id，默认用当前文件夹名")
     prompt.add_argument("--name", help="显示名称")
     prompt.set_defaults(fn=cmd_prompt)
-    update = sub.add_parser("update", help="检查版本或安装更新")
+    update = sub.add_parser("update", description="检查版本或安装更新")
     update.add_argument("--check", action="store_true", help="只检查，不安装")
     update.add_argument("--yes", action="store_true", help="直接安装，无需确认")
     update.set_defaults(fn=cmd_update)
-    editor = sub.add_parser("editor", help="在服务器上管理网页策略编辑器")
+    editor = sub.add_parser("editor", description="管理策略编辑器与 GitHub 同步")
     editor.set_defaults(fn=cmd_editor)
     editor_actions = editor.add_subparsers(dest="action", required=True)
     enable = editor_actions.add_parser("on", help="开启编辑器并选择目录")
@@ -909,30 +978,45 @@ def parser() -> argparse.ArgumentParser:
     for action, label in (("pull", "拉取远端提交"), ("push", "推送本地已有提交")):
         sync = github_actions.add_parser(action, help=label)
         sync.add_argument("--yes", action="store_true", help="无需确认")
-    sub.add_parser("web", help="打印一次性的网页登录链接").set_defaults(fn=cmd_web)
-    sub.add_parser("password", help="改网页管理员的用户名和密码").set_defaults(fn=cmd_password)
+    sub.add_parser("web", description="打印一次性的网页登录链接").set_defaults(fn=cmd_web)
+    sub.add_parser("password", description="改网页管理员的用户名和密码").set_defaults(
+        fn=cmd_password
+    )
     service.set_defaults(fn=cmd_service)
-    logs = sub.add_parser("logs", help="看后台服务的日志")
+    logs = sub.add_parser("logs", description="看后台服务的日志")
     logs.add_argument("-f", "--follow", action="store_true", help="一直看新日志")
     logs.set_defaults(fn=cmd_logs)
-    add = sub.add_parser("add", help="添加一个策略，生成它的 token")
+    add = sub.add_parser("add", description="注册策略并生成连接令牌")
     add.add_argument("id", help="例如 momentum")
-    add.add_argument("--name", help="在 Telegram 里显示的名字")
+    add.add_argument("--name", help="策略显示名称")
     add.set_defaults(fn=cmd_add)
-    sub.add_parser("list", help="列出策略").set_defaults(fn=cmd_list)
-    token = sub.add_parser("token", help="显示一个策略的 token")
+    sub.add_parser("list", description="列出策略").set_defaults(fn=cmd_list)
+    token = sub.add_parser("token", description="查看或换发策略连接令牌")
     token.add_argument("id")
     token.add_argument("--new", action="store_true", help="换一个新 token，旧的马上失效")
     token.add_argument("--yes", action="store_true", help="不再确认")
     token.set_defaults(fn=cmd_token)
-    rename = sub.add_parser("rename", help="改策略的显示名称")
+    rename = sub.add_parser("rename", description="改策略的显示名称")
     rename.add_argument("id")
     rename.add_argument("name")
     rename.set_defaults(fn=cmd_rename)
-    remove = sub.add_parser("remove", help="删除一个策略")
+    remove = sub.add_parser("remove", description="移除策略并撤销连接令牌")
     remove.add_argument("id")
     remove.add_argument("--yes", action="store_true", help="不再确认")
     remove.set_defaults(fn=cmd_remove)
+
+    groups = (
+        ("访问与账号", ("setup", "web", "password")),
+        ("服务运维", ("run", "service", "logs")),
+        ("策略管理", ("list", "add", "link", "prompt", "rename", "token", "remove")),
+        ("编辑与同步", ("editor",)),
+        ("版本更新", ("update",)),
+    )
+    sections = []
+    for title, names in groups:
+        commands = [f"  {name:<10} {sub.choices[name].description}" for name in names]
+        sections.append("\n".join([io.styled(title, "1;36"), *commands]))
+    p.epilog = "\n\n".join(sections)
     return p
 
 
@@ -942,22 +1026,23 @@ def main(
     api: Api = telegram,
     store: Store | None = None,
 ) -> int:
-    args = parser().parse_args(argv)
-    fn = getattr(args, "fn", cmd_run)
     io = io or Console()
+    args = parser(io).parse_args(argv)
+    fn = getattr(args, "fn", cmd_run)
     store = store or Store(data_dir())
     try:
         code = int(fn(store, io, api, args))
         if code == 0 and args.command in {"list", "link", "web", "setup"}:
             update = Updater(store.dir).cached()
             if update and update.get("available"):
-                io.say("有新版本，运行 quantbot update 查看。")
+                io.status("note", "有新版本，运行 quantbot update 查看。")
         return code
     except (Abort, ConfigError, ServiceError) as exc:
-        io.say(f"✗ {exc}")
+        io.status("error", str(exc))
         return 1
     except KeyboardInterrupt:
-        io.say("\n已取消。")
+        io.say()
+        io.status("note", "已取消。")
         return 130
 
 
