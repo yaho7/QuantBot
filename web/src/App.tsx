@@ -79,6 +79,11 @@ function TopBar({ onLogout, view }: {
 }
 
 const code = "rounded bg-muted px-1.5 py-0.5 font-mono text-xs";
+const overviewKey = ["overview"];
+
+function needsLogin(error: unknown) {
+  return error instanceof ApiError && error.status === 401;
+}
 
 function Login() {
   const qc = useQueryClient();
@@ -87,7 +92,7 @@ function Login() {
   const login = useMutation({
     mutationFn: () => api.login(username.trim(), password),
     onSuccess: (answer) => {
-      if (answer.ok) void qc.invalidateQueries();
+      if (answer.ok) void qc.invalidateQueries({ queryKey: overviewKey });
       else setPassword("");
     },
   });
@@ -268,9 +273,18 @@ function TelegramNote() {
 export function App() {
   const requested = new URLSearchParams(location.search).get("view");
   const view: View = requested === "workspace" || requested === "settings" ? requested : "strategies";
-  const overview = useQuery({ queryKey: ["overview"], queryFn: api.overview, refetchInterval: 5_000 });
+  const overview = useQuery({
+    queryKey: overviewKey,
+    queryFn: api.overview,
+    // A refetch without cached data clears the 401 while pending, which unmounts the login form.
+    refetchInterval: (query) => needsLogin(query.state.error) ? false : 5_000,
+    refetchOnWindowFocus: (query) => !needsLogin(query.state.error),
+    refetchOnReconnect: (query) => !needsLogin(query.state.error),
+  });
+  const signedOut = needsLogin(overview.error);
   const update = useQuery({
-    queryKey: ["update"], queryFn: api.updateStatus, enabled: !!overview.data && view === "settings", refetchInterval: 5_000,
+    queryKey: ["update"], queryFn: api.updateStatus,
+    enabled: !signedOut && !!overview.data && view === "settings", refetchInterval: 5_000,
   });
   const logout = useMutation({ mutationFn: api.logout, onSettled: () => location.reload() });
   const [promptOpen, setPromptOpen] = React.useState(false);
@@ -281,7 +295,7 @@ export function App() {
   React.useEffect(() => {
     if (updatedFrom && version && version !== updatedFrom) location.reload();
   }, [updatedFrom, version]);
-  if (overview.error instanceof ApiError && overview.error.status === 401) return <Login />;
+  if (signedOut) return <Login />;
   const strategies = overview.data?.strategies ?? [];
   const online = strategies.filter((s) => s.online).length;
   return (
