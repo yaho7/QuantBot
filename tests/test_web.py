@@ -686,6 +686,43 @@ def test_workspace_terminal_requires_session_and_origin_and_reports_latency(
     scenario(test, tmp_path / "audit.jsonl")
 
 
+def test_workspace_program_survives_the_browser_session_and_can_stop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "workspace"
+    root.mkdir()
+    Editor.enable(tmp_path / "settings", str(root))
+    monkeypatch.setattr(Editor, "workspace", lambda self: Workspace(self.root, 123, 123, tmp_path))
+    monkeypatch.setattr(Workspace, "command", lambda self, argv: argv)
+    monkeypatch.setattr(Workspace, "process_options", lambda self: {"cwd": self.root})
+    url = "/ui/api/workspace/program"
+    command = "/bin/sh -c 'echo ready; exec sleep 60'"
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        assert (await client.get(url)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        assert (await client.post(url + "/start")).status == 403
+        assert not (await (await client.post(url + "/start", headers=CSRF)).json())["ok"]
+        saved = await client.post(url + "/configure", json={"command": command}, headers=CSRF)
+        assert (await saved.json())["data"]["command"] == command
+        assert (await (await client.post(url + "/start", headers=CSRF)).json())["ok"]
+        await client.post("/ui/api/logout", headers=CSRF)
+        assert (await client.get(url)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        for _ in range(100):
+            status = (await (await client.get(url)).json())["data"]
+            if "ready" in status["logs"]:
+                break
+            await asyncio.sleep(0.005)
+        assert status["running"] and "ready" in status["logs"]
+        assert not (await (await client.post(url + "/start", headers=CSRF)).json())["ok"]
+        stopped = await (await client.post(url + "/stop", headers=CSRF)).json()
+        assert stopped["ok"] and not stopped["data"]["running"]
+        assert "ready" in stopped["data"]["logs"]
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 def test_web_actions_go_through_the_strategy_and_the_audit_log(tmp_path: Path) -> None:
     from tests.test_core import Fake
 

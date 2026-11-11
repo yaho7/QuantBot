@@ -1,11 +1,12 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { structuredPatch } from "diff";
-import { ChevronRight, FileCode, Folder, FolderOpen, GitBranch, RefreshCw, Save, SquareTerminal } from "lucide-react";
+import { ChevronRight, FileCode, Folder, FolderOpen, GitBranch, Play, RefreshCw, Save, SquareTerminal } from "lucide-react";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { ConfirmDialog, EmptyState, LoadingState, QueryBoundary } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
 import { StrategyCodeEditor } from "@/components/StrategyCodeEditor";
+import { WorkspaceProgram } from "@/components/WorkspaceProgram";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
@@ -100,6 +101,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const [discard, setDiscard] = useState<string>();
   const [githubOpen, setGithubOpen] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [programOpen, setProgramOpen] = useState(false);
   const showTerminal = managed && terminalOpen;
   const dirty = !!file && file.content !== draft;
   useEffect(() => {
@@ -144,9 +146,12 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
           <Button variant="outline" size="sm" disabled={busy} onClick={() => setGithubOpen(true)}>
             <GitBranch /> Git</Button>
           {managed && (
-            <Button variant={showTerminal ? "secondary" : "outline"} size="sm" aria-pressed={showTerminal}
-              onClick={() => setTerminalOpen((open) => !open)}>
-              <SquareTerminal /> {tr("终端")}</Button>
+            <>
+              <Button variant={programOpen ? "secondary" : "outline"} size="sm" aria-pressed={programOpen}
+                onClick={() => setProgramOpen((open) => !open)}><Play /> {tr("运行")}</Button>
+              <Button variant={showTerminal ? "secondary" : "outline"} size="sm" aria-pressed={showTerminal}
+                onClick={() => setTerminalOpen((open) => !open)}><SquareTerminal /> {tr("终端")}</Button>
+            </>
           )}
         </div>
         <div className={cn("items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]", showTerminal ? "hidden md:grid" : "grid")}>
@@ -179,6 +184,7 @@ export default function WorkspaceEditor({ managed }: { managed: boolean }) {
           </section>
         </div>
         {showTerminal && <Suspense fallback={<LoadingState />}><WorkspaceTerminal /></Suspense>}
+        {managed && programOpen && <WorkspaceProgram />}
       </div>
       <Dialog open={!!review} onOpenChange={(open) => { if (!open && !save.isPending) setReview(null); }}>
         <DialogContent title={tr("确认保存")} description={file?.path} className="max-w-4xl">

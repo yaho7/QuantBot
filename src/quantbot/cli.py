@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import http.client
 import json
 import logging
 import os
@@ -1082,6 +1083,8 @@ def cmd_workspace(store: Store, io: Console, api: Api, args: argparse.Namespace)
         return 0
     if not store.exists():
         raise Abort(tr("还没设置。先运行：quantbot setup"))
+    if args.workspace_action == "run":
+        return cmd_workspace_program(store, io, args)
     if args.workspace_action == "init":
         try:
             workspace = Workspace.initialize(store.dir, Path(args.root))
@@ -1090,6 +1093,50 @@ def cmd_workspace(store: Store, io: Console, api: Api, args: argparse.Namespace)
         io.status("ok", tr("工作区已初始化。"))
         io.rows([(tr("工作区"), str(workspace.root))])
     _print_web_link(store, io, workspace=True)
+    return 0
+
+
+def cmd_workspace_program(store: Store, io: Console, args: argparse.Namespace) -> int:
+    from quantbot.web import COOKIE, CSRF_HEADER, WebAuth
+
+    action = args.run_action
+    path = "/ui/api/workspace/program"
+    method, body = "GET", None
+    if action == "set":
+        command = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
+        action, body = "configure", json.dumps({"command": shlex.join(command)})
+    if action in {"configure", "start", "stop"}:
+        path, method = f"{path}/{action}", "POST"
+    address = urllib.parse.urlsplit(api_url(store))
+    connection = http.client.HTTPConnection(address.hostname, address.port, timeout=10)
+    headers = {
+        "Cookie": f"{COOKIE}={WebAuth(store.web_secret()).session()}",
+        CSRF_HEADER: "1",
+        "Content-Type": "application/json",
+    }
+    try:
+        connection.request(method, path, body=body, headers=headers)
+        response = connection.getresponse()
+        if response.status != 200:
+            raise Abort(tr("无法连接工作区运行服务（HTTP {0}）。", response.status))
+        answer = json.loads(response.read(512 * 1024))
+    except (OSError, ValueError, http.client.HTTPException) as exc:
+        raise Abort(tr("无法连接工作区运行服务，请检查 QuantBot 是否已启动。")) from exc
+    finally:
+        connection.close()
+    if not answer["ok"]:
+        raise Abort(answer["message"])
+    status = answer["data"]
+    if action == "logs":
+        io.say(status["logs"].rstrip("\n"))
+    elif action == "status":
+        io.say(tr("运行中") if status["running"] else tr("已停止"))
+        if status["command"]:
+            io.rows([(tr("启动命令"), status["command"])])
+        if status["exit_code"] is not None:
+            io.rows([(tr("退出码"), str(status["exit_code"]))])
+    else:
+        io.status("ok", answer["message"])
     return 0
 
 
@@ -1263,6 +1310,14 @@ def parser(io: Console | None = None) -> argparse.ArgumentParser:
     git_commit = git_actions.add_parser("commit", help=tr("提交所选文件"))
     git_commit.add_argument("-m", "--message", required=True, help=tr("提交说明"))
     git_commit.add_argument("paths", nargs="+")
+    program = workspace_actions.add_parser("run", help=tr("管理工作区后台程序"))
+    run_actions = program.add_subparsers(dest="run_action", required=True)
+    run_set = run_actions.add_parser("set", help=tr("保存启动命令"))
+    run_set.add_argument("argv", nargs=argparse.REMAINDER)
+    run_actions.add_parser("start", help=tr("启动工作区程序"))
+    run_actions.add_parser("stop", help=tr("停止工作区程序"))
+    run_actions.add_parser("status", help=tr("查看工作区程序状态"))
+    run_actions.add_parser("logs", help=tr("查看工作区程序日志"))
     sub.add_parser("password", description=tr("改网页管理员的用户名和密码")).set_defaults(
         fn=cmd_password
     )

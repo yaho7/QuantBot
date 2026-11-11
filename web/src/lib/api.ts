@@ -111,6 +111,13 @@ export interface LocalGitStatus {
   files: { path: string; status: string }[];
 }
 
+export interface WorkspaceProgramStatus {
+  command: string;
+  running: boolean;
+  exit_code: number | null;
+  logs: string;
+}
+
 export interface GitHubAuthorization {
   url: string;
   code: string;
@@ -186,6 +193,9 @@ export const api = {
   gitStatus: () => answerData<LocalGitStatus>("GET", "editor/git"),
   gitCommit: (paths: string[], message: string) =>
     answerData<{ revision: string }>("POST", "editor/git/commit", { paths, message }),
+  workspaceProgram: () => answerData<WorkspaceProgramStatus>("GET", "workspace/program"),
+  changeWorkspaceProgram: (action: "configure" | "start" | "stop", command?: string) =>
+    answerData<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
   githubBind: (form: { repo: string; branch: string; client_id: string }) =>
     answerData<GitHubAuthorization>("POST", "editor/github/bind", form),
   githubAuthorize: (state: string) =>

@@ -58,6 +58,7 @@ from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language,
 from quantbot.service import Service, ServiceError
 from quantbot.updates import Updater
 from quantbot.workspace import WORKSPACE_FILE
+from quantbot.workspace_runtime import WorkspaceRuntime
 from quantbot.workspace_terminal import TerminalProcess
 
 LINK_TTL = 5 * 60
@@ -346,6 +347,7 @@ class GitHubActions:
 
 GITHUB_KEY = web.AppKey("web_github", GitHubActions)
 TERMINALS_KEY = web.AppKey("web_workspace_terminals", set)
+RUNTIME_KEY = web.AppKey("web_workspace_runtime", WorkspaceRuntime)
 
 
 def _telegram(request: web.Request) -> Any:
@@ -452,6 +454,45 @@ async def _bridge_terminal(
 
 async def _close_terminals(app: web.Application) -> None:
     await asyncio.gather(*(socket.close(code=1001) for socket in tuple(app[TERMINALS_KEY])))
+
+
+async def workspace_program(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    runtime = request.app[RUNTIME_KEY]
+    action = request.match_info.get("action", "")
+    audit = request.app[CORE_KEY].audit
+    try:
+        if not action:
+            return _answer(True, "", runtime.status(runtime.workspace()))
+        body = await _args(request)
+        async with runtime.lock:
+            workspace = runtime.workspace()
+            if action == "configure":
+                command = body.get("command")
+                if not isinstance(command, str):
+                    return _answer(False, tr("请输入有效的启动命令。"))
+                runtime.configure(workspace, command)
+                message = tr("启动命令已保存。")
+            elif action == "start":
+                await runtime.start(workspace)
+                message = tr("已启动工作区程序。")
+            else:
+                await runtime.stop()
+                message = tr("已停止工作区程序。")
+            status = runtime.status(workspace)
+    except (ConfigError, OSError) as exc:
+        if action:
+            audit.write(f"workspace_{action}", user=WEB_USER, ok=False, result=str(exc))
+        return _answer(False, str(exc))
+    audit.write(f"workspace_{action}", user=WEB_USER, ok=True, result=message)
+    return _answer(True, message, status)
+
+
+async def _stop_workspace_program(app: web.Application) -> None:
+    runtime = app[RUNTIME_KEY]
+    async with runtime.lock:
+        await runtime.stop()
 
 
 async def editor_read(request: web.Request) -> web.Response:
@@ -1216,7 +1257,9 @@ def add_routes(
     app[EDITOR_LOCK] = asyncio.Lock()
     app[GITHUB_KEY] = GitHubActions(GitHubEditor(store.dir))
     app[TERMINALS_KEY] = set()
+    app[RUNTIME_KEY] = WorkspaceRuntime(store.dir)
     app.on_shutdown.append(_close_terminals)
+    app.on_shutdown.append(_stop_workspace_program)
     app.add_routes(
         [
             web.get("/", redirect_root),
@@ -1246,6 +1289,8 @@ def add_routes(
             web.get("/ui/api/editor/github", github_get),
             web.get("/ui/api/editor/git", local_git),
             web.get("/ui/api/workspace/terminal", workspace_terminal),
+            web.get("/ui/api/workspace/program", workspace_program),
+            web.post("/ui/api/workspace/program/{action:configure|start|stop}", workspace_program),
             web.post("/ui/api/editor/git/commit", local_git),
             web.post(
                 "/ui/api/editor/github/{action:bind|authorize|check|pull|push|unbind}", github_post

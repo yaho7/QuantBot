@@ -215,7 +215,7 @@
   "让 {0} 停止？": "Stop {0}?",
   "程序会退出，挂着的止损单会保留。要再跑起来，得在服务器上启动它。": "The process will exit and existing stop-loss orders will remain active. Start the strategy on its server to run it again.",
   "停止": "Stop",
-  "停止程序": "Stop process",
+  "停止程序": "Stop program",
   "没有挂单": "No open orders",
   "（未知）": "(unknown)",
   "参数名": "Parameter name",
@@ -278,5 +278,16 @@
   "连不上工作区终端，请检查服务器配置后重试。": "Could not connect to the workspace terminal. Check the server configuration and retry.",
   "浏览器到终端的往返时间": "Browser-to-terminal round-trip time",
   "延迟": "Latency",
-  "重新连接": "Reconnect"
+  "重新连接": "Reconnect",
+  "后台程序": "Background program",
+  "在工作区目录运行。关闭浏览器后，后台程序会继续运行。": "Runs in the workspace directory and stays active when you close the browser.",
+  "保存命令": "Save command",
+  "退出码 {0}": "Exit code {0}",
+  "启动程序": "Start program",
+  "程序日志": "Program logs",
+  "暂无输出。": "No output yet.",
+  "运行": "Run",
+  "运行中": "Running",
+  "已停止": "Stopped",
+  "启动命令": "Startup command"
 }
