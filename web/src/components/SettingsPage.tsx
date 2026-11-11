@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AccountDialog } from "@/components/AccountDialog";
 import { PageHeader, QueryBoundary } from "@/components/common";
 import { ServiceDialog } from "@/components/ServiceDialog";
-import { UpdateDialog, updateLabel } from "@/components/UpdateDialog";
+import { UpdateDialog } from "@/components/UpdateDialog";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,7 +18,7 @@ export function SettingsPage({ update, onInstalled }: { update?: UpdateStatus; o
   const [serviceOpen, setServiceOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const initialTab = new URLSearchParams(location.search).get("tab");
-  const latest = update?.result?.available && !update.updated ? updateLabel(update.result.latest) : null;
+  const latest = update?.result?.available && !update.updated ? update.result.latest : null;
   const username = settings.data?.admin_username;
 
   return (

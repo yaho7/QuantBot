@@ -146,16 +146,16 @@ def test_qb_uninstall_menu_defaults_to_cancel(
     assert installed_qb.is_symlink()
 
 
-def test_qb_update_menu_displays_the_cached_revision(
+def test_qb_update_menu_displays_the_cached_tag(
     tmp_path: Path, installed_qb: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
         "quantbot.cli.Updater.cached",
-        lambda self: {"available": True, "latest": "a1b2c3d" + "f" * 33},
+        lambda self: {"available": True, "latest": "v0.3.0"},
     )
     code, io = run(Store(tmp_path / "state"), [], ["0"])
     assert code == 0
-    assert "6. 检查更新 · 有新版本 a1b2c3d" in io.text()
+    assert "6. 检查更新 · 有新版本 v0.3.0" in io.text()
 
 
 def test_qb_full_uninstall_removes_service_and_owned_state(
@@ -673,11 +673,11 @@ def test_update_check_only_and_cached_hint(tmp_path: Path, monkeypatch: pytest.M
     from quantbot.updates import Installed, Updater
 
     store = Store(tmp_path)
-    current = Installed("0.1.0", "1" * 40, "main")
+    current = Installed("0.1.0", "1" * 40, "v0.2.2")
 
-    def fetch(path: str) -> dict[str, Any]:
-        assert path == f"/compare/{current.commit}...main"
-        return {"ahead_by": 1, "commits": [{"sha": "2" * 40, "commit": {"message": "新功能"}}]}
+    def fetch(path: str) -> list[dict[str, Any]]:
+        assert path == "/tags?per_page=100&page=1"
+        return [{"name": "v0.2.3", "commit": {"sha": "2" * 40}}]
 
     def no_install(*args: Any, **kwargs: Any) -> Any:
         pytest.fail("--check must not install")
@@ -686,7 +686,7 @@ def test_update_check_only_and_cached_hint(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr("quantbot.cli.Updater", lambda directory: updater)
     code, io = run(store, ["update", "--check"], tty=False)
     assert code == 0
-    assert "1111111" in io.text() and "2222222 新功能" in io.text()
+    assert "v0.2.2 (1111111)" in io.text() and "v0.2.3" in io.text()
     assert "有新版本" in run(store, ["list"])[1].text()
 
 

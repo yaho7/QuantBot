@@ -839,12 +839,9 @@ def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
     if not result["available"]:
         io.status("ok", tr("当前已是最新版本。"))
         return 0
-    count = result["behind"]
-    io.status("note", tr("有新版本（{0} 个新提交）。", count) if count else tr("有新版本。"))
+    io.status("note", tr("有新版本。"))
     if latest := update_label(result):
         io.rows([(tr("新版本"), latest)])
-    for commit in result["commits"]:
-        io.say(f"  {commit['sha']} {commit['message']}".rstrip())
     if args.check:
         return 0
     if not args.yes:

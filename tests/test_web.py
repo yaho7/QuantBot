@@ -147,11 +147,13 @@ def test_web_language_switch_keeps_the_session(tmp_path: Path) -> None:
 def test_update_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, service: bool) -> None:
     audit = tmp_path / "audit.jsonl"
     fetches, restarts, commands = [], [], []
-    current = Installed("0.1.0", "1" * 40, "main")
+    repo = "https://github.com/yaho7/QuantBot"
+    current = Installed("0.1.0", "1" * 40, "v0.2.2", repo)
 
-    def fetch(path: str) -> dict[str, Any]:
+    def fetch(path: str) -> list[dict[str, Any]]:
         fetches.append(path)
-        return {"ahead_by": 1, "commits": [{"sha": "2" * 40}]}
+        assert path == "/tags?per_page=100&page=1"
+        return [{"name": "v0.2.3", "commit": {"sha": "2" * 40}}]
 
     def run(command: list[str], **kwargs: Any) -> CompletedProcess[str]:
         commands.append(command)
@@ -185,6 +187,7 @@ def test_update_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, servi
         assert len(fetches) == 1
         updated = await (await client.post(url, headers=CSRF)).json()
         assert updated["ok"] and len(commands) == 1
+        assert commands[0][-1] == f"quantbot @ git+{repo}@refs/tags/v0.2.3"
         assert bool(restarts) == service
         assert ("自动重连" if service else "quantbot run") in updated["message"]
         assert read_audit(audit, 1)[0]["action"] == "update"

@@ -9,10 +9,6 @@ import { Alert } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { dateTime } from "@/lib/format";
 
-export function updateLabel(latest?: string | null) {
-  return latest && /^[a-f\d]{40,64}$/i.test(latest) ? latest.slice(0, 7) : latest;
-}
-
 export function UpdateDialog({ onClose, onInstalled, checkOnOpen = false }: {
   onClose: () => void; onInstalled: (version: string) => void; checkOnOpen?: boolean;
 }) {
@@ -68,7 +64,7 @@ export function UpdateDialog({ onClose, onInstalled, checkOnOpen = false }: {
                   {result?.available && result.latest && (
                     <>
                       <dt className="basis-1/2 text-muted-foreground">{tr("新版本")}</dt>
-                      <dd className="font-mono">{updateLabel(result.latest)}</dd>
+                      <dd className="font-mono">{result.latest}</dd>
                     </>
                   )}
                 </dl>
@@ -76,25 +72,12 @@ export function UpdateDialog({ onClose, onInstalled, checkOnOpen = false }: {
                   <Alert tone="info">{message || tr("已安装更新，等待 QuantBot 重启。")}</Alert>
                 ) : (
                   <>
-                    <div className="grid gap-2">
-                      <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-                        <span className="font-medium">
-                          {result?.available
-                            ? result.behind ? tr("{0} 个新提交", result.behind) : tr("有新版本")
-                            : result && !result.error ? tr("已经是最新版本") : tr("检查更新")}
-                        </span>
-                        {result?.checked_at && <span className="text-xs text-muted-foreground">{dateTime(result.checked_at)}</span>}
-                      </div>
-                      {!!result?.commits.length && (
-                        <ul className="max-h-60 divide-y divide-border overflow-y-auto rounded-lg border border-border">
-                          {result.commits.map((commit) => (
-                            <li key={commit.sha || commit.message} className="flex gap-3 px-3 py-2 text-sm">
-                              {commit.sha && <code className="shrink-0 text-xs text-muted-foreground">{commit.sha}</code>}
-                              <span className="min-w-0 break-words">{commit.message}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                    <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                      <span className="font-medium">
+                        {result?.available ? tr("有新版本")
+                          : result && !result.error ? tr("已经是最新版本") : tr("检查更新")}
+                      </span>
+                      {result?.checked_at && <span className="text-xs text-muted-foreground">{dateTime(result.checked_at)}</span>}
                     </div>
                     {!uv && <Alert tone="warning">{tr("服务器找不到 uv。可以在服务器上重新运行安装命令来更新。")}</Alert>}
                     {!error && result?.error && <Alert tone="warning">{result.error}</Alert>}
