@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight, CircleDashed, LogOut, Monitor, Moon, Pause, Radio, Settings, Sun } from "lucide-react";
 import * as React from "react";
+import { BrandIcon } from "@/components/BrandIcon";
 import { ConfirmDialog, EmptyState, PageHeader, QueryBoundary } from "@/components/common";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
@@ -26,11 +27,7 @@ function TopBar({ onLogout, onSettings }: { onLogout?: () => void; onSettings?: 
   return (
     <header className="mx-auto flex max-w-6xl items-center justify-between px-5 pt-6 sm:px-8">
       <div className="flex items-center gap-2">
-        <svg viewBox="0 0 32 32" className="size-7" aria-hidden>
-          <rect width="32" height="32" rx="8" className="fill-primary" />
-          <path d="M7 21l6-6 4 4 8-9" fill="none" strokeWidth="3" strokeLinecap="round"
-            strokeLinejoin="round" className="stroke-primary-foreground" />
-        </svg>
+        <BrandIcon className="size-6" />
         <span className="font-display text-lg">QuantBot</span>
       </div>
       <div className="flex items-center gap-1">
