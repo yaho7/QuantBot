@@ -1,8 +1,7 @@
 """Is there a newer QuantBot, and install it.
 
 Stable versions are Git tags. The installed tag and commit come from uv's
-direct_url.json. An older branch installation can migrate to a tag that contains
-its installed commit.
+direct_url.json.
 
 The running QuantBot checks every 6 hours and keeps the answer in `update.json`,
 so the CLI can show a hint without going online.
@@ -36,7 +35,8 @@ log = logging.getLogger(__name__)
 API = "https://api.github.com/repos/yaho7/QuantBot"
 CHECK_EVERY = 6 * 3600
 CACHE_FILE = "update.json"
-TAG = re.compile(r"v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
+TAG = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
+TAG_INSTALL_REQUIRED = "请用一键安装脚本安装版本标签，再检查更新。"
 
 
 def tag_version(tag: str) -> tuple[int, ...]:
@@ -161,8 +161,8 @@ class Updater:
         with self._lock:
             return self._check()
 
-    def _latest_tag(self) -> tuple[str, str] | None:
-        latest: tuple[tuple[int, ...], str, str] = ((), "", "")
+    def _latest_tag(self) -> str:
+        latest: tuple[tuple[int, ...], str] = ((), "")
         page = 1
         while True:
             tags = self.fetch(f"/tags?per_page=100&page={page}")
@@ -171,12 +171,9 @@ class Updater:
             for tag in tags:
                 name = str(tag.get("name", ""))
                 if version := tag_version(name):
-                    sha = str((tag.get("commit") or {}).get("sha") or "")
-                    if not re.fullmatch(r"[a-fA-F0-9]{40}|[a-fA-F0-9]{64}", sha):
-                        raise ValueError(tr("GitHub 返回的标签列表格式不对。"))
-                    latest = max(latest, (version, name, sha))
+                    latest = max(latest, (version, name))
             if len(tags) < 100:
-                return (latest[1], latest[2]) if latest[0] else None
+                return latest[1]
             page += 1
 
     def _check(self) -> dict[str, Any]:
@@ -191,34 +188,21 @@ class Updater:
             "checked_at": None,
             "available": False,
             "latest": None,
-            "behind": 0,
-            "commits": [],
             "error": None,
             "notified": previous.get("notified"),
         }
         result["checked_at"] = datetime.fromtimestamp(result["checked"], timezone.utc).isoformat(
             timespec="seconds"
         )
-        if not now.commit:
-            result["error"] = tr("这是开发版，不是从 GitHub 装的，不检查更新。")
+        if not now.tag:
+            result["error"] = tr(TAG_INSTALL_REQUIRED)
             return result
         try:
-            latest = self._latest_tag()
-            if latest is None:
-                result["error"] = tr("仓库还没有可安装的版本标签。")
+            tag = self._latest_tag()
+            if tag:
+                result.update(latest=tag, available=tag_version(tag) > tag_version(now.tag))
             else:
-                tag, sha = latest
-                result["latest"] = tag
-                if now.tag:
-                    result["available"] = tag_version(tag) > tag_version(now.tag)
-                else:
-                    if sha == now.commit:
-                        result["available"] = True
-                    else:
-                        comparison = self.fetch(f"/compare/{now.commit}...{sha}?per_page=1")
-                        result["available"] = comparison.get("status") in {"ahead", "identical"}
-                    if not result["available"]:
-                        result["error"] = tr("最新标签 {0} 尚未包含当前安装的提交。", tag)
+                result["error"] = tr("仓库还没有可安装的版本标签。")
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             code = getattr(exc, "code", None)
             for key in ("available", "latest"):
@@ -234,7 +218,7 @@ class Updater:
 
     def check_if_due(self) -> dict[str, Any] | None:
         with self._lock:
-            return self._check() if self.current().commit and self.due() else None
+            return self._check() if self.current().tag and self.due() else None
 
     def take_notice(self) -> str | None:
         """Return a new revision once, including after a process restart."""
@@ -272,8 +256,8 @@ class Updater:
         if not uv:
             return False, tr("没找到 uv。重新运行安装命令，也能更新到最新版。")
         now = self.current()
-        if not now.commit:
-            return False, tr("开发版请通过 Git 更新。")
+        if not now.tag:
+            return False, tr(TAG_INSTALL_REQUIRED)
         cached = self.cached() or {}
         latest = update_label(cached)
         if cached.get("error"):

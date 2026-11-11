@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Install or update QuantBot for the current user:
 #
-#   (set -o pipefail; curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash) && export PATH="${UV_TOOL_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
+#   curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash
 #
 # Pass --non-interactive for automation or --no-service to install without starting a service.
 set -euo pipefail
 
 REPO="${QUANTBOT_REPO:-https://github.com/yaho7/QuantBot}"
-REF="${QUANTBOT_REF:-main}"
+REF="${QUANTBOT_REF:-}"
+tag_pattern='^v(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$'
 non_interactive=false
 no_service=false
 requested_language="${QUANTBOT_LANG:-}"
@@ -32,7 +33,7 @@ Usage: bash install.sh [--language en|zh] [--non-interactive] [--no-service]
 
 QUANTBOT_LANG selects the installer language.
 QUANTBOT_PORT sets the initial listen port.
-QUANTBOT_REF selects a branch, tag, or commit.
+The latest stable Git tag is installed by default. QUANTBOT_REF pins a vX.Y.Z tag.
 For non-interactive setup, set QUANTBOT_ADMIN_USERNAME and QUANTBOT_ADMIN_PASSWORD to configure the administrator.
 EOF
     return
@@ -46,7 +47,7 @@ EOF
 
 QUANTBOT_LANG 可指定安装语言。
 QUANTBOT_PORT 可指定首次安装的端口。
-QUANTBOT_REF 可指定安装分支、标签或提交。
+默认安装最新的稳定 Git 标签。QUANTBOT_REF 可指定 vX.Y.Z 标签。
 非交互安装可通过 QUANTBOT_ADMIN_USERNAME 和 QUANTBOT_ADMIN_PASSWORD 设置管理员。
 EOF
 }
@@ -159,7 +160,7 @@ if [ "${#missing[@]}" -gt 0 ]; then
 fi
 
 terminal_path="$PATH"
-export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+export PATH="$PATH:$HOME/.local/bin:$HOME/.cargo/bin"
 if ! command -v uv >/dev/null; then
   status step '1;36' "$(msg "安装 uv。" "Installing uv.")"
   curl -fsSL https://astral.sh/uv/install.sh | sh || die "$(msg "uv 安装失败。请检查上方输出后重试。" "Could not install uv. Review the output above and retry.")"
@@ -167,7 +168,7 @@ fi
 uv_path="$(command -v uv)" || die "$(msg "当前终端找不到 uv。请重新打开终端后重试。" "uv was not found. Open a new terminal and retry.")"
 status ok '1;32' "$(msg "系统依赖已就绪。" "System dependencies are ready.")"
 
-BIN="$(uv tool dir --bin)" || die "$(msg "无法读取 uv 的命令目录。" "Could not locate the uv executable directory.")"
+BIN="$("$uv_path" tool dir --bin)" || die "$(msg "无法读取 uv 的命令目录。" "Could not locate the uv executable directory.")"
 export PATH="$BIN:$PATH"
 command_path="$BIN/quantbot"
 
@@ -190,6 +191,14 @@ finish_setup() {
   fi
   activate_commands
   exit "$code"
+}
+
+newest_tag() {
+  LC_ALL=C awk -v pattern="$tag_pattern" '$0 ~ pattern {
+    version = $0
+    sub(/^v/, "", version)
+    print version, $0
+  }' | LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1 | awk '{print $2}'
 }
 
 setup_args=(setup)
@@ -219,33 +228,26 @@ if [[ "$non_interactive" == false && -x "$command_path" ]]; then
   done
 fi
 
+if [[ -z "$REF" ]]; then
+  status step '1;36' "$(msg "检查 Git 版本标签。" "Checking Git version tags.")"
+  remote_tags="$(git ls-remote --tags --refs -- "$REPO")" ||
+    die "$(msg "无法读取仓库的版本标签。" "Could not read version tags from the repository.")"
+  REF="$(printf '%s\n' "$remote_tags" | awk '{ sub(/^refs\/tags\//, "", $2); print $2 }' | newest_tag)"
+  [[ -n "$REF" ]] || die "$(msg "仓库还没有可安装的版本标签。" "The repository has no installable version tags yet.")"
+fi
+REF="${REF#refs/tags/}"
+[[ "$REF" =~ $tag_pattern ]] ||
+  die "$(msg "QUANTBOT_REF 必须是 vX.Y.Z 标签。" "QUANTBOT_REF must be a vX.Y.Z tag.")"
+
 # uv provisions Python 3.12 as needed.
 status step '1;36' "$(msg "安装 QuantBot（${REF}）。" "Installing QuantBot (${REF}).")"
-uv tool install --quiet --force --reinstall --python 3.12 "quantbot @ git+${REPO}@${REF}" \
+"$uv_path" tool install --quiet --force --reinstall --python 3.12 "quantbot @ git+${REPO}@refs/tags/${REF}" \
   || die "$(msg "QuantBot 安装失败。请检查上方输出后重试。" "Could not install QuantBot. Review the output above and retry.")"
 [[ -x "$command_path" ]] || die "$(msg "安装后未找到命令 ${command_path}。" "The executable was not found after installation: ${command_path}.")"
 status ok '1;32' "$(msg "程序已安装  $command_path" "Executable installed  $command_path")"
 
 setup_args+=(--if-needed)
-if [[ "$non_interactive" == false && "$no_service" == false ]]; then
-  finish_setup "${setup_args[@]}"
+if [[ "$non_interactive" == true ]]; then
+  setup_args+=(--non-interactive)
 fi
-
-setup_help="$("$command_path" setup --help)" || die "$(msg "无法读取当前版本的配置命令。" "Could not read the setup options for this version.")"
-case "$setup_help" in
-  *--non-interactive*)
-    if [[ "$non_interactive" == true ]]; then
-      setup_args+=(--non-interactive)
-    fi
-    finish_setup "${setup_args[@]}"
-    ;;
-  *)
-    # Older pinned releases have no unattended setup command.
-    if [[ "$no_service" == true ]]; then
-      status info '1;36' "$(msg "当前版本的交互配置命令为 quantbot setup。" "Run quantbot setup to configure this version interactively.")"
-      activate_commands
-      exit 0
-    fi
-    finish_setup service install ${QUANTBOT_PORT:+--port "$QUANTBOT_PORT"}
-    ;;
-esac
+finish_setup "${setup_args[@]}"

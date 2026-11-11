@@ -13,22 +13,20 @@ OLD, NEW = "1" * 40, "2" * 40
 REPO = "https://github.com/yaho7/QuantBot"
 
 
-def test_legacy_branch_migrates_to_a_tag_containing_its_commit(tmp_path: Path) -> None:
+def test_tag_cache_schedule_notice_and_upgrade(tmp_path: Path) -> None:
     now = 1_000_000.0
     fetches, commands = [], []
 
     def fetch(path: str) -> Any:
         fetches.append(path)
-        if path == "/tags?per_page=100&page=1":
-            return [{"name": "v0.3.0", "commit": {"sha": NEW}}]
-        assert path == f"/compare/{OLD}...{NEW}?per_page=1"
-        return {"status": "ahead"}
+        assert path == "/tags?per_page=100&page=1"
+        return [{"name": "v0.3.0"}]
 
     def run(command: list[str], **kwargs: Any) -> CompletedProcess[str]:
         commands.append(command)
         return CompletedProcess(command, 0, "installed", "")
 
-    current = Installed("0.1.0", OLD, "main", REPO)
+    current = Installed("0.1.0", OLD, "v0.2.0", REPO)
     updater = Updater(
         tmp_path,
         fetch=fetch,
@@ -43,7 +41,7 @@ def test_legacy_branch_migrates_to_a_tag_containing_its_commit(tmp_path: Path) -
     assert updater.take_notice() == "v0.3.0"
     now += CHECK_EVERY
     assert updater.check_if_due() and updater.take_notice() is None
-    assert fetches == ["/tags?per_page=100&page=1", f"/compare/{OLD}...{NEW}?per_page=1"] * 2
+    assert fetches == ["/tags?per_page=100&page=1"] * 2
 
     assert updater.upgrade() == (True, "installed")
     assert commands[0][-1] == f"quantbot @ git+{REPO}@refs/tags/v0.3.0"
@@ -87,7 +85,7 @@ def test_tag_check_orders_versions_across_pages_and_discards_old_cache(tmp_path:
                 {"name": f"v100.0.{index}-rc.1", "commit": {"sha": OLD}} for index in range(99)
             ]
         assert path.endswith("&page=2")
-        return [{"name": tag, "commit": {"sha": NEW}} for tag in ("0.10.0", "v0.10.0", "v0.9.0")]
+        return [{"name": tag} for tag in ("9.10.0", "v0.10.0", "v0.9.0")]
 
     current = Installed("0.1.0", OLD, "v0.9.99", REPO)
     updater = Updater(tmp_path, fetch=fetch, current=lambda: current)
@@ -97,15 +95,13 @@ def test_tag_check_orders_versions_across_pages_and_discards_old_cache(tmp_path:
     assert result["available"] and result["latest"] == "v0.10.0"
 
 
-def test_legacy_branch_cannot_downgrade_to_an_older_tag(tmp_path: Path) -> None:
+def test_non_tag_install_does_not_check_or_upgrade(tmp_path: Path) -> None:
     def fetch(path: str) -> Any:
-        if path.startswith("/tags?"):
-            return [{"name": "v0.2.2", "commit": {"sha": OLD}}]
-        assert path == f"/compare/{NEW}...{OLD}?per_page=1"
-        return {"status": "behind"}
+        raise AssertionError("only tagged installations should check")
 
     current = Installed("0.1.0", NEW, "main", REPO)
     updater = Updater(tmp_path, fetch=fetch, current=lambda: current, uv=lambda: "/bin/uv")
     result = updater.check()
-    assert not result["available"] and "尚未包含当前安装的提交" in result["error"]
+    assert not result["available"] and "安装版本标签" in result["error"]
+    assert updater.check_if_due() is None
     assert updater.upgrade() == (False, result["error"])

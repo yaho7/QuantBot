@@ -48,11 +48,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: bash install.sh --non-interactive --no-service < /dev/null
+      - name: Install a tag from an isolated Git repository
+        run: |
+          repo="$RUNNER_TEMP/quantbot-install.git"
+          git init --bare --quiet "$repo"
+          git push --quiet "$repo" HEAD:refs/tags/v0.0.0
+          QUANTBOT_REPO="file://$repo" bash install.sh --non-interactive --no-service < /dev/null
         env:
-          QUANTBOT_REPO: ${{ github.server_url }}/${{ github.repository }}
-          QUANTBOT_REF: ${{ github.sha }}
           SHELL: /bin/bash
           UV_TOOL_BIN_DIR: ${{ runner.temp }}/quantbot-bin
       - name: Find QuantBot in a new login shell
-        run: bash -lc 'test "$(command -v quantbot)" = "$RUNNER_TEMP/quantbot-bin/quantbot" && quantbot --version && quantbot list'
+        run: bash -lc 'test "$(command -v quantbot)" = "$RUNNER_TEMP/quantbot-bin/quantbot" && quantbot --version | grep -F "v0.0.0" && quantbot list'

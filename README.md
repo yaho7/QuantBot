@@ -19,10 +19,10 @@ Telegram（可选）┘    ▲  http://<地址>:<随机端口>，安装时选只
 在 VPS 上运行：
 
 ```bash
-(set -o pipefail; curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash) && export PATH="${UV_TOOL_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}:$PATH"
+curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | bash
 ```
 
-脚本检查 git、curl 和 [uv](https://docs.astral.sh/uv/)，再用 uv 安装 QuantBot 和独立的 Python 3.12 环境。首次安装会逐项确认配置。
+脚本检查 git、curl 和 [uv](https://docs.astral.sh/uv/)，再用 uv 安装最新稳定 Git 标签和独立的 Python 3.12 环境。首次安装会逐项确认配置。
 
 交互安装的第一项是选择简体中文或 English。确认配置后，CLI、网页和 Telegram 会使用所选语言。可以在网页「设置 → 语言」切换，也可运行 `quantbot language en` 或 `quantbot language zh`。
 
@@ -40,7 +40,7 @@ For English, select **2. English** when the installer opens. To switch later, us
 
 交互式重跑安装脚本时，可选择更新程序、重新配置当前版本或退出。`quantbot setup` 也可直接启动配置向导。
 
-一键命令会在安装成功后刷新当前 Bash / Zsh 的 PATH。若已用旧命令安装，或 uv 使用了不同的目录，可运行安装结果末尾显示的 `export PATH=…` 命令。默认目录对应 `export PATH="$HOME/.local/bin:$PATH"`。启用可选的 `qb` 入口请运行 `quantbot alias enable`。
+安装器会为新的终端会话配置 PATH。若当前终端找不到 `quantbot`，运行安装结果末尾显示的 `export PATH=…` 命令即可。启用可选的 `qb` 入口请运行 `quantbot alias enable`。
 
 无终端时自动采用非交互模式，也可以显式传入参数：
 
@@ -83,11 +83,11 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 ### 更新 QuantBot
 
-QuantBot 每 6 小时检查一次 GitHub 上的版本标签，按版本号比较 `vX.Y.Z` 和 `X.Y.Z` 格式的标签。推送新标签即可发布更新。网页「设置 → 维护」和 `qb` 菜单会显示检测到的目标标签，推送与已连接的 Telegram 也会收到提醒。
+QuantBot 每 6 小时检查一次 GitHub 上的 `vX.Y.Z` 稳定标签，按版本号比较。推送新标签即可发布更新。网页「设置 → 维护」和 `qb` 菜单会显示检测到的目标标签，推送与已连接的 Telegram 也会收到提醒。
 
 - 在网页「设置 → 维护 → 版本更新」点「检查更新」可立即查询，每分钟最多一次。确认「一键更新」后，已安装的后台服务会重启，网页会自动重连。前台运行时，请在服务器上停止 QuantBot，再运行 `quantbot run`。
 - 在终端运行 `quantbot update --check` 只检查更新。运行 `quantbot update` 会显示目标标签并询问是否安装，`--yes` 跳过确认。`quantbot --version` 显示安装标签和提交。
-- 也可以再运行一次安装命令，它会更新并重启后台服务。
+- 也可以再运行一次安装命令，它会安装最新标签并重启后台服务。
 
 ### 网页工作区
 
