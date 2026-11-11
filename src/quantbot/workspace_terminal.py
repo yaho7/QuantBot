@@ -54,6 +54,7 @@ class TerminalProcess:
                         "-W",
                         "-w",
                         str(cwd or workspace.root),
+                        "--",
                         "/bin/bash",
                         "-i",
                     ]
@@ -77,7 +78,9 @@ class TerminalProcess:
                     return cls(process, directory, session, socket)
                 except ClientConnectionError:
                     if process.returncode is not None:
-                        break
+                        raise ConfigError(
+                            tr("ttyd 启动失败（退出状态 {0}）。", process.returncode)
+                        ) from None
                     await asyncio.sleep(0.05)
             raise ConfigError(tr("无法连接 ttyd，请检查服务器上的 ttyd 安装。"))
         except BaseException:
@@ -89,7 +92,11 @@ class TerminalProcess:
 
     async def read(self) -> bytes:
         async for message in self.socket:
-            if message.type == WSMsgType.BINARY and message.data.startswith(b"0"):
+            if (
+                message.type == WSMsgType.BINARY
+                and len(message.data) > 1
+                and message.data.startswith(b"0")
+            ):
                 return message.data[1:]
         return b""
 

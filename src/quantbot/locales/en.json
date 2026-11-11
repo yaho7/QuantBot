@@ -673,5 +673,6 @@
   "请选择空工作区克隆仓库，或使用当前 Git 仓库的远端。": "Clone into an empty workspace or use the existing Git remote.",
   "请选择要操作的 Git 文件。": "Select the Git files to change.",
   "这个 Git 文件无法作为 UTF-8 文本显示。": "This Git file cannot be displayed as UTF-8 text.",
-  "退出 GitHub 登录": "Sign out of GitHub"
+  "退出 GitHub 登录": "Sign out of GitHub",
+  "ttyd 启动失败（退出状态 {0}）。": "ttyd failed to start (exit status {0})."
 }
