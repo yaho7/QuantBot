@@ -54,6 +54,7 @@ from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
 from quantbot.editor import EDITOR_FILE, Editor, EditorError, editor_lock
 from quantbot.github import Authorization, GitHubEditor
 from quantbot.hub import Hub, Result
+from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
 from quantbot.service import Service, ServiceError
 from quantbot.updates import Updater
 
@@ -258,26 +259,28 @@ def _check_args(name: str, args: dict[str, Any], params: dict[str, Any] | None) 
     if name == "cancel":
         order_id = str(args.get("order_id") or "")
         if not order_id:
-            raise ValueError("缺少挂单 id")
+            raise ValueError(tr("缺少挂单 id"))
         return {"order_id": order_id}
     if name == "set_param":
         key = str(args.get("name") or "")
         if not NAME.match(key) or "value" not in args:
-            raise ValueError("要给出参数名和值")
+            raise ValueError(tr("要给出参数名和值"))
         value = args["value"]
         if params is not None:
             if key not in params:
-                raise ValueError(f"没有参数 {key}")
+                raise ValueError(tr("没有参数 {0}", key))
             ok, value = check_type(params[key], value)
             if not ok:
-                raise ValueError(f"{key} 现在是 {type(params[key]).__name__}，不能改成 {value!r}")
+                raise ValueError(
+                    tr("{0} 现在是 {1}，不能改成 {2!r}", key, type(params[key]).__name__, value)
+                )
         return {"name": key, "value": value}
     if name == "manual_order":
         side, symbol, qty = args.get("side"), str(args.get("symbol") or ""), args.get("qty")
         if side not in {"buy", "sell"} or not SYMBOL.match(symbol):
-            raise ValueError("要给出方向（买或卖）和代码")
+            raise ValueError(tr("要给出方向（买或卖）和代码"))
         if isinstance(qty, bool) or not isinstance(qty, int | float) or not qty > 0:
-            raise ValueError("数量要是大于 0 的数")
+            raise ValueError(tr("数量要是大于 0 的数"))
         return {"side": side, "symbol": symbol.upper(), "qty": qty}
     return {}
 
@@ -318,9 +321,9 @@ async def command(request: web.Request) -> web.Response:
             user=WEB_USER,
             args=args,
             ok=ok,
-            result=f"{s.name} {LABELS[name]}：{message or '完成'}",
+            result=f"{s.name} {tr(LABELS[name])}：{message or tr('完成')}",
         )
-    return _answer(ok, message or ("完成" if ok else "失败"), data)
+    return _answer(ok, message or (tr("完成") if ok else tr("失败")), data)
 
 
 # ------------------------------------------------------------- settings
@@ -353,7 +356,7 @@ async def _bot_call(request: web.Request, token: str, method: str, **params: Any
 def _editor(store: Store) -> Editor:
     editor = Editor.configured(store.dir)
     if editor is None:
-        raise EditorError("网页策略编辑器已关闭。")
+        raise EditorError(tr("网页策略编辑器已关闭。"))
     return editor
 
 
@@ -374,7 +377,7 @@ async def editor_read(request: web.Request) -> web.Response:
     except ConfigError as exc:
         return _answer(False, str(exc))
     except OSError:
-        return _answer(False, "无法打开这个路径，请检查文件是否存在且可读。")
+        return _answer(False, tr("无法打开这个路径，请检查文件是否存在且可读。"))
 
 
 async def editor_save(request: web.Request) -> web.Response:
@@ -384,7 +387,7 @@ async def editor_save(request: web.Request) -> web.Response:
     body = await _args(request)
     path, content, revision = body.get("path"), body.get("content"), body.get("revision")
     if not all(isinstance(value, str) for value in (path, content, revision)):
-        return _answer(False, "请选择文件并确认要保存的改动。")
+        return _answer(False, tr("请选择文件并确认要保存的改动。"))
 
     def save() -> dict[str, str]:
         with editor_lock(store.dir):
@@ -393,11 +396,11 @@ async def editor_save(request: web.Request) -> web.Response:
     async with request.app[EDITOR_LOCK]:
         try:
             result = await asyncio.to_thread(save)
-            ok, message = True, "文件已保存。"
+            ok, message = True, tr("文件已保存。")
         except ConfigError as exc:
             result, ok, message = None, False, str(exc)
         except OSError:
-            result, ok, message = None, False, "无法保存这个路径，请检查文件和目录权限。"
+            result, ok, message = None, False, tr("无法保存这个路径，请检查文件和目录权限。")
         request.app[CORE_KEY].audit.write(
             "editor_save", user=WEB_USER, ok=ok, result=f"{path}：{message}"
         )
@@ -421,7 +424,7 @@ async def github_post(request: web.Request) -> web.Response:
     body = await _args(request)
     action = request.match_info["action"]
     if actions.lock.locked():
-        return _answer(False, "GitHub 操作正在进行，请稍后再试。")
+        return _answer(False, tr("GitHub 操作正在进行，请稍后再试。"))
     async with actions.lock:
         audit = request.app[CORE_KEY].audit
         try:
@@ -430,14 +433,14 @@ async def github_post(request: web.Request) -> web.Response:
                     body.get(key, "") for key in ("repo", "branch", "client_id")
                 )
                 if not all(isinstance(value, str) for value in (repo, branch, client_id)):
-                    return _answer(False, "请填写仓库、分支和 GitHub App Client ID。")
+                    return _answer(False, tr("请填写仓库、分支和 GitHub App Client ID。"))
                 flow = await asyncio.to_thread(actions.editor.begin, repo, branch, client_id)
                 state = secrets.token_urlsafe(16)
                 actions.pending = state, flow
                 return _answer(True, "", {**flow.prompt(), "state": state})
             if action == "authorize":
                 if not actions.pending or body.get("state") != actions.pending[0]:
-                    return _answer(False, "请重新开始 GitHub 授权。")
+                    return _answer(False, tr("请重新开始 GitHub 授权。"))
                 _, flow = actions.pending
                 try:
                     status = await asyncio.to_thread(actions.editor.poll, flow)
@@ -448,17 +451,19 @@ async def github_post(request: web.Request) -> web.Response:
                     return _answer(True, "", {"interval": flow.interval})
                 actions.pending = None
                 action = "bind"
-                message = "GitHub 已绑定。"
+                message = tr("GitHub 已绑定。")
             elif action == "unbind":
                 await asyncio.to_thread(actions.editor.unbind)
                 actions.pending = None
                 status = {"bound": False}
-                message = "已解除 GitHub 绑定。"
+                message = tr("已解除 GitHub 绑定。")
             else:
                 status = await asyncio.to_thread(actions.editor.sync, action)
-                message = {"check": "已检查远端状态。", "pull": "已拉取。", "push": "已推送。"}[
-                    action
-                ]
+                message = {
+                    "check": tr("已检查远端状态。"),
+                    "pull": tr("已拉取。"),
+                    "push": tr("已推送。"),
+                }[action]
         except (ConfigError, OSError) as exc:
             audit.write("github", user=WEB_USER, ok=False, operation=action, result=str(exc))
             return _answer(False, str(exc))
@@ -518,14 +523,14 @@ async def update_check(request: web.Request) -> web.Response:
         return denied
     actions = request.app[UPDATE_KEY]
     if actions.updated or actions.lock.locked():
-        return _answer(False, "更新正在进行，或正在等待重启。")
+        return _answer(False, tr("更新正在进行，或正在等待重启。"))
     now = time.monotonic()
     if now < actions.next_check:
-        return _answer(False, "每分钟可以检查一次，请稍后再试。")
+        return _answer(False, tr("每分钟可以检查一次，请稍后再试。"))
     actions.next_check = now + 60
     async with actions.lock:
         result = await asyncio.to_thread(actions.updater.check)
-    return _answer(not result["error"], result["error"] or "已检查更新。", result)
+    return _answer(not result["error"], result["error"] or tr("已检查更新。"), result)
 
 
 async def update_post(request: web.Request) -> web.Response:
@@ -533,11 +538,11 @@ async def update_post(request: web.Request) -> web.Response:
         return denied
     actions = request.app[UPDATE_KEY]
     if actions.updated or actions.lock.locked():
-        return _answer(False, "更新正在进行，或正在等待重启。")
+        return _answer(False, tr("更新正在进行，或正在等待重启。"))
     async with actions.lock:
         result = actions.updater.cached() or {}
         if not result.get("available"):
-            return _answer(False, "没有可安装的更新，请先检查更新。")
+            return _answer(False, tr("没有可安装的更新，请先检查更新。"))
         ok, output = await asyncio.to_thread(actions.updater.upgrade)
         actions.updated = ok
         request.app[CORE_KEY].audit.write(
@@ -545,16 +550,16 @@ async def update_post(request: web.Request) -> web.Response:
             user=WEB_USER,
             ok=ok,
             revision=result.get("latest"),
-            result="已安装更新" if ok else "安装更新失败",
+            result=tr("已安装更新") if ok else tr("安装更新失败"),
             output=output,
         )
         if not ok:
-            return _answer(False, f"更新失败。{output}")
+            return _answer(False, tr("更新失败。{0}", output))
         restart = actions.restart if _service_installed() else None
         if restart is None:
-            return _answer(True, "已更新。请在服务器上停止 QuantBot，再运行 quantbot run。")
+            return _answer(True, tr("已更新。请在服务器上停止 QuantBot，再运行 quantbot run。"))
         return await _reply_and_restart(
-            request, restart, "已更新，后台服务即将重启。网页会自动重连。"
+            request, restart, tr("已更新，后台服务即将重启。网页会自动重连。")
         )
 
 
@@ -568,10 +573,10 @@ def _redact_diagnostics(text: str, store: Store) -> str:
     ]
     for value in values:
         if isinstance(value, str) and value:
-            text = text.replace(value, "[已隐藏]")
+            text = text.replace(value, tr("[已隐藏]"))
     return re.sub(
         r"(?:gh[oprstu]_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|\d{5,}:[A-Za-z0-9_-]{30,})",
-        "[已隐藏]",
+        tr("[已隐藏]"),
         text,
     )
 
@@ -600,19 +605,19 @@ async def service_restart(request: web.Request) -> web.Response:
         return denied
     actions = request.app[UPDATE_KEY]
     if actions.restart is None or not _service_installed():
-        return _answer(False, "请在服务器上重启当前运行的 QuantBot。")
+        return _answer(False, tr("请在服务器上重启当前运行的 QuantBot。"))
     if (
         actions.lock.locked()
         or request.app[EDITOR_LOCK].locked()
         or request.app[GITHUB_KEY].lock.locked()
     ):
-        return _answer(False, "有更新或文件操作正在进行，请稍后再试。")
+        return _answer(False, tr("有更新或文件操作正在进行，请稍后再试。"))
     async with actions.lock:
         request.app[CORE_KEY].audit.write(
-            "service_restart", user=WEB_USER, ok=True, result="请求重启后台服务"
+            "service_restart", user=WEB_USER, ok=True, result=tr("请求重启后台服务")
         )
         return await _reply_and_restart(
-            request, actions.restart, "正在重启后台服务，网页会自动重连。"
+            request, actions.restart, tr("正在重启后台服务，网页会自动重连。")
         )
 
 
@@ -633,6 +638,7 @@ async def settings_get(request: web.Request) -> web.Response:
             "public_url": check_public_url(data.get("public_url")) or "",
             "telegram": bool(tg.get("token")),
             "admin_username": (data.get("web_admin") or {}).get("username") or "",
+            "language": normalize_language(data.get("language")),
         }
     )
 
@@ -652,24 +658,28 @@ async def settings_post(request: web.Request) -> web.Response:
         with store.edit() as data:
             data.pop("telegram", None)
         request.app[CORE_KEY].audit.write(
-            "settings", user=WEB_USER, ok=True, result="断开了 Telegram，只用网页"
+            "settings", user=WEB_USER, ok=True, result=tr("断开了 Telegram，只用网页")
         )
-        return _answer(True, "已断开 Telegram。QuantBot 几秒后重启，之后只用网页。")
+        return _answer(True, tr("已断开 Telegram。QuantBot 几秒后重启，之后只用网页。"))
     changes: dict[str, Any] = {}
     try:
+        if "language" in body:
+            if body["language"] not in LANGUAGES:
+                raise ValueError(tr("请选择简体中文或英语。"))
+            changes["language"] = body["language"]
         token = str(body.get("token") or "").strip()
         if token:
             if not BOT_TOKEN.match(token):
-                raise ValueError("这不像 bot token，应该像 123456789:AAH...")
+                raise ValueError(tr("这不像 bot token，应该像 123456789:AAH..."))
             try:
                 me = await _bot_call(request, token, "getMe")
             except TelegramError as exc:
-                raise ValueError(f"Telegram 不认这个 token：{exc}") from exc
+                raise ValueError(tr("Telegram 不认这个 token：{0}", exc)) from exc
             tg.update(token=token, bot_username=me.get("username", ""))
         if "owner_id" in body:
             owner = str(body["owner_id"]).strip()
             if not owner.lstrip("-").isdigit():
-                raise ValueError("主人 id 是一串数字")
+                raise ValueError(tr("主人 id 是一串数字"))
             if int(owner) != tg.get("owner_id"):
                 tg.update(owner_id=int(owner), owner_name="")
         if "quiet_hours" in body:
@@ -683,7 +693,7 @@ async def settings_post(request: web.Request) -> web.Response:
     except (ValueError, ConfigError) as exc:
         return _answer(False, str(exc))
     if bool(tg.get("token")) != isinstance(tg.get("owner_id"), int):
-        return _answer(False, "接 Telegram 要同时填 bot token 和主人 id")
+        return _answer(False, tr("接 Telegram 要同时填 bot token 和主人 id"))
     restart = (tg.get("token"), tg.get("owner_id")) != old_key
     note = ""
     if restart and tg.get("token"):
@@ -693,16 +703,18 @@ async def settings_post(request: web.Request) -> web.Response:
                 tg["token"],
                 "sendMessage",
                 chat_id=tg["owner_id"],
-                text="✅ QuantBot 的 Telegram 设置在网页上改好了。",
+                text=tr("✅ QuantBot 的 Telegram 设置在网页上改好了。"),
             )
-            note = "已用新设置发了一条测试消息。"
+            note = tr("已用新设置发了一条测试消息。")
         except TelegramError as exc:
-            return _answer(False, f"测试消息发不出去，没有保存：{exc}。先给 bot 发一条消息再试。")
+            return _answer(
+                False, tr("测试消息发不出去，没有保存：{0}。先给 bot 发一条消息再试。", exc)
+            )
     with store.edit() as data:
         if token or "owner_id" in body:
             fresh_tg = data.get("telegram") or {}
             if (fresh_tg.get("token"), fresh_tg.get("owner_id")) != old_key:
-                return _answer(False, "Telegram 设置已变更，请刷新后再试。")
+                return _answer(False, tr("Telegram 设置已变更，请刷新后再试。"))
             if tg.get("token"):
                 data["telegram"] = tg
         data.update(changes)
@@ -710,11 +722,12 @@ async def settings_post(request: web.Request) -> web.Response:
         "settings",
         user=WEB_USER,
         ok=True,
-        result="改了设置" + ("（Telegram 的 bot 或主人）" if restart else ""),
+        result=tr("改了设置") + (tr("（Telegram 的 bot 或主人）") if restart else ""),
         fields=sorted(k for k in body if k != "token") + (["token"] if token else []),
     )
-    note += " QuantBot 几秒后用新设置重启，网页会断开一下再连上。"
-    return _answer(True, f"已保存。{note}".strip())
+    if restart or changes.keys() - {"language"}:
+        note += tr(" QuantBot 几秒后用新设置重启，网页会断开一下再连上。")
+    return _answer(True, tr("已保存。{0}", note).strip())
 
 
 async def prompt(request: web.Request) -> web.Response:
@@ -756,7 +769,7 @@ async def strategy_config(request: web.Request) -> web.Response:
         sid = check_strategy_id(str(body.get("id") or ""))
         name = str(body.get("name") or "").strip()
         if len(name) > 64 or (action == "rename" and not name):
-            raise ConfigError("请填写 1 到 64 个字符的显示名称。")
+            raise ConfigError(tr("请填写 1 到 64 个字符的显示名称。"))
         if action == "credentials":
             item = require_strategy(snapshot, sid)
         else:
@@ -776,11 +789,11 @@ async def strategy_config(request: web.Request) -> web.Response:
     except ConfigError as exc:
         return _answer(False, str(exc))
     message = {
-        "add": "已添加策略。",
-        "rename": "已更新显示名称。",
-        "remove": "已移除策略，连接令牌已失效。",
-        "credentials": "已查看策略连接信息。",
-        "rotate": "已换发令牌。请用新令牌重新连接策略。",
+        "add": tr("已添加策略。"),
+        "rename": tr("已更新显示名称。"),
+        "remove": tr("已移除策略，连接令牌已失效。"),
+        "credentials": tr("已查看策略连接信息。"),
+        "rotate": tr("已换发令牌。请用新令牌重新连接策略。"),
     }[action]
     result = {"id": sid, "name": item["name"]}
     if action in {"add", "credentials", "rotate"}:
@@ -799,9 +812,11 @@ async def login(request: web.Request) -> web.StreamResponse:
             content_type="text/html",
             charset="utf-8",
             text=_message_page(
-                "链接已失效",
-                "登录链接只能用一次，5 分钟内有效。在 Telegram 里发 /web，"
-                "或在服务器上运行 quantbot web，拿一个新的。",
+                tr("链接已失效"),
+                tr(
+                    "登录链接只能用一次，5 分钟内有效。在 Telegram 里发 /web，"
+                    "或在服务器上运行 quantbot web，拿一个新的。"
+                ),
             ),
         )
     redirect = web.HTTPFound("/ui/")
@@ -855,20 +870,20 @@ async def password_login(request: web.Request) -> web.Response:
     who = _login_client(request, bool(data.get("web_tunnel")), public_url)
     admin = data.get("web_admin") or {}
     if not admin.get("password"):
-        return _answer(False, "还没设管理员账号。在服务器上运行 quantbot password。")
+        return _answer(False, tr("还没设管理员账号。在服务器上运行 quantbot password。"))
     body = await _args(request)
     username, password = str(body.get("username") or ""), str(body.get("password") or "")
     if wait := auth.locked(who):
-        return _answer(False, f"密码错了太多次，{(wait + 59) // 60} 分钟后再试。")
+        return _answer(False, tr("密码错了太多次，{0} 分钟后再试。", (wait + 59) // 60))
     auth.failed(who)  # Reserve an attempt before yielding to the password checker.
     good = await asyncio.to_thread(check_password, password, str(admin["password"]))
     good = hmac.compare_digest(username.encode(), str(admin.get("username")).encode()) and good
     good = good and request.app[STORE_KEY].read().get("web_admin") == admin
     request.app[CORE_KEY].audit.write("login", user=WEB_USER, ok=good, client=who)
     if not good:
-        return _answer(False, "用户名或密码不对。")
+        return _answer(False, tr("用户名或密码不对。"))
     auth.succeeded(who)
-    response = _answer(True, "已登录")
+    response = _answer(True, tr("已登录"))
     _set_session(response, auth.session(), secure=_secure_session(request, public_url))
     return response
 
@@ -879,11 +894,11 @@ async def password_change(request: web.Request) -> web.Response:
     body = await _args(request)
     username, password = body.get("username"), body.get("password")
     if not isinstance(username, str) or not USERNAME.fullmatch(username):
-        return _answer(False, "用户名可用字母、数字和 _ . -，最多 32 个字符。")
+        return _answer(False, tr("用户名可用字母、数字和 _ . -，最多 32 个字符。"))
     if not isinstance(password, str) or len(password) < MIN_PASSWORD:
-        return _answer(False, f"密码至少 {MIN_PASSWORD} 位。")
+        return _answer(False, tr("密码至少 {0} 位。", MIN_PASSWORD))
     if body.get("confirm") != password:
-        return _answer(False, "两次输入的新密码不同。")
+        return _answer(False, tr("两次输入的新密码不同。"))
 
     store = request.app[STORE_KEY]
     auth = request.app[AUTH_KEY]
@@ -895,26 +910,26 @@ async def password_change(request: web.Request) -> web.Response:
     if old_hash:
         current = body.get("current")
         if not isinstance(current, str) or not current:
-            return _answer(False, "请输入当前密码。")
+            return _answer(False, tr("请输入当前密码。"))
         who = _login_client(request, bool(settings.get("web_tunnel")), public_url)
         if wait := auth.locked(who):
-            return _answer(False, f"密码错了太多次，{(wait + 59) // 60} 分钟后再试。")
+            return _answer(False, tr("密码错了太多次，{0} 分钟后再试。", (wait + 59) // 60))
         auth.failed(who)
         if not await asyncio.to_thread(check_password, current, str(old_hash)):
-            audit.write("password", user=WEB_USER, ok=False, result="当前密码错误")
-            return _answer(False, "当前密码不对。")
+            audit.write("password", user=WEB_USER, ok=False, result=tr("当前密码错误"))
+            return _answer(False, tr("当前密码不对。"))
         auth.succeeded(who)
 
     hashed = await asyncio.to_thread(hash_password, password)
     with store.edit() as data:
         if data.get("web_admin") != old_admin:
-            return _answer(False, "管理员账号已变更，请重新登录。")
+            return _answer(False, tr("管理员账号已变更，请重新登录。"))
         set_web_admin(data, {"username": username, "password": hashed})
         secret = data["web_secret"]
         public_url = check_public_url(data.get("public_url"))
     auth.secret = secret
-    audit.write("password", user=WEB_USER, ok=True, result="改了网页管理员账号")
-    response = _answer(True, "管理员账号已更新，其他会话需要重新登录。")
+    audit.write("password", user=WEB_USER, ok=True, result=tr("改了网页管理员账号"))
+    response = _answer(True, tr("管理员账号已更新，其他会话需要重新登录。"))
     _set_session(response, auth.session(), secure=_secure_session(request, public_url))
     return response
 
@@ -925,7 +940,7 @@ async def web_link(request: web.Request) -> web.Response:
     public_url = check_public_url(request.app[STORE_KEY].read().get("public_url")) or ""
     token = request.app[AUTH_KEY].link_token()
     request.app[CORE_KEY].audit.write(
-        "web_link", user=WEB_USER, ok=True, result="生成一次性登录链接"
+        "web_link", user=WEB_USER, ok=True, result=tr("生成一次性登录链接")
     )
     response = _answer(True, "", {"url": f"{public_url}/ui/login?t={token}"})
     response.headers["Cache-Control"] = "no-store"
@@ -997,7 +1012,7 @@ async def audit(request: web.Request) -> web.Response:
 
 def _message_page(title: str, text: str) -> str:
     return (
-        '<!doctype html><meta charset="utf-8"><meta name="viewport" '
+        f'<!doctype html><html lang="{language_tag()}"><meta charset="utf-8"><meta name="viewport" '
         'content="width=device-width,initial-scale=1"><title>QuantBot</title>'
         '<body style="font-family:system-ui,sans-serif;background:#fffcf0;color:#100f0f;'
         'max-width:32rem;margin:15vh auto;padding:0 1.5rem;line-height:1.6">'
@@ -1016,18 +1031,30 @@ async def page(request: web.Request) -> web.StreamResponse:
             status=503,
             content_type="text/html",
             charset="utf-8",
-            text=_message_page("网页还没构建", "这个安装里没有网页文件。请运行 quantbot update。"),
+            text=_message_page(
+                tr("网页还没构建"), tr("这个安装里没有网页文件。请运行 quantbot update。")
+            ),
         )
-    response = web.FileResponse(target)
-    if target.name == "index.html":
-        response.headers["Cache-Control"] = "no-store"
-    else:
-        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-    return response
+    if target.name != "index.html":
+        return web.FileResponse(
+            target, headers={"Cache-Control": "public, max-age=31536000, immutable"}
+        )
+    if language() == "zh":
+        return web.FileResponse(target, headers={"Cache-Control": "no-store"})
+    html = target.read_text("utf-8").replace('<html lang="zh-CN">', '<html lang="en">', 1)
+    return web.Response(text=html, content_type="text/html", headers={"Cache-Control": "no-store"})
 
 
 async def redirect_root(request: web.Request) -> web.StreamResponse:
     raise web.HTTPFound("/ui/")
+
+
+@web.middleware
+async def _use_web_language(
+    request: web.Request, handler: Callable[..., Any]
+) -> web.StreamResponse:
+    with use_language(request.app[STORE_KEY].language()):
+        return await handler(request)
 
 
 def add_routes(
@@ -1047,6 +1074,7 @@ def add_routes(
 
         telegram = telegram_api
     app[STORE_KEY] = store
+    app.middlewares.append(_use_web_language)
     app[TELEGRAM_KEY] = telegram
     hub = core.hub
     app[CORE_KEY] = core

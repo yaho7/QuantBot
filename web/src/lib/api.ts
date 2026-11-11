@@ -1,4 +1,5 @@
 /** The page's API. Every call sends the session cookie set by the login link. */
+import { tr, type Language } from "@/lib/i18n";
 
 export class ApiError extends Error {
   constructor(
@@ -20,9 +21,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ApiError(0, "连不上 QuantBot。网络或隧道断了，或者 QuantBot 没在运行。");
+    throw new ApiError(0, tr("连不上 QuantBot。网络或隧道断了，或者 QuantBot 没在运行。"));
   }
-  if (!res.ok) throw new ApiError(res.status, res.status === 401 ? "需要登录" : `${res.status} ${res.statusText}`);
+  if (!res.ok) throw new ApiError(res.status, res.status === 401 ? tr("需要登录") : `${res.status} ${res.statusText}`);
   return (await res.json()) as T;
 }
 
@@ -68,6 +69,7 @@ export interface Settings {
   public_url: string;
   telegram: boolean;
   admin_username: string;
+  language: Language;
 }
 
 export interface UpdateResult {

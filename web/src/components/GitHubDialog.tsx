@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowDownToLine, ArrowUpFromLine, ExternalLink, GitBranch, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -9,11 +10,11 @@ import { Alert, Field, Input } from "@/components/ui/primitives";
 import { api, type GitHubAuthorization, type GitHubStatus } from "@/lib/api";
 
 type SyncAction = "pull" | "push" | "unbind";
-const labels = { pull: "拉取提交", push: "推送已有提交", unbind: "解除绑定" };
+const labels = { pull: tr("拉取提交"), push: tr("推送已有提交"), unbind: tr("解除绑定") };
 const confirmText = {
-  pull: "将 GitHub 上的新提交同步到编辑目录。拉取只在本地工作区干净、分支可以快进时执行。",
-  push: "将当前分支的已有提交推送到 GitHub。网页里保存的文件需要在服务器上提交后才能推送。",
-  unbind: "从 QuantBot 移除这个仓库的授权凭据。",
+  pull: tr("将 GitHub 上的新提交同步到编辑目录。拉取只在本地工作区干净、分支可以快进时执行。"),
+  push: tr("将当前分支的已有提交推送到 GitHub。网页里保存的文件需要在服务器上提交后才能推送。"),
+  unbind: tr("从 QuantBot 移除这个仓库的授权凭据。"),
 };
 
 export function GitHubDialog({ dirty, onClose, onChanged }: {
@@ -51,7 +52,7 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
       setAuthorization(undefined);
       setBinding(false);
       onChanged();
-      toast.success("GitHub 已绑定。");
+      toast.success(tr("GitHub 已绑定。"));
     },
     onError: (err) => { setAuthorization(undefined); showError(err); },
   });
@@ -66,7 +67,7 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
     onSuccess: ({ status }, action) => {
       update(status);
       if (action === "pull") onChanged();
-      toast.success(action === "check" ? "已检查远端状态。" : `${labels[action]}完成。`);
+      toast.success(action === "check" ? tr("已检查远端状态。") : tr("{0}完成。", labels[action]));
     },
     onError: showError,
     onSettled: () => setConfirm(undefined),
@@ -75,18 +76,18 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
   return (
     <>
       <Dialog open onOpenChange={() => { if (!busy) onClose(); }}>
-        <DialogContent title="GitHub 仓库" className="max-w-lg">
+        <DialogContent title={tr("GitHub 仓库")} className="max-w-lg">
           <QueryBoundary query={status}>
             {(data) => authorization ? (
               <div className="grid gap-4">
-                <p className="text-sm text-muted-foreground">打开 GitHub，输入验证码并授权访问仓库。</p>
+                <p className="text-sm text-muted-foreground">{tr("打开 GitHub，输入验证码并授权访问仓库。")}</p>
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-3">
                   <code className="select-all font-mono text-lg tracking-widest">{authorization.code}</code>
                   <Button asChild variant="outline" size="sm">
-                    <a href={authorization.url} target="_blank" rel="noreferrer"><ExternalLink /> 打开 GitHub</a>
+                    <a href={authorization.url} target="_blank" rel="noreferrer"><ExternalLink /> {tr("打开 GitHub")}</a>
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground" role="status">等待 GitHub 授权…</p>
+                <p className="text-xs text-muted-foreground" role="status">{tr("等待 GitHub 授权…")}</p>
               </div>
             ) : binding || !data.bound ? (
               <form className="grid gap-3" onSubmit={(event) => {
@@ -94,21 +95,21 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
                 setError("");
                 bind.mutate({ repo, branch, client_id: clientId });
               }}>
-                <Field label="仓库" htmlFor="github-repo" hint="填写 owner/repo 或 GitHub 仓库地址。">
+                <Field label={tr("仓库")} htmlFor="github-repo" hint={tr("填写 owner/repo 或 GitHub 仓库地址。")}>
                   <Input id="github-repo" value={repo} onChange={(e) => setRepo(e.target.value)} required />
                 </Field>
-                <Field label="分支" htmlFor="github-branch" hint="留空使用本地分支或仓库默认分支。">
+                <Field label={tr("分支")} htmlFor="github-branch" hint={tr("留空使用本地分支或仓库默认分支。")}>
                   <Input id="github-branch" value={branch} onChange={(e) => setBranch(e.target.value)} />
                 </Field>
                 <Field label="GitHub App Client ID" htmlFor="github-client"
-                  hint="在 GitHub App 设置中启用设备授权，并将 App 安装到策略仓库。">
+                  hint={tr("在 GitHub App 设置中启用设备授权，并将 App 安装到策略仓库。")}>
                   <Input id="github-client" value={clientId} onChange={(e) => setClientId(e.target.value)} required />
                 </Field>
-                <p className="text-xs text-muted-foreground">编辑目录为空时，授权后会将仓库克隆到该目录。</p>
+                <p className="text-xs text-muted-foreground">{tr("编辑目录为空时，授权后会将仓库克隆到该目录。")}</p>
                 {error && <Alert tone="loss">{error}</Alert>}
                 <DialogFooter>
-                  {data.bound && <Button type="button" variant="outline" onClick={() => { setBinding(false); setError(""); }}>返回</Button>}
-                  <Button type="submit" loading={bind.isPending}><GitBranch /> 开始 GitHub 授权</Button>
+                  {data.bound && <Button type="button" variant="outline" onClick={() => { setBinding(false); setError(""); }}>{tr("返回")}</Button>}
+                  <Button type="submit" loading={bind.isPending}><GitBranch /> {tr("开始 GitHub 授权")}</Button>
                 </DialogFooter>
               </form>
             ) : (
@@ -120,32 +121,28 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
                   </a>
                   <span className="font-mono text-xs text-muted-foreground">{data.branch}</span>
                   {!data.error && (
-                    <span className="text-xs text-muted-foreground">
-                      领先 {data.ahead} 个提交 · 落后 {data.behind} 个提交
-                    </span>
+                    <span className="text-xs text-muted-foreground">{tr("领先")} {data.ahead} {tr("个提交 · 落后")} {data.behind} {tr("个提交")}</span>
                   )}
                 </div>
-                {(dirty || data.dirty) && <Alert tone="warning">本地有未提交的改动，处理后可以拉取。</Alert>}
+                {(dirty || data.dirty) && <Alert tone="warning">{tr("本地有未提交的改动，处理后可以拉取。")}</Alert>}
                 {(error || data.error) && <Alert tone="loss">{error || data.error}</Alert>}
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" size="sm" disabled={busy || !!data.error}
-                    onClick={() => { setError(""); sync.mutate("check"); }}><RefreshCw /> 检查远端</Button>
+                    onClick={() => { setError(""); sync.mutate("check"); }}><RefreshCw /> {tr("检查远端")}</Button>
                   <Button variant="outline" size="sm" disabled={busy || dirty || !!data.dirty || !!data.error}
-                    onClick={() => setConfirm("pull")}><ArrowDownToLine /> 拉取</Button>
+                    onClick={() => setConfirm("pull")}><ArrowDownToLine /> {tr("拉取")}</Button>
                   <Button variant="outline" size="sm" disabled={busy || !!data.error}
-                    onClick={() => setConfirm("push")}><ArrowUpFromLine /> 推送</Button>
+                    onClick={() => setConfirm("push")}><ArrowUpFromLine /> {tr("推送")}</Button>
                 </div>
                 <DialogFooter>
-                  <Button variant="ghost" className="text-loss sm:mr-auto" disabled={busy} onClick={() => setConfirm("unbind")}>
-                    解除绑定
-                  </Button>
+                  <Button variant="ghost" className="text-loss sm:mr-auto" disabled={busy} onClick={() => setConfirm("unbind")}>{tr("解除绑定")}</Button>
                   <Button variant="ghost" disabled={busy} onClick={() => {
                     setRepo(data.repo || "");
                     setBranch(data.branch || "");
                     setClientId(data.client_id || "");
                     setError("");
                     setBinding(true);
-                  }}>重新绑定</Button>
+                  }}>{tr("重新绑定")}</Button>
                 </DialogFooter>
               </div>
             )}
@@ -153,8 +150,8 @@ export function GitHubDialog({ dirty, onClose, onChanged }: {
         </DialogContent>
       </Dialog>
       <ConfirmDialog open={!!confirm} onOpenChange={(open) => { if (!open && !busy) setConfirm(undefined); }}
-        title={confirm ? labels[confirm] : "同步 GitHub"} description={confirm && confirmText[confirm]}
-        confirmLabel={confirm ? labels[confirm] : "确认"} destructive={confirm === "unbind"} loading={busy}
+        title={confirm ? labels[confirm] : tr("同步 GitHub")} description={confirm && confirmText[confirm]}
+        confirmLabel={confirm ? labels[confirm] : tr("确认")} destructive={confirm === "unbind"} loading={busy}
         onConfirm={() => {
           if (confirm) { setError(""); sync.mutate(confirm); }
         }} />

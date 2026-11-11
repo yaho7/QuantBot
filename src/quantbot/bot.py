@@ -28,6 +28,7 @@ from quantbot.config import ConfigError, Settings, Store
 from quantbot.core import Buttons, Core, Reply
 from quantbot.heartbeat import Heartbeat
 from quantbot.hub import Hub, Strategy
+from quantbot.i18n import tr, use_language
 from quantbot.notices import LOUD, is_quiet
 from quantbot.server import make_app
 from quantbot.updates import Updater, installed
@@ -169,9 +170,20 @@ class QuantBot:
             "web": self._web,
         }
         for name, handler in handlers.items():
-            self.app.add_handler(CommandHandler(name, handler, filters=owner))
-        self.app.add_handler(CallbackQueryHandler(self._tap))
-        self.app.add_error_handler(self._error)
+            self.app.add_handler(CommandHandler(name, self._localized(handler), filters=owner))
+        self.app.add_handler(CallbackQueryHandler(self._localized(self._tap)))
+        self.app.add_error_handler(self._localized(self._error))
+
+    def _localized(self, handler: Callable[..., Awaitable[None]]) -> Callable[..., Awaitable[None]]:
+        async def wrapped(*args: object) -> None:
+            with use_language(self.settings.language):
+                await handler(*args)
+
+        return wrapped
+
+    async def _set_commands(self, app: Application) -> None:
+        with use_language(self.settings.language):
+            await app.bot.set_my_commands([BotCommand(name, tr(label)) for name, label in COMMANDS])
 
     def run(self) -> None:
         if self.app is None:
@@ -225,11 +237,12 @@ class QuantBot:
         await web.TCPSite(self._runner, self.settings.host, self.settings.port).start()
         log.info("Strategy API on %s:%s", self.settings.host, self.settings.port)
         if app is not None:
-            await app.bot.set_my_commands([BotCommand(n, d) for n, d in COMMANDS])
+            await self._set_commands(app)
         self._upkeep = asyncio.create_task(self._upkeep_loop())
         self._update_task = asyncio.create_task(self._update_loop())
-        names = "、".join(s.name for s in self.hub.strategies.values()) or "还没有"
-        await self._send(f"🟢 QuantBot 已启动。策略：{names}", "info")
+        with use_language(self.settings.language):
+            names = tr("、").join(s.name for s in self.hub.strategies.values()) or tr("还没有")
+            await self._send(tr("🟢 QuantBot 已启动。策略：{0}", names), "info")
 
     async def _stopped(self, app: Application | None) -> None:
         if self._upkeep:
@@ -244,9 +257,13 @@ class QuantBot:
     async def _upkeep_loop(self) -> None:
         while True:
             try:
+                previous_language = self.settings.language
                 self.reload()
-                self.hub.sweep()
-                self.heartbeat.ping()
+                with use_language(self.settings.language):
+                    self.hub.sweep()
+                    self.heartbeat.ping()
+                if self.app is not None and self.settings.language != previous_language:
+                    await self._set_commands(self.app)
             except Exception:  # noqa: BLE001 - upkeep must keep going
                 log.exception("Upkeep failed")
             await asyncio.sleep(SWEEP_EVERY)
@@ -258,13 +275,14 @@ class QuantBot:
 
         while True:
             try:
-                if revision := await asyncio.to_thread(check):
-                    self._hub_notice(
-                        "QuantBot",
-                        f"有新版本（{revision}）。在网页或运行 quantbot update 查看。",
-                        "info",
-                        None,
-                    )
+                with use_language(self.settings.language):
+                    if revision := await asyncio.to_thread(check):
+                        self._hub_notice(
+                            "QuantBot",
+                            tr("有新版本（{0}）。在网页或运行 quantbot update 查看。", revision),
+                            "info",
+                            None,
+                        )
             except Exception:  # noqa: BLE001 - retry on the next scheduled check
                 log.exception("Update check failed")
             await asyncio.sleep(UPDATE_EVERY)
@@ -320,7 +338,7 @@ class QuantBot:
 
     async def _show(self, update: Update, reply: Reply, edit: bool = False) -> None:
         keyboard = markup(reply.buttons)
-        text = reply.text[:MAX_MESSAGE] or "（空）"
+        text = reply.text[:MAX_MESSAGE] or tr("（空）")
         query = update.callback_query
         if reply.image:
             target = query.message if query else update.effective_message
@@ -350,7 +368,7 @@ class QuantBot:
         await self._show(update, await self.core.home())
 
     async def _help(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        await self._show(update, Reply(HELP))
+        await self._show(update, Reply(tr(HELP)))
 
     async def _with_target(
         self, update: Update, run: Callable[[Strategy], Awaitable[Reply]]
@@ -366,7 +384,7 @@ class QuantBot:
 
     async def _use(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not context.args:
-            await self._show(update, Reply("选一个策略：", self.core.picker()))
+            await self._show(update, Reply(tr("选一个策略："), self.core.picker()))
             return
         await self._show(update, await self.core.open(context.args[0].lower()))
 
@@ -413,13 +431,15 @@ class QuantBot:
         if public_url:
             where = ""
         elif self.settings.host in {"0.0.0.0", "::"}:  # noqa: S104
-            where = "从别的电脑打开时，把 127.0.0.1 换成服务器的 IP 或域名。"
+            where = tr("从别的电脑打开时，把 127.0.0.1 换成服务器的 IP 或域名。")
         else:
-            where = (
+            where = tr(
                 "它只在服务器本机能直接打开。可以先在你的电脑上连一条隧道：\n"
-                f"ssh -L {port}:127.0.0.1:{port} 你的服务器"
+                "ssh -L {0}:127.0.0.1:{1} 你的服务器",
+                port,
+                port,
             )
-        text = f"🌐 一次性登录链接，不用密码，5 分钟内有效，只能用一次：\n{url}"
+        text = tr("🌐 一次性登录链接，不用密码，5 分钟内有效，只能用一次：\n{0}", url)
         if where:
             text += f"\n\n{where}"
         await self._show(update, Reply(text))

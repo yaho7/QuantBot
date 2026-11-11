@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useQuery } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
 import * as React from "react";
@@ -40,21 +41,21 @@ export function AiPromptDialog({ open, onOpenChange, strategy }: {
   const text = valid ? prompt.data?.text : undefined;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent title={strategy ? `复制给 AI：${strategy.name}` : "让 AI 帮你接入策略"} className="max-w-2xl"
-        description="把这段话和你的策略代码一起交给 AI。里面有 QuantBot 的项目地址和具体接法，不含 token。">
+      <DialogContent title={strategy ? tr("复制给 AI：{0}", strategy.name) : tr("让 AI 帮你接入策略")} className="max-w-2xl"
+        description={tr("把这段话和你的策略代码一起交给 AI。里面有 QuantBot 的项目地址和具体接法，不含 token。")}>
         {!strategy && (
           <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="策略 id" htmlFor="ai-id" hint="小写字母、数字、- 和 _，例如 momentum">
+            <Field label={tr("策略 id")} htmlFor="ai-id" hint={tr("小写字母、数字、- 和 _，例如 momentum")}>
               <Input id="ai-id" value={id} placeholder="momentum" autoFocus
                 aria-invalid={id.length > 0 && !ID.test(id.trim())} onChange={(e) => setId(e.target.value)} />
             </Field>
-            <Field label="显示名" htmlFor="ai-name" hint="网页和 Telegram 上显示的名字">
-              <Input id="ai-name" value={name} placeholder="动量策略" onChange={(e) => setName(e.target.value)} />
+            <Field label={tr("显示名")} htmlFor="ai-name" hint={tr("网页和 Telegram 上显示的名字")}>
+              <Input id="ai-name" value={name} placeholder={tr("动量策略")} onChange={(e) => setName(e.target.value)} />
             </Field>
           </div>
         )}
         {!valid ? (
-          <Alert tone="info">先填策略 id。</Alert>
+          <Alert tone="info">{tr("先填策略 id。")}</Alert>
         ) : prompt.error ? (
           <Alert tone="loss">{prompt.error.message}</Alert>
         ) : text === undefined ? (
@@ -66,11 +67,10 @@ export function AiPromptDialog({ open, onOpenChange, strategy }: {
         <DialogFooter>
           <Button disabled={!text} onClick={async () => {
             if (!text) return;
-            if (await copyText(text, area.current)) toast.success("已复制。贴给 AI，再附上你的策略代码。");
-            else toast.error("浏览器不让自动复制，请在框里全选后手动复制。");
+            if (await copyText(text, area.current)) toast.success(tr("已复制。贴给 AI，再附上你的策略代码。"));
+            else toast.error(tr("浏览器不让自动复制，请在框里全选后手动复制。"));
           }}>
-            <Copy /> 复制
-          </Button>
+            <Copy /> {tr("复制")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

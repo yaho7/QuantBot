@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
@@ -44,24 +45,24 @@ export function UpdateDialog({ onClose, onInstalled }: { onClose: () => void; on
   return (
     <>
       <Dialog open onOpenChange={() => { if (!busy) onClose(); }}>
-        <DialogContent title="版本更新" className="max-w-lg">
+        <DialogContent title={tr("版本更新")} className="max-w-lg">
           <QueryBoundary query={status}>
             {({ version, result, uv, updated }) => (
               <div className="grid gap-4">
                 <dl className="flex flex-wrap justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
-                  <dt className="text-muted-foreground">当前版本</dt>
+                  <dt className="text-muted-foreground">{tr("当前版本")}</dt>
                   <dd className="font-mono">{version}</dd>
                 </dl>
                 {message || updated ? (
-                  <Alert tone="info">{message || "已安装更新，等待 QuantBot 重启。"}</Alert>
+                  <Alert tone="info">{message || tr("已安装更新，等待 QuantBot 重启。")}</Alert>
                 ) : (
                   <>
                     <div className="grid gap-2">
                       <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
                         <span className="font-medium">
                           {result?.available
-                            ? result.behind ? `${result.behind} 个新提交` : "有新版本"
-                            : result && !result.error ? "已经是最新版本" : "检查更新"}
+                            ? result.behind ? tr("{0} 个新提交", result.behind) : tr("有新版本")
+                            : result && !result.error ? tr("已经是最新版本") : tr("检查更新")}
                         </span>
                         {result?.checked_at && <span className="text-xs text-muted-foreground">{dateTime(result.checked_at)}</span>}
                       </div>
@@ -76,7 +77,7 @@ export function UpdateDialog({ onClose, onInstalled }: { onClose: () => void; on
                         </ul>
                       )}
                     </div>
-                    {!uv && <Alert tone="warning">服务器找不到 uv。可以在服务器上重新运行安装命令来更新。</Alert>}
+                    {!uv && <Alert tone="warning">{tr("服务器找不到 uv。可以在服务器上重新运行安装命令来更新。")}</Alert>}
                     {!error && result?.error && <Alert tone="warning">{result.error}</Alert>}
                   </>
                 )}
@@ -84,12 +85,10 @@ export function UpdateDialog({ onClose, onInstalled }: { onClose: () => void; on
                 <DialogFooter>
                   <Button variant="outline" disabled={busy || updated} loading={check.isPending}
                     onClick={() => { setError(""); check.mutate(); }}>
-                    <RefreshCw /> 检查更新
-                  </Button>
+                    <RefreshCw /> {tr("检查更新")}</Button>
                   <Button disabled={busy || updated || !!message || !uv || !result?.available || !!result.error}
                     onClick={() => setConfirm(true)}>
-                    <Download /> 一键更新
-                  </Button>
+                    <Download /> {tr("一键更新")}</Button>
                 </DialogFooter>
               </div>
             )}
@@ -97,11 +96,11 @@ export function UpdateDialog({ onClose, onInstalled }: { onClose: () => void; on
         </DialogContent>
       </Dialog>
       <ConfirmDialog open={confirm} onOpenChange={(open) => { if (!install.isPending) setConfirm(open); }}
-        title="安装更新"
+        title={tr("安装更新")}
         description={status.data?.service
-          ? "安装完成后，QuantBot 后台服务会重启，网页会自动重连。"
-          : "安装完成后，请在服务器上停止 QuantBot，再运行 quantbot run。"}
-        confirmLabel="确认更新" loading={install.isPending}
+          ? tr("安装完成后，QuantBot 后台服务会重启，网页会自动重连。")
+          : tr("安装完成后，请在服务器上停止 QuantBot，再运行 quantbot run。")}
+        confirmLabel={tr("确认更新")} loading={install.isPending}
         onConfirm={() => { setError(""); install.mutate(); }} />
     </>
   );

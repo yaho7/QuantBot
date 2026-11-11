@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import * as D from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
@@ -35,7 +36,7 @@ export function DialogContent({
         {children}
         <D.Close
           className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100"
-          aria-label="关闭"
+          aria-label={tr("关闭")}
         >
           <X className="size-4" />
         </D.Close>

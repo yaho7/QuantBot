@@ -19,6 +19,7 @@ from typing import Any
 
 from quantbot.audit import Audit
 from quantbot.hub import Hub, Result, Strategy
+from quantbot.i18n import tr
 
 Buttons = list[list[tuple[str, str]]]  # rows of (label, callback data)
 
@@ -79,12 +80,12 @@ def check_type(old: Any, new: Any) -> tuple[bool, Any]:
 
 def ago(seconds: float | None) -> str:
     if seconds is None:
-        return "还没有状态"
+        return tr("还没有状态")
     if seconds < 60:
-        return f"{int(seconds)} 秒前"
+        return tr("{0} 秒前", int(seconds))
     if seconds < 3600:
-        return f"{int(seconds // 60)} 分钟前"
-    return f"{int(seconds // 3600)} 小时前"
+        return tr("{0} 分钟前", int(seconds // 60))
+    return tr("{0} 小时前", int(seconds // 3600))
 
 
 class Core:
@@ -131,12 +132,12 @@ class Core:
         strategies = self.hub.strategies
         if sid is not None:
             found = strategies.get(sid)
-            return found if found else Reply(f"没有策略 {sid}。", self.picker())
+            return found if found else Reply(tr("没有策略 {0}。", sid), self.picker())
         if self.current in strategies:
             return strategies[self.current]
         if len(strategies) == 1:
             return next(iter(strategies.values()))
-        return Reply("先选一个策略：", self.picker())
+        return Reply(tr("先选一个策略："), self.picker())
 
     def picker(self) -> Buttons:
         return [[(f"{self._dot(s)} {s.name}", f"o:{s.id}")] for s in self.hub.strategies.values()]
@@ -149,9 +150,9 @@ class Core:
     ) -> tuple[bool, Result | str]:
         """Send a command and wait for the result. (False, text) when it fails, is slow or
         the strategy does not support it."""
-        label = LABELS[name]
+        label = tr(LABELS[name])
         if strategy.said_hello and not strategy.supports(name):
-            return False, f"{strategy.name} 不支持{label}。"
+            return False, tr("{0} 不支持{1}。", strategy.name, label)
         online = self.hub.online(strategy)
         command = self.hub.send(strategy, name, args)
         try:
@@ -161,16 +162,16 @@ class Core:
             def later(done: asyncio.Future[Result]) -> None:
                 if not done.cancelled():
                     outcome = done.result()
-                    text = outcome.message or ("完成" if outcome.ok else "失败")
+                    text = outcome.message or (tr("完成") if outcome.ok else tr("失败"))
                     kind = "info" if outcome.ok else "alert"
                     self.notify(strategy.name, f"{label}：{text}", kind)
 
             command.future.add_done_callback(later)
             if not online:
-                return False, f"{strategy.name} 离线，命令已排队。2 分钟内它上线才会执行。"
-            return False, "命令已发出，还没回报结果。结果到了会推送给你。"
+                return False, tr("{0} 离线，命令已排队。2 分钟内它上线才会执行。", strategy.name)
+            return False, tr("命令已发出，还没回报结果。结果到了会推送给你。")
         if not result.ok:
-            return False, f"失败：{result.message or '没有说明原因'}"
+            return False, tr("失败：{0}", result.message or tr("没有说明原因"))
         return True, result
 
     # --------------------------------------------------------------- pages
@@ -178,7 +179,7 @@ class Core:
     async def home(self) -> Reply:
         strategies = list(self.hub.strategies.values())
         if not strategies:
-            return Reply("还没有策略。在服务器上运行：\nquantbot add <id> --name <名字>")
+            return Reply(tr("还没有策略。在服务器上运行：\nquantbot add <id> --name <名字>"))
         if len(strategies) == 1:
             return await self.open(strategies[0].id)
         lines = []
@@ -189,25 +190,25 @@ class Core:
             if first:
                 lines.append(f"    {first}")
         rows = self.picker()
-        rows.append([("🔄 刷新", "h"), ("⏸ 全部暂停开仓", "pa")])
+        rows.append([(tr("🔄 刷新"), "h"), (tr("⏸ 全部暂停开仓"), "pa")])
         return Reply("\n".join(lines), rows)
 
     def page_buttons(self, s: Strategy) -> Buttons:
         rows: Buttons = []
-        first = [("🔄 刷新", f"o:{s.id}")]
+        first = [(tr("🔄 刷新"), f"o:{s.id}")]
         can_pause = not s.said_hello or s.supports("pause")
         can_resume = not s.said_hello or s.supports("resume")
         if can_pause and s.paused is not True:
-            first.append(("⏸ 暂停开仓", f"p:{s.id}"))
+            first.append((tr("⏸ 暂停开仓"), f"p:{s.id}"))
         if can_resume and s.paused is not False:
-            first.append(("▶️ 恢复开仓", f"r:{s.id}"))
+            first.append((tr("▶️ 恢复开仓"), f"r:{s.id}"))
         rows.append(first)
         second = [
             (label, f"{code}:{s.id}")
             for name, label, code in (
-                ("positions", "📊 持仓", "pos"),
-                ("orders", "📋 挂单", "ord"),
-                ("chart", "📈 净值图", "ch"),
+                ("positions", tr("📊 持仓"), "pos"),
+                ("orders", tr("📋 挂单"), "ord"),
+                ("chart", tr("📈 净值图"), "ch"),
             )
             if s.supports(name)
         ]
@@ -215,26 +216,26 @@ class Core:
             rows.append(second)
         third = [
             (label, self._ticket(name, s.id, {}, confirm=False))
-            for name, label in (("flatten", "🧹 平仓"), ("stop", "⏹ 停止"))
+            for name, label in (("flatten", tr("🧹 平仓")), ("stop", tr("⏹ 停止")))
             if s.supports(name)
         ]
         if third:
             rows.append(third)
         if len(self.hub.strategies) > 1:
-            rows.append([("⬅️ 全部策略", "h")])
+            rows.append([(tr("⬅️ 全部策略"), "h")])
         return rows
 
     def page_text(self, s: Strategy, note: str = "") -> str:
         lines = [f"{self._dot(s)} {s.name} · {ago(self.hub.age(s))}"]
         if s.paused:
-            lines.append("⏸ 已暂停开仓")
+            lines.append(tr("⏸ 已暂停开仓"))
         if note:
             lines.append(note)
         if s.status_text:
             lines.append("")
             lines.append(s.status_text)
         elif not s.said_hello:
-            lines.append("还没有连上过 QuantBot。")
+            lines.append(tr("还没有连上过 QuantBot。"))
         return "\n".join(lines)
 
     async def open(self, sid: str) -> Reply:
@@ -248,7 +249,7 @@ class Core:
             if not ok:
                 note = str(outcome)
         elif not self.hub.online(s):
-            note = "离线：下面是最后一次的状态。"
+            note = tr("离线：下面是最后一次的状态。")
         return Reply(self.page_text(s, note), self.page_buttons(s))
 
     # -------------------------------------------------------- simple commands
@@ -259,7 +260,9 @@ class Core:
             s.paused = name == "pause"
         message = outcome.message if isinstance(outcome, Result) else outcome
         self.audit.write(name, strategy=s.id, user=user_id, ok=ok, result=message)
-        default = "⏸ 已暂停开仓。已有仓位和止损照常。" if name == "pause" else "▶️ 已恢复开仓。"
+        default = (
+            tr("⏸ 已暂停开仓。已有仓位和止损照常。") if name == "pause" else tr("▶️ 已恢复开仓。")
+        )
         note = (message or default) if ok else message
         return Reply(self.page_text(s, note), self.page_buttons(s))
 
@@ -270,29 +273,29 @@ class Core:
             if self.hub.online(s) and (not s.said_hello or s.supports("pause"))
         ]
         if not targets:
-            return Reply("没有在线、能暂停的策略。", [[("⬅️ 全部策略", "h")]])
+            return Reply(tr("没有在线、能暂停的策略。"), [[(tr("⬅️ 全部策略"), "h")]])
         outcomes = await asyncio.gather(*(self.call(s, "pause") for s in targets))
         lines = []
         for s, (ok, outcome) in zip(targets, outcomes, strict=True):
             if ok:
                 s.paused = True
-            lines.append(f"{'⏸' if ok else '⚠️'} {s.name}：{'已暂停' if ok else outcome}")
+            lines.append(f"{'⏸' if ok else '⚠️'} {s.name}：{tr('已暂停') if ok else outcome}")
         self.audit.write("pause_all", user=user_id, strategies=[s.id for s in targets])
-        return Reply("\n".join(lines), [[("⬅️ 全部策略", "h")]])
+        return Reply("\n".join(lines), [[(tr("⬅️ 全部策略"), "h")]])
 
     async def positions(self, s: Strategy) -> Reply:
         ok, outcome = await self.call(s, "positions")
-        text = (outcome.message or "没有持仓。") if isinstance(outcome, Result) else outcome
-        return Reply(f"📊 {s.name}\n{text}", [[("⬅️ 返回", f"o:{s.id}")]])
+        text = (outcome.message or tr("没有持仓。")) if isinstance(outcome, Result) else outcome
+        return Reply(f"📊 {s.name}\n{text}", [[(tr("⬅️ 返回"), f"o:{s.id}")]])
 
     async def orders(self, s: Strategy) -> Reply:
-        back = [("🔄 刷新", f"ord:{s.id}"), ("⬅️ 返回", f"o:{s.id}")]
+        back = [(tr("🔄 刷新"), f"ord:{s.id}"), (tr("⬅️ 返回"), f"o:{s.id}")]
         ok, outcome = await self.call(s, "orders")
         if not isinstance(outcome, Result):
             return Reply(outcome, [back])
         items = outcome.data if isinstance(outcome.data, list) else []
         if not items:
-            return Reply(f"📋 {s.name}\n{outcome.message or '没有挂单。'}", [back])
+            return Reply(f"📋 {s.name}\n{outcome.message or tr('没有挂单。')}", [back])
         lines, rows = [f"📋 {s.name}"], []
         for index, item in enumerate(items[:20], 1):
             if not isinstance(item, dict):
@@ -300,16 +303,16 @@ class Core:
             text = str(item.get("text") or item.get("id"))
             lines.append(f"{index}. {text}")
             if s.supports("cancel") and item.get("id") is not None:
-                prompt = f"确定撤掉 {s.name} 的第 {index} 个挂单？\n{text}"
+                prompt = tr("确定撤掉 {0} 的第 {1} 个挂单？\n{2}", s.name, index, text)
                 data = self._ticket(
                     "cancel", s.id, {"order_id": str(item["id"])}, confirm=False, prompt=prompt
                 )
-                rows.append([(f"❌ 撤单 {index}", data)])
+                rows.append([(tr("❌ 撤单 {0}", index), data)])
         rows.append(back)
         return Reply("\n".join(lines), rows)
 
     async def chart(self, s: Strategy) -> Reply:
-        back = [[("⬅️ 返回", f"o:{s.id}")]]
+        back = [[(tr("⬅️ 返回"), f"o:{s.id}")]]
         ok, outcome = await self.call(s, "chart")
         if not isinstance(outcome, Result):
             return Reply(outcome, back)
@@ -318,27 +321,29 @@ class Core:
         except (binascii.Error, ValueError):
             image = b""
         if not image:
-            return Reply("净值图是空的。", back)
+            return Reply(tr("净值图是空的。"), back)
         return Reply(outcome.message or f"📈 {s.name}", back, image)
 
     # ------------------------------------------- requests that need a second tap
 
     def ask(self, action: str, s: Strategy, args: dict[str, Any], prompt: str = "") -> Reply:
-        text = prompt or CONFIRM_TEXT[action].format(name=s.name)
+        text = prompt or tr(CONFIRM_TEXT[action], name=s.name)
         confirm = self._ticket(action, s.id, args, confirm=True)
-        return Reply(f"{text}\n30 秒内有效。", [[("✅ 确定", confirm), ("取消", f"o:{s.id}")]])
+        return Reply(
+            tr("{0}\n30 秒内有效。", text), [[(tr("✅ 确定"), confirm), (tr("取消"), f"o:{s.id}")]]
+        )
 
     def request(self, action: str, s: Strategy) -> Reply:
         if s.said_hello and not s.supports(action):
-            return Reply(f"{s.name} 不支持{LABELS[action]}。")
+            return Reply(tr("{0} 不支持{1}。", s.name, tr(LABELS[action])))
         return self.ask(action, s, {})
 
     async def request_set(self, s: Strategy, raw: str) -> Reply:
         if s.said_hello and not s.supports("set_param"):
-            return Reply(f"{s.name} 不支持改参数。")
+            return Reply(tr("{0} 不支持改参数。", s.name))
         name, _, value_text = raw.strip().partition(" ")
         if not NAME.match(name) or not value_text.strip():
-            return Reply("用法：/set 名字 值，例如 /set rsi_len 10")
+            return Reply(tr("用法：/set 名字 值，例如 /set rsi_len 10"))
         value = parse_value(value_text)
         old: Any = None
         if s.supports("params"):
@@ -347,31 +352,38 @@ class Core:
                 return Reply(outcome)
             current = outcome.data if isinstance(outcome.data, dict) else {}
             if name not in current:
-                names = "、".join(sorted(current)) or "（没有）"
-                return Reply(f"{s.name} 没有参数 {name}。可以改的有：{names}")
+                names = "、".join(sorted(current)) or tr("（没有）")
+                return Reply(tr("{0} 没有参数 {1}。可以改的有：{2}", s.name, name, names))
             old = current[name]
             ok, value = check_type(old, value)
             if not ok:
-                return Reply(f"{name} 现在是 {type(old).__name__}，不能改成 {value!r}。")
+                return Reply(
+                    tr("{0} 现在是 {1}，不能改成 {2!r}。", name, type(old).__name__, value)
+                )
         change = f"{old!r} → {value!r}" if old is not None else repr(value)
         args = {"name": name, "value": value, "old": old}
         return self.ask(
-            "set_param", s, args, f"确定把 {s.name} 的 {name} 改成 {value!r}？（{change}）"
+            "set_param",
+            s,
+            args,
+            tr("确定把 {0} 的 {1} 改成 {2!r}？（{3}）", s.name, name, value, change),
         )
 
     def request_order(self, s: Strategy, side: str, raw: str) -> Reply:
         if s.said_hello and not s.supports("manual_order"):
-            return Reply(f"{s.name} 不支持手动下单。")
+            return Reply(tr("{0} 不支持手动下单。", s.name))
         parts = raw.split()
-        word = "买入" if side == "buy" else "卖出"
+        word = tr("买入") if side == "buy" else tr("卖出")
         if len(parts) != 2 or not SYMBOL.match(parts[0]):
-            return Reply(f"用法：/{side} 代码 数量，例如 /{side} QQQ 10")
+            return Reply(tr("用法：/{0} 代码 数量，例如 /{1} QQQ 10", side, side))
         qty = parse_value(parts[1])
         if isinstance(qty, bool) or not isinstance(qty, int | float) or not qty > 0:
-            return Reply("数量要是大于 0 的数。")
+            return Reply(tr("数量要是大于 0 的数。"))
         symbol = parts[0].upper()
         args = {"side": side, "symbol": symbol, "qty": qty}
-        return self.ask("manual_order", s, args, f"确定让 {s.name} {word} {symbol} {qty}？")
+        return self.ask(
+            "manual_order", s, args, tr("确定让 {0} {1} {2} {3}？", s.name, word, symbol, qty)
+        )
 
     # ------------------------------------------------------------- buttons
 
@@ -397,15 +409,15 @@ class Core:
             return await self.orders(s)
         if code == "ch":
             return await self.chart(s)
-        return Reply("这个按钮已失效。", [[("⬅️ 菜单", "h")]])
+        return Reply(tr("这个按钮已失效。"), [[(tr("⬅️ 菜单"), "h")]])
 
     async def _tap_ticket(self, token: str, user_id: int) -> Reply:
         ticket = self._tickets.get(token)
         if ticket is None or ticket.used or ticket.expires <= self.clock():
-            return Reply("这个按钮已失效，请重新操作。", [[("⬅️ 菜单", "h")]])
+            return Reply(tr("这个按钮已失效，请重新操作。"), [[(tr("⬅️ 菜单"), "h")]])
         s = self.hub.strategies.get(ticket.sid)
         if s is None:
-            return Reply("这个策略已经不在清单里了。")
+            return Reply(tr("这个策略已经不在清单里了。"))
         if not ticket.confirm:  # an offer only opens a confirmation, so it can be reused
             return self.ask(ticket.action, s, ticket.args, ticket.prompt)
         ticket.used = True
@@ -414,9 +426,9 @@ class Core:
     async def execute(self, ticket: Ticket, s: Strategy, op: str, user_id: int) -> Reply:
         args = {k: v for k, v in ticket.args.items() if k != "old"}
         ok, outcome = await self.call(s, ticket.action, args)
-        label = LABELS[ticket.action]
+        label = tr(LABELS[ticket.action])
         if isinstance(outcome, Result):
-            text = f"{s.name} {label}：{outcome.message or '完成'}"
+            text = f"{s.name} {label}：{outcome.message or tr('完成')}"
             if ticket.action == "set_param":
                 old, value = ticket.args.get("old"), ticket.args["value"]
                 change = f"{old!r} → {value!r}" if old is not None else repr(value)
@@ -428,4 +440,4 @@ class Core:
         self.audit.write(
             ticket.action, strategy=s.id, user=user_id, op=op, args=args, ok=ok, result=text
         )
-        return Reply(text, [[("⬅️ 返回", f"o:{s.id}")]])
+        return Reply(text, [[(tr("⬅️ 返回"), f"o:{s.id}")]])

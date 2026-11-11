@@ -20,6 +20,7 @@ from datetime import datetime
 from typing import Any
 
 from quantbot.config import StrategyConfig
+from quantbot.i18n import tr
 from quantbot.notices import Connections, Expiries
 
 COMMANDS = (
@@ -117,22 +118,22 @@ class Hub:
                 old = self.strategies.pop(sid)
                 for command in old.pending.values():
                     if not command.future.done():
-                        command.future.set_result(Result(False, "这个策略已经被删除。"))
+                        command.future.set_result(Result(False, tr("这个策略已经被删除。")))
                 old.wake.set()
-                changes.append(f"删除 {sid}")
+                changes.append(tr("删除 {0}", sid))
         for sid, config in wanted.items():
             current = self.strategies.get(sid)
             if current is None:
                 self.strategies[sid] = Strategy(sid, config.name, config.token)
-                changes.append(f"添加 {sid}")
+                changes.append(tr("添加 {0}", sid))
                 continue
             if current.token != config.token:
                 current.token = config.token
                 current.wake.set()
-                changes.append(f"换了 {sid} 的 token")
+                changes.append(tr("换了 {0} 的 token", sid))
             if current.name != config.name:
                 current.name = config.name
-                changes.append(f"{sid} 改名为 {config.name}")
+                changes.append(tr("{0} 改名为 {1}", sid, config.name))
         order = list(wanted)
         self.strategies = dict(sorted(self.strategies.items(), key=lambda kv: order.index(kv[0])))
         return changes
@@ -177,7 +178,7 @@ class Hub:
         strategy.last_seen = self.clock()
         if not strategy.was_online:
             if strategy.said_hello or strategy.status_at is not None:
-                self.notify(strategy.name, "🟢 恢复在线", "info", None)
+                self.notify(strategy.name, tr("🟢 恢复在线"), "info", None)
             strategy.was_online = True
 
     def _deliverable(self, strategy: Strategy) -> list[Command]:
@@ -258,9 +259,9 @@ class Hub:
             if self.connections.change(f"{strategy.id}:{name}", ok):
                 detail = _text(body.get("detail"), 500)
                 if ok:
-                    self.notify(strategy.name, f"✅ {name} 已恢复连接", "info", None)
+                    self.notify(strategy.name, tr("✅ {0} 已恢复连接", name), "info", None)
                 else:
-                    text = f"🔌 {name} 断开" + (f"：{detail}" if detail else "")
+                    text = tr("🔌 {0} 断开", name) + (f"：{detail}" if detail else "")
                     self.notify(strategy.name, text, "alert", None)
         elif kind == "expiry":
             label = _text(body.get("name"), 64)
@@ -292,15 +293,15 @@ class Hub:
                 strategy.was_online = False
                 self.notify(
                     strategy.name,
-                    f"🔴 离线：{int(self.offline_after)} 秒没有来取命令",
+                    tr("🔴 离线：{0} 秒没有来取命令", int(self.offline_after)),
                     "alert",
                     None,
                 )
             for command in list(strategy.pending.values()):
                 if command.delivered_at is None and now - command.created >= self.undelivered_ttl:
-                    message = "命令 2 分钟内没有被策略取走，已作废。"
+                    message = tr("命令 2 分钟内没有被策略取走，已作废。")
                 elif command.delivered_at is not None and now - command.created >= self.result_ttl:
-                    message = "命令已发出，但一直没有回报结果。请到券商端核对。"
+                    message = tr("命令已发出，但一直没有回报结果。请到券商端核对。")
                 else:
                     continue
                 strategy.pending.pop(command.id, None)

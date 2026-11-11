@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { python } from "@codemirror/lang-python";
 import { bracketMatching, HighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
@@ -8,12 +9,12 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 
 const snippets = [
-  ["连接", 'from quantbot_client import QuantBot\n\nqb = QuantBot("momentum")'],
-  ["等待", "if not qb.sleep(60):\n    break"],
-  ["允许开仓", "if qb.can_open():\n    open_position()"],
-  ["状态", 'qb.status(f"净值 {equity:.2f}")'],
-  ["推送消息", 'qb.info("策略已启动")'],
-  ["注册按钮", 'qb.on("positions", my_positions_text)'],
+  [tr("连接"), 'from quantbot_client import QuantBot\n\nqb = QuantBot("momentum")'],
+  [tr("等待"), "if not qb.sleep(60):\n    break"],
+  [tr("允许开仓"), "if qb.can_open():\n    open_position()"],
+  [tr("状态"), tr("qb.status(f\"净值 {equity:.2f}\")")],
+  [tr("推送消息"), tr("qb.info(\"策略已启动\")")],
+  [tr("注册按钮"), 'qb.on("positions", my_positions_text)'],
 ] as const;
 
 const theme = EditorView.theme({
@@ -59,7 +60,7 @@ export function StrategyCodeEditor({ path, initial, onChange, disabled }: {
         theme, isPython ? python() : [], highlighting, lineNumbers(), history(),
         indentOnInput(), bracketMatching(), keymap.of([...defaultKeymap, ...historyKeymap]),
         EditorState.lineSeparator.of(original.current.includes("\r\n") ? "\r\n" : "\n"),
-        EditorView.contentAttributes.of({ "aria-label": `代码编辑区 ${path}` }),
+        EditorView.contentAttributes.of({ "aria-label": tr("代码编辑区 {0}", path) }),
         access.current.of([]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged) onChange(update.state.sliceDoc());
@@ -96,7 +97,7 @@ export function StrategyCodeEditor({ path, initial, onChange, disabled }: {
   return (
     <div className="grid min-w-0 gap-2">
       {isPython && (
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="插入 QuantBot 代码">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={tr("插入 QuantBot 代码")}>
           {snippets.map(([label, code]) => (
             <Button key={label} variant="outline" size="sm" disabled={disabled} onClick={() => insert(code)}>
               {label}

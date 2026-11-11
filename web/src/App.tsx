@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChevronRight, CircleDashed, Download, FileCode, LogOut, Monitor, Moon, Pause, Plus, Radio, Settings, Sparkles, Sun,
@@ -24,10 +25,10 @@ import { cn } from "@/lib/utils";
 
 const NEXT_THEME: Record<Theme, Theme> = { light: "dark", dark: "system", system: "light" };
 const THEME_ICON = { light: Sun, dark: Moon, system: Monitor };
-const THEME_LABEL = { light: "浅色", dark: "深色", system: "跟随系统" };
+const THEME_LABEL = { light: tr("浅色"), dark: tr("深色"), system: tr("跟随系统") };
 
 const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "loss" } as const;
-const KIND_LABEL = { info: "消息", trade: "成交", alert: "提醒", error: "报错" };
+const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
 const EditorDialog = React.lazy(() => import("@/components/EditorDialog"));
 
 function TopBar({ onLogout, onSettings, onUpdate }: {
@@ -38,28 +39,27 @@ function TopBar({ onLogout, onSettings, onUpdate }: {
   const [theme, setTheme] = useTheme();
   const ThemeIcon = THEME_ICON[theme];
   return (
-    <header className="mx-auto flex max-w-6xl items-center justify-between px-5 pt-6 sm:px-8">
+    <header className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2 px-5 pt-6 sm:px-8">
       <div className="flex items-center gap-2">
         <BrandIcon className="size-6" />
         <span className="font-display text-lg">QuantBot</span>
       </div>
-      <div className="flex items-center gap-1">
+      <div className="ml-auto flex flex-wrap items-center gap-1">
         {onUpdate && (
           <Button variant="outline" size="sm" className="text-warning" onClick={onUpdate}>
-            <Download /> 有新版本
-          </Button>
+            <Download /> {tr("有新版本")}</Button>
         )}
         <Button variant="ghost" size="icon" onClick={() => setTheme(NEXT_THEME[theme])}
-          aria-label={`主题：${THEME_LABEL[theme]}`} title={`主题：${THEME_LABEL[theme]}`}>
+          aria-label={tr("主题：{0}", THEME_LABEL[theme])} title={tr("主题：{0}", THEME_LABEL[theme])}>
           <ThemeIcon />
         </Button>
         {onSettings && (
-          <Button variant="ghost" size="icon" onClick={onSettings} aria-label="设置" title="设置">
+          <Button variant="ghost" size="icon" onClick={onSettings} aria-label={tr("设置")} title={tr("设置")}>
             <Settings />
           </Button>
         )}
         {onLogout && (
-          <Button variant="ghost" size="icon" onClick={onLogout} aria-label="退出登录" title="退出登录">
+          <Button variant="ghost" size="icon" onClick={onLogout} aria-label={tr("退出登录")} title={tr("退出登录")}>
             <LogOut />
           </Button>
         )}
@@ -86,26 +86,27 @@ function Login() {
     <>
       <TopBar />
       <main className="view-enter mx-auto max-w-md px-5 pt-20">
-        <h1 className="font-display text-3xl font-medium">登录 QuantBot</h1>
-        <p className="mb-5 mt-1 text-sm text-muted-foreground">用安装时设的管理员账号登录。</p>
+        <h1 className="font-display text-3xl font-medium">{tr("登录 QuantBot")}</h1>
+        <p className="mb-5 mt-1 text-sm text-muted-foreground">{tr("用安装时设的管理员账号登录。")}</p>
         <Card className="p-5">
           <form className="grid gap-4" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
-            <Field label="用户名" htmlFor="u">
+            <Field label={tr("用户名")} htmlFor="u">
               <Input id="u" autoComplete="username" value={username} autoFocus required
                 onChange={(e) => setUsername(e.target.value)} />
             </Field>
-            <Field label="密码" htmlFor="p">
+            <Field label={tr("密码")} htmlFor="p">
               <Input id="p" type="password" autoComplete="current-password" value={password} required
                 onChange={(e) => setPassword(e.target.value)} />
             </Field>
             {failed && <Alert tone="loss">{failed}</Alert>}
-            <Button type="submit" loading={login.isPending}>登录</Button>
+            <Button type="submit" loading={login.isPending}>{tr("登录")}</Button>
           </form>
         </Card>
         <p className="mt-5 text-xs leading-relaxed text-muted-foreground">
-          忘了密码：在服务器上运行 <code className={code}>quantbot password</code>。
-          也可以运行 <code className={code}>quantbot web</code>，或给 bot 发 <code className={code}>/web</code>，
-          拿一个不用密码的一次性链接。
+          {tr("忘了密码：在服务器上运行")} <code className={code}>quantbot password</code>
+          {tr("。 也可以运行")} <code className={code}>quantbot web</code>
+          {tr("，或给 bot 发")} <code className={code}>/web</code>
+          {tr("， 拿一个不用密码的一次性链接。")}
         </p>
       </main>
     </>
@@ -113,9 +114,9 @@ function Login() {
 }
 
 function OnlineBadge({ s }: { s: StrategyView }) {
-  if (s.online) return <Badge tone="gain"><Radio /> 在线</Badge>;
-  if (!s.connected && s.last_seen === null) return <Badge><CircleDashed /> 还没连上过</Badge>;
-  return <Badge tone="loss">离线</Badge>;
+  if (s.online) return <Badge tone="gain"><Radio /> {tr("在线")}</Badge>;
+  if (!s.connected && s.last_seen === null) return <Badge><CircleDashed /> {tr("还没连上过")}</Badge>;
+  return <Badge tone="loss">{tr("离线")}</Badge>;
 }
 
 function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }) {
@@ -128,7 +129,7 @@ function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }
           <p className="mt-0.5 font-mono text-xs text-muted-foreground">{s.id}</p>
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1">
-          {s.paused && <Badge tone="warning">已暂停开仓</Badge>}
+          {s.paused && <Badge tone="warning">{tr("已暂停开仓")}</Badge>}
           <OnlineBadge s={s} />
         </div>
       </CardHeader>
@@ -137,19 +138,17 @@ function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{s.status}</p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            {s.connected ? "还没有报状态。" : "在策略项目里运行 quantbot link，接上后就会出现在这里。"}
+            {s.connected ? tr("还没有报状态。") : tr("在策略项目里运行 quantbot link，接上后就会出现在这里。")}
           </p>
         )}
-        <p className="mt-4 text-xs text-muted-foreground">
-          状态 {ago(s.status_age)} · 最后联系 {ago(s.last_seen)}
-          {s.pending > 0 && ` · ${s.pending} 个命令在排队`}
+        <p className="mt-4 text-xs text-muted-foreground">{tr("状态")} {ago(s.status_age)} {tr("· 最后联系")} {ago(s.last_seen)}
+          {s.pending > 0 && tr(" · {0} 个命令在排队", s.pending)}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <PauseButton s={s} />
-          <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>
-            更多操作 <ChevronRight />
+          <Button size="sm" variant="ghost" onClick={() => setOpen(true)}>{tr("更多操作")} <ChevronRight />
           </Button>
-          <Button size="sm" variant="ghost" onClick={onManage}>管理</Button>
+          <Button size="sm" variant="ghost" onClick={onManage}>{tr("管理")}</Button>
         </div>
       </CardContent>
       {open && <StrategyPanel s={s} open onOpenChange={setOpen} />}
@@ -158,7 +157,7 @@ function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }
 }
 
 function Feed({ items }: { items: Notice[] }) {
-  if (!items.length) return <EmptyState title="还没有推送" description="QuantBot 这次启动后发出的消息会显示在这里。" />;
+  if (!items.length) return <EmptyState title={tr("还没有推送")} description={tr("QuantBot 这次启动后发出的消息会显示在这里。")} />;
   return (
     <ul className="divide-y">
       {items.map((n, i) => (
@@ -183,11 +182,11 @@ function AuditLog() {
     <QueryBoundary query={audit}>
       {({ records }) =>
         records.length === 0 ? (
-          <EmptyState title="还没有操作记录" description="在网页或 Telegram 里点过的按钮会记在这里。" />
+          <EmptyState title={tr("还没有操作记录")} description={tr("在网页或 Telegram 里点过的按钮会记在这里。")} />
         ) : (
           <Table>
             <thead>
-              <tr><Th>时间</Th><Th>操作</Th><Th>策略</Th><Th>从哪</Th><Th>结果</Th></tr>
+              <tr><Th>{tr("时间")}</Th><Th>{tr("操作")}</Th><Th>{tr("策略")}</Th><Th>{tr("从哪")}</Th><Th>{tr("结果")}</Th></tr>
             </thead>
             <tbody>
               {records.map((r, i) => (
@@ -195,9 +194,9 @@ function AuditLog() {
                   <Td className="num text-xs text-muted-foreground">{dateTime(r.time)}</Td>
                   <Td>{actionLabel(r.action)}</Td>
                   <Td className="font-mono text-xs">{r.strategy ?? r.strategies?.join(", ") ?? NA}</Td>
-                  <Td className="text-xs">{r.user === "web" ? "网页" : r.user === "cli" ? "终端" : r.user ? "Telegram" : NA}</Td>
+                  <Td className="text-xs">{r.user === "web" ? tr("网页") : r.user === "cli" ? tr("终端") : r.user ? "Telegram" : NA}</Td>
                   <Td className="max-w-md whitespace-normal text-xs">
-                    {r.ok === false && <Badge tone="loss" className="mr-2">失败</Badge>}
+                    {r.ok === false && <Badge tone="loss" className="mr-2">{tr("失败")}</Badge>}
                     {r.result ?? NA}
                   </Td>
                 </tr>
@@ -227,11 +226,10 @@ function PauseAll({ count }: { count: number }) {
   return (
     <>
       <Button variant="outline" disabled={!count} onClick={() => setAsking(true)}>
-        <Pause /> 全部暂停开仓
-      </Button>
-      <ConfirmDialog open={asking} onOpenChange={setAsking} title="全部暂停开仓？"
-        description={`${count} 个在线策略都不再开新仓。已有仓位和止损照常。`}
-        confirmLabel="全部暂停" loading={pause.isPending} onConfirm={() => pause.mutate()} />
+        <Pause /> {tr("全部暂停开仓")}</Button>
+      <ConfirmDialog open={asking} onOpenChange={setAsking} title={tr("全部暂停开仓？")}
+        description={tr("{0} 个在线策略都不再开新仓。已有仓位和止损照常。", count)}
+        confirmLabel={tr("全部暂停")} loading={pause.isPending} onConfirm={() => pause.mutate()} />
     </>
   );
 }
@@ -241,8 +239,8 @@ function TelegramNote({ onSettings }: { onSettings: () => void }) {
   if (!settings.data || settings.data.telegram) return null;
   return (
     <Alert tone="info" className="items-center justify-between">
-      <span>Telegram 没接，推送只显示在这个网页上。想在手机上收推送、点按钮，可以在设置里接上。</span>
-      <Button size="sm" variant="outline" onClick={onSettings}>去设置</Button>
+      <span>{tr("Telegram 没接，推送只显示在这个网页上。想在手机上收推送、点按钮，可以在设置里接上。")}</span>
+      <Button size="sm" variant="outline" onClick={onSettings}>{tr("去设置")}</Button>
     </Alert>
   );
 }
@@ -278,7 +276,7 @@ export function App() {
       {editorOpen && (
         <React.Suspense fallback={
           <Dialog open onOpenChange={setEditorOpen}>
-            <DialogContent title="策略编辑器"><p className="text-sm text-muted-foreground">加载中…</p></DialogContent>
+            <DialogContent title={tr("策略编辑器")}><p className="text-sm text-muted-foreground">{tr("加载中…")}</p></DialogContent>
           </Dialog>
         }>
           <EditorDialog onClose={() => setEditorOpen(false)} />
@@ -286,19 +284,17 @@ export function App() {
       )}
       <main className="view-enter mx-auto max-w-6xl px-5 pb-16 pt-10 sm:px-8">
         <PageHeader
-          title="策略"
-          description={overview.data ? `${strategies.length} 个策略，${online} 个在线 · 每 5 秒刷新` : undefined}
+          title={tr("策略")}
+          description={overview.data ? tr("{0} 个策略，{1} 个在线 · 每 5 秒刷新", strategies.length, online) : undefined}
           actions={
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => setManage(null)}><Plus /> 添加策略</Button>
+              <Button variant="outline" onClick={() => setManage(null)}><Plus /> {tr("添加策略")}</Button>
               {overview.data?.editor_enabled && (
                 <Button variant="outline" onClick={() => setEditorOpen(true)}>
-                  <FileCode /> 策略编辑器
-                </Button>
+                  <FileCode /> {tr("策略编辑器")}</Button>
               )}
               <Button variant="outline" onClick={() => setPromptOpen(true)}>
-                <Sparkles /> 让 AI 接入策略
-              </Button>
+                <Sparkles /> {tr("让 AI 接入策略")}</Button>
               <PauseAll count={online} />
             </div>
           }
@@ -309,8 +305,8 @@ export function App() {
               <TelegramNote onSettings={() => setSettingsOpen(true)} />
               {data.strategies.length === 0 ? (
                 <Card>
-                  <EmptyState title="还没有策略"
-                    description="添加策略可以生成连接令牌。也可以在策略项目里运行 quantbot link。" />
+                  <EmptyState title={tr("还没有策略")}
+                    description={tr("添加策略可以生成连接令牌。也可以在策略项目里运行 quantbot link。")} />
                 </Card>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -319,8 +315,8 @@ export function App() {
               )}
               <Tabs defaultValue="feed">
                 <TabsList>
-                  <TabsTrigger value="feed">推送</TabsTrigger>
-                  <TabsTrigger value="audit">操作记录</TabsTrigger>
+                  <TabsTrigger value="feed">{tr("推送")}</TabsTrigger>
+                  <TabsTrigger value="audit">{tr("操作记录")}</TabsTrigger>
                 </TabsList>
                 <TabsContent value="feed">
                   <Card><Feed items={data.feed} /></Card>

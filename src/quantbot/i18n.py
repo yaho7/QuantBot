@@ -23,6 +23,10 @@ def language() -> str:
     return _language.get()
 
 
+def language_tag() -> str:
+    return "en" if language() == "en" else "zh-CN"
+
+
 @contextmanager
 def use_language(value: object) -> Iterator[None]:
     token = _language.set(normalize_language(value))

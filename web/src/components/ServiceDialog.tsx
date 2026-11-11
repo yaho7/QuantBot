@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { RefreshCw, RotateCcw, ScrollText } from "lucide-react";
 import { useState } from "react";
@@ -34,7 +35,7 @@ export function ServiceDialog({ onClose }: { onClose: () => void }) {
   return (
     <>
       <Dialog open onOpenChange={() => { if (!restart.isPending) onClose(); }}>
-        <DialogContent title="后台服务" className={showLogs ? "max-w-3xl" : "max-w-lg"}>
+        <DialogContent title={tr("后台服务")} className={showLogs ? "max-w-3xl" : "max-w-lg"}>
           <QueryBoundary query={status} rows={2}>
             {({ installed, text }) => installed ? (
               <>
@@ -42,31 +43,30 @@ export function ServiceDialog({ onClose }: { onClose: () => void }) {
                 {showLogs && (
                   <QueryBoundary query={logs} rows={3}>
                     {({ text }) => (
-                      <pre aria-label="最近日志" className="max-h-[42vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs leading-relaxed">
-                        {text || "暂无日志。"}
+                      <pre aria-label={tr("最近日志")} className="max-h-[42vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs leading-relaxed">
+                        {text || tr("暂无日志。")}
                       </pre>
                     )}
                   </QueryBoundary>
                 )}
                 <DialogFooter>
                   <Button variant="ghost" size="sm" loading={status.isFetching && !status.isLoading}
-                    onClick={() => void status.refetch()}><RefreshCw /> 刷新状态</Button>
+                    onClick={() => void status.refetch()}><RefreshCw /> {tr("刷新状态")}</Button>
                   <Button variant="outline" size="sm" onClick={() => setShowLogs(!showLogs)}>
-                    <ScrollText /> {showLogs ? "隐藏日志" : "最近日志"}
+                    <ScrollText /> {showLogs ? tr("隐藏日志") : tr("最近日志")}
                   </Button>
                   <Button size="sm" onClick={() => { setError(""); setConfirm(true); }}>
-                    <RotateCcw /> 重启
-                  </Button>
+                    <RotateCcw /> {tr("重启")}</Button>
                 </DialogFooter>
               </>
-            ) : <Alert tone="info">当前未安装后台服务。可以在服务器上运行 quantbot service install。</Alert>}
+            ) : <Alert tone="info">{tr("当前未安装后台服务。可以在服务器上运行 quantbot service install。")}</Alert>}
           </QueryBoundary>
           {error && <Alert tone="loss">{error}</Alert>}
         </DialogContent>
       </Dialog>
       <ConfirmDialog open={confirm} onOpenChange={(open) => { if (!restart.isPending) setConfirm(open); }}
-        title="重启后台服务" description="QuantBot 会短暂断开，网页会自动重连。"
-        confirmLabel="确认重启" loading={restart.isPending} onConfirm={() => restart.mutate()} />
+        title={tr("重启后台服务")} description={tr("QuantBot 会短暂断开，网页会自动重连。")}
+        confirmLabel={tr("确认重启")} loading={restart.isPending} onConfirm={() => restart.mutate()} />
     </>
   );
 }

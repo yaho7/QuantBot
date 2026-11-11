@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 /* Page pieces taken from AntQuant's components/common.tsx, with the text in Chinese. */
 import { AlertTriangle, Inbox } from "lucide-react";
 import * as React from "react";
@@ -32,7 +33,7 @@ export function ConfirmDialog({
       <DialogContent title={title} description={description}>
         {children}
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{tr("取消")}</Button>
           <Button variant={destructive ? "destructive" : "default"} loading={loading} onClick={onConfirm}>
             {confirmLabel}
           </Button>
@@ -65,7 +66,7 @@ export function PageHeader({
 
 export function LoadingState({ rows = 3, className }: { rows?: number; className?: string }) {
   return (
-    <div className={cn("grid gap-2", className)} aria-busy="true" aria-label="加载中">
+    <div className={cn("grid gap-2", className)} aria-busy="true" aria-label={tr("加载中")}>
       {Array.from({ length: rows }, (_, i) => (
         <Skeleton key={i} className="h-8 w-full" />
       ))}
@@ -92,14 +93,14 @@ export function EmptyState({
 }
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  const message = error instanceof Error ? error.message : String(error ?? "未知错误");
+  const message = error instanceof Error ? error.message : String(error ?? tr("未知错误"));
   return (
     <div role="alert" className="flex flex-col items-center gap-2 px-4 py-8 text-center">
       <AlertTriangle className="size-7 text-loss" />
-      <p className="text-sm font-medium">出错了</p>
+      <p className="text-sm font-medium">{tr("出错了")}</p>
       <p className="max-w-lg break-words text-sm text-muted-foreground">{message}</p>
       {onRetry && (
-        <Button variant="outline" size="sm" onClick={onRetry} className="mt-2">重试</Button>
+        <Button variant="outline" size="sm" onClick={onRetry} className="mt-2">{tr("重试")}</Button>
       )}
     </div>
   );

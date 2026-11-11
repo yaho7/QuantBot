@@ -118,6 +118,30 @@ def scenario(
     asyncio.run(main())
 
 
+def test_web_language_switch_keeps_the_session(tmp_path: Path) -> None:
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        chinese = await client.get("/ui/")
+        assert '<html lang="zh-CN">' in await chinese.text()
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        response = await client.post("/ui/api/settings", json={"language": "en"}, headers=CSRF)
+        assert (await response.json())["ok"]
+        settings = await (await client.get("/ui/api/settings")).json()
+        assert settings["language"] == "en" and settings["telegram"]
+
+        english = await client.get("/ui/")
+        assert '<html lang="en">' in await english.text()
+        assert english.headers["Cache-Control"] == "no-store"
+        invalid_link = await client.get("/ui/login?t=invalid")
+        assert "Login link expired" in await invalid_link.text()
+        prompt = await (await client.get("/ui/api/prompt?id=momentum")).json()
+        assert "Help me connect this trading program" in prompt["text"]
+        assert "动量" in prompt["text"]
+        invalid = await client.post("/ui/api/settings", json={"language": "de"}, headers=CSRF)
+        assert (await invalid.json())["message"] == "Choose Simplified Chinese or English."
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
 @pytest.mark.parametrize("service", [True, False])
 def test_update_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, service: bool) -> None:
     audit = tmp_path / "audit.jsonl"

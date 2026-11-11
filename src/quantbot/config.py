@@ -82,6 +82,7 @@ class Settings:
     timezone: str = "Asia/Shanghai"
     heartbeat_url: str | None = None
     public_url: str | None = None
+    language: str = DEFAULT_LANGUAGE
 
     @property
     def telegram(self) -> bool:
@@ -326,4 +327,5 @@ class Store:
             timezone=check_timezone(str(data.get("timezone") or "Asia/Shanghai")),
             heartbeat_url=check_url(data.get("heartbeat_url")),
             public_url=check_public_url(data.get("public_url")),
+            language=normalize_language(data.get("language")),
         )

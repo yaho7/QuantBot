@@ -24,9 +24,9 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 脚本检查 git、curl 和 [uv](https://docs.astral.sh/uv/)，再用 uv 安装 QuantBot 和独立的 Python 3.12 环境。首次安装会逐项确认配置。
 
-交互安装的第一项是选择简体中文或 English。选项会在配置确认后保存。可用 `quantbot language en` 或 `quantbot language zh` 切换。
+交互安装的第一项是选择简体中文或 English。确认配置后，CLI、网页和 Telegram 会使用所选语言。可以在网页「设置 → 语言」切换，也可运行 `quantbot language en` 或 `quantbot language zh`。
 
-For English, select **2. English** when the installer opens. For automation, pass `--language en` after `bash -s --`, or set `QUANTBOT_LANG=en`.
+For English, select **2. English** when the installer opens. To switch later, use **Settings → Language** or run `quantbot language en`. For automation, pass `--language en` after `bash -s --`, or set `QUANTBOT_LANG=en`.
 
 | 步骤 | 问什么 | 直接回车 |
 |---|---|---|

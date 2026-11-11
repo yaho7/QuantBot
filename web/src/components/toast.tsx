@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { CheckCircle2, X, XCircle } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -49,7 +50,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             )}
             <span className="flex-1 break-words">{item.message}</span>
             <button
-              aria-label="关闭"
+              aria-label={tr("关闭")}
               onClick={() => setToasts((all) => all.filter((x) => x.id !== item.id))}
             >
               <X className="size-4 opacity-60" />

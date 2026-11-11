@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { structuredPatch } from "diff";
 import { ChevronRight, FileCode, Folder, FolderOpen, GitBranch, RefreshCw, Save } from "lucide-react";
@@ -37,7 +38,7 @@ function FileTree({ path, ...props }: TreeProps & { path: string }) {
             );
           })}
         </ul>
-      ) : <p className="px-2 py-2 text-xs text-muted-foreground">文件夹为空</p>}
+      ) : <p className="px-2 py-2 text-xs text-muted-foreground">{tr("文件夹为空")}</p>}
     </QueryBoundary>
   );
 }
@@ -78,7 +79,7 @@ function preview(file: File, draft: string) {
     </pre>
   ) : (
     <div className="grid gap-3 md:grid-cols-2">
-      {[["保存前", file.content], ["保存后", draft]].map(([label, code]) => (
+      {[[tr("保存前"), file.content], [tr("保存后"), draft]].map(([label, code]) => (
         <section key={label} className="min-w-0">
           <h3 className="mb-1 text-xs font-medium">{label}</h3>
           <pre className="max-h-[42vh] overflow-auto rounded-lg border bg-card p-3 font-mono text-xs">{code}</pre>
@@ -110,7 +111,7 @@ export default function EditorDialog({ onClose }: { onClose: () => void }) {
     mutationFn: api.saveEditorFile,
     onSuccess: (source) => {
       setFile((current) => current && { ...current, ...source });
-      toast.success("文件已保存。");
+      toast.success(tr("文件已保存。"));
     },
     onError: (err) => setError(err.message),
     onSettled: () => setReview(null),
@@ -131,58 +132,55 @@ export default function EditorDialog({ onClose }: { onClose: () => void }) {
   return (
     <>
       <Dialog open onOpenChange={() => choose(null)}>
-        <DialogContent title="策略编辑器" className="max-w-5xl">
+        <DialogContent title={tr("策略编辑器")} className="max-w-5xl">
           <div className="flex justify-end">
             <Button variant="outline" size="sm" disabled={busy} onClick={() => setGithubOpen(true)}>
-              <GitBranch /> GitHub 仓库
-            </Button>
+              <GitBranch /> {tr("GitHub 仓库")}</Button>
           </div>
           <div className="grid items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]">
-            <nav aria-label="策略文件" className="max-h-44 overflow-auto rounded-lg border bg-card p-2 md:max-h-[58vh]">
+            <nav aria-label={tr("策略文件")} className="max-h-44 overflow-auto rounded-lg border bg-card p-2 md:max-h-[58vh]">
               <FileTree path="" selected={file?.path} disabled={busy} onFile={(path) => {
                 if (path !== file?.path) choose(path);
               }} />
             </nav>
-            <section className="grid min-w-0 gap-3" aria-label="编辑文件">
+            <section className="grid min-w-0 gap-3" aria-label={tr("编辑文件")}>
               {error && <Alert tone="loss">{error}</Alert>}
               {file ? (
                 <>
                   <div className="flex items-center justify-between gap-2">
                     <code className="min-w-0 break-all text-xs">{file.path}</code>
                     <Button variant="ghost" size="sm" disabled={busy} onClick={() => choose(file.path)}>
-                      <RefreshCw /> 重新读取
-                    </Button>
+                      <RefreshCw /> {tr("重新读取")}</Button>
                   </div>
                   <StrategyCodeEditor key={file.opened} path={file.path} initial={file.content}
                     onChange={setDraft} disabled={busy || !!review || !!discard} />
                   <DialogFooter className="sm:items-center">
-                    {dirty && <span className="mr-auto text-xs text-warning">有未保存的改动</span>}
+                    {dirty && <span className="mr-auto text-xs text-warning">{tr("有未保存的改动")}</span>}
                     <Button disabled={busy || !dirty} onClick={() => {
                       setError("");
                       setReview(preview(file, draft));
                     }}>
-                      <Save /> 预览并保存
-                    </Button>
+                      <Save /> {tr("预览并保存")}</Button>
                   </DialogFooter>
                 </>
-              ) : <EmptyState icon={FileCode} title={load.isPending ? "正在读取文件" : "选择要编辑的文件"} />}
+              ) : <EmptyState icon={FileCode} title={load.isPending ? tr("正在读取文件") : tr("选择要编辑的文件")} />}
             </section>
           </div>
         </DialogContent>
       </Dialog>
       <Dialog open={!!review} onOpenChange={(open) => { if (!open && !save.isPending) setReview(null); }}>
-        <DialogContent title="确认保存" description={file?.path} className="max-w-4xl">
+        <DialogContent title={tr("确认保存")} description={file?.path} className="max-w-4xl">
           {review}
           <DialogFooter>
-            <Button variant="outline" disabled={save.isPending} onClick={() => setReview(null)}>返回编辑</Button>
+            <Button variant="outline" disabled={save.isPending} onClick={() => setReview(null)}>{tr("返回编辑")}</Button>
             <Button loading={save.isPending} onClick={() => {
               if (file) save.mutate({ path: file.path, content: draft, revision: file.revision });
-            }}>保存文件</Button>
+            }}>{tr("保存文件")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       <ConfirmDialog open={!!discard} onOpenChange={(open) => { if (!open) setDiscard(undefined); }}
-        title="放弃未保存的改动？" description={file?.path} confirmLabel="放弃改动"
+        title={tr("放弃未保存的改动？")} description={file?.path} confirmLabel={tr("放弃改动")}
         destructive onConfirm={() => {
           if (discard) go(discard.target);
           setDiscard(undefined);

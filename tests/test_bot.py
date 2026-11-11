@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from telegram.ext import CallbackQueryHandler, CommandHandler
 
 from quantbot.bot import COMMANDS, QuantBot, markup, silent
 from quantbot.config import Settings, StrategyConfig
+from quantbot.i18n import language
 
 
 def test_markup_and_quiet_hours() -> None:
@@ -74,3 +76,24 @@ def test_runs_without_telegram(tmp_path: Path) -> None:
         await asyncio.wait_for(running, 5)
 
     asyncio.run(main())
+
+
+def test_telegram_callback_uses_the_current_language(tmp_path: Path) -> None:
+    import asyncio
+
+    bot = QuantBot(Settings(None, None, (), tmp_path, language="en"))
+    replies: list[str] = []
+
+    async def menu() -> None:
+        replies.append((await bot.core.home()).text)
+
+    async def run() -> None:
+        handler = bot._localized(menu)
+        await handler()
+        assert language() == "zh"
+        bot.settings = replace(bot.settings, language="zh")
+        await handler()
+
+    asyncio.run(run())
+    assert replies[0].startswith("No strategies yet.")
+    assert replies[1].startswith("还没有策略。")

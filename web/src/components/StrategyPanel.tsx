@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 /**
  * Everything you can do with one strategy: the same commands as the Telegram buttons.
  * Buttons only appear for commands the strategy said it supports. Anything that
@@ -78,7 +79,7 @@ export function PauseButton({ s }: { s: StrategyView }) {
   return (
     <Button size="sm" variant="outline" loading={command.isPending}
       onClick={() => command.mutate({ name })}>
-      {paused ? <Play /> : <Pause />} {paused ? "恢复开仓" : "暂停开仓"}
+      {paused ? <Play /> : <Pause />} {paused ? tr("恢复开仓") : tr("暂停开仓")}
     </Button>
   );
 }
@@ -105,13 +106,13 @@ export function StrategyPanel({ s, open, onOpenChange }: {
     if (name === "chart") {
       return typeof answer.data === "string" && answer.data
         ? setView({ kind: "chart", png: answer.data, message: answer.message })
-        : setView({ kind: "text", title, text: "净值图是空的。" });
+        : setView({ kind: "text", title, text: tr("净值图是空的。") });
     }
     if (name === "params") {
       const values = answer.data && typeof answer.data === "object" ? (answer.data as Record<string, unknown>) : {};
       return setView({ kind: "params", values });
     }
-    setView({ kind: "text", title, text: answer.message || "没有内容。" });
+    setView({ kind: "text", title, text: answer.message || tr("没有内容。") });
   }
 
   function confirm(p: NonNullable<Pending>) {
@@ -122,7 +123,7 @@ export function StrategyPanel({ s, open, onOpenChange }: {
     setPending(null);
     const answer = await command.mutateAsync({ name, args }).catch(() => undefined);
     if (!answer) return undefined;
-    if (name === "cancel" && answer.ok) void read("orders", "挂单");
+    if (name === "cancel" && answer.ok) void read("orders", tr("挂单"));
     return answer;
   }
 
@@ -133,68 +134,61 @@ export function StrategyPanel({ s, open, onOpenChange }: {
         description={
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs">{s.id}</span>
-            {s.online ? <Badge tone="gain">在线</Badge> : <Badge tone="loss">离线</Badge>}
-            {s.paused && <Badge tone="warning">已暂停开仓</Badge>}
+            {s.online ? <Badge tone="gain">{tr("在线")}</Badge> : <Badge tone="loss">{tr("离线")}</Badge>}
+            {s.paused && <Badge tone="warning">{tr("已暂停开仓")}</Badge>}
           </span>
         }>
         {!s.online && (
-          <Alert tone="warning">策略离线：命令会排队，2 分钟内它上线才会执行。</Alert>
+          <Alert tone="warning">{tr("策略离线：命令会排队，2 分钟内它上线才会执行。")}</Alert>
         )}
         {s.status && <p className="whitespace-pre-wrap rounded-lg bg-card p-3 text-sm">{s.status}</p>}
 
         <div className="flex flex-wrap gap-2">
           {has("status") && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => command.mutate({ name: "status" })}>
-              <RefreshCw /> 刷新状态
-            </Button>
+              <RefreshCw /> {tr("刷新状态")}</Button>
           )}
           <PauseButton s={s} />
           {has("positions") && (
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void read("positions", "持仓")}>
-              <Wallet /> 持仓
-            </Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void read("positions", tr("持仓"))}>
+              <Wallet /> {tr("持仓")}</Button>
           )}
           {has("orders") && (
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void read("orders", "挂单")}>
-              <ClipboardList /> 挂单
-            </Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void read("orders", tr("挂单"))}>
+              <ClipboardList /> {tr("挂单")}</Button>
           )}
           {has("chart") && (
-            <Button size="sm" variant="outline" disabled={busy} onClick={() => void read("chart", "净值图")}>
-              <LineChart /> 净值图
-            </Button>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void read("chart", tr("净值图"))}>
+              <LineChart /> {tr("净值图")}</Button>
           )}
           {has("set_param") && (
             <Button size="sm" variant="outline" disabled={busy}
-              onClick={() => (has("params") ? void read("params", "参数") : setView({ kind: "params", values: {} }))}>
-              <SlidersHorizontal /> 改参数
-            </Button>
+              onClick={() => (has("params") ? void read("params", tr("参数")) : setView({ kind: "params", values: {} }))}>
+              <SlidersHorizontal /> {tr("改参数")}</Button>
           )}
           {has("manual_order") && (
             <Button size="sm" variant="outline" disabled={busy} onClick={() => setView({ kind: "order" })}>
-              <ShoppingCart /> 手动下单
-            </Button>
+              <ShoppingCart /> {tr("手动下单")}</Button>
           )}
           <Button size="sm" variant="ghost" onClick={() => setAskAi(true)}>
-            <Sparkles /> 复制给 AI
-          </Button>
+            <Sparkles /> {tr("复制给 AI")}</Button>
         </div>
         {askAi && <AiPromptDialog open onOpenChange={setAskAi} strategy={{ id: s.id, name: s.name }} />}
 
         <ViewArea view={view} busy={busy} s={s}
           onCancel={(item) => confirm({
-            title: "撤掉这个挂单？", description: item.text, label: "撤单",
+            title: tr("撤掉这个挂单？"), description: item.text, label: tr("撤单"),
             run: () => void change("cancel", { order_id: item.id }),
           })}
           onSet={(name, value, old) => confirm({
-            title: `把 ${name} 改成 ${show(value)}？`, description: `现在是 ${show(old)}。`, label: "改参数",
+            title: tr("把 {0} 改成 {1}？", name, show(value)), description: tr("现在是 {0}。", show(old)), label: tr("改参数"),
             run: () => void change("set_param", { name, value }).then((a) => {
-              if (a?.ok && has("params")) void read("params", "参数");
+              if (a?.ok && has("params")) void read("params", tr("参数"));
             }),
           })}
           onOrder={(side, symbol, qty) => confirm({
-            title: `${side === "buy" ? "买入" : "卖出"} ${symbol} ${qty}？`,
-            description: "这会让策略向券商下一个真实订单。", label: side === "buy" ? "买入" : "卖出",
+            title: `${side === "buy" ? tr("买入") : tr("卖出")} ${symbol} ${qty}？`,
+            description: tr("这会让策略向券商下一个真实订单。"), label: side === "buy" ? tr("买入") : tr("卖出"),
             run: () => void change("manual_order", { side, symbol, qty }),
           })}
         />
@@ -204,22 +198,20 @@ export function StrategyPanel({ s, open, onOpenChange }: {
             {has("flatten") && (
               <Button size="sm" variant="destructive" disabled={busy}
                 onClick={() => confirm({
-                  title: `平掉 ${s.name} 的仓位？`,
-                  description: "只会平它能确认归属的仓位。", label: "平仓",
+                  title: tr("平掉 {0} 的仓位？", s.name),
+                  description: tr("只会平它能确认归属的仓位。"), label: tr("平仓"),
                   run: () => void change("flatten"),
                 })}>
-                <X /> 平仓
-              </Button>
+                <X /> {tr("平仓")}</Button>
             )}
             {has("stop") && (
               <Button size="sm" variant="outline" disabled={busy}
                 onClick={() => confirm({
-                  title: `让 ${s.name} 停止？`,
-                  description: "程序会退出，挂着的止损单会保留。要再跑起来，得在服务器上启动它。", label: "停止",
+                  title: tr("让 {0} 停止？", s.name),
+                  description: tr("程序会退出，挂着的止损单会保留。要再跑起来，得在服务器上启动它。"), label: tr("停止"),
                   run: () => void change("stop"),
                 })}>
-                <Square /> 停止程序
-              </Button>
+                <Square /> {tr("停止程序")}</Button>
             )}
           </div>
         )}
@@ -252,14 +244,14 @@ function ViewArea({ view, busy, s, onCancel, onSet, onOrder }: {
     );
   }
   if (view.kind === "orders") {
-    if (!view.items.length) return <EmptyState title={view.message || "没有挂单"} />;
+    if (!view.items.length) return <EmptyState title={view.message || tr("没有挂单")} />;
     return (
       <ul className="divide-y rounded-lg border">
         {view.items.map((item) => (
           <li key={item.id} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
             <span className="min-w-0 break-words">{item.text}</span>
             {s.commands.includes("cancel") && (
-              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onCancel(item)}>撤单</Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => onCancel(item)}>{tr("撤单")}</Button>
             )}
           </li>
         ))}
@@ -269,7 +261,7 @@ function ViewArea({ view, busy, s, onCancel, onSet, onOrder }: {
   if (view.kind === "chart") {
     return (
       <figure className="grid gap-2">
-        <img src={`data:image/png;base64,${view.png}`} alt="净值图" className="w-full rounded-lg border" />
+        <img src={`data:image/png;base64,${view.png}`} alt={tr("净值图")} className="w-full rounded-lg border" />
         {view.message && <figcaption className="text-xs text-muted-foreground">{view.message}</figcaption>}
       </figure>
     );
@@ -288,10 +280,10 @@ function ParamsForm({ values, busy, onSet }: {
   if (!names.length) {
     return (
       <form className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
-        onSubmit={(e) => { e.preventDefault(); if (free.name) onSet(free.name, convert(null, free.value), "（未知）"); }}>
-        <Field label="参数名" htmlFor="pn"><Input id="pn" value={free.name} onChange={(e) => setFree({ ...free, name: e.target.value })} /></Field>
-        <Field label="新的值" htmlFor="pv"><Input id="pv" value={free.value} onChange={(e) => setFree({ ...free, value: e.target.value })} /></Field>
-        <Button type="submit" size="sm" disabled={busy || !free.name}>改</Button>
+        onSubmit={(e) => { e.preventDefault(); if (free.name) onSet(free.name, convert(null, free.value), tr("（未知）")); }}>
+        <Field label={tr("参数名")} htmlFor="pn"><Input id="pn" value={free.name} onChange={(e) => setFree({ ...free, name: e.target.value })} /></Field>
+        <Field label={tr("新的值")} htmlFor="pv"><Input id="pv" value={free.value} onChange={(e) => setFree({ ...free, value: e.target.value })} /></Field>
+        <Button type="submit" size="sm" disabled={busy || !free.name}>{tr("改")}</Button>
       </form>
     );
   }
@@ -318,14 +310,14 @@ function ParamRow({ name, old, busy, onSet }: {
       <label htmlFor={id} className="truncate font-mono text-xs text-muted-foreground sm:pb-2.5">{name}</label>
       {typeof old === "boolean" ? (
         <Select id={id} value={typed} onChange={(e) => setTyped(e.target.value)}>
-          <option value="true">开（true）</option>
-          <option value="false">关（false）</option>
+          <option value="true">{tr("开（true）")}</option>
+          <option value="false">{tr("关（false）")}</option>
         </Select>
       ) : (
         <Input id={id} value={typed} inputMode={typeof old === "number" ? "decimal" : undefined}
           aria-invalid={invalid} onChange={(e) => setTyped(e.target.value)} />
       )}
-      <Button type="submit" size="sm" variant="outline" disabled={busy || invalid || typed === show(old)}>改</Button>
+      <Button type="submit" size="sm" variant="outline" disabled={busy || invalid || typed === show(old)}>{tr("改")}</Button>
     </form>
   );
 }
@@ -342,15 +334,15 @@ function OrderForm({ busy, onOrder }: {
   return (
     <form className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[8rem_1fr_8rem_auto] sm:items-end"
       onSubmit={(e) => { e.preventDefault(); if (ok) onOrder(side, symbol.toUpperCase(), amount); }}>
-      <Field label="方向" htmlFor="os">
+      <Field label={tr("方向")} htmlFor="os">
         <Select id="os" value={side} onChange={(e) => setSide(e.target.value as "buy" | "sell")}>
-          <option value="buy">买入</option>
-          <option value="sell">卖出</option>
+          <option value="buy">{tr("买入")}</option>
+          <option value="sell">{tr("卖出")}</option>
         </Select>
       </Field>
-      <Field label="代码" htmlFor="oc"><Input id="oc" value={symbol} placeholder="QQQ" onChange={(e) => setSymbol(e.target.value)} /></Field>
-      <Field label="数量" htmlFor="oq"><Input id="oq" value={qty} inputMode="decimal" onChange={(e) => setQty(e.target.value)} /></Field>
-      <Button type="submit" size="sm" disabled={busy || !ok}>下单</Button>
+      <Field label={tr("代码")} htmlFor="oc"><Input id="oc" value={symbol} placeholder="QQQ" onChange={(e) => setSymbol(e.target.value)} /></Field>
+      <Field label={tr("数量")} htmlFor="oq"><Input id="oq" value={qty} inputMode="decimal" onChange={(e) => setQty(e.target.value)} /></Field>
+      <Button type="submit" size="sm" disabled={busy || !ok}>{tr("下单")}</Button>
     </form>
   );
 }

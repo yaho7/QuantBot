@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Copy, KeyRound, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -53,54 +54,52 @@ export function StrategyAdminDialog({ strategy, onClose }: { strategy?: Strategy
   return (
     <>
       <Dialog open onOpenChange={() => { if (!config.isPending) onClose(); }}>
-        <DialogContent title={active ? "管理策略" : "添加策略"} className="max-w-lg">
+        <DialogContent title={active ? tr("管理策略") : tr("添加策略")} className="max-w-lg">
           <form className="grid gap-3" onSubmit={(event) => {
             event.preventDefault();
             run(active ? "rename" : "add");
           }}>
-            <Field label="策略 ID" htmlFor="strategy-id" hint={active ? undefined : "例如 momentum。使用小写字母、数字、- 或 _。"}>
+            <Field label={tr("策略 ID")} htmlFor="strategy-id" hint={active ? undefined : tr("例如 momentum。使用小写字母、数字、- 或 _。")}>
               <Input id="strategy-id" className="font-mono" value={id} readOnly={!!active} required maxLength={32}
                 onChange={(event) => setId(event.target.value)} />
             </Field>
-            <Field label="显示名称" htmlFor="strategy-name">
-              <Input id="strategy-name" value={name} placeholder={id || "动量策略"} maxLength={64} required={!!active}
+            <Field label={tr("显示名称")} htmlFor="strategy-name">
+              <Input id="strategy-name" value={name} placeholder={id || tr("动量策略")} maxLength={64} required={!!active}
                 onChange={(event) => setName(event.target.value)} />
             </Field>
             <DialogFooter>
               <Button type="submit" loading={config.isPending && ["rename", "add"].includes(config.variables ?? "")}
                 disabled={config.isPending || !valid || (!!active && (!name.trim() || name.trim() === active.name))}>
-                {active ? "保存名称" : "添加策略"}
+                {active ? tr("保存名称") : tr("添加策略")}
               </Button>
             </DialogFooter>
           </form>
           {active && (
             <section className="grid gap-3 border-t border-border pt-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">策略连接</h3>
+                <h3 className="text-sm font-medium">{tr("策略连接")}</h3>
                 {!credentials && (
                   <Button variant="outline" size="sm" disabled={config.isPending}
-                    onClick={() => run("credentials")}><KeyRound /> 查看连接信息</Button>
+                    onClick={() => run("credentials")}><KeyRound /> {tr("查看连接信息")}</Button>
                 )}
               </div>
               {credentials && (
                 <>
-                  <Textarea ref={field} aria-label="策略连接信息" className="font-mono text-xs" value={credentials}
+                  <Textarea ref={field} aria-label={tr("策略连接信息")} className="font-mono text-xs" value={credentials}
                     readOnly rows={3} onFocus={(event) => event.currentTarget.select()} />
                   <div className="flex justify-end">
                     <Button variant="outline" size="sm" onClick={async () => {
-                      if (await copyText(credentials, field.current)) toast.success("已复制策略连接信息。");
-                      else toast.error("请选中连接信息后手动复制。");
-                    }}><Copy /> 复制连接信息</Button>
+                      if (await copyText(credentials, field.current)) toast.success(tr("已复制策略连接信息。"));
+                      else toast.error(tr("请选中连接信息后手动复制。"));
+                    }}><Copy /> {tr("复制连接信息")}</Button>
                   </div>
                 </>
               )}
               <div className="flex flex-wrap gap-2">
                 <Button variant="ghost" size="sm" disabled={config.isPending} onClick={() => setConfirm("rotate")}>
-                  <KeyRound /> 换发令牌
-                </Button>
+                  <KeyRound /> {tr("换发令牌")}</Button>
                 <Button variant="ghost" size="sm" className="text-loss" disabled={config.isPending} onClick={() => setConfirm("remove")}>
-                  <Trash2 /> 移除策略
-                </Button>
+                  <Trash2 /> {tr("移除策略")}</Button>
               </div>
             </section>
           )}
@@ -108,11 +107,11 @@ export function StrategyAdminDialog({ strategy, onClose }: { strategy?: Strategy
         </DialogContent>
       </Dialog>
       <ConfirmDialog open={!!confirm} onOpenChange={(open) => { if (!open && !config.isPending) setConfirm(undefined); }}
-        title={confirm === "remove" ? "移除策略" : "换发令牌"}
+        title={confirm === "remove" ? tr("移除策略") : tr("换发令牌")}
         description={confirm === "remove"
-          ? `将从 QuantBot 移除 ${active?.name}，并撤销连接令牌。策略程序需要在服务器上单独管理。`
-          : `旧令牌会立即失效。${active?.name} 需要用新令牌重新连接。`}
-        confirmLabel={confirm === "remove" ? "确认移除" : "确认换发"} destructive loading={config.isPending}
+          ? tr("将从 QuantBot 移除 {0}，并撤销连接令牌。策略程序需要在服务器上单独管理。", active?.name)
+          : tr("旧令牌会立即失效。{0} 需要用新令牌重新连接。", active?.name)}
+        confirmLabel={confirm === "remove" ? tr("确认移除") : tr("确认换发")} destructive loading={config.isPending}
         onConfirm={() => { if (confirm) run(confirm); }} />
     </>
   );
