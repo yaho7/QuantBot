@@ -156,7 +156,7 @@ export type Command =
   | "flatten" | "params" | "set_param" | "manual_order" | "chart" | "stop";
 
 export const api = {
-  overview: () => request<{ strategies: StrategyView[]; feed: Notice[]; editor_enabled: boolean }>("GET", "overview"),
+  overview: () => request<{ strategies: StrategyView[]; feed: Notice[]; editor_enabled: boolean; workspace_managed: boolean }>("GET", "overview"),
   audit: () => request<{ records: AuditRecord[] }>("GET", "audit?limit=200"),
   login: (username: string, password: string) =>
     request<Answer>("POST", "login", { username, password }),

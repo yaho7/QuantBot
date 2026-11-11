@@ -272,5 +272,11 @@
   "提交说明": "Commit message",
   "提交所选文件": "Commit selected files",
   "新版本": "New version",
-  "有新版本 {0}": "Update {0} available"
+  "有新版本 {0}": "Update {0} available",
+  "正在连接…": "Connecting…",
+  "已断开": "Disconnected",
+  "连不上工作区终端，请检查服务器配置后重试。": "Could not connect to the workspace terminal. Check the server configuration and retry.",
+  "浏览器到终端的往返时间": "Browser-to-terminal round-trip time",
+  "延迟": "Latency",
+  "重新连接": "Reconnect"
 }

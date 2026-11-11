@@ -35,7 +35,7 @@ from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
-from aiohttp import web
+from aiohttp import WSMsgType, web
 
 from quantbot.config import (
     BOT_TOKEN,
@@ -57,6 +57,8 @@ from quantbot.hub import Hub, Result
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
 from quantbot.service import Service, ServiceError
 from quantbot.updates import Updater
+from quantbot.workspace import WORKSPACE_FILE
+from quantbot.workspace_terminal import TerminalProcess
 
 LINK_TTL = 5 * 60
 SESSION_TTL = 12 * 3600
@@ -343,6 +345,7 @@ class GitHubActions:
 
 
 GITHUB_KEY = web.AppKey("web_github", GitHubActions)
+TERMINALS_KEY = web.AppKey("web_workspace_terminals", set)
 
 
 def _telegram(request: web.Request) -> Any:
@@ -360,6 +363,95 @@ def _editor(store: Store) -> Editor:
     if editor is None:
         raise EditorError(tr("网页策略编辑器已关闭。"))
     return editor
+
+
+async def workspace_terminal(request: web.Request) -> web.StreamResponse:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    store = request.app[STORE_KEY]
+    origin = request.headers.get("Origin")
+    public_url = check_public_url(store.read().get("public_url"))
+    allowed = {f"{request.scheme}://{request.host}"}
+    if public_url:
+        allowed.add(public_url)
+    if origin not in allowed:
+        return _answer(False, tr("终端连接必须来自 QuantBot 网页。"))
+    terminals = request.app[TERMINALS_KEY]
+    if len(terminals) >= 4:
+        return _answer(False, tr("打开的终端过多，请先关闭一个。"))
+    socket = web.WebSocketResponse(heartbeat=25, max_msg_size=65_536, compress=False)
+    if not socket.can_prepare(request).ok:
+        return _answer(False, tr("终端需要 WebSocket 连接。"))
+    try:
+        workspace = _editor(store).workspace()
+        if workspace is None:
+            raise ConfigError(tr("请先在服务器上运行 quantbot workspace init。"))
+    except (ConfigError, OSError) as exc:
+        return _answer(False, str(exc))
+
+    audit = request.app[CORE_KEY].audit
+    terminals.add(socket)
+    try:
+        await socket.prepare(request)
+        try:
+            terminal = await TerminalProcess.start(workspace)
+        except (ConfigError, OSError) as exc:
+            audit.write("terminal_open", user=WEB_USER, ok=False, result=str(exc))
+            await socket.send_json({"type": "error", "message": str(exc)})
+            return socket
+        try:
+            audit.write("terminal_open", user=WEB_USER, ok=True, result=tr("已打开工作区终端。"))
+            await socket.send_json({"type": "ready"})
+            await _bridge_terminal(request, socket, terminal)
+        finally:
+            await terminal.close()
+    finally:
+        terminals.discard(socket)
+        await socket.close()
+    return socket
+
+
+async def _bridge_terminal(
+    request: web.Request, socket: web.WebSocketResponse, terminal: TerminalProcess
+) -> None:
+    async def send() -> None:
+        while data := await terminal.read():
+            await socket.send_bytes(data)
+
+    async def receive() -> None:
+        async for message in socket:
+            if not request.app[AUTH_KEY].valid(request.cookies.get(COOKIE)):
+                return
+            if message.type == WSMsgType.BINARY:
+                await terminal.write(message.data)
+            elif message.type == WSMsgType.TEXT:
+                try:
+                    payload = json.loads(message.data)
+                except ValueError:
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                kind = payload.get("type")
+                if kind == "resize":
+                    columns, rows = payload.get("cols"), payload.get("rows")
+                    if type(columns) is int and type(rows) is int:
+                        terminal.resize(columns, rows)
+                elif kind == "ping" and type(payload.get("sent")) in {float, int}:
+                    sent = payload["sent"]
+                    if 0 <= sent < 10**12:
+                        await socket.send_json({"type": "pong", "sent": sent})
+
+    tasks = [asyncio.create_task(send()), asyncio.create_task(receive())]
+    try:
+        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def _close_terminals(app: web.Application) -> None:
+    await asyncio.gather(*(socket.close(code=1001) for socket in tuple(app[TERMINALS_KEY])))
 
 
 async def editor_read(request: web.Request) -> web.Response:
@@ -1008,9 +1100,16 @@ async def overview(request: web.Request) -> web.Response:
             }
         )
     feed = list(request.app[FEED_KEY].items)[::-1]
-    editor_enabled = Store(request.app[STORE_KEY].dir, filename=EDITOR_FILE).exists()
+    directory = request.app[STORE_KEY].dir
+    editor_root = Store(directory, filename=EDITOR_FILE).read().get("root")
+    managed_root = Store(directory, filename=WORKSPACE_FILE).read().get("root")
     return web.json_response(
-        {"strategies": strategies, "feed": feed, "editor_enabled": editor_enabled}
+        {
+            "strategies": strategies,
+            "feed": feed,
+            "editor_enabled": bool(editor_root),
+            "workspace_managed": bool(editor_root and editor_root == managed_root),
+        }
     )
 
 
@@ -1116,6 +1215,8 @@ def add_routes(
     app[UPDATE_KEY] = UpdateActions(updater or Updater(store.dir), restart)
     app[EDITOR_LOCK] = asyncio.Lock()
     app[GITHUB_KEY] = GitHubActions(GitHubEditor(store.dir))
+    app[TERMINALS_KEY] = set()
+    app.on_shutdown.append(_close_terminals)
     app.add_routes(
         [
             web.get("/", redirect_root),
@@ -1144,6 +1245,7 @@ def add_routes(
             web.post("/ui/api/editor/file", editor_save),
             web.get("/ui/api/editor/github", github_get),
             web.get("/ui/api/editor/git", local_git),
+            web.get("/ui/api/workspace/terminal", workspace_terminal),
             web.post("/ui/api/editor/git/commit", local_git),
             web.post(
                 "/ui/api/editor/github/{action:bind|authorize|check|pull|push|unbind}", github_post

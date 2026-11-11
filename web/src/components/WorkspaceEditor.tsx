@@ -1,9 +1,9 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { structuredPatch } from "diff";
-import { ChevronRight, FileCode, Folder, FolderOpen, GitBranch, RefreshCw, Save } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
-import { ConfirmDialog, EmptyState, QueryBoundary } from "@/components/common";
+import { ChevronRight, FileCode, Folder, FolderOpen, GitBranch, RefreshCw, Save, SquareTerminal } from "lucide-react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { ConfirmDialog, EmptyState, LoadingState, QueryBoundary } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
 import { StrategyCodeEditor } from "@/components/StrategyCodeEditor";
 import { useToast } from "@/components/toast";
@@ -14,6 +14,7 @@ import { api, type SourceFile } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type TreeProps = { selected?: string; disabled: boolean; onFile: (path: string) => void };
+const WorkspaceTerminal = lazy(() => import("@/components/WorkspaceTerminal"));
 
 function FileTree({ path, ...props }: TreeProps & { path: string }) {
   const entries = useQuery({ queryKey: ["editor", "tree", path], queryFn: () => api.editorTree(path), retry: false });
@@ -89,7 +90,7 @@ function preview(file: File, draft: string) {
   );
 }
 
-export default function WorkspaceEditor() {
+export default function WorkspaceEditor({ managed }: { managed: boolean }) {
   const toast = useToast();
   const qc = useQueryClient();
   const [file, setFile] = useState<File>();
@@ -98,6 +99,8 @@ export default function WorkspaceEditor() {
   const [review, setReview] = useState<ReactNode>(null);
   const [discard, setDiscard] = useState<string>();
   const [githubOpen, setGithubOpen] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const showTerminal = managed && terminalOpen;
   const dirty = !!file && file.content !== draft;
   useEffect(() => {
     if (!dirty) return;
@@ -137,11 +140,16 @@ export default function WorkspaceEditor() {
   return (
     <>
       <div className="grid gap-4">
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" size="sm" disabled={busy} onClick={() => setGithubOpen(true)}>
             <GitBranch /> Git</Button>
+          {managed && (
+            <Button variant={showTerminal ? "secondary" : "outline"} size="sm" aria-pressed={showTerminal}
+              onClick={() => setTerminalOpen((open) => !open)}>
+              <SquareTerminal /> {tr("终端")}</Button>
+          )}
         </div>
-        <div className="grid items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]">
+        <div className={cn("items-start gap-4 md:grid-cols-[13rem_minmax(0,1fr)]", showTerminal ? "hidden md:grid" : "grid")}>
           <nav aria-label={tr("策略文件")} className="max-h-44 overflow-auto rounded-lg border bg-card p-2 md:max-h-[58vh]">
             <FileTree path="" selected={file?.path} disabled={busy} onFile={(path) => {
               if (path !== file?.path) choose(path);
@@ -170,6 +178,7 @@ export default function WorkspaceEditor() {
             ) : <EmptyState icon={FileCode} title={load.isPending ? tr("正在读取文件") : tr("选择要编辑的文件")} />}
           </section>
         </div>
+        {showTerminal && <Suspense fallback={<LoadingState />}><WorkspaceTerminal /></Suspense>}
       </div>
       <Dialog open={!!review} onOpenChange={(open) => { if (!open && !save.isPending) setReview(null); }}>
         <DialogContent title={tr("确认保存")} description={file?.path} className="max-w-4xl">

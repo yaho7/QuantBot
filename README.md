@@ -113,6 +113,8 @@ quantbot editor off
 
 点“预览并保存”查看改动，确认后才会写入服务器，并在“操作记录”里留下一条保存记录。保存时会检测服务器上的文件是否已变更。文件保存后，由你决定何时启动或重启策略、何时提交 Git。
 
+使用 `quantbot workspace init` 初始化后，点工作区右上方的「终端」即可在目录内打开交互式 Bash。终端和 Git 使用 `quantbot-workspace` 系统账号。右上角的延迟是浏览器到终端的往返时间。关闭终端会结束当前 shell。
+
 #### 绑定 GitHub 策略仓库
 
 QuantBot 使用 GitHub App 的设备授权，支持私有仓库。首次使用时，在 GitHub 注册 App 并启用 Device Flow。为 App 配置仓库 Contents 权限，读取代码选择 Read-only，需要推送时选择 Read and write。将 App 安装到要同步的仓库，并记下 App 的 Client ID。 [GitHub App 注册指南](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/registering-a-github-app) · [Git 访问权限](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app#choosing-permissions-for-git-access)

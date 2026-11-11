@@ -299,7 +299,7 @@ export function App() {
             <QueryBoundary query={overview}>
               {(data) => data.editor_enabled ? (
                 <React.Suspense fallback={<LoadingState />}>
-                  <WorkspaceEditor />
+                  <WorkspaceEditor managed={data.workspace_managed} />
                 </React.Suspense>
               ) : (
                 <Card className="p-5">

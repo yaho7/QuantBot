@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import shutil
+import signal
 import subprocess
 import sys
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -154,3 +157,22 @@ class Workspace:
             "PATH": f"{self.home}/.local/bin:/usr/local/bin:/usr/bin:/bin",
             "LANG": "C.UTF-8",
         }
+
+
+async def stop_process(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is not None:
+        return
+
+    def send(sig: signal.Signals) -> None:
+        try:
+            os.killpg(process.pid, sig)
+        except ProcessLookupError:
+            with suppress(ProcessLookupError):
+                process.send_signal(sig)
+
+    send(signal.SIGTERM)
+    try:
+        await asyncio.wait_for(process.wait(), timeout=3)
+    except asyncio.TimeoutError:
+        send(signal.SIGKILL)
+        await process.wait()

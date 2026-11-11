@@ -23,6 +23,7 @@ from quantbot.hub import Hub
 from quantbot.server import make_app
 from quantbot.updates import Installed, Updater
 from quantbot.web import COOKIE, Feed, WebAuth, add_routes, login_url, read_audit, static_dir
+from quantbot.workspace import Workspace
 
 SECRET = "s" * 32
 BOT = "123456789:" + "A" * 35
@@ -623,6 +624,64 @@ def test_workspace_link_redirects_to_workspace(tmp_path: Path) -> None:
         response = await client.get(link, allow_redirects=False)
         assert response.headers["Location"] == "/ui/?view=workspace"
         assert COOKIE in response.cookies
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
+def test_workspace_terminal_requires_session_and_origin_and_reports_latency(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Terminal:
+        closed = False
+        size = (0, 0)
+
+        def __init__(self) -> None:
+            self.output: asyncio.Queue[bytes] = asyncio.Queue()
+
+        async def read(self) -> bytes:
+            return await self.output.get()
+
+        async def write(self, data: bytes) -> None:
+            await self.output.put(data)
+
+        def resize(self, cols: int, rows: int) -> None:
+            self.size = (cols, rows)
+
+        async def close(self) -> None:
+            self.closed = True
+
+    terminal = Terminal()
+
+    async def start(workspace: Workspace) -> Terminal:
+        assert workspace.uid == 123
+        return terminal
+
+    monkeypatch.setattr("quantbot.web.TerminalProcess.start", start)
+    monkeypatch.setattr(Editor, "workspace", lambda self: Workspace(self.root, 123, 123, tmp_path))
+    root = tmp_path / "workspace"
+    root.mkdir()
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        url = "/ui/api/workspace/terminal"
+        assert (await client.get(url)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        denied = await client.get(url, headers={"Origin": "https://untrusted.example"})
+        assert not (await denied.json())["ok"]
+        Editor.enable(tmp_path / "settings", str(root))
+        origin = str(client.make_url("/").origin())
+        async with client.ws_connect(url, origin=origin) as socket:
+            assert await socket.receive_json() == {"type": "ready"}
+            await socket.send_json({"type": "resize", "cols": 90, "rows": 25})
+            await socket.send_json({"type": "ping", "sent": 123.4})
+            assert await socket.receive_json() == {"type": "pong", "sent": 123.4}
+            await socket.send_bytes(b"pwd\r")
+            assert await socket.receive_bytes() == b"pwd\r"
+            assert terminal.size == (90, 25)
+        for _ in range(100):
+            if terminal.closed:
+                break
+            await asyncio.sleep(0.001)
+        assert terminal.closed
 
     scenario(test, tmp_path / "audit.jsonl")
 
