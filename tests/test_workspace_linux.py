@@ -80,3 +80,51 @@ def test_linux_workspace_uses_an_unprivileged_controlling_terminal(
                 await terminal.close()
 
         asyncio.run(asyncio.wait_for(verify(), timeout=10))
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" or os.geteuid() != 0 or not Path("/run/systemd/system").is_dir(),
+    reason="requires a root Linux runner booted with systemd",
+)
+def test_systemd_workspace_is_reattached_after_console_shutdown() -> None:
+    import pwd
+
+    from aiohttp import web
+
+    from quantbot.web import RUNTIME_KEY, _stop_workspace_program
+    from quantbot.workspace_runtime import WorkspaceRuntime
+
+    account = pwd.getpwnam("nobody")
+
+    async def verify(workspace: Workspace, data_dir: Path) -> None:
+        runtime = WorkspaceRuntime(data_dir, workspace.root)
+        assert runtime.systemd is not None
+        await runtime.configure("/bin/sh -c 'id -u; exec /bin/sleep 60'")
+        try:
+            await runtime.start(workspace)
+            app = web.Application()
+            app[RUNTIME_KEY] = {workspace.root: runtime}
+            await _stop_workspace_program(app)
+
+            reattached = WorkspaceRuntime(data_dir, workspace.root)
+            assert reattached.systemd is not None
+            assert reattached.systemd.unit == runtime.systemd.unit
+            status = await reattached.status()
+            assert status["running"]
+            for _ in range(20):
+                if str(account.pw_uid) in status["logs"].splitlines():
+                    break
+                await asyncio.sleep(0.1)
+                status = await reattached.status()
+            assert str(account.pw_uid) in status["logs"].splitlines()
+        finally:
+            await runtime.stop()
+
+    with TemporaryDirectory(prefix="quantbot-runtime-") as directory:
+        parent = Path(directory)
+        parent.chmod(0o755)
+        root = parent / "project"
+        root.mkdir(mode=0o750)
+        os.chown(root, account.pw_uid, account.pw_gid)
+        workspace = Workspace(root, account.pw_uid, account.pw_gid, root)
+        asyncio.run(asyncio.wait_for(verify(workspace, parent / "state"), timeout=45))
