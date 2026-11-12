@@ -1,6 +1,8 @@
 """Latest snapshots, idempotent event ingest, and durable observations."""
 
 import json
+from datetime import datetime
+from decimal import Decimal
 
 from .db import encode, record
 from .errors import Problem
@@ -15,6 +17,10 @@ class Telemetry:
 
     def cutoff(self, sid):
         return self.clock() - self.strategies.settings(sid)["retention_days"] * 86400
+
+    @staticmethod
+    def timestamp_value(value):
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
 
     def observation(self, value):
         observed = value.timestamp()
@@ -44,22 +50,10 @@ class Telemetry:
                 )
             for metric in snapshot.metrics:
                 self.sample(sid, instance, metric, observed)
-            for account in snapshot.accounts:
-                if account.equity is not None:
-                    self.insert_sample(
-                        sid,
-                        instance,
-                        "account.equity",
-                        account.account_id,
-                        account.currency,
-                        observed,
-                        account.equity,
-                        "账户净值",
-                    )
-            for name, value in snapshot.performance.model_dump(exclude_none=True).items():
-                self.insert_sample(
-                    sid, instance, f"performance.{name}", "", "", observed, value, None
-                )
+            self.registry.account_samples(sid, instance, snapshot.accounts, observed)
+            self.registry.performance_samples(sid, instance, snapshot.performance, observed)
+            self.registry.from_snapshot(sid, instance, snapshot, observed)
+            self.registry.clear_failures(sid, ("snapshot",))
         self.wake()
         return {"current": current, "observed_at": snapshot.observed_at}
 
@@ -78,10 +72,20 @@ class Telemetry:
         )
 
     def insert_sample(self, sid, instance, name, account, unit, observed, value, label):
-        return self.db.execute(
+        key = (sid, instance, name, account, unit, observed)
+        changed = self.db.execute(
             "INSERT OR IGNORE INTO metric_samples VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            (sid, instance, name, account, unit, observed, value, label),
+            (*key, value, label),
         ).rowcount
+        if not changed:
+            previous = self.db.one(
+                """SELECT value FROM metric_samples WHERE strategy_id=? AND instance_id=?
+                   AND name=? AND account_id=? AND unit=? AND observed_at=?""",
+                key,
+            )
+            if Decimal(previous["value"]) != Decimal(value):
+                raise Problem(409, "Metric timestamp already identifies a different sample")
+        return changed
 
     def metrics(self, agent, points):
         sid, instance = agent["strategy_id"], agent["instance_id"]
@@ -92,8 +96,8 @@ class Telemetry:
                 observed = self.observation(point.observed_at)
                 if observed >= cutoff:
                     inserted += self.sample(sid, instance, point, observed)
-        if inserted:
-            self.wake()
+            self.registry.clear_failures(sid, ("metric",))
+        self.wake()
         return {"inserted": inserted, "ignored": len(points.metrics) - inserted}
 
     def events(self, agent, batch):
@@ -106,36 +110,41 @@ class Telemetry:
                 if observed < cutoff:
                     ignored.append(event.id)
                     continue
-                payload = encode(event.model_dump(mode="json"))
-                previous = self.db.one(
-                    "SELECT payload FROM strategy_events WHERE strategy_id=? AND id=?",
-                    (sid, event.id),
-                )
-                if previous:
-                    if previous["payload"] != payload:
-                        raise Problem(409, "Event ID already identifies a different event")
+                if self.insert_event(sid, instance, event, observed):
+                    accepted.append(event.id)
+                else:
                     duplicate.append(event.id)
-                    continue
-                self.db.execute(
-                    "INSERT INTO strategy_events VALUES (?, ?, ?, ?, ?)",
-                    (sid, event.id, instance, observed, payload),
-                )
-                accepted.append(event.id)
-                if (
-                    event.category in {"trade", "open", "close", "risk", "error", "warning"}
-                    or event.severity in {"warning", "error", "critical"}
-                    or (event.category == "custom" and event.attributes.get("important") is True)
-                ):
-                    self.strategies.alert(
-                        sid,
-                        event.category,
-                        event.severity,
-                        event.message,
-                        f"event:{event.dedup_key}" if event.dedup_key else None,
-                    )
-        if accepted:
-            self.wake()
+            self.registry.clear_failures(sid, ("event",))
+        self.wake()
         return {"accepted": accepted, "duplicates": duplicate, "ignored": ignored}
+
+    def insert_event(self, sid, instance, event, observed):
+        payload = encode(event.model_dump(mode="json"))
+        previous = self.db.one(
+            "SELECT payload FROM strategy_events WHERE strategy_id=? AND id=?",
+            (sid, event.id),
+        )
+        if previous:
+            if previous["payload"] != payload:
+                raise Problem(409, "Event ID already identifies a different event")
+            return False
+        self.db.execute(
+            "INSERT INTO strategy_events VALUES (?, ?, ?, ?, ?)",
+            (sid, event.id, instance, observed, payload),
+        )
+        if (
+            event.category in {"trade", "open", "close", "risk", "error", "warning", "alert"}
+            or event.severity in {"warning", "error", "critical"}
+            or (event.category == "custom" and event.attributes.get("important") is True)
+        ):
+            self.strategies.alert(
+                sid,
+                event.category,
+                event.severity,
+                event.message,
+                f"event:{event.dedup_key}" if event.dedup_key else None,
+            )
+        return True
 
     def history(self, sid, name=None, instance=None, start=None, end=None, limit=1000):
         self.strategies.row(sid)
@@ -185,6 +194,13 @@ class Telemetry:
                 )
                 self.db.execute(
                     "DELETE FROM alerts WHERE strategy_id=? AND created_at<?", (sid, cutoff)
+                )
+                self.db.execute(
+                    "DELETE FROM typed_reports WHERE strategy_id=? AND observed_at<?", (sid, cutoff)
+                )
+                self.db.execute(
+                    "DELETE FROM report_event_ids WHERE strategy_id=? AND observed_at<?",
+                    (sid, cutoff),
                 )
             self.db.execute("DELETE FROM admin_sessions WHERE expires_at<=?", (self.clock(),))
             self.db.execute("DELETE FROM login_links WHERE expires_at<=?", (self.clock(),))

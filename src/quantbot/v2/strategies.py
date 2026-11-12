@@ -319,18 +319,27 @@ class Strategies:
     def detail(self, sid, instance_id=None):
         summary = self.summary(self.row(sid))
         agents = self.instances(sid)
-        snapshots = self.db.all(
-            "SELECT * FROM snapshots WHERE strategy_id=? ORDER BY observed_at DESC", (sid,)
-        )
-        if instance_id:
-            if not any(agent["instance_id"] == instance_id for agent in agents):
-                raise Problem(404, "Instance not found")
-            snapshot = next((s for s in snapshots if s["instance_id"] == instance_id), None)
-        else:
-            snapshot = next(
-                (s for s in snapshots if s["instance_id"] == summary["executor_id"]),
-                snapshots[0] if snapshots and not summary["executor_id"] else None,
+        if instance_id and not any(agent["instance_id"] == instance_id for agent in agents):
+            raise Problem(404, "Instance not found")
+        selected = instance_id or summary["executor_id"]
+        if not selected:
+            recent = self.db.one(
+                """SELECT instance_id FROM (
+                       SELECT instance_id, observed_at FROM snapshots WHERE strategy_id=?
+                       UNION ALL
+                       SELECT instance_id, observed_at FROM typed_reports WHERE strategy_id=?
+                   ) ORDER BY observed_at DESC LIMIT 1""",
+                (sid, sid),
             )
+            selected = recent["instance_id"] if recent else None
+        snapshot = self.db.one(
+            "SELECT payload FROM snapshots WHERE strategy_id=? AND instance_id=?", (sid, selected)
+        )
+        snapshot = self.registry.merge(
+            sid,
+            selected,
+            json.loads(snapshot["payload"]) if snapshot else None,
+        )
         executor = self.executor(sid)
         return {
             **summary,
@@ -341,8 +350,8 @@ class Strategies:
             "executor_online": bool(
                 self.eligible(executor) and json.loads(executor["declarations"])["executor"]
             ),
-            "snapshot": json.loads(snapshot["payload"]) if snapshot else None,
-            "snapshot_instance_id": snapshot["instance_id"] if snapshot else None,
+            "snapshot": snapshot,
+            "snapshot_instance_id": selected if snapshot else None,
             "instances": [
                 {
                     "instance_id": a["instance_id"],

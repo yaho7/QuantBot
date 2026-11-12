@@ -24,7 +24,11 @@ Number = Annotated[str, StringConstraints(pattern=r"^-?(0|[1-9][0-9]*)(\.[0-9]+)
 
 
 def parse_stamp(value):
-    if isinstance(value, str) and "T" in value:
+    if isinstance(value, str) and re.fullmatch(
+        r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}"
+        r"(\.[0-9]{1,6})?(Z|[+-][0-9]{2}:[0-9]{2})",
+        value,
+    ):
         value = datetime.fromisoformat(value.replace("Z", "+00:00"))
     if not isinstance(value, datetime) or value.utcoffset() is None:
         raise ValueError("a timestamp with time zone is required")
@@ -34,6 +38,15 @@ def parse_stamp(value):
 Stamp = Annotated[
     datetime, BeforeValidator(parse_stamp), AfterValidator(lambda dt: dt.astimezone(timezone.utc))
 ]
+
+
+def strict_version(value):
+    if type(value) is not int:
+        raise ValueError("schema_version must be the integer 1")
+    return value
+
+
+SchemaVersion = Annotated[Literal[1], BeforeValidator(strict_version)]
 Scope = Literal["session", "telemetry", "control", "commands"]
 Mode = Literal["live", "paper", "backtest"]
 Disconnect = Literal["continue", "block_entry"]
@@ -50,6 +63,7 @@ Category = Literal[
     "online",
     "offline",
     "authorization",
+    "alert",
     "command",
 ]
 TERMINAL = ("succeeded", "failed", "unknown", "expired", "superseded")
@@ -283,7 +297,7 @@ class Metric(Payload):
 
 class Snapshot(Payload):
     type: Literal["snapshot"]
-    schema_version: Literal[1]
+    schema_version: SchemaVersion
     observed_at: Stamp
     runtime: Heartbeat = Field(default_factory=Heartbeat)
     accounts: list[Account] = Field(default_factory=list, max_length=100)
@@ -319,10 +333,12 @@ class EventMarker(Payload):
 
 class Event(Payload):
     type: Literal["event"]
-    schema_version: Literal[1]
+    schema_version: SchemaVersion
     id: Key
     occurred_at: Stamp
-    category: Literal["trade", "open", "close", "risk", "error", "warning", "log", "custom"]
+    category: Literal[
+        "trade", "open", "close", "risk", "error", "warning", "log", "custom", "alert"
+    ]
     severity: Severity = "info"
     message: Annotated[str, StringConstraints(min_length=1, max_length=4000)]
     attributes: dict[Key, ShortText | int | bool | None] = Field(
@@ -339,7 +355,7 @@ class Events(Payload):
 
 class MetricPoint(Metric):
     type: Literal["metric"]
-    schema_version: Literal[1]
+    schema_version: SchemaVersion
     observed_at: Stamp
 
 

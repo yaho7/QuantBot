@@ -12,6 +12,7 @@ from .auth import Auth
 from .commands import Commands
 from .db import Database
 from .errors import Problem
+from .registry import Registry
 from .strategies import Strategies
 from .telemetry import Telemetry
 
@@ -39,6 +40,8 @@ class Runtime:
         self.strategies = Strategies(self.db, self.auth, clock, self.wake)
         self.commands = Commands(self.db, self.strategies, clock, self.wake)
         self.telemetry = Telemetry(self.db, self.strategies, clock, self.wake)
+        self.registry = Registry(self)
+        self.telemetry.registry = self.strategies.registry = self.registry
         self.requests = defaultdict(deque)
         self.rate_limit_swept = 0
         self.polling = set()

@@ -171,6 +171,49 @@ PRAGMA user_version = 2;
 """
 
 
+TELEMETRY_SCHEMA = """
+CREATE TABLE typed_reports (
+    strategy_id TEXT NOT NULL REFERENCES strategies(id),
+    instance_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    series TEXT NOT NULL,
+    observed_at REAL NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY(strategy_id, instance_id, type, series, observed_at)
+);
+CREATE INDEX typed_report_time ON typed_reports(strategy_id, type, observed_at DESC);
+CREATE TABLE report_event_ids (
+    strategy_id TEXT NOT NULL REFERENCES strategies(id),
+    id TEXT NOT NULL,
+    observed_at REAL NOT NULL,
+    PRIMARY KEY(strategy_id, id)
+);
+CREATE TABLE schema_failures (
+    strategy_id TEXT NOT NULL REFERENCES strategies(id),
+    type TEXT NOT NULL,
+    observed_at REAL NOT NULL,
+    count INTEGER NOT NULL DEFAULT 1,
+    active INTEGER NOT NULL DEFAULT 1,
+    PRIMARY KEY(strategy_id, type)
+);
+CREATE TABLE metric_definitions (
+    strategy_id TEXT NOT NULL REFERENCES strategies(id),
+    instance_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    definition TEXT NOT NULL,
+    PRIMARY KEY(strategy_id, instance_id, name, account_id, unit)
+);
+CREATE TABLE dashboards (
+    strategy_id TEXT PRIMARY KEY REFERENCES strategies(id),
+    revision INTEGER NOT NULL,
+    widgets TEXT NOT NULL
+);
+PRAGMA user_version = 3;
+"""
+
+
 def timestamp(value: float | None) -> str | None:
     if value is None:
         return None
@@ -206,7 +249,10 @@ class Database:
             version = 1
         if version == 1:
             self.conn.executescript("BEGIN IMMEDIATE;\n" + TELEGRAM_SCHEMA + "\nCOMMIT;")
-        elif version != 2:
+            version = 2
+        if version == 2:
+            self.conn.executescript("BEGIN IMMEDIATE;\n" + TELEMETRY_SCHEMA + "\nCOMMIT;")
+        elif version != 3:
             self.conn.close()
             raise RuntimeError(f"Unsupported QuantBot database schema {version}")
 

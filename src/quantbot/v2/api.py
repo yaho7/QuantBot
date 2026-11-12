@@ -22,6 +22,7 @@ from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBea
 from fastapi.staticfiles import StaticFiles
 
 from .auth import digest, password_matches
+from .dashboard_models import Component, Dashboard, HistoryQuery
 from .db import encode
 from .errors import Problem
 from .models import (
@@ -29,11 +30,14 @@ from .models import (
     CommandRequest,
     CommandResult,
     ControlReport,
+    Event,
     Events,
     Heartbeat,
     Key,
     Login,
+    MetricPoint,
     Metrics,
+    Name,
     Reconciliation,
     SessionOpen,
     Snapshot,
@@ -42,6 +46,8 @@ from .models import (
     StrategySettings,
     TokenSettings,
 )
+from .registry import Registry
+from .report_models import DATA_TYPES, REPORT_SCHEMA, MetricDefinitions, ReportBatch
 from .runtime import Runtime, exclusive_database
 from .telegram_service import supervise
 from .telegram_settings import TelegramConfig, TelegramUpdate
@@ -75,7 +81,10 @@ def credentials(scope, *, executor=False, registration=False):
         if registration:
             service.limit("session", credential.id, 30, 60)
             return credential
-        return service.strategies.agent(credential, session, executor=executor)
+        instance = service.strategies.agent(credential, session, executor=executor)
+        if scope == "telemetry":
+            request.state.telemetry_source = instance["strategy_id"]
+        return instance
 
     return Depends(dependency)
 
@@ -122,6 +131,18 @@ async def events(request: Request, body: Events, source=TELEMETRY):
 async def metrics(request: Request, body: Metrics, source=TELEMETRY):
     """Ingest a batch of timestamped metric points, including historical backfill."""
     return runtime(request).telemetry.metrics(source, body)
+
+
+@agent.post("/reports")
+async def reports(request: Request, body: ReportBatch, source=TELEMETRY):
+    """Ingest a batch of validated, explicitly typed records."""
+    return runtime(request).registry.reports(source, body)
+
+
+@agent.put("/metric-definitions")
+async def define_metrics(request: Request, body: MetricDefinitions, source=TELEMETRY):
+    """Register metric metadata. Charts become available after points are received."""
+    return runtime(request).registry.register_metrics(source, body)
 
 
 @agent.get("/control")
@@ -306,6 +327,70 @@ async def metric_history(
 ):
     return runtime(request).telemetry.history(
         strategy_id, name, instance, *bounds(start, end), limit
+    )
+
+
+@admin.get("/strategies/{strategy_id}/components")
+async def components(request: Request, strategy_id: Key, actor=ADMIN):
+    """Discover compatible charts from observed standard records."""
+    return runtime(request).registry.discover(strategy_id)
+
+
+@admin.get("/strategies/{strategy_id}/dashboard")
+async def dashboard(request: Request, strategy_id: Key, actor=ADMIN):
+    return runtime(request).registry.dashboard(strategy_id)
+
+
+@admin.put("/strategies/{strategy_id}/dashboard")
+async def save_dashboard(request: Request, strategy_id: Key, body: Dashboard, actor=ADMIN):
+    return runtime(request).registry.save_dashboard(strategy_id, body, actor)
+
+
+@admin.post("/history/metrics")
+async def compare_metrics(request: Request, body: HistoryQuery, actor=ADMIN):
+    """Compare exact series across strategies with optional UTC bucket aggregation."""
+    return runtime(request).registry.history(body)
+
+
+@admin.get("/strategies/{strategy_id}/market")
+async def market(
+    request: Request,
+    strategy_id: Key,
+    instance: Key,
+    symbol: Name,
+    interval_seconds: Annotated[int, Query(ge=1, le=2678400)],
+    start: Stamp,
+    end: Stamp,
+    limit: Annotated[int, Query(ge=1, le=3000)] = 1000,
+    actor=ADMIN,
+):
+    """Query reported OHLCV and order, fill, signal, and risk markers."""
+    return runtime(request).registry.market(
+        strategy_id,
+        instance,
+        symbol,
+        interval_seconds,
+        *bounds(start, end),
+        limit,
+    )
+
+
+@admin.get("/strategies/{strategy_id}/components/{component}")
+async def component_data(
+    request: Request,
+    strategy_id: Key,
+    component: Component,
+    start: Stamp,
+    end: Stamp,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 250,
+    actor=ADMIN,
+):
+    """Retrieve normalized current data or the selected component's historical records."""
+    return runtime(request).registry.component_data(
+        strategy_id,
+        component,
+        *bounds(start, end),
+        limit,
     )
 
 
@@ -547,8 +632,52 @@ def make_app(
     async def problem(request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=exc.status)
 
+    @app.get("/api/v2/data-types", tags=["Schemas"])
+    async def data_types():
+        return Registry.definition()
+
+    @app.get("/api/v2/schemas/{kind}", tags=["Schemas"])
+    async def schema(kind: str):
+        root = {"$schema": "https://json-schema.org/draft/2020-12/schema"}
+        auxiliary = {
+            "snapshot": Snapshot,
+            "event": Event,
+            "metric": MetricPoint,
+            "batch": ReportBatch,
+            "metric-definitions": MetricDefinitions,
+        }
+        if kind in auxiliary:
+            return {**root, **auxiliary[kind].model_json_schema()}
+        document = REPORT_SCHEMA.json_schema()
+        mapping = document["discriminator"]["mapping"]
+        if kind not in mapping:
+            raise Problem(404, "Unknown telemetry data type")
+        return {**root, "$ref": mapping[kind], "$defs": document["$defs"]}
+
     @app.exception_handler(RequestValidationError)
     async def validation(request, exc):
+        sid = getattr(request.state, "telemetry_source", None)
+        if sid:
+            resource = request.url.path.rsplit("/", 1)[-1]
+            kind = {
+                "snapshot": "snapshot",
+                "events": "event",
+                "metrics": "metric",
+                "metric-definitions": "metric",
+            }.get(resource, "unrecognized")
+            rejected = {kind}
+            if resource == "reports" and isinstance(exc.body, dict):
+                records = exc.body.get("records")
+                if isinstance(records, list):
+                    rejected = set()
+                    for error in exc.errors():
+                        loc = error["loc"]
+                        if len(loc) > 2 and loc[1] == "records" and isinstance(loc[2], int):
+                            raw = records[loc[2]]
+                            value = raw.get("type") if isinstance(raw, dict) else None
+                            rejected.add(value if value in DATA_TYPES else "unrecognized")
+                    rejected = rejected or {"unrecognized"}
+            runtime(request).registry.reject(sid, rejected)
         return JSONResponse(
             {
                 "detail": "Request does not match the API schema",
