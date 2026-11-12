@@ -105,7 +105,7 @@ quantbot workspace init
 quantbot workspace init --root /srv/quantbot/strategies
 ```
 
-初始化会创建普通系统账号 `quantbot-workspace`，终端、Git 和程序均以这个账号运行。默认目录是 `/srv/quantbot/strategies`。Linux 一键安装会安装 GitHub CLI（`gh`）、ripgrep 和 ttyd，并在 root 安装时让工作区账号可使用 uv。
+初始化会创建普通系统账号 `quantbot-workspace`，终端、Git 和程序均以这个账号启动。网页终端可运行 `su - <用户>`，由服务器的 PAM 配置验证目标账号。默认目录是 `/srv/quantbot/strategies`。Linux 一键安装会安装 GitHub CLI（`gh`）、ripgrep 和 ttyd，并在 root 安装时让工作区账号可使用 uv。
 
 如果只需要启用已有目录的编辑器，可以用：
 

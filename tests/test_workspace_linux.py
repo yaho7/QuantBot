@@ -65,6 +65,7 @@ def test_linux_workspace_uses_an_unprivileged_controlling_terminal(
                 await terminal.write(
                     b"printf 'uid:%s\\n' \"$(id -u)\"; "
                     b"printf 'size:%s\\n' \"$(stty size)\"; "
+                    b"awk '/^NoNewPrivs:/ {print \"privs:\" $2}' /proc/self/status; "
                     b"test ! -r ../../server-secret && printf 'secret:%s\\n' denied\r"
                 )
                 output = bytearray()
@@ -73,6 +74,7 @@ def test_linux_workspace_uses_an_unprivileged_controlling_terminal(
                     output.extend(chunk)
                 assert f"uid:{account.pw_uid}".encode() in output
                 assert b"size:27 91" in output
+                assert b"privs:0" in output
                 assert marker in output
             finally:
                 await terminal.close()

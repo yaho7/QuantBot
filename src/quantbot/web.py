@@ -691,13 +691,15 @@ async def workspace_terminal(request: web.Request) -> web.StreamResponse:
 async def _bridge_terminal(
     request: web.Request, socket: web.WebSocketResponse, terminal: TerminalProcess
 ) -> None:
+    auth, cookie = request.app[AUTH_KEY], request.cookies.get(COOKIE)
+
     async def send() -> None:
         while data := await terminal.read():
             await socket.send_bytes(data)
 
     async def receive() -> None:
         async for message in socket:
-            if not request.app[AUTH_KEY].valid(request.cookies.get(COOKIE)):
+            if not auth.valid(cookie, touch=message.type == WSMsgType.BINARY):
                 return
             if message.type == WSMsgType.BINARY:
                 await terminal.write(message.data)
@@ -718,7 +720,11 @@ async def _bridge_terminal(
                     if 0 <= sent < 10**12:
                         await socket.send_json({"type": "pong", "sent": sent})
 
-    tasks = [asyncio.create_task(send()), asyncio.create_task(receive())]
+    async def watch_session() -> None:
+        while auth.valid(cookie, touch=False):
+            await asyncio.sleep(5)
+
+    tasks = [asyncio.create_task(task()) for task in (send, receive, watch_session)]
     try:
         await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
     finally:

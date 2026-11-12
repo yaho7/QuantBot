@@ -45,20 +45,18 @@ class TerminalProcess:
         process = None
         try:
             process = await asyncio.create_subprocess_exec(
-                *workspace.command(
-                    [
-                        ttyd,
-                        "-i",
-                        socket_path,
-                        "-o",
-                        "-W",
-                        "-w",
-                        str(cwd or workspace.root),
-                        "--",
-                        "/bin/bash",
-                        "-i",
-                    ]
-                ),
+                # The child starts as the workspace user. An interactive login
+                # may use PAM-backed su, which needs its normal setuid transition.
+                ttyd,
+                "-i",
+                socket_path,
+                "-o",
+                "-W",
+                "-w",
+                str(cwd or workspace.root),
+                "--",
+                "/bin/bash",
+                "-i",
                 stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL,
