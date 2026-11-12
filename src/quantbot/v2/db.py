@@ -244,6 +244,17 @@ PRAGMA user_version = 5;
 """
 
 
+OBSERVATION_SCHEMA = """
+ALTER TABLE agent_instances ADD COLUMN runtime_observations TEXT NOT NULL DEFAULT '{}';
+CREATE INDEX strategy_fill_identity ON strategy_events(
+    strategy_id,
+    json_extract(payload, '$.fill.account_id'),
+    json_extract(payload, '$.fill.fill_id')
+) WHERE json_type(payload, '$.fill')='object';
+PRAGMA user_version = 6;
+"""
+
+
 def timestamp(value: float | None) -> str | None:
     if value is None:
         return None
@@ -288,7 +299,10 @@ class Database:
             version = 4
         if version == 4:
             self.conn.executescript("BEGIN IMMEDIATE;\n" + CONTROL_SCHEMA + "\nCOMMIT;")
-        elif version != 5:
+            version = 5
+        if version == 5:
+            self.conn.executescript("BEGIN IMMEDIATE;\n" + OBSERVATION_SCHEMA + "\nCOMMIT;")
+        elif version != 6:
             self.conn.close()
             raise RuntimeError(f"Unsupported QuantBot database schema {version}")
 

@@ -55,4 +55,4 @@ def test_change_password_revokes_old_admin_sessions(tmp_path):
             == 200
         )
         system = http.get(ADMIN + "/system").json()
-        assert system["schema_version"] == 5 and system["counts"]["reports"] == 0
+        assert system["schema_version"] == 6 and system["counts"]["reports"] == 0

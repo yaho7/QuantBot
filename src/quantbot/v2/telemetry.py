@@ -128,6 +128,18 @@ class Telemetry:
             if previous["payload"] != payload:
                 raise Problem(409, "Event ID already identifies a different event")
             return False
+        if event.fill:
+            fill = self.db.one(
+                """SELECT json_extract(payload, '$.fill') AS value FROM strategy_events
+                   WHERE strategy_id=? AND json_type(payload, '$.fill')='object'
+                   AND json_extract(payload, '$.fill.account_id')=?
+                   AND json_extract(payload, '$.fill.fill_id')=?""",
+                (sid, event.fill.account_id, event.fill.fill_id),
+            )
+            if fill:
+                if json.loads(fill["value"]) != event.fill.model_dump(mode="json"):
+                    raise Problem(409, "Fill identity already refers to different execution data")
+                return False
         self.db.execute(
             "INSERT INTO strategy_events VALUES (?, ?, ?, ?, ?)",
             (sid, event.id, instance, observed, payload),

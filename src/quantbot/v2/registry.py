@@ -4,10 +4,12 @@ import json
 from collections import defaultdict
 from decimal import Decimal, localcontext
 
+from .auth import digest
 from .db import encode, record, timestamp
 from .errors import Problem
 from .models import Event, EventMarker, MetricPoint
 from .report_models import DATA_TYPES, REPORT_SCHEMA, EventRecord
+from .strategies import OFFLINE_AFTER
 
 # Only these components and renderers may be stored in a dashboard.
 COMPONENTS = {
@@ -173,8 +175,16 @@ class Registry:
             )
         elif kind == "performance":
             self.performance_samples(sid, instance, item.performance, observed)
-        elif kind in {"status", "connection"}:
-            self.apply_runtime(sid, instance, kind, data, observed)
+        elif kind == "status":
+            fields = item.runtime.model_dump(mode="json", exclude_unset=True)
+            self.apply_runtime(sid, instance, fields, observed)
+        elif kind == "connection":
+            fields = item.model_dump(
+                mode="json",
+                include={"broker_connected", "authorization_expires_at"},
+                exclude_unset=True,
+            )
+            self.apply_runtime(sid, instance, fields, observed)
         return True
 
     def insert(self, sid, instance, kind, series, observed, data):
@@ -198,6 +208,7 @@ class Registry:
         kind = item.type
         marker = None
         fill = None
+        attributes = {}
         if kind == "fill":
             fill = item.fill
             marker = EventMarker(
@@ -217,12 +228,21 @@ class Registry:
                 side={"buy": "buy", "sell": "sell"}.get(item.direction),
             )
             message = item.message or f"{item.name} · {item.symbol} · {item.direction}"
+            attributes = {
+                "signal": item.name,
+                "direction": item.direction,
+                "strength": item.strength,
+            }
         else:
             category = kind
             severity = item.severity
             message = item.message
-            if kind == "risk" and item.symbol:
-                marker = EventMarker(kind="risk", symbol=item.symbol)
+            if kind == "risk":
+                attributes = {"code": item.code, "locked": item.locked}
+                if item.symbol:
+                    marker = EventMarker(kind="risk", symbol=item.symbol)
+            elif kind == "alert":
+                attributes = {"important": True, "code": item.code}
         event = Event(
             type="event",
             schema_version=1,
@@ -234,7 +254,7 @@ class Registry:
             fill=fill,
             marker=marker,
             dedup_key=getattr(item, "dedup_key", None),
-            attributes={"important": True} if kind == "alert" else {},
+            attributes=attributes,
         )
         existing = self.db.one(
             """SELECT payload FROM typed_reports WHERE strategy_id=? AND type=? AND series=?
@@ -253,30 +273,13 @@ class Registry:
         self.db.execute("INSERT INTO report_event_ids VALUES (?, ?, ?)", (sid, item.id, observed))
         return self.insert(sid, instance, kind, item.id, observed, data)
 
-    def apply_runtime(self, sid, instance, kind, data, observed):
-        latest = self.db.one(
-            """SELECT observed_at FROM typed_reports WHERE strategy_id=? AND instance_id=?
-               AND type=? ORDER BY observed_at DESC LIMIT 1""",
-            (sid, instance, kind),
-        )
-        if observed < latest["observed_at"]:
+    def apply_runtime(self, sid, instance, fields, observed):
+        if observed < self.clock() - OFFLINE_AFTER:
             return
-        row = self.db.one(
-            "SELECT runtime FROM agent_instances WHERE strategy_id=? AND instance_id=?",
-            (sid, instance),
+        agent = self.db.one(
+            "SELECT * FROM agent_instances WHERE strategy_id=? AND instance_id=?", (sid, instance)
         )
-        fields = json.loads(row["runtime"])
-        if kind == "status":
-            fields.update(data["runtime"])
-        else:
-            fields.update(
-                broker_connected=data["broker_connected"],
-                authorization_expires_at=data["authorization_expires_at"],
-            )
-        self.db.execute(
-            "UPDATE agent_instances SET runtime=? WHERE strategy_id=? AND instance_id=?",
-            (encode(fields), sid, instance),
-        )
+        self.strategies.update_runtime(agent, fields, observed)
         self.strategies.refresh_presence(sid)
 
     def from_snapshot(self, sid, instance, snapshot, observed):
@@ -284,15 +287,16 @@ class Registry:
         for kind, keys in SECTION.items():
             if snapshot.model_fields_set.isdisjoint(keys):
                 continue
-            section = {key: data[key] for key in keys}
-            self.insert(
-                sid,
-                instance,
-                kind,
-                "",
-                observed,
-                {"type": kind, "schema_version": 1, "observed_at": data["observed_at"], **section},
-            )
+            section = {
+                "type": kind,
+                "schema_version": 1,
+                "observed_at": data["observed_at"],
+                **{key: data[key] for key in keys},
+            }
+            added = self.insert(sid, instance, kind, "", observed, section)
+            if added and kind == "status":
+                fields = snapshot.runtime.model_dump(mode="json", exclude_unset=True)
+                self.apply_runtime(sid, instance, fields, observed)
         # Explicitly reported fill records and markers are read from this snapshot as well.
         for fill in snapshot.fills:
             when = self.telemetry.observation(fill.occurred_at)
@@ -300,7 +304,7 @@ class Registry:
                 data = {
                     "type": "fill",
                     "schema_version": 1,
-                    "id": fill.fill_id,
+                    "id": "snapshot-fill-" + digest(encode([fill.account_id, fill.fill_id]))[:40],
                     "observed_at": fill.model_dump(mode="json")["occurred_at"],
                     "fill": fill.model_dump(mode="json"),
                 }
@@ -350,12 +354,24 @@ class Registry:
             if row and row["observed_at"] >= snapshot_time:
                 data = json.loads(row["payload"])
                 output.update({key: data[key] for key in keys})
-                output["observed_at"] = max(output.get("observed_at", ""), data["observed_at"])
-        fills = self.query(sid, "fill", instance=instance, limit=40)
+                self.newest(output, data["observed_at"])
+        fills = self.db.all(
+            """SELECT occurred_at, json_extract(payload, '$.fill') AS fill FROM strategy_events
+               WHERE strategy_id=? AND instance_id=? AND json_type(payload, '$.fill')='object'
+               ORDER BY occurred_at DESC LIMIT 40""",
+            (sid, instance),
+        )
         if fills:
-            output["fills"] = [item["fill"] for item in fills]
-            output["observed_at"] = max(output.get("observed_at", ""), fills[0]["observed_at"])
+            output["fills"] = [json.loads(item["fill"]) for item in fills]
+            self.newest(output, timestamp(fills[0]["occurred_at"]))
         return output or None
+
+    def newest(self, output, observed):
+        prior = output.get("observed_at")
+        if not prior or self.telemetry.timestamp_value(observed) > self.telemetry.timestamp_value(
+            prior
+        ):
+            output["observed_at"] = observed
 
     def query(self, sid, kind, *, instance=None, start=None, end=None, series=None, limit=100):
         self.strategies.row(sid)
@@ -444,13 +460,15 @@ class Registry:
                     if not series
                     else {
                         "samples": max(item["samples"] for item in series),
-                        "last": max(item["last"] for item in series),
+                        "last": max(
+                            (item["last"] for item in series), key=self.telemetry.timestamp_value
+                        ),
                     }
                 )
             if kind == "ohlcv" and candles:
                 observation = {
                     "samples": max(c["samples"] for c in candles),
-                    "last": max(c["last"] for c in candles),
+                    "last": max((c["last"] for c in candles), key=self.telemetry.timestamp_value),
                 }
             if not observation:
                 continue
@@ -699,7 +717,9 @@ class Registry:
                 )
         return {
             "candles": list(reversed(candles)),
-            "markers": sorted(markers, key=lambda item: item["occurred_at"])[:1500],
+            "markers": sorted(
+                markers, key=lambda item: self.telemetry.timestamp_value(item["occurred_at"])
+            )[:1500],
         }
 
     def component_data(self, sid, component, start, end, limit, bucket_seconds=3600):

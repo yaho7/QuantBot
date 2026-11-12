@@ -61,7 +61,7 @@ JSON 体积上限为 1 MiB。校验错误会返回字段位置和错误类型。
 
 快照采用 `type: "snapshot"`、`schema_version: 1`、`observed_at`。一个快照可以同时包含运行状态、账户、持仓、订单、成交、绩效和指标。其标准字段共享快照的观察时间。结构化事件采用 `type: "event"`、`schema_version: 1`、`id` 和 `occurred_at`，可携带标准 `fill` 或 `marker`。扩展属性仅允许有限的标量值，图表按显式标准类型和受控字段匹配。 [快照 Schema](docs/schemas/snapshot.schema.json) · [事件 Schema](docs/schemas/event.schema.json)
 
-策略重传时使用同一事件 ID、时间戳和内容。冲突的重复 ID 会返回 409。批量校验通过后以事务写入。留存期外的历史批次返回忽略数量，较旧的有效观测可补入历史而不覆盖更新的快照。指标定义可以先注册，仪表盘在收到真实点后才发现对应组件。净值和指标折线至少需要两个可用点。 [指标元数据 Schema](docs/schemas/metric-definitions.schema.json)
+策略重传时使用同一事件 ID、时间戳和内容。成交在留存期内按策略、账户与成交 ID 去重。冲突的重复 ID 会返回 409。批量校验通过后以事务写入。留存期外的历史批次返回忽略数量，较旧的有效观测可补入历史而不覆盖更新的快照。指标定义可以先注册，仪表盘在收到真实点后才发现对应组件。净值和指标折线至少需要两个可用点。 [指标元数据 Schema](docs/schemas/metric-definitions.schema.json)
 
 ## curl 接入
 

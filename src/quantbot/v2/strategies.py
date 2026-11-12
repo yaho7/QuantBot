@@ -199,11 +199,12 @@ class Strategies:
             )
             session = prior["session_id"] if reused else secrets.token_urlsafe(24)
             self.db.execute(
-                """INSERT INTO agent_instances VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """INSERT INTO agent_instances VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(strategy_id, instance_id) DO UPDATE SET
                    token_id=excluded.token_id, session_id=excluded.session_id,
                    boot_id=excluded.boot_id, declarations=excluded.declarations,
-                   runtime=excluded.runtime, last_seen=excluded.last_seen""",
+                   runtime=excluded.runtime, last_seen=excluded.last_seen,
+                   runtime_observations=excluded.runtime_observations""",
                 (
                     sid,
                     body.instance_id,
@@ -213,6 +214,7 @@ class Strategies:
                     encode(body.model_dump(mode="json")),
                     prior["runtime"] if reused else "{}",
                     now,
+                    prior["runtime_observations"] if reused else "{}",
                 ),
             )
             self.refresh_presence(sid)
@@ -249,15 +251,28 @@ class Strategies:
     def heartbeat(self, agent, body):
         now = self.clock()
         sid = agent["strategy_id"]
-        fields = json.loads(agent["runtime"])
-        fields.update(body.model_dump(mode="json", exclude_unset=True))
         with self.db.transaction():
             self.db.execute(
-                "UPDATE agent_instances SET last_seen=?, runtime=? WHERE session_id=?",
-                (now, encode(fields), agent["session_id"]),
+                "UPDATE agent_instances SET last_seen=? WHERE session_id=?",
+                (now, agent["session_id"]),
             )
+            self.update_runtime(agent, body.model_dump(mode="json", exclude_unset=True), now)
             self.refresh_presence(sid)
         return {"server_time": timestamp(now), "control": self.control(sid)}
+
+    def update_runtime(self, agent, fields, observed):
+        runtime = json.loads(agent["runtime"])
+        order = json.loads(agent["runtime_observations"])
+        changes = {
+            key: value for key, value in fields.items() if observed >= order.get(key, float("-inf"))
+        }
+        if changes:
+            runtime.update(changes)
+            order.update(dict.fromkeys(changes, observed))
+            self.db.execute(
+                "UPDATE agent_instances SET runtime=?, runtime_observations=? WHERE session_id=?",
+                (encode(runtime), encode(order), agent["session_id"]),
+            )
 
     def refresh_presence(self, sid):
         row = self.row(sid)
@@ -328,6 +343,11 @@ class Strategies:
     def summary(self, row):
         sid = row["id"]
         instances = self.instances(sid)
+        relevant = (
+            [item for item in instances if item["instance_id"] == row["executor_id"]]
+            if (row["executor_id"])
+            else instances
+        )
         return {
             "id": sid,
             **json.loads(row["settings"]),
@@ -335,7 +355,7 @@ class Strategies:
             "executor_id": row["executor_id"],
             "archived_at": timestamp(row["archived_at"]),
             "created_at": timestamp(row["created_at"]),
-            "last_seen": timestamp(max((i["last_seen"] for i in instances), default=None)),
+            "last_seen": timestamp(max((i["last_seen"] for i in relevant), default=None)),
         }
 
     def detail(self, sid, instance_id=None):

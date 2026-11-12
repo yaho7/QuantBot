@@ -394,6 +394,12 @@ class Event(Payload):
     marker: EventMarker | None = None
     dedup_key: Key | None = None
 
+    @model_validator(mode="after")
+    def matching_fill(self):
+        if self.fill and self.fill.occurred_at != self.occurred_at:
+            raise ValueError("fill timestamp must match occurred_at")
+        return self
+
 
 class Events(Payload):
     events: list[Event] = Field(min_length=1, max_length=200)

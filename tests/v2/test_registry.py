@@ -271,3 +271,65 @@ def test_fill_aggregation_counts_verified_fill_records(tmp_path):
             ("buy", "2"),
             ("buy", "1"),
         ]
+
+
+def test_multi_account_fill_replay_does_not_duplicate_trade_counts(tmp_path):
+    with client(tmp_path / "trade-replay.db", Clock()) as http:
+        log_in(http)
+        sid, cred = create(http)
+        headers, _ = connect(http, cred)
+        fill = {
+            "fill_id": "same-broker-fill-id",
+            "order_id": "order",
+            "account_id": "alpha",
+            "currency": "USD",
+            "symbol": "SPY",
+            "side": "buy",
+            "quantity": "1",
+            "price": "100",
+            "occurred_at": stamp(),
+        }
+        result = batch(http, headers, packet("fill", id="initial-fill", fill=fill))
+        assert result.status_code == 200, result.text
+        snap = {
+            "type": "snapshot",
+            "schema_version": 1,
+            "observed_at": stamp(NOW + 1),
+            "fills": [fill, {**fill, "account_id": "beta"}],
+        }
+        result = http.put(AGENT + "/snapshot", headers=headers, json=snap)
+        assert result.status_code == 200, result.text
+        events = http.get(
+            ADMIN + "/events", params={"strategy_id": sid, "category": "trade"}
+        ).json()
+        assert len(events) == 2
+        assert {row["fill"]["account_id"] for row in events} == {"alpha", "beta"}
+        detail = http.get(f"{ADMIN}/strategies/{sid}").json()
+        assert len(detail["snapshot"]["fills"]) == 2
+        conflicting = packet("fill", id="conflict", fill={**fill, "quantity": "2"})
+        assert batch(http, headers, conflicting).status_code == 409
+
+
+def test_backfilled_runtime_does_not_override_current_health(tmp_path):
+    clock = Clock()
+    with client(tmp_path / "runtime.db", clock) as http:
+        log_in(http)
+        sid, cred = create(http)
+        headers, _ = connect(http, cred)
+        clock.value += 20
+        healthy = {"health": "healthy", "broker_connected": True}
+        assert http.put(AGENT + "/heartbeat", headers=headers, json=healthy).status_code == 200
+        assert (
+            batch(http, headers, packet("connection", 10, broker_connected=False)).status_code
+            == 200
+        )
+        detail = http.get(f"{ADMIN}/strategies/{sid}").json()
+        assert detail["status"] == "online"
+        assert detail["instances"][0]["runtime"]["broker_connected"] is True
+        assert (
+            batch(http, headers, packet("status", 21, runtime={"health": "degraded"})).status_code
+            == 200
+        )
+        detail = http.get(f"{ADMIN}/strategies/{sid}").json()
+        assert detail["status"] == "abnormal"
+        assert detail["instances"][0]["runtime"]["broker_connected"] is True
