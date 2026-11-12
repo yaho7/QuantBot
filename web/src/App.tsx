@@ -233,26 +233,6 @@ function StrategyActions({ compact = false, online, onAdd, onPrompt }: {
   );
 }
 
-function SetupChecklist({ managed, connected }: { managed: boolean; connected: boolean }) {
-  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, staleTime: 60_000 });
-  const checks = [
-    { label: tr("工作区已就绪"), done: managed, action: tr("添加项目"), href: "/ui/?view=workspace&add=1" },
-    { label: tr("策略已连接"), done: connected, action: tr("打开工作区"), href: "/ui/?view=workspace" },
-    { label: tr("Telegram 通知（可选）"), done: settings.data?.telegram, action: tr("去设置"), href: "/ui/?view=settings&tab=notifications" },
-  ];
-  return (
-    <details open={!connected} className="rounded-lg border bg-card px-4 py-3">
-      <summary className="cursor-pointer text-sm font-medium">{tr("设置检查")}</summary>
-      <ul className="mt-2 divide-y">
-        {checks.map(({ label, done, action, href }) => <li key={label} className="flex items-center justify-between gap-2 py-1.5 text-sm">
-          <span>{label}</span>
-          {done ? <Badge tone="gain">{tr("已完成")}</Badge> : <Button size="sm" variant="ghost" asChild><a href={href}>{action}</a></Button>}
-        </li>)}
-      </ul>
-    </details>
-  );
-}
-
 export function App() {
   const [theme, setTheme] = useTheme();
   const requested = new URLSearchParams(location.search).get("view");
@@ -314,7 +294,6 @@ export function App() {
                   <div className="px-3 py-3 sm:px-5"><dt className="text-xs text-muted-foreground">{tr("未读异常")}</dt>
                     <dd className="num text-xl font-medium"><a className="hover:underline" href="/ui/?view=settings&tab=feed&unread=1&kind=critical">{data.unread_alerts ?? NA}</a></dd></div>
                 </dl>
-                <SetupChecklist managed={data.workspace_managed} connected={strategies.some(({ online, connected }) => online && connected)} />
                 {quickstartProject && <Alert tone="info" className="flex-wrap items-center justify-between">
                   <span>{tr("模拟策略已启动。现在可以在这里或 Telegram 试用策略按钮。")}</span>
                   <Button size="sm" variant="outline" asChild>

@@ -541,10 +541,6 @@
   "查看项目运行状态，确认策略完成连接。": "Open the program diagnostics to verify the strategy connection.",
   "打开工作区配置策略，或在外部项目运行 quantbot link。": "Configure the strategy in Workspace, or run quantbot link in an external project.",
   "运行诊断": "Run diagnostics",
-  "工作区已就绪": "Workspace ready",
-  "策略已连接": "Strategy connected",
-  "Telegram 通知（可选）": "Telegram notifications (optional)",
-  "设置检查": "Setup checklist",
   "在线策略": "Online strategies",
   "未读异常": "Unread alerts"
 }
