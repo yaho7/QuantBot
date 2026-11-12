@@ -22,6 +22,7 @@ from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBea
 from fastapi.staticfiles import StaticFiles
 
 from .auth import digest, password_matches
+from .control_models import ControlID, ControlInvocation, ControlRegistry, ControlValues
 from .dashboard_models import Component, Dashboard, HistoryQuery
 from .errors import Problem
 from .management import register as register_management
@@ -143,6 +144,18 @@ async def reports(request: Request, body: ReportBatch, source=TELEMETRY):
 async def define_metrics(request: Request, body: MetricDefinitions, source=TELEMETRY):
     """Register metric metadata. Charts become available after points are received."""
     return runtime(request).registry.register_metrics(source, body)
+
+
+@agent.put("/controls")
+async def publish_controls(request: Request, body: ControlRegistry, source=EXECUTOR_CONTROL):
+    """Publish a complete control registry. Use a higher revision to update or remove controls."""
+    return runtime(request).controls.publish(source, body)
+
+
+@agent.put("/controls/state")
+async def publish_values(request: Request, body: ControlValues, source=EXECUTOR_CONTROL):
+    """Report actual values and disabled states for the currently registered revision."""
+    return runtime(request).controls.actual(source, body)
 
 
 @agent.get("/control")
@@ -444,6 +457,31 @@ async def command_detail(request: Request, command_id: Key, actor=ADMIN):
     return service.public(service.row(command_id))
 
 
+@admin.get("/strategies/{strategy_id}/controls")
+async def read_controls(request: Request, strategy_id: Key, actor=ADMIN):
+    """Read the registered components and last agent-reported state."""
+    return runtime(request).controls.public(strategy_id)
+
+
+@admin.post("/strategies/{strategy_id}/controls/{control_id}/invoke", status_code=201)
+async def invoke_control(
+    request: Request,
+    strategy_id: Key,
+    control_id: ControlID,
+    body: ControlInvocation,
+    actor=ADMIN,
+):
+    """Create a command through the validated control binding and registry revision."""
+    service = runtime(request)
+    service.limit("operations", actor, 30, 60)
+    return service.commands.create_control(strategy_id, control_id, body, actor)
+
+
+@admin.post("/commands/{command_id}/cancel")
+async def cancel_command(request: Request, command_id: Key, actor=ADMIN):
+    return runtime(request).commands.cancel(command_id, actor)
+
+
 @admin.post("/strategies/{strategy_id}/commands", status_code=201)
 async def create_command(request: Request, strategy_id: Key, body: CommandRequest, actor=ADMIN):
     service = runtime(request)
@@ -654,6 +692,9 @@ def make_app(
             "metric": MetricPoint,
             "batch": ReportBatch,
             "metric-definitions": MetricDefinitions,
+            "controls": ControlRegistry,
+            "control-state": ControlValues,
+            "control-invocation": ControlInvocation,
         }
         if kind in auxiliary:
             return {**root, **auxiliary[kind].model_json_schema()}

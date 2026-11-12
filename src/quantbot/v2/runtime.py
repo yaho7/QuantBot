@@ -10,6 +10,7 @@ from pathlib import Path
 
 from .auth import Auth
 from .commands import Commands
+from .control_registry import Controls
 from .db import Database
 from .errors import Problem
 from .registry import Registry
@@ -40,6 +41,8 @@ class Runtime:
         self.strategies = Strategies(self.db, self.auth, clock, self.wake)
         self.commands = Commands(self.db, self.strategies, clock, self.wake)
         self.telemetry = Telemetry(self.db, self.strategies, clock, self.wake)
+        self.controls = Controls(self)
+        self.commands.controls = self.controls
         self.registry = Registry(self)
         self.telemetry.registry = self.strategies.registry = self.registry
         self.requests = defaultdict(deque)

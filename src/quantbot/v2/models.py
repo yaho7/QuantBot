@@ -83,6 +83,7 @@ STANDARD = frozenset(
 )
 TRADE_ACTIONS = {"cancel_order", "close_position", "flatten", "buy", "sell"}
 MANDATORY_CONFIRM = TRADE_ACTIONS | {"set_parameters"}
+RESERVED_BINDINGS = {"set_trading_enabled"}
 PROCESS_ACTIONS = {"start", "stop", "restart", "pause_strategy", "resume_strategy", "shell"}
 RISK_ACTIONS = TRADE_ACTIONS | {"set_parameters"}
 TARGET_FIELDS = {
@@ -190,6 +191,8 @@ class Capability(Payload):
     def check_definition(self):
         if self.id in PROCESS_ACTIONS:
             raise ValueError("Process and shell controls are not supported")
+        if self.id in RESERVED_BINDINGS:
+            raise ValueError("This action is reserved for the entry permission control")
         if self.id in SHADOW_ACTIONS and self.parameters:
             raise ValueError("persistent controls do not accept parameters")
         if self.id in TARGET_FIELDS:

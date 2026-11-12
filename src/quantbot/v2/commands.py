@@ -74,11 +74,11 @@ class Commands:
         return agent, Capability.model_validate(item)
 
     @staticmethod
-    def arguments(cap, supplied):
-        if set(supplied) - cap.parameters.keys():
+    def parameters(schema, supplied):
+        if set(supplied) - schema.keys():
             raise Problem(422, "Unknown command parameter")
         args = {}
-        for name, param in cap.parameters.items():
+        for name, param in schema.items():
             value = supplied.get(name, param.default)
             if name not in supplied and value is None and not param.required:
                 continue
@@ -91,6 +91,10 @@ class Commands:
                 if Decimal(value) == 0:
                     value = "0"
             args[name] = value
+        return args
+
+    def arguments(self, cap, supplied):
+        args = self.parameters(cap.parameters, supplied)
         if cap.id in {"buy", "sell"} and Decimal(args["quantity"]) <= 0:
             raise Problem(422, "Order quantity must be positive")
         return args
@@ -108,22 +112,33 @@ class Commands:
         ):
             raise Problem(409, "A trading command is still executing or awaiting reconciliation")
 
-    def create(self, sid, body, actor):
+    def create_control(self, sid, control_id, body, actor):
+        return self.create(sid, body, actor, control_id=control_id)
+
+    def create(self, sid, body, actor, *, control_id=None):
         now = self.clock()
-        request = encode([sid, body.action, body.arguments])
+        request = encode([sid, control_id, body.model_dump(mode="json", exclude={"request_id"})])
         self.sweep()
         with self.db.transaction():
             existing = self.db.one(
                 "SELECT * FROM commands WHERE actor=? AND request_id=?", (actor, body.request_id)
             )
             if existing:
-                if existing["fingerprint"] != request:
+                legacy = encode([sid, body.action, body.arguments]) if not control_id else None
+                if existing["fingerprint"] not in (request, legacy):
                     raise Problem(409, "This request ID was used for another operation")
                 return self.public(existing)
-            shadow = body.action in SHADOW_ACTIONS
-            agent, cap = self.capability(sid, body.action, live=not shadow)
-            args = self.arguments(cap, body.arguments)
-            risky, protected = self.safety(cap)
+            if control_id:
+                control_revision = body.revision
+                action, supplied = self.controls.invocation(sid, control_id, body)
+            else:
+                control_revision = None
+                action, supplied = body.action, body.arguments
+            self.check_binding(sid, control_id, action)
+            shadow = action in SHADOW_ACTIONS
+            agent, cap = self.capability(sid, action, live=not shadow)
+            args = self.arguments(cap, supplied)
+            risky, protected = self.bound_safety(cap, sid, control_id, control_revision)
             self.trading_policy(sid, risky)
             if risky:
                 previous = self.db.one(
@@ -141,8 +156,9 @@ class Commands:
             self.db.execute(
                 """INSERT INTO commands
                    (id, strategy_id, instance_id, session_id, actor, request_id, action, arguments,
-                    fingerprint, state, protected, risky, created_at, updated_at, expires_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    fingerprint, state, protected, risky, created_at, updated_at, expires_at,
+                    control_id, control_revision)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     cid,
                     sid,
@@ -159,6 +175,8 @@ class Commands:
                     now,
                     now,
                     expires,
+                    control_id,
+                    control_revision,
                 ),
             )
             self.strategies.audit(
@@ -167,6 +185,8 @@ class Commands:
                 sid,
                 command_id=cid,
                 action_id=cap.id,
+                control_id=control_id,
+                control_revision=control_revision,
                 arguments=args,
                 state=state,
             )
@@ -211,12 +231,25 @@ class Commands:
         risky = cap.high_risk or cap.id in RISK_ACTIONS or cap.id not in STANDARD
         return risky, risky or cap.confirm or cap.id in MANDATORY_CONFIRM
 
+    def check_binding(self, sid, cid, action):
+        if not cid and action not in SHADOW_ACTIONS and self.controls.bound_action(sid, action):
+            raise Problem(409, "Use the registered control component for this action")
+
+    def bound_safety(self, cap, sid, cid, revision):
+        risky, protected = self.safety(cap)
+        if cid:
+            return self.controls.safety(sid, cid, revision, risky, protected)
+        return risky, protected
+
     def check_target(self, row, agent, cap, shadow=False):
+        sid, cid, revision = row["strategy_id"], row["control_id"], row["control_revision"]
+        self.check_binding(sid, cid, cap.id)
+        safety = self.bound_safety(cap, sid, cid, revision)
         if (
             agent["instance_id"] != row["instance_id"]
             or (not shadow and agent["session_id"] != row["session_id"])
             or encode(self.arguments(cap, json.loads(row["arguments"]))) != row["arguments"]
-            or self.safety(cap) != (bool(row["risky"]), bool(row["protected"]))
+            or safety != (bool(row["risky"]), bool(row["protected"]))
         ):
             raise Problem(409, "Executor or command definition changed")
 
@@ -351,6 +384,18 @@ class Commands:
         self.wake()
         return self.public(self.row(cid))
 
+    def cancel(self, cid, actor):
+        self.sweep()
+        with self.db.transaction():
+            row = self.row(cid)
+            if row["actor"] != actor:
+                raise Problem(403, "Only the requesting administrator can cancel")
+            if row["state"] not in PENDING or row["revision"] is not None:
+                raise Problem(409, "This operation can no longer be cancelled")
+            self.transition(row, "cancelled", actor=actor)
+        self.wake()
+        return self.public(self.row(cid))
+
     def reconcile(self, cid, body, actor):
         with self.db.transaction():
             row = self.row(cid)
@@ -380,7 +425,7 @@ class Commands:
             error=error,
             result=result,
         )
-        if state in {"succeeded", "failed", "unknown", "expired", "superseded"}:
+        if state in {"succeeded", "failed", "unknown", "expired", "superseded", "cancelled"}:
             self.strategies.alert(
                 sid,
                 "command",

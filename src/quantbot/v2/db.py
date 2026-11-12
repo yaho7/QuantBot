@@ -220,6 +220,30 @@ PRAGMA user_version = 4;
 """
 
 
+CONTROL_SCHEMA = """
+CREATE TABLE control_registries (
+    strategy_id TEXT PRIMARY KEY REFERENCES strategies(id),
+    instance_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    payload TEXT NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE control_values (
+    strategy_id TEXT NOT NULL REFERENCES strategies(id),
+    control_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    observed_at REAL NOT NULL,
+    payload TEXT NOT NULL,
+    PRIMARY KEY (strategy_id, control_id, kind)
+);
+ALTER TABLE commands ADD COLUMN control_id TEXT;
+ALTER TABLE commands ADD COLUMN control_revision INTEGER;
+PRAGMA user_version = 5;
+"""
+
+
 def timestamp(value: float | None) -> str | None:
     if value is None:
         return None
@@ -261,7 +285,10 @@ class Database:
             version = 3
         if version == 3:
             self.conn.executescript("BEGIN IMMEDIATE;\n" + LIFECYCLE_SCHEMA + "\nCOMMIT;")
-        elif version != 4:
+            version = 4
+        if version == 4:
+            self.conn.executescript("BEGIN IMMEDIATE;\n" + CONTROL_SCHEMA + "\nCOMMIT;")
+        elif version != 5:
             self.conn.close()
             raise RuntimeError(f"Unsupported QuantBot database schema {version}")
 
