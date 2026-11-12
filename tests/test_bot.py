@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import AsyncMock, Mock
 
+from telegram import Update
 from telegram.ext import CallbackQueryHandler, CommandHandler
 
 from quantbot.bot import COMMANDS, QuantBot, markup, silent
@@ -25,7 +28,7 @@ def test_markup_and_quiet_hours() -> None:
     assert not silent("info", None, night)
 
 
-def test_app_wires_owner_only_commands(tmp_path: Path) -> None:
+def test_app_wires_private_owner_only_commands(tmp_path: Path) -> None:
     settings = Settings(
         tg_token="123456:" + "A" * 35,
         owner_id=42,
@@ -40,9 +43,48 @@ def test_app_wires_owner_only_commands(tmp_path: Path) -> None:
     assert any(isinstance(h, CallbackQueryHandler) for h in handlers)
     assert qg.core.allowed(42) and not qg.core.allowed(43)
 
+    for name in ("web", "positions", "flatten"):
+        handler = next(h for h in handlers if isinstance(h, CommandHandler) and name in h.commands)
+        for chat_type, user_id, allowed in (
+            ("group", 42, False),
+            ("private", 43, False),
+            ("private", 42, True),
+        ):
+            update = Update.de_json(
+                {
+                    "update_id": 1,
+                    "message": {
+                        "message_id": 1,
+                        "date": 1,
+                        "from": {"id": user_id, "first_name": "Trader", "is_bot": False},
+                        "chat": {"id": user_id, "type": chat_type},
+                        "text": f"/{name}",
+                        "entities": [{"offset": 0, "length": len(name) + 1, "type": "bot_command"}],
+                    },
+                },
+                qg.app.bot,
+            )
+            assert bool(handler.filters.check_update(update)) is allowed
+
+
+def test_group_web_and_trade_callback_do_not_execute(tmp_path: Path, monkeypatch) -> None:
+    bot = QuantBot(Settings(None, 42, (), tmp_path))
+    issue_link = Mock()
+    tap = AsyncMock()
+    monkeypatch.setattr(bot.web_auth, "link_token", issue_link)
+    monkeypatch.setattr(bot.core, "tap", tap)
+    query = Mock(answer=AsyncMock())
+    update = Mock(
+        effective_chat=Mock(type="supergroup"), effective_user=Mock(id=42), callback_query=query
+    )
+    asyncio.run(bot._web(update, None))
+    asyncio.run(bot._tap(update, None))
+    issue_link.assert_not_called()
+    tap.assert_not_awaited()
+    query.answer.assert_awaited_once()
+
 
 def test_runs_without_telegram(tmp_path: Path) -> None:
-    import asyncio
     import json
     import urllib.request
 
@@ -79,8 +121,6 @@ def test_runs_without_telegram(tmp_path: Path) -> None:
 
 
 def test_telegram_callback_uses_the_current_language(tmp_path: Path) -> None:
-    import asyncio
-
     bot = QuantBot(Settings(None, None, (), tmp_path, language="en"))
     replies: list[str] = []
 

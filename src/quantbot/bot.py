@@ -150,7 +150,7 @@ class QuantBot:
             .post_shutdown(self._stopped)
             .build()
         )
-        owner = filters.User(user_id=settings.owner_id)
+        owner = filters.User(user_id=settings.owner_id) & filters.ChatType.PRIVATE
         handlers = {
             "start": self._menu,
             "menu": self._menu,
@@ -356,13 +356,17 @@ class QuantBot:
 
     async def _tap(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.callback_query
-        if query is None or not self.core.allowed(query.from_user.id):
+        if query is None or not self._private_owner(update):
             if query:
                 await query.answer()
             return
         await query.answer()
         reply = await self.core.tap(query.data or "", query.from_user.id)
         await self._show(update, reply, edit=True)
+
+    def _private_owner(self, update: Update) -> bool:
+        chat, user = update.effective_chat, update.effective_user
+        return bool(chat and chat.type == "private" and user and self.core.allowed(user.id))
 
     async def _menu(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await self._show(update, await self.core.home())
@@ -424,6 +428,8 @@ class QuantBot:
         await self._with_target(update, lambda s: _now(self.core.request_order(s, "sell", raw)))
 
     async def _web(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._private_owner(update):
+            return
         listen = f"{self.settings.host}:{self.settings.port}"
         public_url = self.settings.public_url
         url = login_url(listen, self.web_auth.link_token(), public_url)
