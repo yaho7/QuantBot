@@ -399,7 +399,6 @@
   "正在重启后台服务。": "Restarting the background service.",
   "正在重启后台服务，网页会自动重连。": "Restarting the background service. The web console will reconnect.",
   "此安装来源不支持 GitHub 标签检查。": "This installation source does not support GitHub tag checks.",
-  "每分钟可以检查一次，请稍后再试。": "You can check for updates once a minute. Try again shortly.",
   "没找到 uv。重新运行安装命令，也能更新到最新版。": "uv was not found. Rerun the installer to update QuantBot.",
   "没有参数 {0}": "No parameter named {0}",
   "没有可安装的更新，请先检查更新。": "No update is available to install. Check for updates first.",

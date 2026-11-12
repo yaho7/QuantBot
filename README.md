@@ -87,7 +87,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 QuantBot 每 6 小时检查一次 GitHub 上的 `vX.Y.Z` 稳定标签，按版本号比较。推送新标签即可发布更新。网页「设置 → 维护」和 `qb` 菜单会显示检测到的目标标签，推送与已连接的 Telegram 也会收到提醒。
 
-- 在网页「设置 → 维护 → 版本更新」点「检查更新」可立即查询，每分钟最多一次。确认「一键更新」后，已安装的后台服务会重启，网页会自动重连。前台运行时，请在服务器上停止 QuantBot，再运行 `quantbot run`。
+- 在网页「设置 → 维护 → 版本更新」点「检查更新」可立即查询。确认「一键更新」后，已安装的后台服务会重启，网页会自动重连。前台运行时，请在服务器上停止 QuantBot，再运行 `quantbot run`。
 - 在终端运行 `quantbot update --check` 只检查更新。运行 `quantbot update` 会显示目标标签并询问是否安装，`--yes` 跳过确认。`quantbot --version` 显示安装标签和提交。
 - 也可以再运行一次安装命令，它会安装最新标签并重启后台服务。
 

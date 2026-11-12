@@ -200,9 +200,9 @@ def test_update_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, servi
         assert (await (await client.post(url + "/check", headers=CSRF)).json())["ok"]
         cached = await (await client.get(url)).json()
         assert cached["result"]["available"]
-        throttled = await (await client.post(url + "/check", headers=CSRF)).json()
-        assert not throttled["ok"] and "每分钟" in throttled["message"]
-        assert len(fetches) == 1
+        checked_again = await (await client.post(url + "/check", headers=CSRF)).json()
+        assert checked_again["ok"] and checked_again["data"]["available"]
+        assert len(fetches) == 2
         updated = await (await client.post(url, headers=CSRF)).json()
         assert updated["ok"] and len(commands) == 1
         assert commands[0][-1] == f"quantbot @ git+{repo}@refs/tags/v0.2.3"

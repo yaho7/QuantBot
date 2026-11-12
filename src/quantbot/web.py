@@ -321,7 +321,6 @@ class UpdateActions:
     updater: Updater
     restart: Callable[[], None] | None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    next_check: float = 0
     updated: bool = False
 
 
@@ -1246,10 +1245,6 @@ async def update_check(request: web.Request) -> web.Response:
     actions = request.app[UPDATE_KEY]
     if actions.updated or actions.lock.locked():
         return _answer(False, tr("更新正在进行，或正在等待重启。"))
-    now = time.monotonic()
-    if now < actions.next_check:
-        return _answer(False, tr("每分钟可以检查一次，请稍后再试。"))
-    actions.next_check = now + 60
     async with actions.lock:
         result = await asyncio.to_thread(actions.updater.check)
     return _answer(not result["error"], result["error"] or tr("已检查更新。"), result)
