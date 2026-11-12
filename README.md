@@ -10,7 +10,7 @@ QuantBot 是面向独立量化交易程序的 HTTP 监控与远程控制平台�
 
 ## 本地启动
 
-需要 Python 3.10+、SQLite 3.35+。仓库包含已构建的 React 控制台。
+需要 Python 3.11+、SQLite 3.35+。仓库包含已构建的 React 控制台。
 
 ```bash
 uv sync --frozen

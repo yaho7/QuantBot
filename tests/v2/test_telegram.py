@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from quantbot.v2.telegram_service import Delivery, TelegramInterface
+from quantbot.v2.telegram_service import Delivery, TelegramInterface, chart_photo
 
 from .test_control_plane import ADMIN, AGENT, Clock, client, connect, create, log_in, poll, report
 
@@ -229,3 +229,10 @@ def test_telegram_form_cancel_invalidates_other_options(tmp_path):
         http.portal.call(interface.handle, stale, None)
         assert "过期" in stale.callback_query.edit_message_text.await_args.args[0]
         assert http.get(ADMIN + "/commands").json() == []
+
+
+def test_telegram_equity_chart_requires_reported_points():
+    single = {"account_id": "simulated", "unit": "USD", "value": "100.000000001"}
+    assert chart_photo([single]) is None
+    png = chart_photo([single, {**single, "value": "101.000000001"}])
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
