@@ -63,5 +63,16 @@ jobs:
         env:
           SHELL: /bin/bash
           UV_TOOL_BIN_DIR: ${{ runner.temp }}/quantbot-bin
-      - name: Find QuantBot in a new login shell
-        run: bash -lc 'test "$(command -v quantbot)" = "$RUNNER_TEMP/quantbot-bin/quantbot" && quantbot --version | grep -F "v0.0.0" && quantbot list'
+      - name: Find QuantBot in a fresh interactive Bash session
+        run: |
+          bash -ic '
+            set -e -o pipefail
+            expected="$RUNNER_TEMP/quantbot-bin/quantbot"
+            actual="$(command -v quantbot || true)"
+            if [[ "$actual" != "$expected" ]]; then
+              printf "Expected %s on PATH, found %s\n" "$expected" "${actual:-nothing}" >&2
+              exit 1
+            fi
+            quantbot --version | grep -F "v0.0.0"
+            quantbot list
+          '
