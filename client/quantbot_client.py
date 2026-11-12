@@ -180,6 +180,7 @@ class QuantBot:
         self._closed = threading.Event()
         self._threads: list[threading.Thread] = []
         self._hello_sent = False
+        self._instance = uuid.uuid4().hex
         self._operation = threading.local()
         self._pause_lock = threading.Lock()
         self._pause_reasons = self._load_pause_reasons()
@@ -414,7 +415,9 @@ class QuantBot:
                 {"pause", "resume", "stop", *(name for name in self._handlers if name in COMMANDS)}
             )
             actions = list(self._actions.values())
-        self._event("hello", commands=names, actions=actions)
+        self._event(
+            "hello", commands=names, actions=actions, instance=self._instance, command_protocol=2
+        )
         self._hello_sent = True
 
     def _load_pause_reasons(self) -> frozenset[str]:
@@ -490,6 +493,8 @@ class QuantBot:
                 self._stop.wait(min(backoff, 30))
                 backoff *= 2
                 continue
+            if self.stopping:
+                return
             if reply.get("need_hello"):
                 self._hello()
             for command in reply.get("commands") or []:

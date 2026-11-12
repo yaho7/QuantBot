@@ -148,6 +148,8 @@ class Core:
         return [[(f"{self._dot(s)} {s.name}", f"o:{s.id}")] for s in self.hub.strategies.values()]
 
     def _dot(self, strategy: Strategy) -> str:
+        if strategy.stopped:
+            return "⚪"
         return "🟢" if self.hub.online(strategy) else "🔴"
 
     async def call(
@@ -166,6 +168,8 @@ class Core:
             else None
         )
         label = action.label if action else tr(LABELS.get(name, name))
+        if name == "stop" and strategy.stopped:
+            return True, Result(True, tr("策略已停止。"))
         if strategy.said_hello and not strategy.supports(name):
             return False, tr("{0} 不支持{1}。", strategy.name, label)
         online = self.hub.online(strategy)
@@ -289,6 +293,8 @@ class Core:
             ok, outcome = await self.call(s, "status")  # the result refreshes the snapshot
             if not ok:
                 note = str(outcome)
+        elif s.stopped:
+            note = tr("策略已停止。")
         elif not self.hub.online(s):
             note = tr("离线：下面是最后一次的状态。")
         return Reply(self.page_text(s, note), self.page_buttons(s))

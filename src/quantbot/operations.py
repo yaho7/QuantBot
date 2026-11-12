@@ -146,6 +146,18 @@ class Operations:
                 (now, now - result_ttl),
             )
 
+    def cancel_waiting(self, sid: str, now: float) -> None:
+        with self.db:
+            self.db.execute(
+                """UPDATE operations SET state='FAILED', updated=?, result=?
+                   WHERE sid=? AND state IN ('CREATED', 'ACCEPTED')""",
+                (
+                    now,
+                    json.dumps({"ok": False, "message": "Strategy stopped before execution"}),
+                    sid,
+                ),
+            )
+
     def pause_intent(self, sid: str) -> str | None:
         row = self.db.execute("SELECT id FROM pause_intents WHERE sid=?", (sid,)).fetchone()
         return row["id"] if row is not None else None

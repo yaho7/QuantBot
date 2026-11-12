@@ -157,11 +157,12 @@ export function StrategyPanel({ s, open, onOpenChange }: {
         description={
           <span className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs">{s.id}</span>
-            {s.online ? <Badge tone="gain">{tr("在线")}</Badge> : <Badge tone="loss">{tr("离线")}</Badge>}
+            {s.online ? <Badge tone="gain">{tr("在线")}</Badge> : s.stopped
+              ? <Badge>{tr("已停止")}</Badge> : <Badge tone="loss">{tr("离线")}</Badge>}
             {s.paused && <Badge tone="warning">{tr("已暂停开仓")}</Badge>}
           </span>
         }>
-        {!s.online && (
+        {!s.online && !s.stopped && (
           <Alert tone="warning">{tr("策略离线。暂停请求会保存，其他命令需要策略在线。")}</Alert>
         )}
         {s.status && <p className="whitespace-pre-wrap rounded-lg bg-card p-3 text-sm">{s.status}</p>}

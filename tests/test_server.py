@@ -191,6 +191,39 @@ def test_expired_commands_cannot_be_claimed_and_pause_survives_restart(tmp_path:
     asyncio.run(run())
 
 
+def test_stop_receipt_invalidates_old_poll_until_a_new_client_starts() -> None:
+    async def run() -> None:
+        now = [100.0]
+        hub = Hub((A,), lambda *note: None, clock=lambda: now[0])
+        strategy = hub.strategies[A.id]
+        hello = {"type": "hello", "instance": "a" * 32, "commands": ["stop"]}
+        hub.event(strategy, hello)
+        await hub.poll(strategy, 0, claims=True)
+        stop = hub.send(strategy, "stop")
+        await hub.poll(strategy, 0, claims=True)
+        assert hub.claim(strategy, stop.id, "grant")
+        poll = asyncio.create_task(hub.poll(strategy, 25, claims=True))
+        await asyncio.sleep(0)
+        assert strategy.polling == 1
+        receipt = {"ok": True, "grant": "grant"}
+        assert hub.result(strategy, stop.id, receipt)
+        assert (await asyncio.wait_for(poll, 1))["commands"] == []
+        now[0] += 49
+        hub.event(strategy, {"type": "status", "text": "old status"})
+        hub.event(strategy, hello)
+        assert strategy.stopped and not hub.online(strategy)
+        duplicate = hub.send(strategy, "stop").future.result()
+        assert duplicate.ok and duplicate.message == "策略已停止。"
+        assert not hub.send(strategy, "flatten").future.result().ok
+
+        hub.event(strategy, {**hello, "instance": "b" * 32})
+        await hub.poll(strategy, 0, claims=True)
+        assert not strategy.stopped and hub.ready_for_claims(strategy)
+        assert hub.result(strategy, stop.id, receipt) and hub.online(strategy)
+
+    asyncio.run(run())
+
+
 def test_offline_and_back_online_alerts() -> None:
     async def test(hub: Hub, client: TestClient, notes: Notes) -> None:
         await client.post("/v1/events", json={"type": "hello", "commands": []}, headers=AUTH)

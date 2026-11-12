@@ -757,6 +757,10 @@ async def workspace_program(request: web.Request) -> web.Response:
                 message = tr("已启动工作区程序。")
             elif action == "stop":
                 await runtime.stop()
+                hub = request.app[WEB_HUB_KEY]
+                sid = binding.read().get("QB_NAME")
+                if (strategy := hub.strategies.get(sid)) is not None:
+                    hub.mark_stopped(strategy)
                 message = tr("已停止工作区程序。")
             else:
                 hub = request.app[CORE_KEY].hub
@@ -831,7 +835,7 @@ async def launch_quickstart(app: web.Application, project: str = "") -> dict[str
         if status["running"]:
             if status["command"] == QUICKSTART_COMMAND and sid in hub.strategies:
                 running_strategy = hub.strategies[sid]
-                if running_strategy.said_hello and hub.online(running_strategy):
+                if running_strategy.said_hello and hub.ready_for_claims(running_strategy):
                     return {"id": sid, "project": project, "file": QUICKSTART_FILE}
                 raise ConfigError(tr("模拟策略尚未连接。请在工作区查看程序日志。"))
             raise ConfigError(tr("工作区程序已经在运行。"))
@@ -861,8 +865,9 @@ async def launch_quickstart(app: web.Application, project: str = "") -> dict[str
     for _ in range(60):
         if (
             strategy.said_hello
-            and strategy.last_seen is not None
-            and strategy.last_seen >= started_at
+            and strategy.claim_poll_at is not None
+            and strategy.claim_poll_at >= started_at
+            and hub.ready_for_claims(strategy)
         ):
             return {"id": sid, "project": project, "file": QUICKSTART_FILE}
         await asyncio.sleep(0.1)
@@ -1698,6 +1703,7 @@ async def overview(request: web.Request) -> web.Response:
                 "id": s.id,
                 "name": s.name,
                 "online": hub.online(s),
+                "stopped": s.stopped,
                 "connected": s.said_hello,
                 "paused": s.paused,
                 "status": s.status_text,

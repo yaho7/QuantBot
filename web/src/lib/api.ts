@@ -45,6 +45,7 @@ export interface StrategyView {
   id: string;
   name: string;
   online: boolean;
+  stopped: boolean;
   connected: boolean;
   paused: boolean | null;
   status: string | null;

@@ -11,6 +11,8 @@ import base64
 import binascii
 import hmac
 import json
+import logging
+import sqlite3
 import time
 import uuid
 from collections.abc import Callable
@@ -25,6 +27,8 @@ from quantbot.notices import Connections, Expiries
 from quantbot.operations import Operations, protected
 from quantbot.strategy_features import ActionSpec, Metric, parse_actions, record_metric
 from quantbot.workspace_credentials import fingerprint
+
+log = logging.getLogger(__name__)
 
 COMMANDS = (
     "status", "pause", "resume", "positions", "orders", "cancel", "flatten",
@@ -66,6 +70,7 @@ class Command:
     future: asyncio.Future[Result]
     delivered_at: float | None = None
     expires_at: float | None = None
+    instance: str | None = None
 
 
 @dataclass
@@ -84,6 +89,10 @@ class Strategy:
     last_seen: float | None = None
     polling: int = 0
     claim_poll_at: float | None = None
+    claims_protocol: bool = False
+    stopped: bool = False
+    stop_generation: int = 0
+    instance: str | None = None
     pause_retry_at: float = 0
     was_online: bool = False
     pending: dict[str, Command] = field(default_factory=dict)
@@ -188,10 +197,30 @@ class Hub:
         self._workspace_tokens = tokens
 
     def online(self, strategy: Strategy) -> bool:
+        if strategy.stopped:
+            return False
         if strategy.polling:
             return True
         seen = strategy.last_seen
         return seen is not None and self.clock() - seen < self.offline_after
+
+    def ready_for_claims(self, strategy: Strategy) -> bool:
+        return (
+            self.online(strategy)
+            and strategy.claim_poll_at is not None
+            and self.clock() - strategy.claim_poll_at < self.offline_after
+        )
+
+    def mark_stopped(self, strategy: Strategy) -> None:
+        strategy.stopped = True
+        strategy.stop_generation += 1
+        strategy.was_online = False
+        strategy.claim_poll_at = None
+        strategy.wake.set()
+        try:
+            self.operations.cancel_waiting(strategy.id, self.wall_clock())
+        except sqlite3.Error:
+            log.exception("Could not clear waiting operations for stopped strategy %s", strategy.id)
 
     def age(self, strategy: Strategy) -> float | None:
         return None if strategy.status_at is None else self.clock() - strategy.status_at
@@ -215,6 +244,9 @@ class Hub:
             self.clock(),
             asyncio.get_running_loop().create_future(),
         )
+        if name == "stop" and strategy.stopped:
+            command.future.set_result(Result(True, tr("策略已停止。")))
+            return command
         if protected(name):
             now = self.wall_clock()
             if name == "manual_order" and not valid_order_qty(
@@ -229,11 +261,13 @@ class Hub:
             if not self.online(strategy):
                 command.future.set_result(Result(False, tr("策略离线，操作未发送。")))
                 return command
-            if (
-                strategy.claim_poll_at is None
-                or self.clock() - strategy.claim_poll_at >= self.offline_after
-            ):
-                command.future.set_result(Result(False, tr("请先更新策略客户端的交易控制协议。")))
+            if not self.ready_for_claims(strategy):
+                message = (
+                    tr("策略命令连接尚未就绪，请稍后再试。")
+                    if strategy.claims_protocol
+                    else tr("请先更新策略客户端的交易控制协议。")
+                )
+                command.future.set_result(Result(False, message))
                 return command
             if name == "resume" and self.operations.pause_intent(strategy.id):
                 command.future.set_result(Result(False, tr("策略尚未确认暂停，暂时不能恢复开仓。")))
@@ -261,6 +295,8 @@ class Hub:
     # -------------------------------------------------- strategy side
 
     def _seen(self, strategy: Strategy) -> None:
+        if strategy.stopped:
+            return
         strategy.last_seen = self.clock()
         if not strategy.was_online:
             if strategy.said_hello or strategy.status_at is not None:
@@ -289,6 +325,7 @@ class Hub:
             ):
                 continue
             command.delivered_at = now
+            command.instance = strategy.instance
             ready.append(command)
         return ready
 
@@ -303,15 +340,22 @@ class Hub:
     async def poll(
         self, strategy: Strategy, wait: float, *, claims: bool = False, token: str | None = None
     ) -> dict[str, Any] | None:
-        self._seen(strategy)
-        if claims:
-            strategy.claim_poll_at = self.clock()
+        generation = strategy.stop_generation
+        joined = False
         strategy.polling += 1
         token = strategy.token if token is None else token
         try:
             deadline = self.clock() + wait
             while self.authorized(strategy, token):
-                ready = self._deliverable(strategy, claims)
+                if generation != strategy.stop_generation:
+                    return {"commands": [], "need_hello": False}
+                if not joined and not strategy.stopped:
+                    self._seen(strategy)
+                    if claims:
+                        strategy.claims_protocol = True
+                        strategy.claim_poll_at = self.clock()
+                    joined = True
+                ready = [] if strategy.stopped else self._deliverable(strategy, claims)
                 left = deadline - self.clock()
                 if ready or left <= 0:
                     return {
@@ -326,7 +370,7 @@ class Hub:
                             }
                             for c in ready
                         ],
-                        "need_hello": not strategy.said_hello,
+                        "need_hello": not strategy.stopped and not strategy.said_hello,
                     }
                 strategy.wake.clear()
                 try:
@@ -336,11 +380,17 @@ class Hub:
             return None
         finally:
             strategy.polling -= 1
-            if self.authorized(strategy, token):
+            if (
+                joined
+                and generation == strategy.stop_generation
+                and self.authorized(strategy, token)
+            ):
                 self._seen(strategy)
 
     def claim(self, strategy: Strategy, cid: str, grant: str) -> bool:
-        return self.operations.claim(strategy.id, cid, grant, self.wall_clock())
+        return not strategy.stopped and self.operations.claim(
+            strategy.id, cid, grant, self.wall_clock()
+        )
 
     def result(self, strategy: Strategy, command_id: str, body: dict[str, Any]) -> bool:
         self._seen(strategy)
@@ -367,6 +417,8 @@ class Hub:
                 strategy.pause_retry_at = self.clock() + self.redeliver_after
         if command.name == "resume" and body.get("ok"):
             strategy.paused = False
+        if command.name == "stop" and body.get("ok") and command.instance == strategy.instance:
+            self.mark_stopped(strategy)
         result = Result(
             bool(body.get("ok")),
             _text(body.get("message")),
@@ -381,7 +433,6 @@ class Hub:
         return True
 
     def event(self, strategy: Strategy, body: dict[str, Any]) -> None:
-        self._seen(strategy)
         kind = body.get("type")
         if kind == "hello":
             names = body.get("commands")
@@ -391,10 +442,23 @@ class Hub:
                 actions = parse_actions(body.get("actions", []))
             except ValueError as exc:
                 raise EventError(str(exc)) from exc
+            instance = body.get("instance")
+            if not isinstance(instance, str) or len(instance) != 32:
+                instance = None
+            if strategy.stopped:
+                if instance is not None and instance == strategy.instance:
+                    return
+                strategy.stopped = False
+                strategy.wake.set()
+            strategy.instance = instance
+            strategy.claims_protocol |= body.get("command_protocol") == 2
+            self._seen(strategy)
             strategy.actions = actions
             strategy.commands = tuple(n for n in COMMANDS if n in names)
             strategy.said_hello = True
-        elif kind == "status":
+            return
+        self._seen(strategy)
+        if kind == "status":
             self._status(strategy, body)
         elif kind == "metric":
             try:

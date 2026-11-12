@@ -127,6 +127,7 @@ function Login() {
 
 function OnlineBadge({ s }: { s: StrategyView }) {
   if (s.online) return <Badge tone="gain"><Radio /> {tr("在线")}</Badge>;
+  if (s.stopped) return <Badge>{tr("已停止")}</Badge>;
   if (!s.connected && s.last_seen === null) return <Badge><CircleDashed /> {tr("还没连上过")}</Badge>;
   return <Badge tone="loss">{tr("离线")}</Badge>;
 }

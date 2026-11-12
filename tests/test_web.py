@@ -1053,6 +1053,10 @@ def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
         assert hub.by_token(original) is None
         assert hub.by_token(binding.read()["QB_TOKEN"]) is strategy
         await client.post(run + "/stop", params={"workspace": project}, headers=CSRF)
+        again = await client.post(controls + "/stop", json={"prepare": True}, headers=CSRF)
+        ticket = (await again.json())["data"]["ticket"]
+        answer = await client.post(controls + "/stop", json={"ticket": ticket}, headers=CSRF)
+        assert (await answer.json())["message"] == "策略已停止。"
         path.write_text("# my edits\n", encoding="utf-8")
         refused = await client.post(base, params={"workspace": project}, headers=CSRF)
         assert not (await refused.json())["ok"]
