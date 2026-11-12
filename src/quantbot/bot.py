@@ -29,7 +29,7 @@ from quantbot.core import Buttons, Core, Reply
 from quantbot.heartbeat import Heartbeat
 from quantbot.hub import Hub, Strategy
 from quantbot.i18n import tr, use_language
-from quantbot.notices import LOUD, is_quiet
+from quantbot.notices import LOUD, Notice, is_quiet
 from quantbot.server import make_app
 from quantbot.templates import QUICKSTART_FILE, quickstart_source
 from quantbot.updates import Updater, installed
@@ -130,6 +130,7 @@ class QuantBot:
             settings.strategies,
             self._hub_notice,
             operation_path=settings.data_dir / "operations.sqlite3",
+            deliver_notice=self._deliver_notice,
         )
         self.core = Core(
             self.hub,
@@ -276,6 +277,7 @@ class QuantBot:
                 await self._workspace_refresh
         if self._runner:
             await self._runner.cleanup()
+        await self.hub.close_notices()
 
     async def _upkeep_loop(self) -> None:
         while True:
@@ -342,9 +344,15 @@ class QuantBot:
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
 
-    async def _send(self, text: str, kind: str, image: bytes | None = None) -> None:
+    async def _deliver_notice(self, notice: Notice) -> bool:
+        self.feed.add(
+            notice.strategy, notice.text, notice.kind, notice_id=f"{notice.sid}:{notice.id}"
+        )
+        return await self._send(f"[{notice.strategy}] {notice.text}", notice.kind, notice.image)
+
+    async def _send(self, text: str, kind: str, image: bytes | None = None) -> bool:
         if self.app is None or self.settings.owner_id is None:
-            return  # no Telegram: the notice is only on the web page
+            return True  # no Telegram: the notice is only on the web page
         quiet = silent(kind, self.settings.quiet_hours, datetime.now(self.tz))
         owner = self.settings.owner_id
         try:
@@ -358,6 +366,8 @@ class QuantBot:
                 )
         except TelegramError:
             log.exception("Could not send a Telegram message")
+            return False
+        return True
 
     async def _show(self, update: Update, reply: Reply, edit: bool = False) -> None:
         keyboard = markup(reply.buttons)

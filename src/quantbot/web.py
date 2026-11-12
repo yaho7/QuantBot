@@ -144,9 +144,14 @@ class Feed:
         default_factory=lambda: collections.deque(maxlen=FEED_SIZE)
     )
 
-    def add(self, strategy: str, text: str, kind: str) -> None:
+    def add(self, strategy: str, text: str, kind: str, *, notice_id: str | None = None) -> None:
+        if notice_id and any(item.get("id") == notice_id for item in self.items):
+            return
         now = datetime.now(timezone.utc).isoformat()
-        self.items.append({"time": now, "strategy": strategy, "text": text, "kind": kind})
+        item = {"time": now, "strategy": strategy, "text": text, "kind": kind}
+        if notice_id:
+            item["id"] = notice_id
+        self.items.append(item)
 
 
 def _sign(secret: str, message: str) -> str:

@@ -33,6 +33,7 @@ import os
 import queue
 import re
 import secrets
+import sqlite3
 import tempfile
 import threading
 import time
@@ -42,7 +43,7 @@ import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -59,6 +60,7 @@ PROTECTED_COMMANDS = {"resume", "manual_order", "cancel", "flatten", "set_param"
 POLL_WAIT = 25
 REMEMBER_RESULTS = 200
 EVENT_BACKLOG = 500
+DURABLE_EVENTS = {"fill", "alert", "error", "summary"}
 _WAKE = object()
 
 
@@ -149,6 +151,46 @@ def _write_local_config(path: Path, data: dict[str, Any]) -> None:
         Path(tmp).unlink(missing_ok=True)
 
 
+class _NoticeOutbox:
+    """Pending reports survive a strategy restart and retain the same event ID."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.initialized = False
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        if not self.initialized:
+            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.close(os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600))
+        with closing(sqlite3.connect(self.path, timeout=0.5)) as db, db:
+            if not self.initialized:
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS notices ("
+                    "sequence INTEGER PRIMARY KEY, id TEXT UNIQUE, body TEXT NOT NULL)"
+                )
+                self.initialized = True
+            yield db
+
+    def add(self, body: dict[str, Any]) -> None:
+        with self._connect() as db:
+            db.execute(
+                "INSERT INTO notices (id, body) VALUES (?, ?)",
+                (body["event_id"], json.dumps(body, ensure_ascii=False)),
+            )
+
+    def peek(self) -> dict[str, Any] | None:
+        if not self.path.exists():
+            return None
+        with self._connect() as db:
+            row = db.execute("SELECT body FROM notices ORDER BY sequence LIMIT 1").fetchone()
+        return json.loads(row[0]) if row else None
+
+    def ack(self, event_id: str) -> None:
+        with self._connect() as db:
+            db.execute("DELETE FROM notices WHERE id=?", (event_id,))
+
+
 class CommandRejected(RuntimeError):
     """A handler can raise this when it can prove the operation had no effect."""
 
@@ -197,6 +239,12 @@ class QuantBot:
         self._events: collections.deque[tuple[str, dict[str, Any]]] = collections.deque(
             maxlen=EVENT_BACKLOG
         )
+        self._priority: collections.deque[tuple[str, dict[str, Any]]] = collections.deque()
+        self._outbox = _NoticeOutbox(
+            self._state_file.with_name(self._state_file.name + ".notices.sqlite3")
+        )
+        self._event_lock = threading.Lock()
+        self._outbox_failed = False
         self._events_ready = threading.Event()
         self._seen: collections.OrderedDict[str, dict[str, Any] | None] = (
             collections.OrderedDict()
@@ -300,7 +348,7 @@ class QuantBot:
         self._stop.set()
         self._commands.put(_WAKE)
         deadline = time.monotonic() + timeout
-        while self._events and time.monotonic() < deadline and self._threads:
+        while self._threads and time.monotonic() < deadline and self._next_event():
             time.sleep(0.05)
         self._closed.set()
         self._events_ready.set()
@@ -432,8 +480,45 @@ class QuantBot:
 
     def _event(self, kind: str, **fields: Any) -> None:
         body = {"type": kind, **{k: v for k, v in fields.items() if v is not None}}
-        self._events.append(("/v1/events", body))
+        item = ("/v1/events", body)
+        with self._event_lock:
+            if kind in DURABLE_EVENTS:
+                body["event_id"] = uuid.uuid4().hex
+                try:
+                    self._outbox.add(body)
+                except (OSError, sqlite3.Error):
+                    self._log_outbox_failure()
+                    self._priority.append(item)
+            elif kind == "hello":
+                self._priority.append(item)
+            else:
+                self._events.append(item)
         self._events_ready.set()
+
+    def _log_outbox_failure(self) -> None:
+        if not self._outbox_failed:
+            log.exception("Cannot access QuantBot's notice outbox at %s", self._outbox.path)
+            self._outbox_failed = True
+
+    def _report_result(self, path: str, result: dict[str, Any]) -> None:
+        with self._event_lock:
+            self._priority.append((path, result))
+        self._events_ready.set()
+
+    def _next_event(self):
+        with self._event_lock:
+            if self._priority:
+                return self._priority[0], self._priority
+            try:
+                body = self._outbox.peek()
+            except (OSError, sqlite3.Error, ValueError):
+                self._log_outbox_failure()
+            else:
+                if body is not None:
+                    return ("/v1/events", body), None
+            if self._events:
+                return self._events[0], self._events
+            return None
 
     def _hello(self) -> None:
         with self._lock:
@@ -535,8 +620,7 @@ class QuantBot:
                 done = self._seen[cid]
                 if done is not None:  # ran already: report the same result again
                     path = f"/v1/commands/{urllib.parse.quote(cid, safe='')}/result"
-                    self._events.append((path, done))
-                    self._events_ready.set()
+                    self._report_result(path, done)
                 return
             self._seen[cid] = None
         self._commands.put(command)
@@ -588,8 +672,7 @@ class QuantBot:
             completed = [key for key, value in self._seen.items() if value is not None]
             if len(completed) > REMEMBER_RESULTS:
                 del self._seen[completed[0]]
-        self._events.append((f"{path}/result", result))
-        self._events_ready.set()
+        self._report_result(f"{path}/result", result)
         return 1
 
     def _forget(self, cid: str) -> None:
@@ -633,31 +716,47 @@ class QuantBot:
 
     def _send_loop(self) -> None:
         backoff = 1.0
-        while not self._closed.is_set() or self._events:
-            if not self._events:
-                self._events_ready.clear()
-                if self._closed.is_set():
-                    return
+        while not self._closed.is_set():
+            self._events_ready.clear()
+            queued = self._next_event()
+            if queued is None:
                 self._events_ready.wait(1.0)
                 continue
-            path, body = self._events[0]
+            item, queue_ref = queued
+            path, body = item
+            event_id = body.get("event_id")
             try:
-                self._request("POST", path, body)
+                response = self._request("POST", path, body)
+                if event_id and (
+                    not isinstance(response, dict)
+                    or response.get("ok") is not True
+                    or response.get("event_id", event_id) != event_id
+                ):
+                    raise ValueError("notice acknowledgment missing or mismatched")
             except urllib.error.HTTPError as exc:
-                if exc.code >= 500 or exc.code == 429:
+                if exc.code >= 500 or exc.code in {401, 403, 429}:
                     self._closed.wait(min(backoff, 30))
                     backoff *= 2
                     continue
-                if exc.code != 404:  # 404: an old command QuantBot no longer waits for
+                if exc.code != 404:
                     log.warning("QuantBot rejected %s: HTTP %s", path, exc.code)
             except (OSError, ValueError):
-                if self._closed.is_set():
-                    return
                 self._closed.wait(min(backoff, 30))
                 backoff *= 2
                 continue
             backoff = 1.0
-            self._events.popleft()
+            with self._event_lock:
+                if queue_ref is not None:
+                    if queue_ref and queue_ref[0] is item:
+                        queue_ref.popleft()
+                else:
+                    try:
+                        self._outbox.ack(event_id)
+                    except (OSError, sqlite3.Error):
+                        self._log_outbox_failure()
+                        backoff = 5
+            if backoff > 1:
+                self._closed.wait(backoff)
 
     def _beat(self, url: str, body: bytes | None) -> None:
         request = urllib.request.Request(url, data=body, method="POST" if body else "GET")  # noqa: S310

@@ -12,10 +12,11 @@ import binascii
 import hmac
 import json
 import logging
+import re
 import sqlite3
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -23,7 +24,7 @@ from typing import Any
 
 from quantbot.config import MAX_ORDER_QTY, StrategyConfig, valid_order_qty
 from quantbot.i18n import tr
-from quantbot.notices import Connections, Expiries
+from quantbot.notices import Connections, Expiries, Notice, NoticeInbox
 from quantbot.operations import Operations, protected
 from quantbot.strategy_features import ActionSpec, Metric, parse_actions, record_metric
 from quantbot.workspace_credentials import fingerprint
@@ -43,6 +44,9 @@ EVENT_KINDS = {
 }
 EVENT_ICONS = {"fill": "🧾 ", "info": "", "summary": "📅 ", "alert": "⚠️ ", "error": "❌ "}
 MAX_TEXT = 3500
+DURABLE_EVENTS = {"fill", "alert", "error", "summary"}
+NOTICE_RETRY_SECONDS = 30
+NOTICE_PARALLELISM = 4
 
 # (strategy name, text, kind, image) -> delivered to Telegram by the bot
 Notify = Callable[[str, str, str, "bytes | None"], None]
@@ -123,6 +127,7 @@ class Hub:
         wall_clock: Callable[[], float] = time.time,
         operation_path: Path | None = None,
         operation_ttl: float = 15.0,
+        deliver_notice: Callable[[Notice], Awaitable[bool]] | None = None,
     ) -> None:
         self.strategies = {
             s.id: Strategy(s.id, s.name, s.token, s.max_order_qty) for s in strategies
@@ -136,6 +141,9 @@ class Hub:
         self.wall_clock = wall_clock
         self.operation_ttl = operation_ttl
         self.operations = Operations(operation_path)
+        self.notice_inbox = NoticeInbox(self.operations.db)
+        self.deliver_notice = deliver_notice
+        self._notice_tasks: set[asyncio.Task[None]] = set()
         self._workspace_tokens: dict[str, tuple[str, str]] = {}
         self.connections = Connections()
         self.expiries = Expiries()
@@ -432,8 +440,17 @@ class Hub:
             command.future.set_result(result)
         return True
 
-    def event(self, strategy: Strategy, body: dict[str, Any]) -> None:
+    def event(self, strategy: Strategy, body: dict[str, Any]) -> str | None:
         kind = body.get("type")
+        if not isinstance(kind, str):
+            raise EventError("event type must be a string")
+        event_id = body.get("event_id")
+        if event_id is not None and (
+            kind not in DURABLE_EVENTS
+            or not isinstance(event_id, str)
+            or not re.fullmatch(r"[0-9a-f]{32}", event_id)
+        ):
+            raise EventError("invalid event_id for this event type")
         if kind == "hello":
             names = body.get("commands")
             if not isinstance(names, list):
@@ -473,6 +490,13 @@ class Hub:
                 except (binascii.Error, ValueError) as exc:
                     raise EventError("image must be base64 PNG data") from exc
             text = EVENT_ICONS[kind] + _text(body.get("message"))
+            if event_id is not None:
+                notice = Notice(
+                    strategy.id, event_id, strategy.name, text, EVENT_KINDS[kind], image
+                )
+                if self.notice_inbox.accept(notice, self.wall_clock()):
+                    self._flush_notices()
+                return event_id
             self.notify(strategy.name, text, EVENT_KINDS[kind], image)
         elif kind == "connection":
             name, ok = _text(body.get("name"), 64), body.get("ok")
@@ -499,6 +523,32 @@ class Hub:
         else:
             raise EventError(f"unknown event type {kind!r}")
 
+    def _flush_notices(self) -> None:
+        now = self.wall_clock()
+        available = NOTICE_PARALLELISM - len(self._notice_tasks)
+        for notice in self.notice_inbox.due(now, available):
+            if self.deliver_notice is None:
+                self.notify(notice.strategy, notice.text, notice.kind, notice.image)
+                self.notice_inbox.finish(notice)
+                continue
+            self.notice_inbox.defer(notice, now + NOTICE_RETRY_SECONDS)
+            task = asyncio.create_task(self._deliver_notice(notice))
+            self._notice_tasks.add(task)
+            task.add_done_callback(self._notice_tasks.discard)
+
+    async def _deliver_notice(self, notice: Notice) -> None:
+        try:
+            if self.deliver_notice and await self.deliver_notice(notice):
+                self.notice_inbox.finish(notice)
+        except Exception:
+            log.exception("Could not deliver notice %s for %s", notice.id, notice.sid)
+
+    async def close_notices(self) -> None:
+        tasks = tuple(self._notice_tasks)
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
     def _status(self, strategy: Strategy, data: dict[str, Any]) -> None:
         strategy.status_text = _text(data.get("text"))
         paused = data.get("paused")
@@ -511,6 +561,7 @@ class Hub:
         """Run every few seconds: offline alerts, stale commands, expiry reminders."""
         now = self.clock()
         self.operations.expire(self.wall_clock(), self.result_ttl)
+        self._flush_notices()
         for strategy in self.strategies.values():
             if strategy.was_online and not self.online(strategy):
                 strategy.was_online = False

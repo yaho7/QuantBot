@@ -347,3 +347,29 @@ def test_client_reports_metric_and_runs_custom_action(server: Server, tmp_path: 
         qb.close()
         thread.join(5)
         assert not thread.is_alive()
+
+
+def test_fill_survives_client_restart_and_lost_ack(server: Server) -> None:
+    url = f"http://127.0.0.1:{server.port}"
+    original = QuantBot(url=url, token=TOKEN)
+    original.fill("persistent fill")
+    for index in range(550):
+        original.status(str(index))
+    original.close(timeout=0)
+    restarted = QuantBot(url=url, token=TOKEN)
+    request = restarted._request
+    attempted = []
+
+    def lose_first_ack(method, path, body=None, timeout=10):
+        response = request(method, path, body, timeout)
+        if method == "POST" and body and body.get("type") == "fill":
+            attempted.append(body["event_id"])
+            if len(attempted) == 1:
+                raise OSError("ack lost")
+        return response
+
+    restarted._request = lose_first_ack
+    with restarted:
+        wait_until(lambda: len(attempted) == 2 and restarted._outbox.peek() is None)
+    assert attempted[0] == attempted[1]
+    assert sum("persistent fill" in item[1] for item in server.notes) == 1

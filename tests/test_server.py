@@ -267,3 +267,30 @@ def test_notices_connection_expiry_and_summary_image() -> None:
         ]
 
     scenario(test)
+
+
+def test_durable_notice_is_retried_after_server_restart(tmp_path) -> None:
+    now = 1_800_000_000.0
+    event_id = "a" * 32
+    body = {"type": "alert", "message": "risk threshold", "event_id": event_id}
+    path = tmp_path / "operations.sqlite3"
+
+    async def fail_delivery(notice):
+        assert notice.id == event_id
+        return False
+
+    async def test(hub: Hub, client: TestClient, notes: Notes) -> None:
+        first = await client.post("/v1/events", json=body, headers=AUTH)
+        assert await first.json() == {"ok": True, "event_id": event_id}
+        await asyncio.sleep(0)
+        await hub.close_notices()
+        restarted = Hub(
+            (A,), lambda *note: notes.append(note), operation_path=path, wall_clock=lambda: now + 31
+        )
+        restarted.sweep()
+        assert notes == [(A.name, "⚠️ risk threshold", "alert", None)]
+        assert restarted.event(restarted.strategies[A.id], body) == event_id
+        restarted.sweep()
+        assert len(notes) == 1
+
+    scenario(test, operation_path=path, wall_clock=lambda: now, deliver_notice=fail_delivery)

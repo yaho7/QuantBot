@@ -35,6 +35,12 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 
 `hello.actions` 可声明网页操作，每项包含 `id`、`label`、可选的 `confirm` 和 `fields`。字段以关键字参数名称为键，描述包含 `type`（`text`、`number`、`boolean` 或 `select`）、可选 `label`、`required`（默认真）和选择项 `options`。调用自定义操作时收到的命令名为 `action:<id>`，响应沿用普通命令的 `message` 和 `data`。
 
+成交、风控告警、错误和总结事件可以带 `event_id`，使用 32 位小写十六进制 ID。
+服务端持久保存后返回 `{"ok":true,"event_id":"…"}`。客户端可用原 ID 重试，
+QuantBot 按策略和事件 ID 去重。新版 Python 客户端会将这些事件放入本地 SQLite
+队列，收到回执后删除；服务端也会在 Telegram 投递失败后重试。Telegram 接收成功
+但 HTTP 回执丢失时，外部消息仍有可能重复。
+
 ## 2. 取命令
 
 `GET /v1/commands?wait=25`

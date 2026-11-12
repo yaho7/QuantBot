@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+import sqlite3
 import threading
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from quantbot.i18n import tr
@@ -81,3 +83,75 @@ class Expiries:
                     text = tr("⏰ {0} 的授权约 {1} 小时后过期，请尽快续期。", label, hours)
                     messages.append((key, text))
         return messages
+
+
+@dataclass(frozen=True)
+class Notice:
+    sid: str
+    id: str
+    strategy: str
+    text: str
+    kind: str
+    image: bytes | None
+
+
+class NoticeInbox:
+    """Commit an event before acknowledging the client and retain its ID on delivery."""
+
+    def __init__(self, db: sqlite3.Connection) -> None:
+        self.db = db
+        self.db.executescript("""
+            CREATE TABLE IF NOT EXISTS notice_inbox (
+                sid TEXT NOT NULL, id TEXT NOT NULL, strategy TEXT NOT NULL,
+                text TEXT NOT NULL, kind TEXT NOT NULL, image BLOB,
+                created REAL NOT NULL, retry_at REAL NOT NULL, delivered INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (sid, id)
+            );
+            CREATE INDEX IF NOT EXISTS notice_due ON notice_inbox(retry_at) WHERE delivered=0;
+            """)
+
+    def accept(self, notice: Notice, now: float) -> bool:
+        with self.db:
+            return (
+                self.db.execute(
+                    """INSERT OR IGNORE INTO notice_inbox
+                   (sid, id, strategy, text, kind, image, created, retry_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        notice.sid,
+                        notice.id,
+                        notice.strategy,
+                        notice.text,
+                        notice.kind,
+                        notice.image,
+                        now,
+                        now,
+                    ),
+                ).rowcount
+                == 1
+            )
+
+    def due(self, now: float, limit: int) -> list[Notice]:
+        return [
+            Notice(*row)
+            for row in self.db.execute(
+                """SELECT sid, id, strategy, text, kind, image FROM notice_inbox
+               WHERE delivered=0 AND retry_at<=? ORDER BY retry_at, created LIMIT ?""",
+                (now, limit),
+            )
+        ]
+
+    def defer(self, notice: Notice, until: float) -> None:
+        with self.db:
+            self.db.execute(
+                "UPDATE notice_inbox SET retry_at=? WHERE sid=? AND id=?",
+                (until, notice.sid, notice.id),
+            )
+
+    def finish(self, notice: Notice) -> None:
+        with self.db:
+            self.db.execute(
+                """UPDATE notice_inbox SET delivered=1, text='', image=NULL
+                   WHERE sid=? AND id=?""",
+                (notice.sid, notice.id),
+            )
