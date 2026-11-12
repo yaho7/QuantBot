@@ -1,0 +1,180 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CircleAlert, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { api, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
+import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, Table, useData, when } from "./ui";
+
+const actions: Record<string, string> = {
+  pause_entry: "暂停新开仓", resume_entry: "恢复新开仓", refresh: "刷新监控",
+  set_parameters: "修改参数", cancel_order: "撤销订单", close_position: "关闭持仓",
+  flatten: "关闭全部归属持仓", buy: "手动买入", sell: "手动卖出",
+};
+const shadow = new Set(["pause_entry", "resume_entry"]);
+const safe = new Set(["pause_entry", "resume_entry", "refresh"]);
+
+export function ControlPanel({ strategy }: { strategy: Detail }) {
+  const [selected, setSelected] = useState<Capability | null>(null);
+  const control = strategy.control;
+  const reported = control.reported_current ? control.reported : null;
+  const requested = control.desired.entry_enabled;
+  const values = [
+    ["期望交易权限", requested === undefined ? "由策略决定" : requested ? "允许新开仓" : "暂停新开仓"],
+    ["实际上报权限", reported ? reported.entry_enabled ? "允许新开仓" : "暂停新开仓" : "等待当前实例回报"],
+    ["本地风控锁", reported?.risk_locked == null ? "未知" : reported.risk_locked ? "已锁定" : "未锁定"],
+    ["有效开仓权限", control.effective_entry_enabled == null ? "未知" : control.effective_entry_enabled ? "允许" : "禁止"],
+  ];
+  return <div className="stack">
+    <Panel title="开仓权限与风控" hint={`期望修订 ${control.desired.revision} · 实际修订 ${control.reported?.revision ?? "—"} · ${control.in_sync ? "已同步" : "等待同步"}`}>
+      <div className="value-grid">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+      <div className="notice"><ShieldCheck size={16} /><span>暂停新开仓期间，策略仍需运行行情处理、监控和本地风控。恢复开仓时，本地风控锁继续有效。</span></div>
+    </Panel>
+    <Panel title="远程操作" hint="操作由策略主动声明，最终状态以策略回执为准。">
+      {strategy.archived_at ? <Empty title="策略已归档" /> : !strategy.capabilities.length ?
+        <Empty title="尚未声明控制能力" text="为执行实例配置 control 或 commands 权限，并在会话中声明能力。" /> :
+        <div className="control-grid">{strategy.capabilities.map((cap) => {
+          const risky = cap.high_risk || !safe.has(cap.id);
+          const blocked = strategy.mode === "live" && risky && !strategy.live_trading_enabled;
+          const unavailable = !shadow.has(cap.id) && !strategy.executor_online;
+          return <button key={cap.id} disabled={blocked || unavailable} onClick={() => setSelected(cap)} className="control-button">
+            <strong>{cap.label}</strong><small>{blocked ? "实盘高风险操作未启用" : unavailable ? "执行实例离线"
+              : risky ? "需二次确认" : shadow.has(cap.id) ? "持续状态" : "一次性操作"}</small>
+          </button>;
+        })}</div>}
+    </Panel>
+    <Panel title="近期指令"><OperationTable strategyId={strategy.id} compact /></Panel>
+    {selected && <CommandDialog capability={selected} strategy={strategy} close={() => setSelected(null)} />}
+  </div>;
+}
+
+function ParameterInput({ name, parameter, value, set }: {
+  name: string; parameter: Capability["parameters"][string]; value: Scalar | undefined;
+  set: (value: Scalar | undefined) => void;
+}) {
+  const { type, required, label, choices, minimum, maximum } = parameter;
+  if (type === "boolean") return <Field label={label}><select required={required} value={value == null ? "" : String(value)}
+    onChange={(e) => set(e.target.value ? e.target.value === "true" : undefined)}>
+    <option value="">请选择</option><option value="true">是</option><option value="false">否</option></select></Field>;
+  if (type === "choice") return <Field label={label}><select required={required} value={value == null ? "" : String(value)}
+    onChange={(e) => set(e.target.value || undefined)}>
+    <option value="">请选择</option>{choices.map((choice) => <option key={choice}>{choice}</option>)}</select></Field>;
+  return <Field label={label} hint={[name, minimum != null ? `最小 ${minimum}` : "", maximum != null ? `最大 ${maximum}` : ""].filter(Boolean).join(" · ")}>
+    <input type={type === "integer" ? "number" : "text"} inputMode={type === "decimal" ? "decimal" : undefined}
+      required={required} min={type === "integer" ? minimum ?? undefined : undefined}
+      max={type === "integer" ? maximum ?? undefined : undefined}
+      pattern={type === "decimal" ? "-?(0|[1-9][0-9]*)([.][0-9]+)?" : undefined}
+      value={value == null ? "" : String(value)} onChange={(e) =>
+        set(e.target.value === "" ? undefined : type === "integer" ? Number(e.target.value) : e.target.value)} />
+  </Field>;
+}
+
+function CommandDialog({ capability, strategy, close }: { capability: Capability; strategy: Detail; close: () => void }) {
+  const client = useQueryClient();
+  const [requestId] = useState(() => crypto.randomUUID());
+  const [parameters, setParameters] = useState<Record<string, Scalar | undefined>>(() =>
+    Object.fromEntries(Object.entries(capability.parameters).map(([key, value]) => [key, value.default ?? undefined])));
+  const [command, setCommand] = useState<Command>();
+  const operation = useData<Command>(`commands/${command?.id ?? ""}`, !!command?.id, 3_000);
+  const record = operation.data ?? command;
+  const create = useMutation({
+    mutationFn: () => api<Command>(strategyApi(strategy.id, "commands"), "POST",
+      { action: capability.id, request_id: requestId, arguments: parameters }),
+    onSuccess: (result) => { setCommand(result); void client.invalidateQueries({ queryKey: ["live"] }); },
+  });
+  return <Dialog title={capability.label} close={close}>
+    {record ? <OperationView command={record} strategy={strategy.name} close={close} /> :
+      <form className="stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+        <p>目标策略 <strong>{strategy.name}</strong></p>
+        {Object.entries(capability.parameters).map(([name, parameter]) => <ParameterInput key={name}
+          {...{ name, parameter }} value={parameters[name]} set={(value) => setParameters({ ...parameters, [name]: value })} />)}
+        {shadow.has(capability.id) && <div className="notice">服务会保存期望权限。收到策略实际应用的回报后，指令才会显示成功。</div>}
+        <ErrorNotice error={create.error} />
+        <div className="dialog-actions"><button type="button" className="button secondary" onClick={close}>取消</button>
+          <button className="button primary" disabled={create.isPending}>提交请求</button></div>
+      </form>}
+  </Dialog>;
+}
+
+function OperationView({ command, strategy, close }: { command: Command; strategy?: string; close: () => void }) {
+  const client = useQueryClient();
+  const [evidence, setEvidence] = useState("");
+  const [resolution, setResolution] = useState<"succeeded" | "failed">("failed");
+  const session = useData<{ actor: string }>("session");
+  const act = useMutation({
+    mutationFn: (action: "confirm" | "reconcile") => api<Command>(`commands/${command.id}/${action}`, "POST",
+      action === "reconcile" ? { evidence, status: resolution } : undefined),
+    onSuccess: (data) => {
+      client.setQueryData(["live", `commands/${command.id}`], data);
+      void client.invalidateQueries({ queryKey: ["live"] });
+    },
+  });
+  const display = act.data && act.data.updated_at >= command.updated_at ? act.data : command;
+  const canConfirm = display.state === "confirmation_required" && display.actor === session.data?.actor;
+  return <div className="stack">
+    <div className="toolbar"><CommandBadge state={display.state} /><span className="mono subtle">{display.id}</span></div>
+    <dl className="detail-list">
+      {strategy && <><dt>策略</dt><dd>{strategy}</dd></>}
+      <dt>指令</dt><dd>{actions[display.action] ?? display.action}</dd>
+      <dt>发起人</dt><dd>{display.actor}</dd><dt>截止时间</dt><dd>{when(display.expires_at)}</dd>
+      {display.revision != null && <><dt>控制修订</dt><dd>{display.revision}</dd></>}
+    </dl>
+    {Object.keys(display.arguments).length > 0 && <Code label="提交参数">{JSON.stringify(display.arguments, null, 2)}</Code>}
+    {display.result != null && <Code label="策略回执">{JSON.stringify(display.result, null, 2)}</Code>}
+    {display.error && <div className="notice warn">{display.error}</div>}
+    {canConfirm && <div className="notice warn"><CircleAlert size={17} /><span>请核对策略和参数。确认后，授权实例可在有效期内领取一次性执行许可。</span></div>}
+    {display.state === "unknown" && <form className="stack" onSubmit={(e) => { e.preventDefault(); act.mutate("reconcile"); }}>
+      <div className="notice warn">请先核对程序与券商侧的实际记录，再填写核对依据。</div>
+      <Field label="核对结果"><select value={resolution} onChange={(e) => setResolution(e.target.value as typeof resolution)}>
+        <option value="failed">已核实未执行成功</option><option value="succeeded">已核实执行成功</option></select></Field>
+      <Field label="核对依据"><textarea value={evidence} onChange={(e) => setEvidence(e.target.value)} required minLength={3} maxLength={1000} /></Field>
+      <button className="button secondary" disabled={act.isPending}>保存核对结果</button>
+    </form>}
+    <ErrorNotice error={act.error} />
+    <div className="dialog-actions"><button className="button secondary" onClick={close}>关闭</button>
+      {canConfirm && <button className="button danger" disabled={act.isPending} onClick={() => act.mutate("confirm")}>确认执行</button>}</div>
+  </div>;
+}
+
+function InspectCommand({ id, close }: { id: string; close: () => void }) {
+  const operation = useData<Command>(`commands/${id}`, true, 3_000);
+  return <Dialog title="指令详情" close={close}><ErrorNotice error={operation.error} />
+    {operation.data ? <OperationView command={operation.data} close={close} /> : operation.isPending ? <Loading /> : null}</Dialog>;
+}
+
+export function OperationTable({ strategyId, compact = false, selected, close }: {
+  strategyId?: string; compact?: boolean; selected?: string; close?: () => void;
+}) {
+  const [cursor, setCursor] = useState<string[]>([]);
+  const [inspect, setInspect] = useState<string>();
+  const before = cursor.at(-1);
+  const [state, setState] = useState("");
+  const query = new URLSearchParams({ limit: compact ? "8" : "30" });
+  if (strategyId) query.set("strategy_id", strategyId);
+  if (before) query.set("before", before);
+  const commands = useData<Command[]>(`commands?${query}`);
+  const strategies = useData<Strategy[]>("strategies", !compact);
+  const names = Object.fromEntries((strategies.data ?? []).map((s) => [s.id, s.name]));
+  const rows = commands.data?.filter((item) => !state || item.state === state) ?? [];
+  return <>
+    {!compact && <div className="toolbar"><select aria-label="筛选当前页状态" value={state} onChange={(e) => setState(e.target.value)}>
+      <option value="">全部状态</option><option value="pending">等待策略</option><option value="executing">执行中</option>
+      <option value="succeeded">成功</option><option value="failed">失败</option><option value="unknown">结果未知</option></select></div>}
+    <ErrorNotice error={commands.error} />
+    {commands.isPending ? <Loading /> : <Table columns={["指令", ...(compact ? [] : ["策略"]), "状态", "发起人", "创建时间", ""]} empty={!rows.length}>
+      {rows.map((item) => <tr key={item.id}><td>{actions[item.action] ?? item.action}</td>
+        {!compact && <td><a href={strategyPath(item.strategy_id, "control")}>{names[item.strategy_id] ?? item.strategy_id}</a></td>}
+        <td><CommandBadge state={item.state} /></td><td className="mono subtle">{item.actor}</td><td>{when(item.created_at)}</td>
+        <td><button className="button quiet" onClick={() => setInspect(item.id)}>详情</button></td></tr>)}
+    </Table>}
+    {!compact && <div className="toolbar"><button className="button secondary" disabled={!before} onClick={() => setCursor(cursor.slice(0, -1))}>上一页</button>
+      <button className="button secondary" disabled={commands.data?.length !== 30} onClick={() => {
+        const last = commands.data?.at(-1);
+        if (last) setCursor([...cursor, last.id]);
+      }}>下一页</button></div>}
+    {(inspect || selected) && <InspectCommand id={(inspect ?? selected)!} close={() => { setInspect(undefined); close?.(); }} />}
+  </>;
+}
+
+export function OperationsPage({ commandId }: { commandId?: string }) {
+  return <><PageTitle title="操作记录" sub="Web 和 Telegram 的远程指令、执行回执与核对结果。" />
+    <Panel><OperationTable selected={commandId} close={() => { if (commandId) location.hash = "#operations"; }} /></Panel></>;
+}

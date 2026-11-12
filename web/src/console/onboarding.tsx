@@ -1,0 +1,270 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BookOpen, ChevronRight, KeyRound, Plus } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { api, strategyApi, strategyPath, type Catalog, type Credential, type DataType, type Detail, type Scope, type StrategySettings, type Token, type TokenOptions } from "./api";
+import { Code, CopyButton, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
+
+export const defaultStrategy: StrategySettings = {
+  name: "", mode: "paper", description: "", group: "", tags: [], disconnect_policy: "continue",
+  retention_days: 90, live_trading_enabled: false, alerts: { enabled: true, minimum: "info", categories: [] },
+};
+
+export function StrategyFields({ form, set }: { form: StrategySettings; set: (form: StrategySettings) => void }) {
+  return <>
+    <div className="form-grid">
+      <Field label="策略名称"><input maxLength={100} required value={form.name} onChange={(e) => set({ ...form, name: e.target.value })} /></Field>
+      <Field label="交易模式"><select value={form.mode} onChange={(e) => set({ ...form, mode: e.target.value as StrategySettings["mode"], live_trading_enabled: false })}>
+        <option value="paper">模拟盘</option><option value="live">实盘</option><option value="backtest">回测</option></select></Field>
+      <Field label="分组"><input maxLength={100} value={form.group} onChange={(e) => set({ ...form, group: e.target.value })} /></Field>
+      <Field label="标签" hint="以逗号分隔"><input defaultValue={form.tags.join(", ")} onChange={(e) => set({ ...form, tags: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} /></Field>
+    </div>
+    <Field label="策略说明"><textarea rows={2} maxLength={1000} value={form.description} onChange={(e) => set({ ...form, description: e.target.value })} /></Field>
+    <details className="form-detail"><summary>断线、数据保留与告警</summary><div className="stack">
+      <div className="form-grid">
+        <Field label="断线策略" hint="需要程序自行实施并回报"><select value={form.disconnect_policy}
+          onChange={(e) => set({ ...form, disconnect_policy: e.target.value as StrategySettings["disconnect_policy"] })}>
+          <option value="continue">继续自主运行</option><option value="block_entry">禁止新开仓，保留本地风控</option>
+        </select></Field>
+        <Field label="数据保留（天）"><input type="number" required min={1} max={3650} value={form.retention_days}
+          onChange={(e) => set({ ...form, retention_days: Number(e.target.value) })} /></Field>
+        <Field label="最低告警等级"><select value={form.alerts.minimum} onChange={(e) =>
+          set({ ...form, alerts: { ...form.alerts, minimum: e.target.value as StrategySettings["alerts"]["minimum"] } })}>
+          {Object.entries(severityText).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </select></Field>
+      </div>
+      <label className="checkbox"><input type="checkbox" checked={form.alerts.enabled} onChange={(e) =>
+        set({ ...form, alerts: { ...form.alerts, enabled: e.target.checked } })} /> 记录并通知该策略的告警</label>
+      <div className="field"><span>告警分类</span><CategoryPicker selected={form.alerts.categories}
+        onChange={(categories) => set({ ...form, alerts: { ...form.alerts, categories } })} /></div>
+      {form.mode === "live" && <label className="checkbox danger-text"><input type="checkbox" checked={form.live_trading_enabled}
+        onChange={(e) => set({ ...form, live_trading_enabled: e.target.checked })} /> 允许通过 QuantBot 提交已声明的实盘高风险操作</label>}
+    </div></details>
+  </>;
+}
+
+export function CategoryPicker({ selected, onChange }: { selected: string[]; onChange: (items: string[]) => void }) {
+  return <div className="chips">{Object.entries(categoryText).map(([key, label]) =>
+    <label className="chip" key={key}><input type="checkbox" checked={selected.includes(key)}
+      onChange={(e) => onChange(e.target.checked ? [...selected, key] : selected.filter((item) => item !== key))} />{label}</label>)}
+    <small>未选择时包含全部分类</small></div>;
+}
+
+const scopeLabels: Record<Scope, string> = { session: "会话与心跳", telemetry: "上报数据", control: "同步开仓权限", commands: "领取一次性指令" };
+
+function TokenFields({ scopes, setScopes, expiry, setExpiry }: {
+  scopes: Scope[]; setScopes: (s: Scope[]) => void; expiry: string; setExpiry: (s: string) => void;
+}) {
+  const set = (scope: Scope, checked: boolean) => {
+    const next = new Set(scopes);
+    if (checked) next.add(scope); else next.delete(scope);
+    if (scope === "commands" && checked) next.add("control");
+    if (scope === "control" && !checked) next.delete("commands");
+    setScopes([...next]);
+  };
+  return <>
+    <div className="field"><span>Token 权限</span><div className="chips">{(Object.keys(scopeLabels) as Scope[]).map((scope) =>
+      <label className="chip" key={scope}><input type="checkbox" checked={scopes.includes(scope)} disabled={scope === "session"}
+        onChange={(e) => set(scope, e.target.checked)} />{scopeLabels[scope]}</label>)}</div></div>
+    <Field label="Token 到期时间（可选）"><input type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
+  </>;
+}
+
+export function CreateStrategy({ close }: { close: () => void }) {
+  const query = useQueryClient();
+  const [form, set] = useState(defaultStrategy);
+  const [scopes, setScopes] = useState<Scope[]>(["session", "telemetry"]);
+  const [expiry, setExpiry] = useState("");
+  const create = useMutation({
+    mutationFn: () => api<{ strategy: Detail; credential: Credential }>("strategies", "POST", {
+      ...form, token: { scopes, expires_at: expiry ? new Date(expiry).toISOString() : null },
+    }),
+    onSuccess: () => void query.invalidateQueries({ queryKey: ["live"] }),
+  });
+  if (create.data) return <CredentialDialog credential={create.data.credential} close={() => {
+    location.hash = strategyPath(create.data.strategy.id, "api"); close();
+  }} />;
+  return <Dialog title="添加策略" close={close}><form className="stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+    <StrategyFields form={form} set={set} />
+    <TokenFields {...{ scopes, setScopes, expiry, setExpiry }} />
+    <ErrorNotice error={create.error} />
+    <div className="dialog-actions"><button className="button secondary" type="button" onClick={close}>取消</button>
+      <button className="button primary" disabled={create.isPending}><KeyRound size={16} /> 创建并生成 Token</button></div>
+  </form></Dialog>;
+}
+
+const origin = () => window.location.origin;
+const shell = () => `export QB_URL='${origin()}'
+read -rs QB_TOKEN
+export QB_TOKEN
+curl -fsS "$QB_URL/api/v2/agent/session" \\
+  -H "Authorization: Bearer $QB_TOKEN" \\
+  -H 'Content-Type: application/json' \\
+  -d '{"instance_id":"my-program"}'`;
+const python = () => `import json, os, urllib.request
+from datetime import datetime, timezone
+
+root = os.environ["QB_URL"].rstrip("/") + "/api/v2/agent"
+headers = {"Authorization": "Bearer " + os.environ["QB_TOKEN"],
+           "Content-Type": "application/json"}
+
+def request(path, method, data):
+    req = urllib.request.Request(root + path, json.dumps(data).encode(),
+                                 headers=headers, method=method)
+    with urllib.request.urlopen(req, timeout=10) as res:
+        return json.load(res)
+
+session = request("/session", "POST", {"instance_id": "my-program"})
+headers["X-Agent-Session"] = session["session_id"]
+request("/heartbeat", "PUT", {"health": "healthy"})
+request("/reports", "POST", {"records": [{
+    "type": "status", "schema_version": 1,
+    "observed_at": datetime.now(timezone.utc).isoformat(),
+    "runtime": {"health": "healthy"},
+}]})`;
+
+function aiInstructions(strategyId?: string) {
+  return `为我的独立量化程序添加 QuantBot v2 HTTP 接入。API 地址 ${origin()}/api/v2/agent${strategyId ? `，Strategy ID ${strategyId}` : ""}。
+从环境变量 QB_TOKEN 读取策略凭据，并将其作为 Authorization: Bearer 发送。POST /session 获取 X-Agent-Session；后续请求带此会话头。定期 PUT /heartbeat；遇到 409 重新建立会话。
+按 OpenAPI 和 JSON Schema 校验标准遥测，使用 POST /reports；数值按精确十进制字符串编码，时间戳带时区，事件 ID 在重传时保持不变。
+如果需要远程控制，声明实际支持的能力。先应用并本地持久化期望开仓权限，再报告对应 revision 和本地风控锁；恢复开仓不能解除风控锁。对一次性指令主动长轮询，仅在获得一次性许可后执行。保留命令 ID、领取记录和结果；结果未知时先查券商状态。
+本地风控和必要处置独立运行。使用模拟数据验证并处理重连、补传、撤销和过期。请参照 ${origin()}/openapi.json、${origin()}/api/v2/data-types 和各类型 Schema。`;
+}
+
+function CredentialDialog({ credential, close }: { credential: Credential; close: () => void }) {
+  return <Dialog title="接入 Token 已生成" close={close}><div className="stack">
+    <div className="notice warn">Token 明文仅显示一次。请复制并保存到程序的密钥配置。</div>
+    <KeyValue label="API 地址" value={`${origin()}/api/v2/agent`} />
+    <KeyValue label="策略 ID" value={credential.strategy_id} />
+    <KeyValue label="API Token" value={credential.token} />
+    <details className="form-detail"><summary>HTTP 接入示例和 AI 提示词</summary><div className="stack">
+      <Code label="curl">{shell()}</Code><Code label="Python">{python()}</Code>
+      <Code label="AI 接入提示词">{aiInstructions(credential.strategy_id)}</Code>
+    </div></details>
+    <div className="dialog-actions"><button className="button primary" onClick={close}>完成</button></div>
+  </div></Dialog>;
+}
+
+function KeyValue({ label, value }: { label: string; value: string }) {
+  return <div className="key-value"><div><small>{label}</small><code>{value}</code></div><CopyButton value={value} /></div>;
+}
+
+export function TokenPanel({ strategy }: { strategy: Detail }) {
+  const id = strategy.id;
+  const query = useQueryClient();
+  const tokens = useData<Token[]>(strategyApi(id, "tokens"));
+  const catalog = useData<Catalog>(strategyApi(id, "components"));
+  const [editing, setEditing] = useState<Token | "new" | null>(null);
+  const [revealed, reveal] = useState<Credential | null>(null);
+  const revoke = useMutation({
+    mutationFn: (token: Token) => api(strategyApi(id, `tokens/${token.id}`), "DELETE"),
+    onSuccess: () => void query.invalidateQueries({ queryKey: ["live"] }),
+  });
+  return <div className="stack">
+    <Panel title="接入凭据" hint="每个 Token 的权限、有效期和最近使用时间独立管理。"
+      action={!strategy.archived_at && <button className="button primary" onClick={() => setEditing("new")}><Plus size={16} /> 新建 Token</button>}>
+      <KeyValue label="策略 ID" value={id} /><KeyValue label="API 地址" value={`${origin()}/api/v2/agent`} />
+      <ErrorNotice error={tokens.error ?? revoke.error} />
+      {tokens.isPending ? <Loading /> : <Table columns={["Token ID", "权限", "最近使用", "有效期", "状态", "操作"]} empty={!tokens.data?.length}>
+        {tokens.data?.map((token) => {
+          const expired = token.expires_at && Date.parse(token.expires_at) <= Date.now();
+          return <tr key={token.id}><td className="mono">{token.id}</td><td>{token.scopes.join(" · ")}</td>
+            <td>{when(token.last_used_at)}</td><td>{token.expires_at ? when(token.expires_at) : "长期"}</td>
+            <td>{token.revoked_at ? "已撤销" : expired ? "已过期" : "有效"}</td>
+            <td className="row-actions">{!strategy.archived_at && <>
+              <button className="button quiet" onClick={() => setEditing(token)}>轮换</button>
+              {!token.revoked_at && <button className="button quiet danger-text" onClick={() => {
+                if (confirm("撤销该 Token 后，使用它的实例将失去连接。继续撤销？")) revoke.mutate(token);
+              }}>撤销</button>}
+            </>}</td></tr>;
+        })}
+      </Table>}
+    </Panel>
+    <Panel title="连接诊断" hint="实例最近心跳、声明能力和协议校验情况。">
+      <Table columns={["实例", "连接", "最后心跳", "程序", "Token ID"]} empty={!strategy.instances.length}>
+        {strategy.instances.map((item) => <tr key={item.instance_id}><td className="mono">{item.instance_id}</td><td>{item.online ? "在线" : "离线"}</td>
+          <td>{when(item.last_seen)}</td><td>{[item.declarations.language, item.declarations.framework, item.declarations.version, item.declarations.broker].filter(Boolean).join(" · ") || "—"}</td>
+          <td className="mono">{item.token_id}</td></tr>)}
+      </Table>
+      {catalog.data?.schema_failures.map((item) => <div key={item.type} className={`notice ${item.active ? "warn" : ""}`}>
+        {item.type} · {item.active ? "协议不兼容" : "已收到兼容数据"} · {item.count} 次 · {when(item.observed_at)}
+      </div>)}
+      <a className="button secondary" href={`#api/${encodeURIComponent(id)}`}><BookOpen size={16} /> 接口规则与接入示例</a>
+    </Panel>
+    {editing && <EditToken strategyId={id} previous={editing === "new" ? undefined : editing}
+      close={() => setEditing(null)} done={(credential) => {
+        setEditing(null); reveal(credential); void query.invalidateQueries({ queryKey: ["live"] });
+      }} />}
+    {revealed && <CredentialDialog credential={revealed} close={() => reveal(null)} />}
+  </div>;
+}
+
+function EditToken({ strategyId, previous, close, done }: { strategyId: string; previous?: Token; close: () => void; done: (credential: Credential) => void }) {
+  const [scopes, setScopes] = useState<Scope[]>(previous?.scopes ?? ["session", "telemetry"]);
+  const [expiry, setExpiry] = useState("");
+  const mutation = useMutation({
+    mutationFn: (payload: TokenOptions) => api<Credential>(strategyApi(strategyId, previous ? `tokens/${previous.id}/rotate` : "tokens"), "POST", payload),
+    onSuccess: done,
+  });
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    mutation.mutate({ scopes, expires_at: expiry ? new Date(expiry).toISOString() : null });
+  }
+  return <Dialog title={previous ? "轮换 Token" : "新建 Token"} close={close}>
+    <form className="stack" onSubmit={submit}>
+      {previous && <div className="notice warn">生成新 Token 时会同时撤销旧 Token。</div>}
+      <TokenFields {...{ scopes, setScopes, expiry, setExpiry }} />
+      <ErrorNotice error={mutation.error} />
+      <div className="dialog-actions"><button className="button primary" disabled={mutation.isPending}>{previous ? "确认轮换" : "生成 Token"}</button></div>
+    </form>
+  </Dialog>;
+}
+
+type OpenApi = { paths: Record<string, Record<string, { summary?: string; description?: string }>> };
+
+export function ApiPage({ strategyId }: { strategyId?: string }) {
+  const spec = useQuery({ queryKey: ["spec"], queryFn: () => api<OpenApi>("/openapi.json"), staleTime: Infinity });
+  const types = useQuery({ queryKey: ["types"], queryFn: () => api<DataType[]>("/api/v2/data-types"), staleTime: Infinity });
+  const [schema, setSchema] = useState("status");
+  const schemaUrl = `/api/v2/schemas/${schema}`;
+  const definition = useQuery({ queryKey: ["schema", schema], queryFn: () => api<unknown>(schemaUrl), staleTime: Infinity });
+  return <>
+    <PageTitle title="API 接入" sub="使用标准 HTTP 注册、上报和接收控制指令。" action={<a href="/docs" className="button secondary"><BookOpen size={16} /> 交互文档</a>} />
+    <div className="stack">
+      <Panel title="连接信息">
+        <KeyValue label="API 地址" value={`${origin()}/api/v2/agent`} />
+        {strategyId && <KeyValue label="策略 ID" value={strategyId} />}
+        {strategyId ? <a className="text-link" href={strategyPath(strategyId, "api")}>管理 Token 和连接诊断 <ChevronRight size={14} /></a>
+          : <a className="text-link" href="#strategies">选择策略并管理 Token <ChevronRight size={14} /></a>}
+      </Panel>
+      <Panel title="接入规则"><ol className="steps">
+        <li>以 Bearer Token 请求 <code>POST /session</code>，记录服务返回的会话 ID。</li>
+        <li>后续请求设置 <code>X-Agent-Session</code>，并按会话返回的间隔发送心跳。会话过期时重新连接。</li>
+        <li>遥测记录包含 <code>type</code>、<code>schema_version</code> 和带时区时间戳。金额和数量使用十进制字符串，重传沿用原有 ID 和时间戳。</li>
+        <li>从 <code>/control</code> 对账开仓权限。实际应用并本地持久化后，回报修订版本与风控锁。交易和本地风控由程序独立处理。</li>
+        <li>一次性指令用 <code>/commands?wait=25</code> 长轮询，领取许可后才可执行。执行前保存命令 ID，按期回报实际结果。</li>
+      </ol>
+        <ErrorNotice error={spec.error} />
+        {spec.data && <><Table columns={["方法", "路径", "说明"]}>
+          {Object.entries(spec.data.paths).filter(([path]) => path.startsWith("/api/v2/agent/")).flatMap(([path, methods]) =>
+            Object.entries(methods).map(([method, info]) => <tr key={`${method} ${path}`}><td className="mono">{method.toUpperCase()}</td>
+              <td className="mono">{path}</td><td>{info.description ?? info.summary}</td></tr>))}
+        </Table><div className="toolbar"><CopyButton value={JSON.stringify(spec.data, null, 2)} label="复制完整 OpenAPI" />
+          <a href="/openapi.json" download="quantbot-openapi.json" className="button quiet">下载 OpenAPI</a></div></>}
+      </Panel>
+      <Panel title="数据类型与 JSON Schema">
+        <ErrorNotice error={types.error ?? definition.error} />
+        {types.data ? <div className="stack">
+          <Field label="数据类型"><select value={schema} onChange={(e) => setSchema(e.target.value)}>
+            {types.data.map((type) => <option key={type.type} value={type.type}>{type.type} · {type.storage}</option>)}
+            {["batch", "snapshot", "event", "metric-definitions"].map((type) => <option key={type}>{type}</option>)}
+          </select></Field>
+          {definition.data ? <Code label={schemaUrl}>{JSON.stringify(definition.data, null, 2)}</Code> : <Loading />}
+        </div> : types.isPending ? <Loading /> : <Empty />}
+      </Panel>
+      <Panel title="HTTP 示例" hint="使用环境变量传入策略 Token。">
+        <div className="stack"><Code label="curl">{shell()}</Code><Code label="Python 标准库">{python()}</Code>
+          <Code label="AI 接入提示词">{aiInstructions(strategyId)}</Code></div>
+      </Panel>
+    </div>
+  </>;
+}

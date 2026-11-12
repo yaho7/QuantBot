@@ -8,3 +8,5 @@ data/
 .DS_Store
 node_modules/
 *.tsbuildinfo
+web/playwright-report/
+web/test-results/
