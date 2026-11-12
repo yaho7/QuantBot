@@ -63,7 +63,7 @@ async def events(request: web.Request) -> web.Response:
         body = await _body(request)
         if not hub.authorized(strategy, token):
             return _error(401, "unknown token")
-        event_id = hub.event(strategy, body)
+        event_id = hub.event(strategy, body, token=token)
     except EventError as exc:
         return _error(400, str(exc))
     return web.json_response({"ok": True, "event_id": event_id} if event_id else {"ok": True})

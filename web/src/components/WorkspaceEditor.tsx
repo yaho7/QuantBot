@@ -22,7 +22,9 @@ const StrategyCodeEditor = lazy(() => import("@/components/StrategyCodeEditor"))
 const WorkspaceDiff = lazy(() => import("@/components/WorkspaceDiff"));
 const under = (path: string, folder: string) => path === folder || path.startsWith(folder + "/");
 
-export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (dirty: boolean) => void; onOpenProject: (id: string) => void }) {
+export default function WorkspaceEditor({ onDirty, onOpenProject, showRun }: {
+  onDirty: (dirty: boolean) => void; onOpenProject: (id: string) => void; showRun: boolean;
+}) {
   const { project, active: visible, api, key } = useWorkspace();
   const managed = project.managed;
   const toast = useToast();
@@ -38,7 +40,8 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
   const [githubOpen, setGithubOpen] = useState(() => visible && new URLSearchParams(window.location.search).has("github"));
   const [directory, setDirectory] = useState("");
   const [terminalPath, setTerminalPath] = useState<string>();
-  const [programOpen, setProgramOpen] = useState(false);
+  const [programOpen, setProgramOpen] = useState(showRun);
+  useEffect(() => { if (showRun) setProgramOpen(true); }, [showRun]);
   const dirty = Object.keys(drafts).length > 0;
   const files = useQueries({ queries: tabs.map((path) => ({
     queryKey: key("file", path),

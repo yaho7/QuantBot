@@ -93,6 +93,9 @@ class Strategy:
     last_seen: float | None = None
     polling: int = 0
     claim_poll_at: float | None = None
+    workspace_hello: bool = False
+    workspace_poll_at: float | None = None
+    workspace_claims: bool = False
     claims_protocol: bool = False
     stopped: bool = False
     stop_generation: int = 0
@@ -201,8 +204,15 @@ class Hub:
         for sid, strategy in self.strategies.items():
             if self._workspace_tokens.get(sid) != tokens.get(sid):
                 strategy.claim_poll_at = None
+                self.reset_workspace_contact(strategy)
                 strategy.wake.set()
         self._workspace_tokens = tokens
+
+    @staticmethod
+    def reset_workspace_contact(strategy: Strategy) -> None:
+        strategy.workspace_hello = False
+        strategy.workspace_poll_at = None
+        strategy.workspace_claims = False
 
     def online(self, strategy: Strategy) -> bool:
         if strategy.stopped:
@@ -352,6 +362,7 @@ class Hub:
         joined = False
         strategy.polling += 1
         token = strategy.token if token is None else token
+        from_workspace = token != strategy.token
         try:
             deadline = self.clock() + wait
             while self.authorized(strategy, token):
@@ -362,6 +373,9 @@ class Hub:
                     if claims:
                         strategy.claims_protocol = True
                         strategy.claim_poll_at = self.clock()
+                    if from_workspace:
+                        strategy.workspace_poll_at = self.clock()
+                        strategy.workspace_claims = claims
                     joined = True
                 ready = [] if strategy.stopped else self._deliverable(strategy, claims)
                 left = deadline - self.clock()
@@ -378,7 +392,10 @@ class Hub:
                             }
                             for c in ready
                         ],
-                        "need_hello": not strategy.stopped and not strategy.said_hello,
+                        "need_hello": not strategy.stopped
+                        and not (
+                            strategy.workspace_hello if from_workspace else strategy.said_hello
+                        ),
                     }
                 strategy.wake.clear()
                 try:
@@ -440,7 +457,9 @@ class Hub:
             command.future.set_result(result)
         return True
 
-    def event(self, strategy: Strategy, body: dict[str, Any]) -> str | None:
+    def event(
+        self, strategy: Strategy, body: dict[str, Any], *, token: str | None = None
+    ) -> str | None:
         kind = body.get("type")
         if not isinstance(kind, str):
             raise EventError("event type must be a string")
@@ -473,6 +492,8 @@ class Hub:
             strategy.actions = actions
             strategy.commands = tuple(n for n in COMMANDS if n in names)
             strategy.said_hello = True
+            if token is not None and token != strategy.token:
+                strategy.workspace_hello = True
             return
         self._seen(strategy)
         if kind == "status":

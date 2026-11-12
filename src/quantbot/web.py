@@ -66,6 +66,7 @@ from quantbot.github import DEVICE_URL, DeviceLogin, GitHubEditor
 from quantbot.hub import Hub, Result, Strategy
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
 from quantbot.operations import protected
+from quantbot.project_setup import PROJECT_TEMPLATE, preflight
 from quantbot.service import Service, ServiceError
 from quantbot.strategy_features import action_arguments
 from quantbot.templates import (
@@ -791,20 +792,32 @@ async def workspace_program(request: web.Request) -> web.Response:
         if workspace is None:
             raise ConfigError(tr("请先在服务器上运行 quantbot workspace init。"))
         runtime = _runtime(request.app, editor)
+        store, hub = request.app[STORE_KEY], request.app[WEB_HUB_KEY]
         credentials = WorkspaceCredentials(editor.data_dir)
         binding = credentials.for_root(editor.root)
+        if action == "preflight":
+            return _answer(True, "", await asyncio.to_thread(preflight, editor, workspace))
         if not action:
-            return _answer(
-                True,
-                "",
-                {
-                    **await runtime.status(),
-                    "strategy_id": binding.read().get("QB_NAME", ""),
-                },
-            )
+            return _answer(True, "", await _program_status(hub, runtime, binding))
         body = await _args(request)
         async with runtime.lock:
-            if action == "configure":
+            if action == "template":
+                async with request.app[EDITOR_LOCK].setdefault(editor.root, asyncio.Lock()):
+                    await asyncio.to_thread(editor.seed, "main.py", PROJECT_TEMPLATE)
+                message = tr("已生成 main.py。")
+            elif action == "setup":
+                command = body.get("command")
+                sid = body.get("id", "")
+                if not isinstance(command, str) or not isinstance(sid, str):
+                    raise ConfigError(tr("请输入有效的启动命令。"))
+                await runtime.configure(command)
+                _setup_program_binding(store, hub, editor, credentials, sid)
+                if body.get("start") is True:
+                    await _start_program(request.app, editor, runtime)
+                    message = tr("已启动工作区程序。")
+                else:
+                    message = tr("已保存启动命令和策略绑定。")
+            elif action == "configure":
                 command = body.get("command")
                 if not isinstance(command, str):
                     return _answer(False, tr("请输入有效的启动命令。"))
@@ -815,13 +828,11 @@ async def workspace_program(request: web.Request) -> web.Response:
                 message = tr("已启动工作区程序。")
             elif action == "stop":
                 await runtime.stop()
-                hub = request.app[WEB_HUB_KEY]
                 sid = binding.read().get("QB_NAME")
                 if (strategy := hub.strategies.get(sid)) is not None:
                     hub.mark_stopped(strategy)
                 message = tr("已停止工作区程序。")
             else:
-                hub = request.app[CORE_KEY].hub
                 if action == "unbind":
                     credentials.revoke(editor.root)
                 else:
@@ -829,13 +840,12 @@ async def workspace_program(request: web.Request) -> web.Response:
                     strategy = hub.strategies.get(sid) if isinstance(sid, str) else None
                     if strategy is None:
                         return _answer(False, tr("请选择一个已注册的策略。"))
-                    if action == "bind" and (await runtime.status())["running"]:
+                    if action == "bind" and await runtime.is_running():
                         return _answer(False, tr("请先停止程序，再修改策略绑定。"))
                     credentials.bind(editor.root, sid, strategy.token, rotate=action == "rotate")
                 hub.set_workspace_credentials(credentials.records())
                 message = tr("已更新工作区策略绑定。")
-            status = await runtime.status()
-            status["strategy_id"] = binding.read().get("QB_NAME", "")
+            status = await _program_status(hub, runtime, binding)
     except (ConfigError, OSError, asyncio.TimeoutError) as exc:
         if action:
             audit.write(f"workspace_{action}", user=WEB_USER, ok=False, result=str(exc))
@@ -844,6 +854,54 @@ async def workspace_program(request: web.Request) -> web.Response:
         f"workspace_{action}", user=WEB_USER, ok=True, project=str(editor.root), result=message
     )
     return _answer(True, message, status)
+
+
+def _setup_program_binding(
+    store: Store, hub: Hub, editor: Editor, credentials: WorkspaceCredentials, sid: str
+) -> None:
+    current = credentials.for_root(editor.root).read().get("QB_NAME", "")
+    project = workspace_id(editor.root)
+    create = not (sid or current)
+    sid = check_strategy_id(sid or current or f"project-{project}")
+    with store.edit() as data:
+        item = strategy_item(data, sid)
+        if create:
+            if item is None:
+                item = add_strategy(data, sid, editor.root.name[:64] or sid)
+                item["workspace_project"] = project
+            elif item.get("workspace_project") != project:
+                raise ConfigError(tr("已经有策略 {0}。", sid))
+        if item is None:
+            raise ConfigError(tr("请选择一个已注册的策略。"))
+        strategies = store.strategies(data)
+    hub.sync(strategies)
+    credentials.bind(editor.root, sid, item["token"])
+    hub.set_workspace_credentials(credentials.records())
+
+
+async def _program_status(hub: Hub, runtime: WorkspaceRuntime, binding: Store) -> dict[str, Any]:
+    status = await runtime.status()
+    values = binding.read()
+    sid = values.get("QB_NAME", "")
+    strategy = hub.by_token(values.get("QB_TOKEN", "")) if sid else None
+    age = None
+    if not sid:
+        connection = "unbound"
+    elif strategy is None or strategy.id != sid:
+        connection = "invalid"
+    elif not status["running"] or strategy.stopped:
+        connection = "stopped"
+    elif not strategy.workspace_hello:
+        connection = "waiting"
+    elif strategy.workspace_poll_at is None:
+        connection = "handshake"
+    elif hub.clock() - strategy.workspace_poll_at >= hub.offline_after:
+        connection = "stale"
+    else:
+        connection = "ready" if strategy.workspace_claims else "legacy"
+    if strategy is not None:
+        age = hub.age(strategy)
+    return {**status, "strategy_id": sid, "connection": connection, "status_age": age}
 
 
 def _runtime(app: web.Application, editor: Editor) -> WorkspaceRuntime:
@@ -863,9 +921,13 @@ async def _start_program(app: web.Application, editor: Editor, runtime: Workspac
     strategy = hub.by_token(binding.get("QB_TOKEN", "")) if binding else None
     if binding and (strategy is None or strategy.id != binding.get("QB_NAME")):
         raise ConfigError(tr("工作区策略绑定已失效，请重新绑定。"))
+    if await runtime.is_running():
+        raise ConfigError(tr("工作区程序已经在运行。"))
     async with app[EDITOR_LOCK].setdefault(editor.root, asyncio.Lock()):
         official = await asyncio.to_thread(refresh_workspace_sources, editor)
     sdk = await asyncio.to_thread(runtime_sdk, store.dir)
+    if strategy is not None:
+        hub.reset_workspace_contact(strategy)
     await runtime.start(
         workspace,
         credentials.path if binding else None,
@@ -2032,8 +2094,9 @@ def add_routes(
             web.get("/ui/api/workspace/directories", workspace_setup),
             web.post("/ui/api/workspace/{action:folder|init}", workspace_setup),
             web.get("/ui/api/workspace/program", workspace_program),
+            web.get("/ui/api/workspace/program/{action:preflight}", workspace_program),
             web.post(
-                "/ui/api/workspace/program/{action:configure|start|stop|bind|rotate|unbind}",
+                "/ui/api/workspace/program/{action:configure|start|stop|bind|rotate|unbind|setup|template}",
                 workspace_program,
             ),
             web.get("/ui/api/editor/git/{action:diff|branches}", local_git),

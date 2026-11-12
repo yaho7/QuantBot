@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RefreshCw, Save, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog, QueryBoundary } from "@/components/common";
+import { ProgramConnection } from "@/components/ProgramConnection";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
 import { useWorkspace } from "@/components/WorkspaceContext";
@@ -91,7 +92,6 @@ export function WorkspaceProgram() {
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Badge tone={data.running ? "gain" : "neutral"}>{data.running ? tr("运行中") : tr("已停止")}</Badge>
-                    {!data.running && data.exit_code !== null && <code className="text-xs text-muted-foreground">{tr("退出码 {0}", data.exit_code)}</code>}
                   </div>
                   {data.running ? (
                     <Button variant="outline" size="sm" disabled={change.isPending} onClick={() => { change.reset(); setConfirmStop(true); }}>
@@ -102,6 +102,7 @@ export function WorkspaceProgram() {
                       onClick={() => change.mutate({ action: "start" })}><Play /> {tr("启动程序")}</Button>
                   )}
                 </div>
+                <ProgramConnection data={data} />
                 {!confirmStop && change.error && <Alert tone="loss">{change.error.message}</Alert>}
                 {bind.error && <Alert tone="loss">{bind.error.message}</Alert>}
                 <div className="grid gap-2">

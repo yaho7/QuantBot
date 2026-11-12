@@ -7,7 +7,7 @@ import { Alert, Field, Input } from "@/components/ui/primitives";
 import { api } from "@/lib/api";
 import { tr } from "@/lib/i18n";
 
-export function WorkspaceSetup({ onDone }: { onDone?: (project: string) => void }) {
+export function WorkspaceSetup({ onDone, createOnly = false }: { onDone?: (project: string) => void; createOnly?: boolean }) {
   const qc = useQueryClient();
   const [path, setPath] = useState("");
   const [adding, setAdding] = useState(false);
@@ -24,6 +24,7 @@ export function WorkspaceSetup({ onDone }: { onDone?: (project: string) => void 
       setPath(folder.path);
       setAdding(false);
       setName("");
+      if (createOnly) initialize.mutate(folder.path);
     },
   });
   const initialize = useMutation({
@@ -43,6 +44,21 @@ export function WorkspaceSetup({ onDone }: { onDone?: (project: string) => void 
     setAdding(false);
     setName("");
   }
+
+  if (createOnly) return (
+    <form className="grid gap-3" onSubmit={(event) => {
+      event.preventDefault();
+      if (!busy && path) initialize.mutate(path);
+      else if (!busy && name.trim()) create.mutate();
+    }}>
+      <Field label={tr("项目名称")} htmlFor="blank-project-name">
+        <Input id="blank-project-name" value={path || name} disabled={!!path || busy} maxLength={255} autoFocus
+          onChange={(event) => setName(event.target.value)} />
+      </Field>
+      <Button type="submit" className="w-fit" disabled={!(name.trim() || path)} loading={busy}>{tr("创建项目")}</Button>
+      {error && <Alert tone="loss">{error.message}</Alert>}
+    </form>
+  );
 
   return (
     <div className="grid gap-4">

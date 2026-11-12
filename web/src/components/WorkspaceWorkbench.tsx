@@ -3,6 +3,7 @@ import { Clock3, FolderCode, FolderOpen, GitBranch, Plus, Trash2, X } from "luci
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
+import { ProjectLaunch } from "@/components/ProjectLaunch";
 import { WorkspaceContext, workspaceScope } from "@/components/WorkspaceContext";
 import { WorkspaceSetup } from "@/components/WorkspaceSetup";
 import { Button } from "@/components/ui/button";
@@ -35,8 +36,8 @@ function opened(state: Session, id: string): Session {
   };
 }
 
-function ProjectView({ project, active, onDirty, onOpen }: {
-  project: WorkspaceProject; active: boolean; onDirty: (id: string, dirty: boolean) => void; onOpen: (id: string) => void;
+function ProjectView({ project, active, showRun, onDirty, onOpen }: {
+  project: WorkspaceProject; active: boolean; showRun: boolean; onDirty: (id: string, dirty: boolean) => void; onOpen: (id: string) => void;
 }) {
   const scope = useMemo(() => workspaceScope(project, active), [project, active]);
   const trackDirty = useCallback((dirty: boolean) => onDirty(project.id, dirty), [onDirty, project.id]);
@@ -45,7 +46,7 @@ function ProjectView({ project, active, onDirty, onOpen }: {
       aria-labelledby={`workspace-tab-${project.id}`}>
       <WorkspaceContext.Provider value={scope}>
         <Suspense fallback={<LoadingState />}>
-          <WorkspaceEditor onDirty={trackDirty} onOpenProject={onOpen} />
+          <WorkspaceEditor onDirty={trackDirty} onOpenProject={onOpen} showRun={showRun} />
         </Suspense>
       </WorkspaceContext.Provider>
     </div>
@@ -85,9 +86,13 @@ export default function WorkspaceWorkbench() {
     queryKey: ["workspace", "projects"], queryFn: api.workspaceProjects, staleTime: 5_000, refetchInterval: 10_000,
   });
   const [session, setSession] = useState(readSession);
-  const [picker, setPicker] = useState<"recent" | "folder">();
+  const [picker, setPicker] = useState<"recent" | "folder" | "blank" | "add" | undefined>(
+    () => new URLSearchParams(location.search).has("add") ? "add" : undefined,
+  );
   const [filter, setFilter] = useState("");
   const [github, setGithub] = useState(false);
+  const [launch, setLaunch] = useState<string>();
+  const [runProject, setRunProject] = useState<string>();
   const [closing, setClosing] = useState<WorkspaceProject>();
   const [removing, setRemoving] = useState<WorkspaceProject>();
   const remove = useMutation({
@@ -145,9 +150,15 @@ export default function WorkspaceWorkbench() {
     setClosing(undefined);
   }
 
-  function showPicker(mode: "recent" | "folder") {
+  function showPicker(mode: "recent" | "folder" | "add") {
     setFilter("");
     setPicker(mode);
+  }
+
+  function configure(id: string) {
+    open(id);
+    setRunProject(undefined);
+    setLaunch(id);
   }
 
   function askRemove(project: WorkspaceProject) {
@@ -167,9 +178,9 @@ export default function WorkspaceWorkbench() {
   return (
     <>
       <PageHeader title={tr("工作区")} description={current?.path} actions={<>
-        <Button variant="outline" onClick={() => setGithub(true)}><GitBranch /> {tr("从 GitHub 导入")}</Button>
+        <Button onClick={() => showPicker("add")}><Plus /> {tr("添加项目")}</Button>
         <Button variant="outline" onClick={() => showPicker("recent")}><Clock3 /> {tr("最近打开")}</Button>
-        <Button variant="outline" onClick={() => showPicker("folder")}><FolderOpen /> {tr("打开文件夹")}</Button>
+        {current?.managed && <Button variant="outline" onClick={() => configure(current.id)}>{tr("配置项目")}</Button>}
         {current && <Button variant="outline" onClick={() => askRemove(current)}><Trash2 /> {tr("移除工作区")}</Button>}
       </>} />
       {!catalog.data ? <QueryBoundary query={catalog}>{() => null}</QueryBoundary> :
@@ -207,7 +218,7 @@ export default function WorkspaceWorkbench() {
                 title={tr("打开另一个工作区")} onClick={() => showPicker("recent")}><Plus /></Button>
             </div>
             {projects.map((project) => <ProjectView key={project.id} project={project}
-              active={current?.id === project.id} onDirty={reportDirty} onOpen={open} />)}
+              active={current?.id === project.id} showRun={runProject === project.id} onDirty={reportDirty} onOpen={open} />)}
           </div>
         ) : recent.length || known.length ? (
           <div className="max-w-xl space-y-2">
@@ -216,11 +227,16 @@ export default function WorkspaceWorkbench() {
           </div>
         ) : (
           <EmptyState icon={FolderCode} title={tr("打开一个工作区")}
-            description={<Button className="mt-1" onClick={() => showPicker("folder")}>{tr("打开文件夹")}</Button>} />
+            description={<Button className="mt-1" onClick={() => showPicker("add")}>{tr("添加项目")}</Button>} />
         )}
       <Dialog open={!!picker} onOpenChange={(value) => { if (!value) setPicker(undefined); }}>
-        <DialogContent title={tr(picker === "folder" ? "打开文件夹" : "最近打开")}>
-          {picker === "folder" ? <WorkspaceSetup onDone={open} /> : (
+        <DialogContent title={tr(picker === "folder" ? "打开文件夹" : picker === "recent" ? "最近打开" : picker === "blank" ? "创建空白项目" : "添加项目")}>
+          {picker === "add" ? <div className="grid gap-2">
+            <Button variant="outline" className="justify-start" onClick={() => { setPicker(undefined); setGithub(true); }}><GitBranch /> {tr("从 GitHub 导入")}</Button>
+            <Button variant="outline" className="justify-start" onClick={() => setPicker("folder")}><FolderOpen /> {tr("打开服务器项目")}</Button>
+            <Button variant="outline" className="justify-start" onClick={() => setPicker("blank")}><Plus /> {tr("创建空白项目")}</Button>
+          </div> : picker === "folder" || picker === "blank" ?
+            <WorkspaceSetup key={picker} onDone={configure} createOnly={picker === "blank"} /> : (
             <div className="grid gap-3">
               <Input value={filter} onChange={(event) => setFilter(event.target.value)} autoFocus
                 aria-label={tr("搜索工作区目录")} placeholder={tr("搜索工作区目录")} />
@@ -239,7 +255,8 @@ export default function WorkspaceWorkbench() {
           )}
         </DialogContent>
       </Dialog>
-      {github && <GitHubDialog onClose={() => setGithub(false)} onChanged={() => {}} onProject={open} />}
+      {github && <GitHubDialog onClose={() => setGithub(false)} onChanged={() => {}} onProject={configure} />}
+      {launch && <ProjectLaunch key={launch} project={launch} onDone={() => { setRunProject(launch); setLaunch(undefined); }} />}
       <ConfirmDialog open={!!closing} onOpenChange={(open) => { if (!open) setClosing(undefined); }}
         title={tr("关闭工作区并放弃草稿？")} description={closing?.path} confirmLabel={tr("关闭工作区")} destructive
         onConfirm={() => { if (closing) close(closing.id); }} />

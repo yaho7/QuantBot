@@ -148,6 +148,18 @@ export interface WorkspaceProgramStatus {
   logs: string;
   log_error?: string;
   strategy_id: string;
+  connection: "unbound" | "invalid" | "stopped" | "waiting" | "handshake" | "stale" | "ready" | "legacy";
+  status_age: number | null;
+  pid: number | null;
+  started_at: number | null;
+}
+
+export interface ProjectPreflight {
+  entry: string;
+  files: string[];
+  commands: Partial<Record<"python" | "uv" | "conda", string>>;
+  recommendation: "python" | "uv" | "conda" | "";
+  can_seed: boolean;
 }
 
 export type Quickstart = { needs_setup: true } | { id: string; project: string; file: string };
@@ -306,6 +318,10 @@ export function workspaceApi(project: string) {
     gitCommit: (paths: string[], message: string) =>
       data<{ revision: string }>("POST", "editor/git/commit", { paths, message }),
     workspaceProgram: () => data<WorkspaceProgramStatus>("GET", "workspace/program"),
+    projectPreflight: () => data<ProjectPreflight>("GET", "workspace/program/preflight"),
+    projectTemplate: () => data<WorkspaceProgramStatus>("POST", "workspace/program/template"),
+    setupProjectProgram: (command: string, id: string, start: boolean) =>
+      data<WorkspaceProgramStatus>("POST", "workspace/program/setup", { command, id, start }),
     changeWorkspaceProgram: (action: "configure" | "start" | "stop", command?: string) =>
       data<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
     bindWorkspaceStrategy: (action: "bind" | "rotate" | "unbind", id?: string) =>

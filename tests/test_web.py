@@ -1129,7 +1129,7 @@ def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
         (root / CLIENT_FILE).write_text("# project customization\n", encoding="utf-8")
         await refresh_workspace_clients(client.server.app)
         assert runtime.process is running_process
-        runtime._save(runtime._saved(), source_revision="previous release")
+        runtime._save(runtime.command, source_revision="previous release")
         await refresh_workspace_clients(client.server.app)
         for _ in range(60):
             if strategy.instance != previous_instance and hub.ready_for_claims(strategy):
@@ -1153,6 +1153,57 @@ def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
         refused = await client.post(base, params={"workspace": project}, headers=CSRF)
         assert not (await refused.json())["ok"]
         assert path.read_text("utf-8") == "# my edits\n"
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
+def test_project_setup_starts_a_python_program_and_verifies_workspace_connection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "spcx-dip"
+    root.mkdir()
+    settings = tmp_path / "settings"
+    Editor.enable(settings, str(root))
+    Store(settings, filename=WORKSPACE_FILE).write({"root": str(root)})
+    monkeypatch.setattr(
+        Editor, "workspace", lambda self: Workspace(self.root, os.getuid(), os.getgid(), tmp_path)
+    )
+    monkeypatch.setattr(Workspace, "command", lambda self, argv: argv)
+    monkeypatch.setattr(Workspace, "process_options", lambda self: {"cwd": self.root})
+    monkeypatch.setattr(
+        Workspace, "environment", lambda self: {"HOME": str(tmp_path), "PATH": os.defpath}
+    )
+    url = "/ui/api/workspace/program"
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        monkeypatch.setenv("QB_LISTEN", f"127.0.0.1:{client.server.port}")
+        assert (await client.get(url + "/preflight")).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        assert (await (await client.get(url + "/preflight")).json())["data"]["can_seed"]
+        assert (await (await client.post(url + "/template", headers=CSRF)).json())["ok"]
+        preflight = (await (await client.get(url + "/preflight")).json())["data"]
+        assert preflight["entry"] == "main.py" and not preflight["can_seed"]
+        body = {"command": preflight["commands"]["python"]}
+        saved = await (await client.post(url + "/setup", json=body, headers=CSRF)).json()
+        assert saved["ok"] and not saved["data"]["running"], saved
+        sid = saved["data"]["strategy_id"]
+        assert hub.strategies[sid].name == root.name
+        started = await (
+            await client.post(url + "/setup", json={**body, "start": True}, headers=CSRF)
+        ).json()
+        assert started["ok"] and started["data"]["strategy_id"] == sid, started
+        assert started["data"]["started_at"] and started["data"]["pid"]
+        for _ in range(100):
+            status = (await (await client.get(url)).json())["data"]
+            if status["connection"] == "ready" and "QuantBot project started" in status["logs"]:
+                break
+            await asyncio.sleep(0.05)
+        assert status["running"] and status["connection"] == "ready", status
+        assert "QuantBot project started" in status["logs"]
+        assert len(Store(settings).strategies()) == 1
+        assert (await (await client.post(url + "/stop", headers=CSRF)).json())["data"][
+            "connection"
+        ] == "stopped"
 
     scenario(test, tmp_path / "audit.jsonl")
 

@@ -738,5 +738,7 @@
   "更新失败，已恢复上一版本：{0}": "The update failed. The previous version was restored: {0}",
   "更新失败：{0}。恢复上一版本也失败：{1}": "The update failed: {0}. Restoring the previous version also failed: {1}",
   "无法读取工作区程序日志。请检查 systemd 日志权限。": "Could not read the workspace program logs. Check systemd journal permissions.",
-  "读取工作区程序日志超时，请重试。": "Reading the workspace program logs timed out. Try again."
+  "读取工作区程序日志超时，请重试。": "Reading the workspace program logs timed out. Try again.",
+  "已生成 main.py。": "Generated main.py.",
+  "已保存启动命令和策略绑定。": "Launch command and strategy binding saved."
 }

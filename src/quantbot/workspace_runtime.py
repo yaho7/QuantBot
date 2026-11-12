@@ -61,16 +61,16 @@ class SystemdProgram:
             raise
         return process.returncode or 0, output[-LOG_LIMIT:].decode(errors="replace")
 
-    async def state(self) -> tuple[bool, int | None]:
+    async def state(self) -> tuple[bool, int | None, int | None]:
         code, result = await self._call(
             "/usr/bin/systemctl",
             "show",
-            "--property=LoadState,SubState,ExecMainCode,ExecMainStatus",
+            "--property=LoadState,SubState,ExecMainCode,ExecMainStatus,MainPID",
             self.unit,
         )
         props = dict(line.split("=", 1) for line in result.splitlines() if "=" in line)
         if props.get("LoadState") == "not-found":
-            return False, -15 if self.stopped else None
+            return False, -15 if self.stopped else None, None
         if code:
             raise ConfigError(tr("无法读取工作区程序状态。"))
         running = props.get("SubState") in {
@@ -82,9 +82,11 @@ class SystemdProgram:
         }
         status = props.get("ExecMainStatus", "0")
         main_code = props.get("ExecMainCode", "0")
+        raw_pid = props.get("MainPID", "0")
+        pid = int(raw_pid) or None if raw_pid.isdecimal() else None
         if running or not status.isdecimal() or main_code == "0":
-            return running, None
-        return False, int(status) if main_code == "1" else -int(status)
+            return running, None, pid
+        return False, int(status) if main_code == "1" else -int(status), None
 
     async def start(
         self,
@@ -132,8 +134,7 @@ class SystemdProgram:
         self.stopped = False
 
     async def stop(self) -> None:
-        running, _ = await self.state()
-        if running:
+        if (await self.state())[0]:
             code, _ = await self._call("/usr/bin/systemctl", "stop", self.unit)
             if code:
                 raise ConfigError(tr("systemd 无法停止工作区程序。"))
@@ -214,14 +215,15 @@ class WorkspaceRuntime:
         return (await self.systemd.state())[0] if self.systemd else self.running
 
     async def status(self) -> dict[str, Any]:
+        settings = self._settings()
+        since = settings.get("started_at", 0)
+        started_at = since if isinstance(since, int) and since > 0 else None
         if self.systemd:
-            running, exit_code = await self.systemd.state()
-            settings = self._settings()
-            since = settings.get("started_at", 0)
+            running, exit_code, pid = await self.systemd.state()
             logs, log_error = "", ""
-            if since or running or exit_code is not None:
+            if started_at or running or exit_code is not None:
                 try:
-                    logs = await self.systemd.logs(since if isinstance(since, int) else 0)
+                    logs = await self.systemd.logs(started_at or 0)
                 except (ConfigError, OSError, asyncio.TimeoutError) as exc:
                     log_error = str(exc) or tr("读取工作区程序日志超时，请重试。")
             return {
@@ -230,12 +232,16 @@ class WorkspaceRuntime:
                 "exit_code": exit_code,
                 "logs": logs,
                 "log_error": log_error,
+                "pid": pid,
+                "started_at": started_at,
             }
         return {
             "command": self.command,
             "running": self.running,
             "exit_code": self.process.returncode if self.process else None,
             "logs": self.log.decode("utf-8", errors="replace"),
+            "pid": self.process.pid if self.running and self.process is not None else None,
+            "started_at": started_at,
         }
 
     @staticmethod
