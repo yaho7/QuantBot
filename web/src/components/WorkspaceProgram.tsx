@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Play, Save, Square } from "lucide-react";
-import { useState } from "react";
-import { QueryBoundary } from "@/components/common";
+import { Play, RefreshCw, Save, Square } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ConfirmDialog, QueryBoundary } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import { Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
 import { useWorkspace } from "@/components/WorkspaceContext";
@@ -12,16 +12,24 @@ export function WorkspaceProgram() {
   const qc = useQueryClient();
   const { active, api, key: workspaceKey } = useWorkspace();
   const key = workspaceKey("program");
-  const status = useQuery({ queryKey: key, queryFn: api.workspaceProgram, enabled: active, refetchInterval: active ? 2_000 : false });
+  const status = useQuery({ queryKey: key, queryFn: api.workspaceProgram, enabled: active, refetchInterval: 2_000, refetchIntervalInBackground: true, retry: false });
   const strategies = useQuery({ queryKey: ["overview"], queryFn: controlApi.overview, enabled: active });
   const [draft, setDraft] = useState<string>();
   const [strategyId, setStrategyId] = useState<string>();
+  const [confirmStop, setConfirmStop] = useState(false);
+  const log = useRef<HTMLPreElement>(null);
+  const followLog = useRef(true);
+  const logs = status.data?.logs;
+  useEffect(() => {
+    if (log.current && followLog.current) log.current.scrollTop = log.current.scrollHeight;
+  }, [logs]);
   const change = useMutation({
     mutationFn: ({ action, command }: { action: "configure" | "start" | "stop"; command?: string }) =>
       api.changeWorkspaceProgram(action, command),
     onSuccess: (data, { action }) => {
       qc.setQueryData(key, data);
       if (action === "configure") setDraft(undefined);
+      if (action === "stop") setConfirmStop(false);
     },
   });
   const bind = useMutation({
@@ -35,7 +43,7 @@ export function WorkspaceProgram() {
     <Card className="min-w-0">
       <CardHeader><CardTitle>{tr("后台程序")}</CardTitle></CardHeader>
       <CardContent>
-        <QueryBoundary query={status}>
+        <QueryBoundary query={status.data ? { ...status, error: null } : status}>
           {(data) => {
             const command = draft ?? data.command;
             const changed = command.trim() !== data.command;
@@ -86,7 +94,7 @@ export function WorkspaceProgram() {
                     {!data.running && data.exit_code !== null && <code className="text-xs text-muted-foreground">{tr("退出码 {0}", data.exit_code)}</code>}
                   </div>
                   {data.running ? (
-                    <Button variant="outline" size="sm" loading={change.isPending} onClick={() => change.mutate({ action: "stop" })}>
+                    <Button variant="outline" size="sm" disabled={change.isPending} onClick={() => { change.reset(); setConfirmStop(true); }}>
                       <Square /> {tr("停止程序")}
                     </Button>
                   ) : (
@@ -94,14 +102,30 @@ export function WorkspaceProgram() {
                       onClick={() => change.mutate({ action: "start" })}><Play /> {tr("启动程序")}</Button>
                   )}
                 </div>
-                {change.error && <Alert tone="loss">{change.error.message}</Alert>}
+                {!confirmStop && change.error && <Alert tone="loss">{change.error.message}</Alert>}
                 {bind.error && <Alert tone="loss">{bind.error.message}</Alert>}
                 <div className="grid gap-2">
-                  <h3 className="text-sm font-medium">{tr("程序日志")}</h3>
-                  <pre className="max-h-60 min-h-16 overflow-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap break-words">
-                    {data.logs || tr("暂无输出。")}
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-medium">{tr("程序日志")}</h3>
+                    <Button size="icon" variant="ghost" className="size-7" aria-label={tr("刷新程序日志")} title={tr("刷新程序日志")}
+                      disabled={status.isFetching} onClick={() => void status.refetch()}><RefreshCw /></Button>
+                  </div>
+                  {(status.error || data.log_error) && <Alert tone="warning">{status.error?.message || data.log_error}</Alert>}
+                  <pre ref={log} onScroll={(event) => {
+                    const el = event.currentTarget;
+                    followLog.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+                  }} className="max-h-60 min-h-16 overflow-auto rounded-lg border bg-muted/50 p-3 font-mono text-xs whitespace-pre-wrap break-words">
+                    {data.logs || (!(status.error || data.log_error) && tr(data.running ? "等待程序输出…" : "暂无输出。"))}
                   </pre>
                 </div>
+                <ConfirmDialog open={confirmStop && data.running} onOpenChange={(open) => { if (!change.isPending) setConfirmStop(open); }}
+                  title={tr("停止工作区程序？")} confirmLabel={tr("停止程序")} destructive loading={change.isPending}
+                  description={data.strategy_id
+                    ? tr("停止后，策略 {0} 将离线并暂停管理持仓。券商侧的持仓和订单仍需处理。点击「启动程序」可重新运行。", data.strategy_id)
+                    : tr("工作区后台进程将终止。点击「启动程序」可重新运行。")}
+                  onConfirm={() => change.mutate({ action: "stop" })}>
+                  {change.error && <Alert tone="loss">{change.error.message}</Alert>}
+                </ConfirmDialog>
               </div>
             );
           }}

@@ -461,5 +461,22 @@
   "移除工作区 {0}": "Remove workspace {0}",
   "移除工作区 {0}？": "Remove workspace {0}?",
   "将关闭这个工作区并撤销其策略连接。服务器上的目录和文件会保留。": "This closes the workspace and revokes its strategy connection. Its directory and files remain on the server.",
-  "此工作区有未保存的改动。": "This workspace has unsaved changes."
+  "此工作区有未保存的改动。": "This workspace has unsaved changes.",
+  "登录已过期，请重新登录。": "Your session expired. Sign in again.",
+  "QuantBot 暂时不可用，请检查服务或隧道后重试。": "QuantBot is temporarily unavailable. Check the service or tunnel and try again.",
+  "后台处理失败，请在设置中查看服务日志。": "The server could not complete this request. Check the service logs in Settings.",
+  "请求被拒绝，请刷新页面后重试。": "The request was denied. Reload the page and try again.",
+  "请求失败（HTTP {0}）。": "Request failed (HTTP {0}).",
+  "QuantBot 返回了无法读取的响应，请刷新页面后重试。": "QuantBot returned an unreadable response. Reload the page and try again.",
+  "刷新程序日志": "Refresh program logs",
+  "等待程序输出…": "Waiting for program output…",
+  "停止工作区程序？": "Stop the workspace program?",
+  "停止后，策略 {0} 将离线并暂停管理持仓。券商侧的持仓和订单仍需处理。点击「启动程序」可重新运行。": "Strategy {0} will go offline and stop managing its positions. Positions and orders at the broker may still need attention. Select Start program to run it again.",
+  "工作区后台进程将终止。点击「启动程序」可重新运行。": "The workspace process will exit. Select Start program to run it again.",
+  "无法检查程序受影响范围。{0}": "Could not check which programs may be affected. {0}",
+  "当前没有运行中的工作区程序。": "There are no workspace programs running.",
+  "快速入手更新后可能重启，模拟资金和订单可能重置。": "Quickstart may restart after the update, resetting its simulated funds and orders.",
+  "程序会独立运行。更新后请核对策略连接和操作回执。": "The program runs independently. Check the strategy connection and operation receipts after updating.",
+  "QuantBot 关闭时会停止此程序。更新后请手动启动。": "The program will stop when QuantBot shuts down. Start it manually after updating.",
+  "无法确认程序状态，请检查工作区。": "Could not determine the program status. Check the workspace."
 }

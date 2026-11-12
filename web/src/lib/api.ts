@@ -23,8 +23,19 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   } catch {
     throw new ApiError(0, tr("连不上 QuantBot。网络或隧道断了，或者 QuantBot 没在运行。"));
   }
-  if (!res.ok) throw new ApiError(res.status, res.status === 401 ? tr("需要登录") : `${res.status} ${res.statusText}`);
-  return (await res.json()) as T;
+  const payload: unknown = await res.json().catch(() => undefined);
+  if (!res.ok) {
+    const fields = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+    const detail = [fields.message, fields.error].find((value) => typeof value === "string" && value.trim());
+    const recovery = res.status === 401 ? tr("登录已过期，请重新登录。")
+      : [502, 503, 504].includes(res.status) ? tr("QuantBot 暂时不可用，请检查服务或隧道后重试。")
+      : res.status >= 500 ? tr("后台处理失败，请在设置中查看服务日志。")
+      : res.status === 403 ? tr("请求被拒绝，请刷新页面后重试。")
+      : tr("请求失败（HTTP {0}）。", res.status);
+    throw new ApiError(res.status, typeof detail === "string" ? `${recovery} ${detail}` : recovery);
+  }
+  if (payload === undefined) throw new ApiError(res.status, tr("QuantBot 返回了无法读取的响应，请刷新页面后重试。"));
+  return payload as T;
 }
 
 export interface StrategyAction {
@@ -134,6 +145,7 @@ export interface WorkspaceProgramStatus {
   running: boolean;
   exit_code: number | null;
   logs: string;
+  log_error?: string;
   strategy_id: string;
 }
 
@@ -223,6 +235,7 @@ export const api = {
   settings: () => request<Settings>("GET", "settings"),
   timezones: () => request<string[]>("GET", "timezones"),
   updateStatus: () => request<UpdateStatus>("GET", "update"),
+  updateImpact: () => request<{ programs: { name: string; impact: "demo" | "independent" | "stops" | "unknown" }[] }>("GET", "update/impact"),
   checkUpdate: () => request<Answer<UpdateResult | null>>("POST", "update/check"),
   installUpdate: () => request<Answer>("POST", "update"),
   service: (kind: "status" | "logs") =>

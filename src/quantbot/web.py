@@ -1345,6 +1345,38 @@ async def update_get(request: web.Request) -> web.Response:
     )
 
 
+async def update_impact(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    app = request.app
+    store = app[STORE_KEY]
+    snapshot = store.read()
+    credentials = WorkspaceCredentials(store.dir)
+
+    async def inspect(project: dict[str, Any]) -> dict[str, str] | None:
+        try:
+            editor = Editor.for_project(store.dir, project["id"])
+            runtime = _runtime(app, editor)
+            if not await runtime.is_running():
+                return None
+            sid = f"quickstart-{project['id'][:16]}"
+            item = strategy_item(snapshot, sid)
+            demo = (
+                item is not None
+                and item.get("quickstart_workspace") == project["id"]
+                and credentials.for_root(editor.root).read().get("QB_NAME") == sid
+                and runtime.command == QUICKSTART_COMMAND
+            )
+            impact = "demo" if demo else "independent" if runtime.systemd else "stops"
+        except (ConfigError, OSError, asyncio.TimeoutError):
+            impact = "unknown"
+        return {"name": project["name"], "impact": impact}
+
+    projects = workspace_projects(store.dir)
+    checks = await asyncio.gather(*(inspect(project) for project in projects if project["managed"]))
+    return web.json_response({"programs": [result for result in checks if result is not None]})
+
+
 async def update_check(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
@@ -1982,6 +2014,7 @@ def add_routes(
             web.get("/ui/api/timezones", timezone_list),
             web.post("/ui/api/settings", settings_post),
             web.get("/ui/api/update", update_get),
+            web.get("/ui/api/update/impact", update_impact),
             web.post("/ui/api/update/check", update_check),
             web.post("/ui/api/update", update_post),
             web.get("/ui/api/service/{kind:status|logs}", service_get),

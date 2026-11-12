@@ -15,6 +15,7 @@ export function UpdateDialog({ onClose, onInstalled, checkOnOpen = false }: {
   const qc = useQueryClient();
   const status = useQuery({ queryKey: ["update"], queryFn: api.updateStatus });
   const [confirm, setConfirm] = useState(false);
+  const impact = useQuery({ queryKey: ["update", "impact"], queryFn: api.updateImpact, enabled: confirm, retry: false });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const refresh = () => void qc.invalidateQueries({ queryKey: ["update"] });
@@ -102,8 +103,22 @@ export function UpdateDialog({ onClose, onInstalled, checkOnOpen = false }: {
         description={status.data?.service
           ? tr("安装完成后，QuantBot 后台服务会重启，网页会自动重连。")
           : tr("安装完成后，请在服务器上停止 QuantBot，再运行 quantbot run。")}
-        confirmLabel={tr("确认更新")} loading={install.isPending}
-        onConfirm={() => { setError(""); install.mutate(); }} />
+        confirmLabel={tr("确认更新")} loading={install.isPending || (confirm && impact.isFetching)}
+        onConfirm={() => { setError(""); install.mutate(); }}>
+        {impact.error && <Alert tone="warning">{tr("无法检查程序受影响范围。{0}", impact.error.message)}</Alert>}
+        {impact.data?.programs.length === 0 && <p className="text-sm text-muted-foreground">{tr("当前没有运行中的工作区程序。")}</p>}
+        {!!impact.data?.programs.length && <ul className="max-h-48 space-y-2 overflow-auto text-sm">
+          {impact.data.programs.map(({ name, impact: effect }, index) => <li key={index} className="rounded-md border px-3 py-2">
+            <span className="font-medium">{name}</span>
+            <p className="text-muted-foreground">{tr({
+              demo: "快速入手更新后可能重启，模拟资金和订单可能重置。",
+              independent: "程序会独立运行。更新后请核对策略连接和操作回执。",
+              stops: "QuantBot 关闭时会停止此程序。更新后请手动启动。",
+              unknown: "无法确认程序状态，请检查工作区。",
+            }[effect])}</p>
+          </li>)}
+        </ul>}
+      </ConfirmDialog>
     </>
   );
 }

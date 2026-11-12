@@ -28,7 +28,7 @@ from quantbot.server import make_app
 from quantbot.updates import Installed, Updater
 from quantbot.web import COOKIE, Feed, WebAuth, add_routes, login_url, read_audit, static_dir
 from quantbot.workspace import WORKSPACE_FILE, Workspace, workspace_id
-from quantbot.workspace_runtime import WorkspaceRuntime
+from quantbot.workspace_runtime import SystemdProgram, WorkspaceRuntime
 
 SECRET = "s" * 32
 BOT = "123456789:" + "A" * 35
@@ -943,6 +943,15 @@ def test_workspace_program_survives_the_browser_session_and_can_stop(
     root = tmp_path / "workspace"
     root.mkdir()
     Editor.enable(tmp_path / "settings", str(root))
+    Store(tmp_path / "settings", filename=WORKSPACE_FILE).write({"root": str(root)})
+    monkeypatch.setattr(Workspace, "supported", lambda: True)
+
+    class LocalRuntime(WorkspaceRuntime):
+        def __init__(self, *args: Any) -> None:
+            super().__init__(*args)
+            self.systemd = None
+
+    monkeypatch.setattr("quantbot.web.WorkspaceRuntime", LocalRuntime)
     monkeypatch.setattr(Editor, "workspace", lambda self: Workspace(self.root, 123, 123, tmp_path))
     monkeypatch.setattr(Workspace, "command", lambda self, argv: argv)
     monkeypatch.setattr(Workspace, "process_options", lambda self: {"cwd": self.root})
@@ -966,6 +975,8 @@ def test_workspace_program_survives_the_browser_session_and_can_stop(
                 break
             await asyncio.sleep(0.005)
         assert status["running"] and "ready" in status["logs"]
+        impact = await (await client.get("/ui/api/update/impact")).json()
+        assert impact["programs"] == [{"name": root.name, "impact": "stops"}]
         assert not (await (await client.post(url + "/start", headers=CSRF)).json())["ok"]
         remove = f"/ui/api/workspaces/{workspace_id(root)}/remove"
         assert not (await (await client.post(remove, headers=CSRF)).json())["ok"]
@@ -976,6 +987,31 @@ def test_workspace_program_survives_the_browser_session_and_can_stop(
         assert root.is_dir() and Editor.configured(tmp_path / "settings") is None
 
     scenario(test, tmp_path / "audit.jsonl")
+
+
+def test_workspace_journal_refreshes_after_reattach_and_surfaces_errors(tmp_path: Path) -> None:
+    runtime = WorkspaceRuntime(tmp_path, tmp_path / "project")
+    journal = SystemdProgram(tmp_path)
+    runtime.systemd = journal
+    state = "LoadState=loaded\nSubState=running\n"
+    journal._call = AsyncMock(
+        side_effect=[
+            (0, state),
+            (0, "first\n"),
+            (0, state),
+            (0, "first\nsecond\n"),
+            (0, state),
+            (1, "permission denied"),
+        ]
+    )
+
+    async def verify() -> None:
+        assert (await runtime.status())["logs"] == "first\n"
+        assert (await runtime.status())["logs"] == "first\nsecond\n"
+        failure = await runtime.status()
+        assert failure["running"] and failure["log_error"] and not failure["logs"]
+
+    asyncio.run(verify())
 
 
 def test_web_shutdown_leaves_independent_workspace_units_running(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ import shlex
 import tempfile
 import time
 from contextlib import suppress
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -139,17 +140,23 @@ class SystemdProgram:
             self.stopped = True
 
     async def logs(self, since: int) -> str:
-        if not since:
-            return ""
-        _, output = await self._call(
+        since_arg = ()
+        if since:
+            timestamp = datetime.fromtimestamp(since, timezone.utc).strftime(
+                "%Y-%m-%d %H:%M:%S UTC"
+            )
+            since_arg = (f"--since={timestamp}",)
+        code, output = await self._call(
             "/usr/bin/journalctl",
             "--quiet",
             "--no-pager",
             "--output=cat",
             "--lines=200",
-            f"--since=@{since}",
+            *since_arg,
             f"--unit={self.unit}",
         )
+        if code:
+            raise ConfigError(tr("无法读取工作区程序日志。请检查 systemd 日志权限。"))
         return output
 
 
@@ -174,7 +181,8 @@ class WorkspaceRuntime:
             self.root, data if data.get("root") == self.root else {}
         )
 
-    def _saved(self) -> str:
+    @property
+    def command(self) -> str:
         command = self._settings().get("command")
         return command if isinstance(command, str) else ""
 
@@ -208,15 +216,23 @@ class WorkspaceRuntime:
     async def status(self) -> dict[str, Any]:
         if self.systemd:
             running, exit_code = await self.systemd.state()
-            since = self._settings().get("started_at", 0)
+            settings = self._settings()
+            since = settings.get("started_at", 0)
+            logs, log_error = "", ""
+            if since or running or exit_code is not None:
+                try:
+                    logs = await self.systemd.logs(since if isinstance(since, int) else 0)
+                except (ConfigError, OSError, asyncio.TimeoutError) as exc:
+                    log_error = str(exc) or tr("读取工作区程序日志超时，请重试。")
             return {
-                "command": self._saved(),
+                "command": self.command,
                 "running": running,
                 "exit_code": exit_code,
-                "logs": await self.systemd.logs(since if isinstance(since, int) else 0),
+                "logs": logs,
+                "log_error": log_error,
             }
         return {
-            "command": self._saved(),
+            "command": self.command,
             "running": self.running,
             "exit_code": self.process.returncode if self.process else None,
             "logs": self.log.decode("utf-8", errors="replace"),
@@ -252,7 +268,7 @@ class WorkspaceRuntime:
         running = (await self.systemd.state())[0] if self.systemd else self.running
         if running:
             raise ConfigError(tr("工作区程序已经在运行。"))
-        command = self._saved()
+        command = self.command
         if not command:
             raise ConfigError(tr("请先保存启动命令。"))
         arguments = self._arguments(command)
