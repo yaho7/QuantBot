@@ -56,13 +56,10 @@ TERMINAL = ("succeeded", "failed", "unknown", "expired", "superseded")
 SHADOW_ACTIONS = {
     "pause_entry": ("entry_enabled", False),
     "resume_entry": ("entry_enabled", True),
-    "pause_strategy": ("strategy_enabled", False),
-    "resume_strategy": ("strategy_enabled", True),
 }
 STANDARD = frozenset(
     (
         *SHADOW_ACTIONS,
-        "stop",
         "refresh",
         "set_parameters",
         "cancel_order",
@@ -71,7 +68,8 @@ STANDARD = frozenset(
     )
 )
 TRADE_ACTIONS = {"cancel_order", "close_position", "flatten", "buy", "sell"}
-MANDATORY_CONFIRM = TRADE_ACTIONS | {"stop", "set_parameters"}
+MANDATORY_CONFIRM = TRADE_ACTIONS | {"set_parameters"}
+PROCESS_ACTIONS = {"start", "stop", "restart", "pause_strategy", "resume_strategy", "shell"}
 RISK_ACTIONS = TRADE_ACTIONS | {"set_parameters"}
 TARGET_FIELDS = {
     "cancel_order": "order_id",
@@ -176,6 +174,8 @@ class Capability(Payload):
 
     @model_validator(mode="after")
     def check_definition(self):
+        if self.id in PROCESS_ACTIONS:
+            raise ValueError("Process and shell controls are not supported")
         if self.id in SHADOW_ACTIONS and self.parameters:
             raise ValueError("persistent controls do not accept parameters")
         if self.id in TARGET_FIELDS:
@@ -349,9 +349,9 @@ class Metrics(Payload):
 
 class ControlReport(Payload):
     revision: int = Field(ge=0)
-    entry_enabled: bool | None = None
-    strategy_enabled: bool | None = None
-    disconnect_policy_applied: Disconnect | None = None
+    entry_enabled: bool
+    risk_locked: bool
+    disconnect_policy_applied: Disconnect
 
 
 class CommandRequest(Payload):

@@ -157,10 +157,7 @@ class Strategies:
             raise Problem(403, "Executor declarations require the control scope")
         if (
             body.executor
-            and any(
-                cap.id not in {"pause_entry", "resume_entry", "pause_strategy", "resume_strategy"}
-                for cap in body.capabilities
-            )
+            and any(cap.id not in {"pause_entry", "resume_entry"} for cap in body.capabilities)
             and "commands" not in credential.scopes
         ):
             raise Problem(403, "One-time capabilities require the commands scope")
@@ -389,6 +386,11 @@ class Strategies:
             else None,
             "reported_current": current,
             "in_sync": synced,
+            "effective_entry_enabled": (
+                report["entry_enabled"] and not report["risk_locked"]
+                if current and "risk_locked" in report
+                else None
+            ),
         }
 
     def alert_rows(self, sid=None, limit=50):

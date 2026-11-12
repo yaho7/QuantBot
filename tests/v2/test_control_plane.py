@@ -17,7 +17,7 @@ CAPS = [
     {"id": "resume_entry", "label": "Resume entries"},
     {"id": "refresh", "label": "Refresh"},
     {"id": "flatten", "label": "Flatten"},
-    {"id": "stop", "label": "Stop"},
+    {"id": "set_parameters", "label": "Set parameters"},
     {
         "id": "custom_refresh",
         "label": "Custom",
@@ -113,6 +113,8 @@ def report(http, headers, rev=0, **fields):
         json={
             "revision": rev,
             "disconnect_policy_applied": "continue",
+            "entry_enabled": True,
+            "risk_locked": False,
             **fields,
         },
     )
@@ -276,7 +278,7 @@ def test_long_poll_wakes_and_only_one_claim_succeeds(server):
     assert not thread.is_alive()
     assert received[0]["id"] == command["id"] and received[0]["state"] == "accepted"
     assert issue(http, sid, "refresh", request="same-request").json()["id"] == command["id"]
-    assert issue(http, sid, "stop", request="same-request").status_code == 409
+    assert issue(http, sid, "set_parameters", request="same-request").status_code == 409
     claim = f"{AGENT}/commands/{command['id']}/claim"
     responses = []
     barrier = threading.Barrier(2)
@@ -370,8 +372,7 @@ def test_restart_disconnect_recovery_and_unknown_result(tmp_path):
         poll(http, headers)
         claim = f"{AGENT}/commands/{cid}/claim"
         permit = http.post(claim, headers=headers).json()["permit"]
-        pending = issue(http, sid, "stop").json()
-        http.post(f"{ADMIN}/commands/{pending['id']}/confirm")
+        pending = issue(http, sid, "refresh").json()
     clock.value += 65
     with client(path, clock) as http:
         log_in(http)
@@ -416,4 +417,35 @@ def test_security_transport_and_limits(server):
     assert (
         http.get("/openapi.json").json()["components"]["securitySchemes"]["StrategyToken"]["scheme"]
         == "bearer"
+    )
+
+
+def test_resume_preserves_local_risk_lock(server):
+    http, _, _ = server
+    sid, credential = create(http)
+    headers, _ = connect(http, credential)
+    pause = issue(http, sid, "pause_entry").json()
+    assert report(http, headers, pause["revision"], entry_enabled=False, risk_locked=True)[
+        "in_sync"
+    ]
+    resume = issue(http, sid, "resume_entry").json()
+    assert http.get(f"{ADMIN}/commands/{resume['id']}").json()["state"] == "pending"
+    state = report(http, headers, resume["revision"], entry_enabled=True, risk_locked=True)
+    assert state["in_sync"] and state["reported"]["risk_locked"]
+    assert state["effective_entry_enabled"] is False
+    assert http.get(f"{ADMIN}/commands/{resume['id']}").json()["state"] == "succeeded"
+    assert issue(http, sid, "stop").status_code == 422
+    assert (
+        http.post(
+            AGENT + "/session",
+            headers=token_headers(credential),
+            json={
+                "instance_id": "primary",
+                "executor": True,
+                "capabilities": [
+                    {"id": "stop", "label": "Stop process"},
+                ],
+            },
+        ).status_code
+        == 422
     )
