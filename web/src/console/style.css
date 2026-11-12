@@ -45,7 +45,7 @@ small { font-size: .76rem; }
 .sidebar nav a[aria-current] svg { color: #b3f6d4; }
 .sidebar-footer { margin-top: auto; border-top: 1px solid #355044; padding-top: .75rem; }
 .nav-caret { margin-left: auto; }
-.sidebar .sidebar-close, .hamburger, .mobile-add, .nav-scrim { display: none !important; }
+.sidebar .sidebar-close, .hamburger, .nav-scrim { display: none !important; }
 .main-frame { min-width: 0; }
 .topbar { display: flex; justify-content: space-between; align-items: center; height: 62px; padding: 0 clamp(1rem, 3vw, 2.6rem); border-bottom: 1px solid var(--border); background: #fff; color: var(--muted); font-size: .86rem; }
 .topbar > div { display: flex; align-items: center; gap: .62rem; }
@@ -203,7 +203,7 @@ dialog::backdrop { background: #14241e80; }
   .sidebar .sidebar-close { display: inline-grid !important; position: absolute; right: .55rem; top: 1.4rem; color: #d5e9dc; }
   .sidebar .sidebar-close:hover { background: #295141; }
   .nav-scrim { display: block !important; position: fixed; z-index: 7; inset: 0; border: 0; background: #10201970; }
-  .hamburger, .mobile-add { display: inline-grid !important; }
+  .hamburger { display: inline-grid !important; }
   .topbar { height: 52px; padding-inline: .7rem; }
   .page { padding-top: 1.25rem; }
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem; }
@@ -219,7 +219,19 @@ dialog::backdrop { background: #14241e80; }
   .login-copy { margin-bottom: 0; }
   .login-copy h1 { font-size: 1.75rem; }
   .login-form { place-items: start center; padding: 1.5rem; }
-  .top-label { display: none; }
+  .top-label, .breadcrumb-divider { display: none; }
+  .strategy-table :is(th, td):is(:nth-child(3), :nth-child(5), :nth-child(6)) { display: none; }
+  .strategy-table :is(th, td) { padding-inline: .4rem; }
+  .strategy-table td:first-child { white-space: normal; overflow-wrap: anywhere; }
+  .strategy-table .strategy-name small { white-space: normal; }
+
+}
+@media (min-width: 375px) and (max-width: 480px) {
+  .summary-grid.no-account-total { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .no-account-total .stat { min-height: 88px; padding: .59rem; }
+  .no-account-total .stat-icon { width: 25px; height: 25px; }
+  .no-account-total .stat-icon svg { width: 14px; height: 14px; }
+  .no-account-total .stat > div { font-size: .74rem; gap: .2rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; scroll-behavior: auto !important; }

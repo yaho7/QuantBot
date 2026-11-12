@@ -4,14 +4,14 @@ import { strategyPath, type Overview, type Strategy } from "./api";
 import { CommandBadge, Empty, ErrorNotice, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, relative, useData, when } from "./ui";
 
 export function StrategyTable({ rows }: { rows: Strategy[] }) {
-  return <Table columns={["策略名称", "交易模式", "分组", "连接", "最近心跳", ""]} empty={!rows.length}>
+  return <div className="strategy-table"><Table columns={["策略名称", "交易模式", "分组", "连接", "最近心跳", ""]} empty={!rows.length}>
     {rows.map((s) => <tr key={s.id}><td><a className="strategy-name" href={strategyPath(s.id)}>
       <span className="strategy-icon"><Activity size={17} /></span><span>{s.name}
         {!!s.tags.length && <small>{s.tags.join(" · ")}</small>}</span></a></td>
       <td><span className="mode">{modeText[s.mode]}</span></td><td>{s.group || "—"}</td>
       <td><StatusBadge status={s.status} /></td><td className="subtle mono">{relative(s.last_seen)}</td>
       <td><a className="icon-button" aria-label={`打开 ${s.name}`} href={strategyPath(s.id)}><ArrowUpRight size={16} /></a></td></tr>)}
-  </Table>;
+  </Table></div>;
 }
 
 export function OverviewPage({ add }: { add: () => void }) {

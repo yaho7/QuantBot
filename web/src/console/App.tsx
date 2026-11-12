@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Activity, Bell, ChevronRight, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Plus, Radio, Settings, Braces, X } from "lucide-react";
+import { Activity, Bell, ChevronRight, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Radio, Settings, Braces, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { ApiPage, CreateStrategy } from "./onboarding";
@@ -119,9 +119,8 @@ export function App() {
     <div className="main-frame">
       <header className="topbar">
         <div><button className="icon-button hamburger" aria-label="打开导航" onClick={() => setMenu(!menu)}><Menu size={22} /></button>
-          <span className="top-label">控制台</span><ChevronRight size={15} /><strong>{title}</strong></div>
-        <div><button className="icon-button mobile-add" aria-label="添加策略" onClick={add}><Plus size={20} /></button>
-          <span className="avatar" aria-label={actor}>{(actor.split(":").at(-1)?.[0] ?? "A").toUpperCase()}</span>
+          <span className="top-label">控制台</span><ChevronRight className="breadcrumb-divider" size={15} /><strong>{title}</strong></div>
+        <div><span className="avatar" aria-label={actor}>{(actor.split(":").at(-1)?.[0] ?? "A").toUpperCase()}</span>
         </div>
       </header>
       <main id="main" className="page">

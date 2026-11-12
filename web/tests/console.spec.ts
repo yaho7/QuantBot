@@ -60,6 +60,13 @@ test("mobile navigation and API schema are accessible", async ({ page }) => {
   await page.getByLabel("用户名").fill("admin");
   await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "运行总览" })).toBeVisible();
+  const added = await page.request.post("/api/v2/admin/strategies", {
+    data: { name: "手机连接状态", mode: "paper", group: "响应式布局" },
+  });
+  expect(added.ok()).toBeTruthy();
+  const row = page.getByRole("row").filter({ hasText: "手机连接状态" });
+  await expect(row.getByText("离线", { exact: true })).toBeInViewport();
   await page.getByRole("button", { name: "打开导航" }).click();
   await page.getByRole("link", { name: "API 接入", exact: true }).click();
   await expect(page.getByRole("heading", { name: "API 接入", exact: true })).toBeVisible();
