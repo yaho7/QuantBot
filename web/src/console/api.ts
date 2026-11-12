@@ -164,7 +164,7 @@ export interface EventRecord {
   occurred_at: string;
   fill?: Fill | null;
 }
-export type CommandState = "confirmation_required" | "pending" | "accepted" | "executing" | "succeeded" | "failed" | "unknown" | "expired" | "superseded";
+export type CommandState = "confirmation_required" | "pending" | "accepted" | "executing" | "succeeded" | "failed" | "unknown" | "expired" | "superseded" | "cancelled";
 export interface Command {
   id: string;
   strategy_id: string;
@@ -174,6 +174,8 @@ export interface Command {
   state: CommandState;
   protected: number;
   risky: number;
+  control_id: string | null;
+  control_revision: number | null;
   revision: number | null;
   created_at: string;
   updated_at: string;

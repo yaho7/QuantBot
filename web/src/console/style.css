@@ -221,3 +221,11 @@ dialog::backdrop { background: #14241e80; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+.control-group { gap: .6rem; }
+.control-card { display: grid; align-content: start; justify-items: start; gap: .45rem; padding: .75rem; border: 1px solid var(--border); border-radius: 9px; background: #fafcf9; overflow-wrap: anywhere; }
+.control-card > div { display: flex; align-items: center; gap: .4rem; max-width: 100%; }
+.control-card h4 { margin: 0; font-size: .89rem; }
+.control-card p { font-size: .76rem; line-height: 1.45; color: var(--muted); }
+.control-card .actual-value strong { color: var(--ink); }
+.control-card .button { margin-top: .12rem; }
+.control-icon { display: grid; place-items: center; width: 27px; height: 27px; flex: none; border-radius: 6px; background: #e8f2e9; color: var(--accent); }

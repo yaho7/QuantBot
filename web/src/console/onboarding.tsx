@@ -127,6 +127,7 @@ function aiInstructions(strategyId?: string) {
 从环境变量 QB_TOKEN 读取策略凭据，并将其作为 Authorization: Bearer 发送。POST /session 获取 X-Agent-Session；后续请求带此会话头。定期 PUT /heartbeat；遇到 409 重新建立会话。
 按 OpenAPI 和 JSON Schema 校验标准遥测，使用 POST /reports；数值按精确十进制字符串编码，时间戳带时区，事件 ID 在重传时保持不变。
 如果需要远程控制，声明实际支持的能力。先应用并本地持久化期望开仓权限，再报告对应 revision 和本地风控锁；恢复开仓不能解除风控锁。对一次性指令主动长轮询，仅在获得一次性许可后执行。保留命令 ID、领取记录和结果；结果未知时先查券商状态。
+自定义控制组件使用 PUT /controls 发布完整定义，PUT /controls/state 回报带时间戳的实际值。定义变更时增加 revision。每个可操作组件绑定会话已声明的指令；开仓开关绑定 set_trading_enabled，依赖 pause_entry 和 resume_entry，并通过 /control/reported 确认。
 本地风控和必要处置独立运行。使用模拟数据验证并处理重连、补传、撤销和过期。请参照 ${origin()}/openapi.json、${origin()}/api/v2/data-types 和各类型 Schema。`;
 }
 
@@ -256,10 +257,40 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
         {types.data ? <div className="stack">
           <Field label="数据类型"><select value={schema} onChange={(e) => setSchema(e.target.value)}>
             {types.data.map((type) => <option key={type.type} value={type.type}>{type.type} · {type.storage}</option>)}
-            {["batch", "snapshot", "event", "metric-definitions"].map((type) => <option key={type}>{type}</option>)}
+            {["batch", "snapshot", "event", "metric-definitions", "controls", "control-state", "control-invocation"].map((type) => <option key={type}>{type}</option>)}
           </select></Field>
           {definition.data ? <Code label={schemaUrl}>{JSON.stringify(definition.data, null, 2)}</Code> : <Loading />}
         </div> : types.isPending ? <Loading /> : <Empty />}
+      </Panel>
+      <Panel title="自定义控制组件" hint="Web 和 Telegram 使用同一份声明与执行回执。">
+        <div className="stack">
+          <p className="subtle">支持 button、toggle、select、number、slider、text、form 和 readonly。声明引用当前会话已注册的 command。重复发送同一版本和内容是幂等操作。更新和移除时发送完整列表并递增 revision。</p>
+          <Code label="PUT /api/v2/agent/controls">{JSON.stringify({
+            schema_version: 1, revision: 1, groups: [{ id: "parameters", label: "参数" }],
+            controls: [{ id: "rsi_period", type: "number", label: "RSI 周期", command: "set_rsi",
+              group: "parameters", parameter: "period", integer: true, min: 5, max: 30, step: 1 }],
+          }, null, 2)}</Code>
+          <Code label="PUT /api/v2/agent/controls/state">{JSON.stringify({
+            revision: 1, observed_at: "2026-01-01T12:00:00Z", values: { rsi_period: 14 },
+          }, null, 2)}</Code>
+          <Code label="curl · 注册组件">{`curl -fsS -X PUT "$QB_URL/api/v2/agent/controls" \\
+  -H "Authorization: Bearer $QB_TOKEN" \\
+  -H "X-Agent-Session: $QB_SESSION" \\
+  -H 'Content-Type: application/json' --data-binary @controls.json`}</Code>
+          <Code label="Python · 更新及移除">{`# 复用下方示例的标准库 request() 与 headers
+request("/controls", "PUT", registry)
+# 保留其余定义，移除 rsi_period
+registry["revision"] += 1
+registry["controls"] = [c for c in registry["controls"] if c["id"] != "rsi_period"]
+request("/controls", "PUT", registry)`}</Code>
+          <Code label="命令领取和结果回报">{`# 先 GET /commands?wait=25，再 POST /commands/{id}/claim
+request(f"/commands/{command_id}/result", "POST", {
+    "permit": permit, "status": "succeeded", "result": {"period": 14},
+})
+# 已实际生效的值再用 PUT /controls/state 上报。`}</Code>
+          <p className="subtle">401 表示凭据无效，403 表示缺少作用域或实例授权，409 表示版本、状态或许可冲突，422 表示 Schema 或参数验证失败。</p>
+          <a className="text-link" href="/api/v2/schemas/controls">查看完整 Control Schema <ChevronRight size={14} /></a>
+        </div>
       </Panel>
       <Panel title="HTTP 示例" hint="使用环境变量传入策略 Token。">
         <div className="stack"><Code label="curl">{shell()}</Code><Code label="Python 标准库">{python()}</Code>

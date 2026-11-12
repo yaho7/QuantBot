@@ -67,3 +67,67 @@ test("mobile navigation and API schema are accessible", async ({ page }) => {
   await expect(page.getByText("/api/v2/agent/reports", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
+
+test("registered controls render safely and retain the last reported state", async ({ page }) => {
+  await page.goto("/ui/");
+  const admin = page.request;
+  const login = await admin.post("/api/v2/admin/login", {
+    data: { username: "admin", password: "browser-test-password" },
+  });
+  expect(login.ok()).toBeTruthy();
+  const create = await admin.post("/api/v2/admin/strategies", {
+    data: { name: "SPCX 浏览器模拟", mode: "paper", token: { scopes: ["session", "telemetry", "control", "commands"] } },
+  });
+  const { strategy, credential } = await create.json();
+  const token = { Authorization: `Bearer ${credential.token}` };
+  const session = await admin.post("/api/v2/agent/session", { headers: token, data: {
+    instance_id: "spcx", executor: true,
+    capabilities: [{ id: "set_rsi", label: "RSI", parameters: {
+      period: { type: "integer", label: "周期", required: true, minimum: "5", maximum: "30" },
+    } }],
+  } });
+  const headers = { ...token, "X-Agent-Session": (await session.json()).session_id };
+  const registry = await admin.put("/api/v2/agent/controls", { headers, data: {
+    schema_version: 1, revision: 1,
+    groups: [{ id: "parameters", label: "策略参数", order: 1 }],
+    controls: [
+      { id: "period", type: "number", group: "parameters", label: "RSI 周期", command: "set_rsi",
+        min: 5, max: 30, step: 1, integer: true },
+      { id: "text_only", type: "readonly", label: "<img src=x onerror=alert(1)>", value_type: "text" },
+    ],
+  } });
+  expect(registry.ok()).toBeTruthy();
+  await admin.put("/api/v2/agent/control/reported", { headers, data: {
+    revision: 0, entry_enabled: true, risk_locked: false, disconnect_policy_applied: "continue",
+  } });
+  await admin.put("/api/v2/agent/controls/state", { headers, data: {
+    revision: 1, observed_at: new Date().toISOString(), values: { period: 14 },
+  } });
+  await page.goto(`/ui/#strategy/${strategy.id}/control`);
+  await page.reload();
+  await expect(page.getByText("<img src=x onerror=alert(1)>", { exact: true })).toBeVisible();
+  await expect(page.locator("img[src=x]")).toHaveCount(0);
+  await page.getByRole("button", { name: "修改 RSI 周期" }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("请求数值").fill("20");
+  await dialog.getByRole("button", { name: "提交请求" }).click();
+  await expect(dialog.getByText("等待确认")).toBeVisible();
+  await expect(page.locator(".control-card").filter({ hasText: "RSI 周期" })).toContainText("实际值 14");
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith("/confirm") && response.ok()),
+    dialog.getByRole("button", { name: "确认执行" }).click(),
+  ]);
+  const poll = await admin.get("/api/v2/agent/commands", { headers });
+  const command = (await poll.json()).commands[0];
+  expect(command.control_id).toBe("period");
+  const claim = await admin.post(`/api/v2/agent/commands/${command.id}/claim`, { headers });
+  const { permit } = await claim.json();
+  expect(permit).toBeTruthy();
+  await admin.post(`/api/v2/agent/commands/${command.id}/result`, { headers, data: { permit, status: "succeeded" } });
+  await expect(dialog.getByText("策略确认成功")).toBeVisible();
+  await expect(page.locator(".control-card").filter({ hasText: "RSI 周期" })).toContainText("实际值 14");
+  await admin.put("/api/v2/agent/controls/state", { headers, data: {
+    revision: 1, observed_at: new Date().toISOString(), values: { period: 20 },
+  } });
+  await expect(page.locator(".control-card").filter({ hasText: "RSI 周期" })).toContainText("实际值 20");
+});

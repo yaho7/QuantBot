@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { DynamicControls, type ControlRegistryView } from "./dynamic-controls";
 import { api, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
-import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, Table, useData, when } from "./ui";
+import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, ParameterInput, Table, useData, when } from "./ui";
 
 const actions: Record<string, string> = {
   pause_entry: "暂停新开仓", resume_entry: "恢复新开仓", refresh: "刷新监控",
@@ -14,6 +15,9 @@ const safe = new Set(["pause_entry", "resume_entry", "refresh"]);
 
 export function ControlPanel({ strategy }: { strategy: Detail }) {
   const [selected, setSelected] = useState<Capability | null>(null);
+  const registry = useData<ControlRegistryView>(strategyApi(strategy.id, "controls"), true, 6_000);
+  const bound = new Set(registry.data?.controls.flatMap((item) => item.command ? [item.command] : []));
+  const available = strategy.capabilities.filter((item) => shadow.has(item.id) || !bound.has(item.id));
   const control = strategy.control;
   const reported = control.reported_current ? control.reported : null;
   const requested = control.desired.entry_enabled;
@@ -28,10 +32,12 @@ export function ControlPanel({ strategy }: { strategy: Detail }) {
       <div className="value-grid">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
       <div className="notice"><ShieldCheck size={16} /><span>暂停新开仓期间，策略仍需运行行情处理、监控和本地风控。恢复开仓时，本地风控锁继续有效。</span></div>
     </Panel>
-    <Panel title="远程操作" hint="操作由策略主动声明，最终状态以策略回执为准。">
-      {strategy.archived_at ? <Empty title="策略已归档" /> : !strategy.capabilities.length ?
-        <Empty title="尚未声明控制能力" text="为执行实例配置 control 或 commands 权限，并在会话中声明能力。" /> :
-        <div className="control-grid">{strategy.capabilities.map((cap) => {
+    <DynamicControls strategy={strategy} registry={registry.data} error={registry.error} loading={registry.isPending}
+      operation={(command, close) => <OperationView command={command} strategy={strategy.name} close={close} />} />
+    <Panel title="会话声明的操作" hint="操作由策略主动声明，最终状态以策略回执为准。">
+      {strategy.archived_at ? <Empty title="策略已归档" /> : !available.length ?
+        <Empty title="没有独立的会话操作" text="已绑定注册组件的操作可在控制面板中使用。" /> :
+        <div className="control-grid">{available.map((cap) => {
           const risky = cap.high_risk || !safe.has(cap.id);
           const blocked = strategy.mode === "live" && risky && !strategy.live_trading_enabled;
           const unavailable = !shadow.has(cap.id) && !strategy.executor_online;
@@ -44,27 +50,6 @@ export function ControlPanel({ strategy }: { strategy: Detail }) {
     <Panel title="近期指令"><OperationTable strategyId={strategy.id} compact /></Panel>
     {selected && <CommandDialog capability={selected} strategy={strategy} close={() => setSelected(null)} />}
   </div>;
-}
-
-function ParameterInput({ name, parameter, value, set }: {
-  name: string; parameter: Capability["parameters"][string]; value: Scalar | undefined;
-  set: (value: Scalar | undefined) => void;
-}) {
-  const { type, required, label, choices, minimum, maximum } = parameter;
-  if (type === "boolean") return <Field label={label}><select required={required} value={value == null ? "" : String(value)}
-    onChange={(e) => set(e.target.value ? e.target.value === "true" : undefined)}>
-    <option value="">请选择</option><option value="true">是</option><option value="false">否</option></select></Field>;
-  if (type === "choice") return <Field label={label}><select required={required} value={value == null ? "" : String(value)}
-    onChange={(e) => set(e.target.value || undefined)}>
-    <option value="">请选择</option>{choices.map((choice) => <option key={choice}>{choice}</option>)}</select></Field>;
-  return <Field label={label} hint={[name, minimum != null ? `最小 ${minimum}` : "", maximum != null ? `最大 ${maximum}` : ""].filter(Boolean).join(" · ")}>
-    <input type={type === "integer" ? "number" : "text"} inputMode={type === "decimal" ? "decimal" : undefined}
-      required={required} min={type === "integer" ? minimum ?? undefined : undefined}
-      max={type === "integer" ? maximum ?? undefined : undefined}
-      pattern={type === "decimal" ? "-?(0|[1-9][0-9]*)([.][0-9]+)?" : undefined}
-      value={value == null ? "" : String(value)} onChange={(e) =>
-        set(e.target.value === "" ? undefined : type === "integer" ? Number(e.target.value) : e.target.value)} />
-  </Field>;
 }
 
 function CommandDialog({ capability, strategy, close }: { capability: Capability; strategy: Detail; close: () => void }) {
@@ -100,7 +85,7 @@ function OperationView({ command, strategy, close }: { command: Command; strateg
   const [resolution, setResolution] = useState<"succeeded" | "failed">("failed");
   const session = useData<{ actor: string }>("session");
   const act = useMutation({
-    mutationFn: (action: "confirm" | "reconcile") => api<Command>(`commands/${command.id}/${action}`, "POST",
+    mutationFn: (action: "confirm" | "reconcile" | "cancel") => api<Command>(`commands/${command.id}/${action}`, "POST",
       action === "reconcile" ? { evidence, status: resolution } : undefined),
     onSuccess: (data) => {
       client.setQueryData(["live", `commands/${command.id}`], data);
@@ -108,13 +93,17 @@ function OperationView({ command, strategy, close }: { command: Command; strateg
     },
   });
   const display = act.data && act.data.updated_at >= command.updated_at ? act.data : command;
-  const canConfirm = display.state === "confirmation_required" && display.actor === session.data?.actor;
+  const owner = display.actor === session.data?.actor;
+  const canConfirm = display.state === "confirmation_required" && owner;
+  const canCancel = owner && display.revision == null &&
+    ["confirmation_required", "pending", "accepted"].includes(display.state);
   return <div className="stack">
     <div className="toolbar"><CommandBadge state={display.state} /><span className="mono subtle">{display.id}</span></div>
     <dl className="detail-list">
       {strategy && <><dt>策略</dt><dd>{strategy}</dd></>}
       <dt>指令</dt><dd>{actions[display.action] ?? display.action}</dd>
       <dt>发起人</dt><dd>{display.actor}</dd><dt>截止时间</dt><dd>{when(display.expires_at)}</dd>
+      {display.control_id && <><dt>控件</dt><dd>{display.control_id} · v{display.control_revision}</dd></>}
       {display.revision != null && <><dt>控制修订</dt><dd>{display.revision}</dd></>}
     </dl>
     {Object.keys(display.arguments).length > 0 && <Code label="提交参数">{JSON.stringify(display.arguments, null, 2)}</Code>}
@@ -130,6 +119,7 @@ function OperationView({ command, strategy, close }: { command: Command; strateg
     </form>}
     <ErrorNotice error={act.error} />
     <div className="dialog-actions"><button className="button secondary" onClick={close}>关闭</button>
+      {canCancel && <button className="button quiet danger-text" disabled={act.isPending} onClick={() => act.mutate("cancel")}>取消请求</button>}
       {canConfirm && <button className="button danger" disabled={act.isPending} onClick={() => act.mutate("confirm")}>确认执行</button>}</div>
   </div>;
 }
