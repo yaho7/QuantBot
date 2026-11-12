@@ -285,6 +285,32 @@ class Editor:
             source, _ = self._read(fd, name)
         return source
 
+    def seed(self, path: str, content: str) -> None:
+        """Install a template without replacing any existing workspace entry."""
+        parts, name = self._mutable_parts(path)
+        workspace = self.workspace()
+        with self._directory(parts) as fd:
+            temp = ".quantbot-seed-" + secrets.token_hex(16)
+            output = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=fd)
+            try:
+                with os.fdopen(output, "w", encoding="utf-8") as file:
+                    file.write(content)
+                    file.flush()
+                    if workspace:
+                        os.fchown(file.fileno(), workspace.uid, workspace.gid)
+                    os.fchmod(file.fileno(), 0o640)
+                    os.fsync(file.fileno())
+                try:
+                    os.link(temp, name, src_dir_fd=fd, dst_dir_fd=fd, follow_symlinks=False)
+                except FileExistsError:
+                    current, _ = self._read(fd, name)
+                    if current.content != content:
+                        raise EditorError(
+                            tr("工作区已有不同内容的 {0}，请选择另一个工作区。", path)
+                        ) from None
+            finally:
+                os.unlink(temp, dir_fd=fd)
+
     def save(self, path: str, content: str, revision: str) -> SourceFile:
         try:
             raw = content.encode("utf-8")

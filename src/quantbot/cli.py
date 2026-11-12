@@ -25,7 +25,6 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable, Sequence
-from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +57,7 @@ from quantbot.i18n import LANGUAGES, language, tr, use_language
 from quantbot.notices import parse_quiet
 from quantbot.prompt import CLIENT_REQUIREMENT, ai_prompt
 from quantbot.service import Service, ServiceError, executable, wait_until_ready
+from quantbot.templates import client_source
 from quantbot.uninstall import UninstallPlan
 from quantbot.updates import Updater, installed, update_label
 from quantbot.workspace import (
@@ -982,15 +982,6 @@ def cmd_editor_github(store: Store, io: Console, api: Api, args: argparse.Namesp
 
 
 # ---------------------------------------------------------------- link
-
-
-def client_source() -> str:
-    """The client file shipped inside the package (or next to it in a checkout)."""
-    try:
-        return (resources.files("quantbot") / "client_template.py").read_text("utf-8")
-    except (FileNotFoundError, ModuleNotFoundError):
-        here = Path(__file__).resolve().parents[2] / "client" / "quantbot_client.py"
-        return here.read_text("utf-8")
 
 
 def project_name(path: Path) -> str:

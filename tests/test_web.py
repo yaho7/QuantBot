@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import sys
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from subprocess import CompletedProcess
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from aiohttp.test_utils import TestClient, TestServer
@@ -24,6 +27,7 @@ from quantbot.server import make_app
 from quantbot.updates import Installed, Updater
 from quantbot.web import COOKIE, Feed, WebAuth, add_routes, login_url, read_audit, static_dir
 from quantbot.workspace import WORKSPACE_FILE, Workspace, workspace_id
+from quantbot.workspace_runtime import WorkspaceRuntime
 
 SECRET = "s" * 32
 BOT = "123456789:" + "A" * 35
@@ -938,6 +942,121 @@ def test_workspace_program_survives_the_browser_session_and_can_stop(
         stopped = await (await client.post(url + "/stop", headers=CSRF)).json()
         assert stopped["ok"] and not stopped["data"]["running"]
         assert "ready" in stopped["data"]["logs"]
+
+    scenario(test, tmp_path / "audit.jsonl")
+
+
+def test_web_shutdown_leaves_independent_workspace_units_running(tmp_path: Path) -> None:
+    from quantbot.web import RUNTIME_KEY
+
+    managed = SimpleNamespace(systemd=object(), stop=AsyncMock())
+    child = SimpleNamespace(systemd=None, stop=AsyncMock())
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        child.lock = asyncio.Lock()
+        client.server.app[RUNTIME_KEY].update({tmp_path: managed, tmp_path / "child": child})
+
+    scenario(test, tmp_path / "audit.jsonl")
+    managed.stop.assert_not_awaited()
+    child.stop.assert_awaited_once()
+
+
+def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from quantbot.templates import QUICKSTART_FILE, quickstart_source
+    from quantbot.workspace_credentials import WorkspaceCredentials
+
+    root = tmp_path / "paper"
+    root.mkdir()
+    workspace = Workspace(root, os.getuid(), os.getgid(), tmp_path)
+
+    def initialize(directory: Path, path: str) -> Workspace:
+        assert path == "paper"
+        Editor.enable(directory, str(root))
+        Store(directory, filename=WORKSPACE_FILE).write({"root": str(root)})
+        return workspace
+
+    class LocalRuntime(WorkspaceRuntime):
+        def __init__(self, *args: Any) -> None:
+            super().__init__(*args)
+            self.systemd = None
+
+    monkeypatch.setattr(Workspace, "supported", lambda: True)
+    monkeypatch.setattr(Editor, "workspace", lambda self: workspace)
+    monkeypatch.setattr(Workspace, "command", lambda self, argv: argv)
+    monkeypatch.setattr(Workspace, "process_options", lambda self: {"cwd": self.root})
+    monkeypatch.setattr(
+        Workspace,
+        "environment",
+        lambda self: {
+            "HOME": str(tmp_path),
+            "PATH": str(Path(sys.executable).parent),
+        },
+    )
+    monkeypatch.setattr("quantbot.web.web_initialize", initialize)
+    monkeypatch.setattr("quantbot.web.WorkspaceRuntime", LocalRuntime)
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        hub.sync(())
+        monkeypatch.setenv("QB_LISTEN", f"127.0.0.1:{client.server.port}")
+        base = "/ui/api/quickstart"
+        assert (await client.post(base, headers=CSRF)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        assert (await client.post(base)).status == 403
+        assert (await (await client.post(base, headers=CSRF)).json())["data"] == {
+            "needs_setup": True
+        }
+        folder = await client.post("/ui/api/workspace/init", json={"path": "paper"}, headers=CSRF)
+        project = (await folder.json())["data"]["id"]
+        launch = await client.post(base, params={"workspace": project}, headers=CSRF)
+        result = await launch.json()
+        assert result["ok"], result
+        sid = result["data"]["id"]
+        strategy = hub.strategies[sid]
+        assert (
+            strategy.said_hello and strategy.supports("manual_order") and strategy.supports("chart")
+        )
+        path = root / QUICKSTART_FILE
+        assert path.read_text("utf-8") == quickstart_source()
+        assert (await (await client.get(base + "/file")).text()) == path.read_text("utf-8")
+        binding = WorkspaceCredentials(tmp_path / "settings").for_root(root)
+        original = binding.read()["QB_TOKEN"]
+        assert original not in path.read_text("utf-8") and original != strategy.token
+        assert binding.path.stat().st_mode & 0o777 == 0o600
+
+        controls = f"/ui/api/strategies/{sid}"
+        assert (
+            "QQQ"
+            in (await (await client.post(controls + "/positions", headers=CSRF)).json())["message"]
+        )
+        args = {"side": "buy", "symbol": "QQQ", "qty": 1}
+        offered = await client.post(
+            controls + "/manual_order", json={**args, "prepare": True}, headers=CSRF
+        )
+        ticket = (await offered.json())["data"]["ticket"]
+        applied = await client.post(
+            controls + "/manual_order", json={**args, "ticket": ticket}, headers=CSRF
+        )
+        assert (await applied.json())["state"] == "SUCCEEDED"
+
+        from quantbot.web import CORE_KEY
+
+        core = client.server.app[CORE_KEY]
+        prompt = core.request("flatten", strategy)
+        reply = await core.tap(prompt.buttons[0][0][1], 42)
+        assert "模拟 QQQ SELL 3" in reply.text
+
+        run = "/ui/api/workspace/program"
+        rotated = await client.post(run + "/rotate", params={"workspace": project}, headers=CSRF)
+        assert (await rotated.json())["ok"]
+        assert hub.by_token(original) is None
+        assert hub.by_token(binding.read()["QB_TOKEN"]) is strategy
+        await client.post(run + "/stop", params={"workspace": project}, headers=CSRF)
+        path.write_text("# my edits\n", encoding="utf-8")
+        refused = await client.post(base, params={"workspace": project}, headers=CSRF)
+        assert not (await refused.json())["ok"]
+        assert path.read_text("utf-8") == "# my edits\n"
 
     scenario(test, tmp_path / "audit.jsonl")
 

@@ -712,5 +712,17 @@
   "策略 {0} 的下单数量上限无效。": "The order quantity limit for strategy {0} is invalid.",
   "数量要是大于 0 且不超过 {0} 的有限数。": "Quantity must be a finite number above zero and no greater than {0}.",
   "参数值必须是有效的 JSON，数值必须有限。": "Parameter values must be valid JSON with finite numbers.",
-  "请使用未过期的一次性票据确认此操作。": "Confirm this operation with a fresh one-time ticket."
+  "请使用未过期的一次性票据确认此操作。": "Confirm this operation with a fresh one-time ticket.",
+  "快速入手": "Quickstart",
+  "快速入手（模拟）": "Quickstart (paper)",
+  "此策略已绑定到另一个工作区。": "This strategy is already bound to another workspace.",
+  "工作区已有不同内容的 {0}，请选择另一个工作区。": "{0} already contains different content. Select another workspace.",
+  "请选择一个已注册的策略。": "Select a registered strategy.",
+  "请先停止程序，再修改策略绑定。": "Stop the program before changing its strategy binding.",
+  "已更新工作区策略绑定。": "Workspace strategy binding updated.",
+  "工作区策略绑定已失效，请重新绑定。": "This workspace's strategy binding has expired. Bind the strategy again.",
+  "此工作区已有程序配置，请使用另一个工作区运行快速入手。": "This workspace already has a program configured. Use another workspace for Quickstart.",
+  "模拟策略 ID 已被使用。": "The paper strategy ID is already in use.",
+  "模拟策略尚未连接。请在工作区查看程序日志。": "The paper strategy has not connected. Check its workspace logs.",
+  "打开快速入手，在网页选择并初始化工作区后会自动启动模拟策略。\n{0}": "Open Quickstart to select a workspace and start the paper strategy.\n{0}"
 }

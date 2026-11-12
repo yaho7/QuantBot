@@ -19,6 +19,7 @@ MAX_BODY = 6 * 1024 * 1024
 MAX_WAIT = 30.0
 HUB_KEY = web.AppKey("hub", Hub)
 STRATEGY_KEY = web.RequestKey("strategy", Strategy)
+TOKEN_KEY = web.RequestKey("strategy_token", str)
 
 
 def _error(status: int, message: str) -> web.Response:
@@ -35,6 +36,7 @@ async def authenticate(request: web.Request, handler: Any) -> web.StreamResponse
     if strategy is None:
         return _error(401, "unknown token")
     request[STRATEGY_KEY] = strategy
+    request[TOKEN_KEY] = token.strip()
     return await handler(request)
 
 
@@ -56,7 +58,7 @@ async def _body(request: web.Request) -> dict[str, Any]:
 async def events(request: web.Request) -> web.Response:
     strategy: Strategy = request[STRATEGY_KEY]
     hub = request.app[HUB_KEY]
-    token = strategy.token
+    token = request[TOKEN_KEY]
     try:
         body = await _body(request)
         if not hub.authorized(strategy, token):
@@ -76,7 +78,10 @@ async def commands(request: web.Request) -> web.Response:
         return _error(400, "wait must be finite")
     wait = min(max(wait, 0.0), MAX_WAIT)
     reply = await request.app[HUB_KEY].poll(
-        request[STRATEGY_KEY], wait, claims=request.query.get("claims") == "1"
+        request[STRATEGY_KEY],
+        wait,
+        claims=request.query.get("claims") == "1",
+        token=request[TOKEN_KEY],
     )
     return _error(401, "unknown token") if reply is None else web.json_response(reply)
 
@@ -84,7 +89,7 @@ async def commands(request: web.Request) -> web.Response:
 async def claim(request: web.Request) -> web.Response:
     strategy = request[STRATEGY_KEY]
     hub = request.app[HUB_KEY]
-    token = strategy.token
+    token = request[TOKEN_KEY]
     body = await _body(request)
     if not hub.authorized(strategy, token):
         return _error(401, "unknown token")
@@ -99,7 +104,7 @@ async def claim(request: web.Request) -> web.Response:
 async def result(request: web.Request) -> web.Response:
     strategy = request[STRATEGY_KEY]
     hub = request.app[HUB_KEY]
-    token = strategy.token
+    token = request[TOKEN_KEY]
     body = await _body(request)
     if not hub.authorized(strategy, token):
         return _error(401, "unknown token")

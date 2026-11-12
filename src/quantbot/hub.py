@@ -24,6 +24,7 @@ from quantbot.i18n import tr
 from quantbot.notices import Connections, Expiries
 from quantbot.operations import Operations, protected
 from quantbot.strategy_features import ActionSpec, Metric, parse_actions, record_metric
+from quantbot.workspace_credentials import fingerprint
 
 COMMANDS = (
     "status", "pause", "resume", "positions", "orders", "cancel", "flatten",
@@ -126,6 +127,7 @@ class Hub:
         self.wall_clock = wall_clock
         self.operation_ttl = operation_ttl
         self.operations = Operations(operation_path)
+        self._workspace_tokens: dict[str, tuple[str, str]] = {}
         self.connections = Connections()
         self.expiries = Expiries()
 
@@ -167,9 +169,23 @@ class Hub:
     def by_token(self, token: str) -> Strategy | None:
         match = None
         for strategy in self.strategies.values():  # check them all: constant time per token
-            if hmac.compare_digest(strategy.token.encode(), token.encode()):
+            if self.authorized(strategy, token):
                 match = strategy
         return match
+
+    def set_workspace_credentials(self, records: list[dict[str, Any]]) -> None:
+        tokens = {
+            item["QB_NAME"]: (item["QB_TOKEN"], item["primary"])
+            for item in records
+            if all(isinstance(item.get(key), str) for key in ("QB_NAME", "QB_TOKEN", "primary"))
+            and (strategy := self.strategies.get(item["QB_NAME"])) is not None
+            and item["primary"] == fingerprint(strategy.token)
+        }
+        for sid, strategy in self.strategies.items():
+            if self._workspace_tokens.get(sid) != tokens.get(sid):
+                strategy.claim_poll_at = None
+                strategy.wake.set()
+        self._workspace_tokens = tokens
 
     def online(self, strategy: Strategy) -> bool:
         if strategy.polling:
@@ -277,16 +293,21 @@ class Hub:
         return ready
 
     def authorized(self, strategy: Strategy, token: str) -> bool:
-        return self.strategies.get(strategy.id) is strategy and strategy.token == token
+        if self.strategies.get(strategy.id) is not strategy:
+            return False
+        workspace, primary = self._workspace_tokens.get(strategy.id, ("", ""))
+        workspace_match = hmac.compare_digest(workspace.encode(), token.encode())
+        primary_match = hmac.compare_digest(strategy.token.encode(), token.encode())
+        return primary_match or (workspace_match and primary == fingerprint(strategy.token))
 
     async def poll(
-        self, strategy: Strategy, wait: float, *, claims: bool = False
+        self, strategy: Strategy, wait: float, *, claims: bool = False, token: str | None = None
     ) -> dict[str, Any] | None:
         self._seen(strategy)
         if claims:
             strategy.claim_poll_at = self.clock()
         strategy.polling += 1
-        token = strategy.token
+        token = strategy.token if token is None else token
         try:
             deadline = self.clock() + wait
             while self.authorized(strategy, token):

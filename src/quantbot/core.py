@@ -217,7 +217,10 @@ class Core:
     async def home(self) -> Reply:
         strategies = list(self.hub.strategies.values())
         if not strategies:
-            return Reply(tr("还没有策略。在服务器上运行：\nquantbot add <id> --name <名字>"))
+            return Reply(
+                tr("还没有策略。在服务器上运行：\nquantbot add <id> --name <名字>"),
+                [[(tr("快速入手"), "quickstart")]],
+            )
         if len(strategies) == 1:
             return await self.open(strategies[0].id)
         lines = []

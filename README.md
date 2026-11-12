@@ -69,6 +69,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 | 网页上 | 能做什么 |
 |---|---|
 | 策略卡片 | 在线状态、状态快照、暂停开仓、恢复开仓 |
+| 空策略列表 → 快速入手 | 写入 `quickstart.py`，启动一份模拟策略，立即试用网页和 Telegram 控制 |
 | 策略详情 → 操作记录 | 查看交易操作状态、回执及操作 ID。结果未知时，核对券商后可保存结论 |
 | 添加策略 / 管理 | 添加和移除策略、改显示名称、复制连接信息、换发令牌 |
 | 更多操作 | 刷新状态、持仓、挂单和撤单、净值图、改参数、手动下单、平仓、停止程序 |
@@ -118,7 +119,11 @@ quantbot editor off
 
 使用 `quantbot workspace init` 初始化后，点工作区右上方的「终端」即可在当前选中的目录内打开交互式 Bash。终端和 Git 使用 `quantbot-workspace` 系统账号。右上角的延迟是浏览器到终端的往返时间。关闭终端会结束当前 shell。
 
-「运行」面板可保存一条启动命令，在工作区目录下启动、停止和查看最近输出。选用会在前台保持运行的命令，例如 `uv run python main.py`。关闭浏览器后程序继续运行。在 systemd 主机上，程序由 systemd 托管，输出写入系统日志。QuantBot 服务停止或重启时会停止工作区程序。
+「运行」面板可保存一条启动命令，在工作区目录下启动、停止和查看最近输出。选用会在前台保持运行的命令，例如 `uv run python main.py`。可在面板中绑定策略，程序启动时会获得单独的 `QB_URL`、`QB_NAME` 和 `QB_TOKEN`。凭据保存在 QuantBot 数据目录中，可独立换发或撤销。
+
+在 systemd 主机上，工作区程序由独立服务托管。关闭浏览器、重启 QuantBot 或更新控制台时，程序继续运行。工作区程序的输出写入系统日志。没有 systemd 的主机在 QuantBot 退出时会清理其子进程。
+
+还没有策略时，点击「快速入手」，或在管理员 Telegram 私聊中使用 `/quickstart`。如果还没有工作区，先按现有流程选择和初始化目录。QuantBot 会在所选工作区写入 `quickstart.py`、注册并运行模拟策略。它支持持仓、挂单、净值图、暂停、恢复、模拟下单、撤单、平仓和停止等控制。模拟资金和订单会随示例进程重启重置。
 
 ```bash
 quantbot workspace run set -- uv run python main.py

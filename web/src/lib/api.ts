@@ -133,7 +133,10 @@ export interface WorkspaceProgramStatus {
   running: boolean;
   exit_code: number | null;
   logs: string;
+  strategy_id: string;
 }
+
+export type Quickstart = { needs_setup: true } | { id: string; project: string; file: string };
 
 export interface WorkspaceProject {
   id: string;
@@ -232,6 +235,8 @@ export const api = {
     answerData<{ path: string }>("POST", "workspace/folder", { path, name }),
   initializeWorkspace: (path: string) =>
     answerData<{ path: string; id: string }>("POST", "workspace/init", { path }),
+  quickstart: (project?: string) =>
+    answerData<Quickstart>("POST", project ? `quickstart?workspace=${encodeURIComponent(project)}` : "quickstart"),
   githubBind: () => answerData<GitHubAuthorization>("POST", "editor/github/bind"),
   githubAuthorize: (state: string) =>
     answerData<{ ready: boolean }>("POST", "editor/github/authorize", { state }),
@@ -286,6 +291,8 @@ export function workspaceApi(project: string) {
     workspaceProgram: () => data<WorkspaceProgramStatus>("GET", "workspace/program"),
     changeWorkspaceProgram: (action: "configure" | "start" | "stop", command?: string) =>
       data<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, command === undefined ? undefined : { command }),
+    bindWorkspaceStrategy: (action: "bind" | "rotate" | "unbind", id?: string) =>
+      data<WorkspaceProgramStatus>("POST", `workspace/program/${action}`, { id }),
     githubSelect: (repo: string, folder?: string) =>
       data<LocalGitStatus & { project: string }>("POST", "editor/github/select", { repo, folder }),
     gitBranches: () => data<{ current: string; branches: string[] }>("GET", "editor/git/branches"),

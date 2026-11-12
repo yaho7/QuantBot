@@ -49,9 +49,11 @@ from quantbot.config import (
     check_strategy_id,
     check_timezone,
     check_url,
+    local_origin,
     new_token,
     require_strategy,
     set_web_admin,
+    strategy_item,
     timezones,
     valid_order_qty,
 )
@@ -63,6 +65,7 @@ from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language,
 from quantbot.operations import protected
 from quantbot.service import Service, ServiceError
 from quantbot.strategy_features import action_arguments
+from quantbot.templates import QUICKSTART_COMMAND, QUICKSTART_FILE, quickstart_source
 from quantbot.updates import Updater
 from quantbot.workspace import (
     WORKSPACE_FILE,
@@ -73,6 +76,7 @@ from quantbot.workspace import (
     workspace_id,
     workspace_projects,
 )
+from quantbot.workspace_credentials import WorkspaceCredentials
 from quantbot.workspace_files import WorkspaceChanges, search
 from quantbot.workspace_runtime import WorkspaceRuntime
 from quantbot.workspace_terminal import TerminalProcess
@@ -729,12 +733,18 @@ async def workspace_program(request: web.Request) -> web.Response:
         workspace = editor.workspace()
         if workspace is None:
             raise ConfigError(tr("请先在服务器上运行 quantbot workspace init。"))
-        runtimes = request.app[RUNTIME_KEY]
-        runtime = runtimes.get(editor.root)
-        if runtime is None:
-            runtime = runtimes[editor.root] = WorkspaceRuntime(editor.data_dir, editor.root)
+        runtime = _runtime(request.app, editor)
+        credentials = WorkspaceCredentials(editor.data_dir)
+        binding = credentials.for_root(editor.root)
         if not action:
-            return _answer(True, "", await runtime.status())
+            return _answer(
+                True,
+                "",
+                {
+                    **await runtime.status(),
+                    "strategy_id": binding.read().get("QB_NAME", ""),
+                },
+            )
         body = await _args(request)
         async with runtime.lock:
             if action == "configure":
@@ -744,12 +754,27 @@ async def workspace_program(request: web.Request) -> web.Response:
                 await runtime.configure(command)
                 message = tr("启动命令已保存。")
             elif action == "start":
-                await runtime.start(workspace)
+                await _start_program(request.app, editor, runtime)
                 message = tr("已启动工作区程序。")
-            else:
+            elif action == "stop":
                 await runtime.stop()
                 message = tr("已停止工作区程序。")
+            else:
+                hub = request.app[CORE_KEY].hub
+                if action == "unbind":
+                    credentials.revoke(editor.root)
+                else:
+                    sid = body.get("id") if action == "bind" else binding.read().get("QB_NAME")
+                    strategy = hub.strategies.get(sid) if isinstance(sid, str) else None
+                    if strategy is None:
+                        return _answer(False, tr("请选择一个已注册的策略。"))
+                    if action == "bind" and (await runtime.status())["running"]:
+                        return _answer(False, tr("请先停止程序，再修改策略绑定。"))
+                    credentials.bind(editor.root, sid, strategy.token, rotate=action == "rotate")
+                hub.set_workspace_credentials(credentials.records())
+                message = tr("已更新工作区策略绑定。")
             status = await runtime.status()
+            status["strategy_id"] = binding.read().get("QB_NAME", "")
     except (ConfigError, OSError, asyncio.TimeoutError) as exc:
         if action:
             audit.write(f"workspace_{action}", user=WEB_USER, ok=False, result=str(exc))
@@ -760,12 +785,118 @@ async def workspace_program(request: web.Request) -> web.Response:
     return _answer(True, message, status)
 
 
+def _runtime(app: web.Application, editor: Editor) -> WorkspaceRuntime:
+    runtimes = app[RUNTIME_KEY]
+    if editor.root not in runtimes:
+        runtimes[editor.root] = WorkspaceRuntime(editor.data_dir, editor.root)
+    return runtimes[editor.root]
+
+
+async def _start_program(app: web.Application, editor: Editor, runtime: WorkspaceRuntime) -> None:
+    workspace = editor.workspace()
+    if workspace is None:
+        raise ConfigError(tr("请先在服务器上运行 quantbot workspace init。"))
+    hub, store = app[WEB_HUB_KEY], app[STORE_KEY]
+    credentials = WorkspaceCredentials(editor.data_dir).for_root(editor.root)
+    binding = credentials.read()
+    if not binding:
+        await runtime.start(workspace)
+        return
+    strategy = hub.by_token(binding.get("QB_TOKEN", ""))
+    if strategy is None or strategy.id != binding.get("QB_NAME"):
+        raise ConfigError(tr("工作区策略绑定已失效，请重新绑定。"))
+    await runtime.start(workspace, credentials.path, local_origin(store.ensure_listen()))
+
+
+async def launch_quickstart(app: web.Application, project: str = "") -> dict[str, Any]:
+    store, hub = app[STORE_KEY], app[WEB_HUB_KEY]
+    if not project:
+        known = [item for item in workspace_projects(store.dir) if item["managed"]]
+        selected = next((item for item in known if item["default"]), known[0] if known else None)
+        if selected is None:
+            return {"needs_setup": True}
+        project = selected["id"]
+    editor = Editor.for_project(store.dir, project)
+    if editor.workspace() is None:
+        return {"needs_setup": True}
+    runtime = _runtime(app, editor)
+    sid = f"quickstart-{project[:16]}"
+    credentials = WorkspaceCredentials(store.dir)
+    async with runtime.lock:
+        status = await runtime.status()
+        binding = credentials.for_root(editor.root).read()
+        if status["command"] not in {"", QUICKSTART_COMMAND} or (
+            binding and binding.get("QB_NAME") != sid
+        ):
+            raise ConfigError(tr("此工作区已有程序配置，请使用另一个工作区运行快速入手。"))
+        if status["running"]:
+            if status["command"] == QUICKSTART_COMMAND and sid in hub.strategies:
+                running_strategy = hub.strategies[sid]
+                if running_strategy.said_hello and hub.online(running_strategy):
+                    return {"id": sid, "project": project, "file": QUICKSTART_FILE}
+                raise ConfigError(tr("模拟策略尚未连接。请在工作区查看程序日志。"))
+            raise ConfigError(tr("工作区程序已经在运行。"))
+
+        def seed() -> None:
+            with editor_lock(store.dir, editor.root):
+                editor.seed(QUICKSTART_FILE, quickstart_source())
+
+        async with app[EDITOR_LOCK].setdefault(editor.root, asyncio.Lock()):
+            await asyncio.to_thread(seed)
+        with store.edit() as data:
+            item = strategy_item(data, sid)
+            if item is None:
+                item = add_strategy(data, sid, tr("快速入手（模拟）"))
+                item["quickstart_workspace"] = project
+                item["max_order_qty"] = 100
+            if item.get("quickstart_workspace") != project:
+                raise ConfigError(tr("模拟策略 ID 已被使用。"))
+            strategies = store.strategies(data)
+        hub.sync(strategies)
+        credentials.bind(editor.root, sid, item["token"])
+        hub.set_workspace_credentials(credentials.records())
+        await runtime.configure(QUICKSTART_COMMAND)
+        started_at = hub.clock()
+        await _start_program(app, editor, runtime)
+    strategy = hub.strategies[sid]
+    for _ in range(60):
+        if (
+            strategy.said_hello
+            and strategy.last_seen is not None
+            and strategy.last_seen >= started_at
+        ):
+            return {"id": sid, "project": project, "file": QUICKSTART_FILE}
+        await asyncio.sleep(0.1)
+    raise ConfigError(tr("模拟策略尚未连接。请在工作区查看程序日志。"))
+
+
+async def quickstart(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    if request.method == "GET":
+        return web.Response(
+            text=quickstart_source(),
+            content_type="text/x-python",
+            headers={
+                "Content-Disposition": f'attachment; filename="{QUICKSTART_FILE}"',
+                "Cache-Control": "no-store",
+            },
+        )
+    try:
+        data = await launch_quickstart(request.app, _project(request))
+    except (ConfigError, OSError, asyncio.TimeoutError) as exc:
+        return _answer(False, str(exc))
+    return _answer(True, "", data)
+
+
 async def _stop_workspace_program(app: web.Application) -> None:
     async def stop(runtime: WorkspaceRuntime) -> None:
         async with runtime.lock:
             await runtime.stop()
 
-    await asyncio.gather(*(stop(runtime) for runtime in app[RUNTIME_KEY].values()))
+    await asyncio.gather(
+        *(stop(runtime) for runtime in app[RUNTIME_KEY].values() if runtime.systemd is None)
+    )
 
 
 async def editor_read(request: web.Request) -> web.Response:
@@ -1421,6 +1552,8 @@ async def login(request: web.Request) -> web.StreamResponse:
     target = "/ui/?view=workspace" if workspace else "/ui/"
     if workspace and re.fullmatch(r"[a-f0-9]{24}", project):
         target += f"&workspace={project}"
+    if request.query.get("quickstart") == "1":
+        target = "/ui/?quickstart=1"
     redirect = web.HTTPFound(target)
     public_url = check_public_url(request.app[STORE_KEY].read().get("public_url"))
     _set_session(redirect, cookie, secure=_secure_session(request, public_url))
@@ -1689,6 +1822,7 @@ def add_routes(
     app.middlewares.append(_use_web_language)
     app[TELEGRAM_KEY] = telegram
     hub = core.hub
+    hub.set_workspace_credentials(WorkspaceCredentials(store.dir).records())
     app[CORE_KEY] = core
     app[WEB_HUB_KEY] = hub
     app[AUTH_KEY] = auth
@@ -1717,6 +1851,8 @@ def add_routes(
             web.get("/ui/api/overview", overview),
             web.get("/ui/api/audit", audit),
             web.post("/ui/api/pause-all", pause_all),
+            web.get("/ui/api/quickstart/file", quickstart),
+            web.post("/ui/api/quickstart", quickstart),
             web.post(
                 "/ui/api/strategy-config/{action:add|rename|remove|credentials|rotate}",
                 strategy_config,
@@ -1742,7 +1878,10 @@ def add_routes(
             web.get("/ui/api/workspace/directories", workspace_setup),
             web.post("/ui/api/workspace/{action:folder|init}", workspace_setup),
             web.get("/ui/api/workspace/program", workspace_program),
-            web.post("/ui/api/workspace/program/{action:configure|start|stop}", workspace_program),
+            web.post(
+                "/ui/api/workspace/program/{action:configure|start|stop|bind|rotate|unbind}",
+                workspace_program,
+            ),
             web.get("/ui/api/editor/git/{action:diff|branches}", local_git),
             web.post(
                 "/ui/api/editor/git/{action:init|stage|unstage|commit|check|pull|push|switch}",

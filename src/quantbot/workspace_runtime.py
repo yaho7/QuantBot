@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import shlex
 import time
 from contextlib import suppress
@@ -16,6 +17,14 @@ from quantbot.workspace import Workspace, stop_process
 
 RUN_FILE = "workspace-run.json"
 LOG_LIMIT = 65_536
+LOAD_CREDENTIAL = """
+import json, os, sys
+from pathlib import Path
+credential = Path(os.environ["CREDENTIALS_DIRECTORY"]) / "quantbot"
+data = json.loads(credential.read_text(encoding="utf-8"))
+os.environ.update({key: data[key] for key in ("QB_NAME", "QB_TOKEN")})
+os.execvpe(sys.argv[1], sys.argv[1:], os.environ)
+""".strip()
 
 
 class SystemdProgram:
@@ -70,11 +79,24 @@ class SystemdProgram:
             return running, None
         return False, int(status) if main_code == "1" else -int(status)
 
-    async def start(self, workspace: Workspace, arguments: list[str]) -> None:
+    async def start(
+        self,
+        workspace: Workspace,
+        arguments: list[str],
+        credentials: Path | None = None,
+        url: str = "",
+    ) -> None:
         # A completed or failed transient service can retain its name until it is stopped.
         await self._call("/usr/bin/systemctl", "stop", self.unit)
         await self._call("/usr/bin/systemctl", "reset-failed", self.unit)
         environment = {**workspace.environment(), "PYTHONUNBUFFERED": "1"}
+        credential_args = []
+        executable = ["/usr/bin/env", "--"]
+        if credentials is not None:
+            environment["QB_URL"] = url
+            path = str(credentials).replace("%", "%%")
+            credential_args = [f"--property=LoadCredential=quantbot:{path}"]
+            executable = ["/usr/bin/python3", "-I", "-c", LOAD_CREDENTIAL]
         code, _ = await self._call(
             "/usr/bin/systemd-run",
             "--quiet",
@@ -86,11 +108,11 @@ class SystemdProgram:
             "--property=NoNewPrivileges=yes",
             "--property=UMask=0077",
             "--property=KillMode=control-group",
+            *credential_args,
             f"--working-directory={workspace.root}",
             *(f"--setenv={key}={value}" for key, value in environment.items()),
             "--",
-            "/usr/bin/env",
-            "--",
+            *executable,
             *(arg.replace("$", "$$") for arg in arguments),
         )
         if code:
@@ -195,7 +217,12 @@ class WorkspaceRuntime:
         self._arguments(command)
         self._save(command.strip())
 
-    async def start(self, workspace: Workspace) -> None:
+    async def start(
+        self,
+        workspace: Workspace,
+        credentials: Path | None = None,
+        url: str = "",
+    ) -> None:
         running = (await self.systemd.state())[0] if self.systemd else self.running
         if running:
             raise ConfigError(tr("工作区程序已经在运行。"))
@@ -205,17 +232,21 @@ class WorkspaceRuntime:
         arguments = self._arguments(command)
         if self.systemd:
             since = int(time.time())
-            await self.systemd.start(workspace, arguments)
+            await self.systemd.start(workspace, arguments, credentials, url)
             self._save(command, since)
             return
         await self._finish_capture()
+        environment = {**workspace.environment(), "PYTHONUNBUFFERED": "1"}
+        if credentials is not None:
+            values = json.loads(credentials.read_text("utf-8"))
+            environment.update(QB_URL=url, QB_NAME=values["QB_NAME"], QB_TOKEN=values["QB_TOKEN"])
         process = await asyncio.create_subprocess_exec(
             *workspace.command(arguments),
             stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             start_new_session=True,
-            env={**workspace.environment(), "PYTHONUNBUFFERED": "1"},
+            env=environment,
             **workspace.process_options(),
         )
         self.process = process

@@ -7,6 +7,7 @@ import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { BrandIcon } from "@/components/BrandIcon";
 import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
+import { Quickstart } from "@/components/Quickstart";
 import { SettingsPage } from "@/components/SettingsPage";
 import { StrategyAdminDialog } from "@/components/StrategyAdminDialog";
 import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
@@ -316,6 +317,8 @@ export function App() {
   const [promptOpen, setPromptOpen] = React.useState(false);
   const [manage, setManage] = React.useState<StrategyView | null>();
   const [updatedFrom, setUpdatedFrom] = React.useState<string>();
+  const [quickstartProject, setQuickstartProject] = React.useState<string>();
+  const quickstartRequested = new URLSearchParams(location.search).get("quickstart") === "1";
   const version = update.data?.version;
   React.useEffect(() => {
     if (updatedFrom && version && version !== updatedFrom) location.reload();
@@ -348,16 +351,19 @@ export function App() {
             {(data) => (
               <div className="grid gap-8">
                 <TelegramNote />
-                {data.strategies.length === 0 ? (
-                  <Card>
-                    <EmptyState title={tr("还没有策略")}
-                      description={tr("可以先在工作区绑定 GitHub 并准备代码，或添加策略获取连接令牌。")} />
-                  </Card>
-                ) : (
+                {quickstartProject && <Alert tone="info" className="flex-wrap items-center justify-between">
+                  <span>{tr("模拟策略已启动。现在可以在这里或 Telegram 试用策略按钮。")}</span>
+                  <Button size="sm" variant="outline" asChild>
+                    <a href={`/ui/?view=workspace&workspace=${quickstartProject}`}>{tr("打开工作区")}</a>
+                  </Button>
+                </Alert>}
+                {data.strategies.length > 0 && (
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {data.strategies.map((s) => <StrategyCard key={s.id} s={s} onManage={() => setManage(s)} />)}
                   </div>
                 )}
+                <Quickstart visible={data.strategies.length === 0}
+                  requested={quickstartRequested} onStarted={setQuickstartProject} />
                 <Tabs defaultValue="feed">
                   <TabsList>
                     <TabsTrigger value="feed"><Bell className="size-3.5" /> {tr("推送")}</TabsTrigger>

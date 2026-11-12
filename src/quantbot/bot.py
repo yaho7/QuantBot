@@ -31,8 +31,9 @@ from quantbot.hub import Hub, Strategy
 from quantbot.i18n import tr, use_language
 from quantbot.notices import LOUD, is_quiet
 from quantbot.server import make_app
+from quantbot.templates import QUICKSTART_FILE, quickstart_source
 from quantbot.updates import Updater, installed
-from quantbot.web import SESSIONS_FILE, Feed, WebAuth, add_routes, login_url
+from quantbot.web import SESSIONS_FILE, Feed, WebAuth, add_routes, launch_quickstart, login_url
 
 log = logging.getLogger("quantbot")
 
@@ -67,6 +68,7 @@ COMMANDS = [
     ("set", "改参数"),
     ("buy", "手动买入"),
     ("sell", "手动卖出"),
+    ("quickstart", "快速入手"),
     ("web", "打开网页"),
     ("help", "命令说明"),
 ]
@@ -174,6 +176,7 @@ class QuantBot:
             "buy": self._buy,
             "sell": self._sell,
             "web": self._web,
+            "quickstart": self._quickstart,
         }
         for name, handler in handlers.items():
             self.app.add_handler(CommandHandler(name, self._localized(handler), filters=owner))
@@ -367,6 +370,9 @@ class QuantBot:
                 await query.answer()
             return
         await query.answer()
+        if query.data == "quickstart":
+            await self._quickstart(update, context)
+            return
         reply = await self.core.tap(query.data or "", query.from_user.id)
         await self._show(update, reply, edit=True)
 
@@ -455,6 +461,33 @@ class QuantBot:
         if where:
             text += f"\n\n{where}"
         await self._show(update, Reply(text))
+
+    async def _quickstart(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        if not self._private_owner(update):
+            return
+        try:
+            result = (
+                await launch_quickstart(self._runner.app) if self._runner else {"needs_setup": True}
+            )
+        except (ConfigError, OSError, asyncio.TimeoutError) as exc:
+            await self._show(update, Reply(str(exc)))
+            return
+        if result.get("needs_setup"):
+            settings = self.settings
+            url = login_url(
+                f"{settings.host}:{settings.port}", self.web_auth.link_token(), settings.public_url
+            )
+            await update.effective_message.reply_text(
+                tr(
+                    "打开快速入手，在网页选择并初始化工作区后会自动启动模拟策略。\n{0}",
+                    url + "&quickstart=1",
+                )
+            )
+        else:
+            await self._show(update, await self.core.open(result["id"]))
+        await update.effective_message.reply_document(
+            quickstart_source().encode("utf-8"), filename=QUICKSTART_FILE
+        )
 
     async def _error(self, update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.error("Handler failed", exc_info=context.error)

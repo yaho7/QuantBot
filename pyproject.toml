@@ -28,6 +28,7 @@ packages = ["src/quantbot"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "client/quantbot_client.py" = "quantbot/client_template.py"
+"examples/demo.py" = "quantbot/quickstart_example.py"
 
 [tool.ruff]
 line-length = 100
