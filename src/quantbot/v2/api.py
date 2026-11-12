@@ -398,6 +398,7 @@ async def component_data(
     start: Stamp,
     end: Stamp,
     limit: Annotated[int, Query(ge=1, le=1000)] = 250,
+    bucket_seconds: Annotated[int, Query(ge=60, le=604800)] = 3600,
     actor=ADMIN,
 ):
     """Retrieve normalized current data or the selected component's historical records."""
@@ -406,6 +407,7 @@ async def component_data(
         component,
         *bounds(start, end),
         limit,
+        bucket_seconds,
     )
 
 

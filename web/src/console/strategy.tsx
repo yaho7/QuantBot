@@ -1,20 +1,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowLeft, ArrowRight, ChartNoAxesCombined, CloudOff, Shield } from "lucide-react";
-import { useState } from "react";
-import { api, strategyApi, strategyPath, type Account, type Catalog, type Detail, type EventRecord, type Fill, type Order, type Position, type StrategySettings } from "./api";
+import { Activity, ArrowLeft, ArrowRight, CloudOff, Shield } from "lucide-react";
+import { lazy, Suspense, useState } from "react";
+import { api, strategyApi, strategyPath, type Detail, type EventRecord, type StrategySettings } from "./api";
 import { StrategyFields, TokenPanel } from "./onboarding";
 import { ControlPanel } from "./operations";
+import { Accounts, Fills, Orders, Performance, Positions } from "./telemetry-views";
 import { Empty, ErrorNotice, Field, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, relative, severityText, useData, when } from "./ui";
+
+const DashboardBuilder = lazy(() => import("./dashboard-builder"));
 
 const tabs = [
   ["", "概览"], ["charts", "仪表盘"], ["funds", "资金与绩效"], ["positions", "持仓"],
   ["orders", "订单与成交"], ["events", "事件与日志"], ["control", "远程控制"], ["api", "Token 与诊断"], ["settings", "配置"],
 ];
-const performanceNames: Record<string, string> = {
-  cumulative_return: "累计收益率", daily_return: "当日收益率", max_drawdown: "最大回撤",
-  sharpe_ratio: "Sharpe Ratio", sortino_ratio: "Sortino Ratio", win_rate: "胜率",
-  profit_loss_ratio: "盈亏比", profit_factor: "Profit Factor",
-};
 
 export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab?: string }) {
   const [instance, setInstance] = useState("");
@@ -33,7 +31,7 @@ export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab
     </nav>
     <ErrorNotice error={query.error} />
     {!tab && <StrategyOverview strategy={strategy} />}
-    {tab === "charts" && <ChartCatalog strategyId={strategyId} />}
+    {tab === "charts" && <Suspense fallback={<Loading />}><DashboardBuilder strategy={strategy} /></Suspense>}
     {tab === "funds" && <div className="stack"><Panel title="账户资金" action={<InstanceFilter {...{ strategy, instance, setInstance }} />}>
       <Accounts rows={snapshot?.accounts ?? []} /></Panel><Panel title="绩效指标"><Performance values={snapshot?.performance} /></Panel></div>}
     {tab === "positions" && <div className="stack"><Panel title="策略归属持仓" action={<InstanceFilter {...{ strategy, instance, setInstance }} />}>
@@ -86,50 +84,6 @@ function StrategyOverview({ strategy }: { strategy: Detail }) {
   </div>;
 }
 
-function ChartCatalog({ strategyId }: { strategyId: string }) {
-  const query = useData<Catalog>(strategyApi(strategyId, "components"));
-  return <Panel title="已识别的标准数据">
-    <ErrorNotice error={query.error} />{query.isPending ? <Loading /> :
-      !query.data?.components.length ? <Empty title="等待标准数据上报" /> :
-      <div className="value-grid">{query.data.components.map((item) => <div key={item.id}><ChartNoAxesCombined size={18} />
-        <strong>{item.label}</strong><span>{{ ready: "可用", insufficient: "数据不足", stale: "停止上报", incompatible: "协议不兼容" }[item.state] ?? item.state}</span>
-      </div>)}</div>}
-  </Panel>;
-}
-
-export function Accounts({ rows }: { rows: Account[] }) {
-  return <Table columns={["账户", "币种", "余额", "可用现金", "净值", "购买力", "已实现", "未实现", "当日盈亏"]} empty={!rows.length}>
-    {rows.map((row) => <tr key={`${row.account_id}/${row.currency}`}><td>{row.account_id}</td><td>{row.currency}</td>
-      {[row.balance, row.cash, row.equity, row.buying_power, row.realized_pnl, row.unrealized_pnl, row.daily_pnl]
-        .map((value, i) => <td className="mono" key={i}>{money(value)}</td>)}</tr>)}
-  </Table>;
-}
-export function Performance({ values }: { values?: Record<string, string | null> }) {
-  const metrics = Object.entries(values ?? {}).filter((entry) => entry[1] != null);
-  return metrics.length ? <div className="value-grid">{metrics.map(([name, value]) => <div key={name}><span>{performanceNames[name] ?? name}</span>
-    <strong>{money(value, ["daily_return", "cumulative_return", "max_drawdown", "win_rate"].includes(name) ? "%" : undefined)}</strong></div>)}</div> : <Empty />;
-}
-export function Positions({ rows }: { rows: Position[] }) {
-  return <Table columns={["标的", "账户", "数量", "成本", "市价", "未实现盈亏"]} empty={!rows.length}>
-    {rows.map((row) => <tr key={`${row.account_id}/${row.position_id}`}><td><strong>{row.symbol}</strong></td><td>{row.account_id}</td>
-      <td className="mono">{money(row.quantity)}</td><td className="mono">{money(row.cost, row.currency)}</td>
-      <td className="mono">{money(row.market_price, row.currency)}</td><td className="mono">{money(row.unrealized_pnl, row.currency)}</td></tr>)}
-  </Table>;
-}
-export function Orders({ rows }: { rows: Order[] }) {
-  return <Table columns={["订单 ID", "标的", "方向", "委托 / 已成交", "价格", "手续费", "状态"]} empty={!rows.length}>
-    {rows.map((row, index) => <tr key={`${row.account_id}/${row.order_id}/${index}`}><td className="mono">{row.order_id}</td><td>{row.symbol}</td>
-      <td>{row.side === "buy" ? "买入" : "卖出"}</td><td className="mono">{row.quantity} / {row.filled_quantity ?? "—"}</td>
-      <td className="mono">{money(row.price, row.currency)}</td><td className="mono">{money(row.fee, row.currency)}</td><td>{row.status}</td></tr>)}
-  </Table>;
-}
-export function Fills({ rows }: { rows: Fill[] }) {
-  return <Table columns={["成交时间", "标的", "方向", "数量", "价格", "手续费"]} empty={!rows.length}>
-    {rows.map((row) => <tr key={`${row.account_id}/${row.fill_id}`}><td>{when(row.occurred_at)}</td><td>{row.symbol}</td>
-      <td>{row.side === "buy" ? "买入" : "卖出"}</td><td className="mono">{row.quantity}</td>
-      <td className="mono">{money(row.price, row.currency)}</td><td className="mono">{money(row.fee, row.currency)}</td></tr>)}
-  </Table>;
-}
 function Events({ strategyId }: { strategyId: string }) {
   const [category, setCategory] = useState("");
   const [days, setDays] = useState("7");

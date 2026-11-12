@@ -131,3 +131,50 @@ test("registered controls render safely and retain the last reported state", asy
   } });
   await expect(page.locator(".control-card").filter({ hasText: "RSI 周期" })).toContainText("实际值 20");
 });
+
+test("builds a dashboard using real metrics, OHLCV, and chart markers", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  const http = page.request;
+  expect((await http.post("/api/v2/admin/login", { data: { username: "admin", password: "browser-test-password" } })).ok()).toBeTruthy();
+  const response = await http.post("/api/v2/admin/strategies", { data: { name: "图表验收策略", mode: "paper" } });
+  const { strategy, credential } = await response.json();
+  await page.goto(`/ui/#strategy/${strategy.id}/charts`);
+  await expect(page.getByText("等待标准数据上报", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "添加组件" })).toBeDisabled();
+
+  const token = { Authorization: `Bearer ${credential.token}` };
+  const session = await http.post("/api/v2/agent/session", { headers: token, data: { instance_id: "history-agent" } });
+  const headers = { ...token, "X-Agent-Session": (await session.json()).session_id };
+  const time = Math.floor(Date.now() / 60000) * 60000;
+  const observed = (offset: number) => new Date(time + offset).toISOString();
+  const result = await http.post("/api/v2/agent/reports", { headers, data: { records: [
+    { type: "equity", schema_version: 1, observed_at: observed(-120000), account_id: "paper", currency: "USD", value: "1000.01" },
+    { type: "equity", schema_version: 1, observed_at: observed(-60000), account_id: "paper", currency: "USD", value: "1001.24" },
+    { type: "ohlcv", schema_version: 1, observed_at: observed(-120000), symbol: "SPY", interval_seconds: 60,
+      open: "100", high: "105", low: "99", close: "103", volume: "210" },
+    { type: "ohlcv", schema_version: 1, observed_at: observed(-60000), symbol: "SPY", interval_seconds: 60,
+      open: "103", high: "106", low: "101", close: "105", volume: "180" },
+    { type: "signal", schema_version: 1, observed_at: observed(-90000), id: "signal-1", symbol: "SPY", name: "entry", direction: "buy" },
+  ] } });
+  expect(result.ok()).toBeTruthy();
+  await page.getByRole("button", { name: "添加组件" }).click();
+  await expect(page.getByRole("button", { name: "添加 持仓", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "添加 账户净值" }).click();
+  await page.getByLabel("图表类型").selectOption("area");
+  await page.getByRole("button", { name: "应用组件配置" }).click();
+  await page.getByRole("button", { name: "添加组件" }).click();
+  await page.getByRole("button", { name: "添加 交易 K 线" }).click();
+  await page.getByRole("button", { name: "应用组件配置" }).click();
+  await page.getByRole("button", { name: "上移 交易 K 线" }).click();
+  await page.getByRole("button", { name: "保存布局" }).click();
+  await expect(page.getByRole("button", { name: "编辑布局" })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("img", { name: "历史时间序列" })).toBeVisible();
+  await expect(page.getByRole("img", { name: "交易 K 线" })).toBeVisible();
+  await expect(page.getByText("订单、成交、信号与风控标记（1）")).toBeVisible();
+  await expect(page.locator("[data-widget]").first()).toContainText("交易 K 线");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
+  expect(errors).toEqual([]);
+});

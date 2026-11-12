@@ -464,7 +464,12 @@ class Registry:
             )
             has_data = observation["samples"] >= minimum
             if component == "position_mix":
-                has_data = bool(sections.get("strategy_positions"))
+                has_data = any(
+                    row["market_price"] is not None
+                    and Decimal(row["quantity"]) != 0
+                    and Decimal(row["market_price"]) != 0
+                    for row in sections.get("strategy_positions", [])
+                )
             elif component == "order_status":
                 has_data = bool(sections.get("open_orders") or sections.get("completed_orders"))
             elif component == "accounts":
@@ -594,7 +599,11 @@ class Registry:
             if body.revision != current["revision"]:
                 raise Problem(409, "Dashboard changed in another session; reload before saving")
             existing = {item["id"]: item for item in current["widgets"]}
-            available = {item["id"] for item in self.discover(sid)["components"]}
+            available = {
+                item["id"]
+                for item in self.discover(sid)["components"]
+                if item["state"] in {"ready", "stale"}
+            }
             for widget in body.widgets:
                 if widget.chart not in COMPONENTS[widget.component][2]:
                     raise Problem(422, "Chart renderer is not compatible with this component")
@@ -693,10 +702,25 @@ class Registry:
             "markers": sorted(markers, key=lambda item: item["occurred_at"])[:1500],
         }
 
-    def component_data(self, sid, component, start, end, limit):
+    def component_data(self, sid, component, start, end, limit, bucket_seconds=3600):
         kind = COMPONENTS[component][1]
         strategy = self.strategies.detail(sid)
         instance = strategy["snapshot_instance_id"] or strategy["executor_id"]
+        if component == "fill_count":
+            if bucket_seconds not in {60, 300, 3600, 86400, 604800}:
+                raise Problem(422, "Unsupported aggregation interval")
+            rows = self.db.all(
+                """SELECT cast(occurred_at / ? AS INTEGER) * ? AS observed_at,
+                          json_extract(payload, '$.fill.side') AS side, count(*) AS value
+                   FROM strategy_events WHERE strategy_id=? AND occurred_at BETWEEN ? AND ?
+                     AND json_type(payload, '$.fill')='object'
+                   GROUP BY observed_at, side ORDER BY observed_at DESC, side LIMIT ?""",
+                (bucket_seconds, bucket_seconds, sid, start, end, limit),
+            )
+            return [
+                {**record(row, times=("observed_at",)), "value": str(row["value"])}
+                for row in reversed(rows)
+            ]
         if kind in {"fill", "risk", "signal", "log", "alert"}:
             rows = self.db.all(
                 """SELECT payload FROM strategy_events WHERE strategy_id=? AND occurred_at

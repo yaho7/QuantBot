@@ -11,5 +11,11 @@ export default defineConfig({
     host: "127.0.0.1",
     proxy: { "/api": api, "/openapi.json": api, "/docs": api, "/healthz": api },
   },
-  build: { outDir: "../src/quantbot/web", emptyOutDir: true },
+  build: {
+    outDir: "../src/quantbot/web",
+    emptyOutDir: true,
+    rolldownOptions: { output: { codeSplitting: { groups: [
+      { name: "zrender", test: /[\\/]node_modules[\\/]zrender[\\/]/ },
+    ] } } },
+  },
 });

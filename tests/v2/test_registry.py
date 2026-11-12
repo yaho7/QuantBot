@@ -237,3 +237,37 @@ def test_ohlcv_fill_and_markers(tmp_path):
         assert (
             next(item for item in result["markers"] if item["kind"] == "fill")["price"] == "103.22"
         )
+
+
+def test_fill_aggregation_counts_verified_fill_records(tmp_path):
+    with client(tmp_path / "fill-count.db", Clock()) as http:
+        log_in(http)
+        sid, cred = create(http)
+        headers, _ = connect(http, cred)
+        items = [
+            packet(
+                "fill",
+                offset,
+                id=f"fill-{offset}",
+                fill={
+                    "fill_id": f"fill-{offset}",
+                    "order_id": "order",
+                    "account_id": "a",
+                    "currency": "USD",
+                    "symbol": "SPY",
+                    "side": "buy",
+                    "quantity": "1",
+                    "price": "100",
+                    "occurred_at": stamp(NOW + offset),
+                },
+            )
+            for offset in (1, 2, 200)
+        ]
+        assert batch(http, headers, *items).status_code == 200
+        params = {"start": stamp(), "end": stamp(NOW + 250), "bucket_seconds": 60}
+        result = http.get(f"{ADMIN}/strategies/{sid}/components/fill_count", params=params)
+        assert result.status_code == 200, result.text
+        assert [(row["side"], row["value"]) for row in result.json()] == [
+            ("buy", "2"),
+            ("buy", "1"),
+        ]

@@ -78,6 +78,19 @@ class Widget(Payload):
     sources: list[Series] = Field(default_factory=list, max_length=10)
     candle: CandleSource | None = None
     markers: bool = True
+    start_at: Stamp | None = None
+    end_at: Stamp | None = None
+
+    @model_validator(mode="after")
+    def valid_range_and_basis(self):
+        if bool(self.start_at) != bool(self.end_at) or (
+            self.start_at and self.end_at and self.start_at >= self.end_at
+        ):
+            raise ValueError("dashboard date ranges must have increasing start and end times")
+        if self.chart != "cards" and self.chart != "table":
+            if len({source.unit for source in self.sources}) > 1:
+                raise ValueError("comparison charts require the same unit")
+        return self
 
 
 class Dashboard(Payload):
