@@ -70,7 +70,7 @@ class Runtime:
         while True:
             self.commands.sweep()
             with self.db.transaction():
-                for row in self.db.all("SELECT id FROM strategies"):
+                for row in self.db.all("SELECT id FROM strategies WHERE archived_at IS NULL"):
                     self.strategies.refresh_presence(row["id"])
             if self.clock() - last_purge >= 3600:
                 self.telemetry.purge()

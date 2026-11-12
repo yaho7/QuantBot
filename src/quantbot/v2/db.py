@@ -214,6 +214,12 @@ PRAGMA user_version = 3;
 """
 
 
+LIFECYCLE_SCHEMA = """
+ALTER TABLE strategies ADD COLUMN archived_at REAL;
+PRAGMA user_version = 4;
+"""
+
+
 def timestamp(value: float | None) -> str | None:
     if value is None:
         return None
@@ -252,7 +258,10 @@ class Database:
             version = 2
         if version == 2:
             self.conn.executescript("BEGIN IMMEDIATE;\n" + TELEMETRY_SCHEMA + "\nCOMMIT;")
-        elif version != 3:
+            version = 3
+        if version == 3:
+            self.conn.executescript("BEGIN IMMEDIATE;\n" + LIFECYCLE_SCHEMA + "\nCOMMIT;")
+        elif version != 4:
             self.conn.close()
             raise RuntimeError(f"Unsupported QuantBot database schema {version}")
 

@@ -81,8 +81,9 @@ class Auth:
             raise Problem(401, "Invalid strategy credential")
         now = self.clock()
         row = self.db.one(
-            """SELECT * FROM strategy_tokens WHERE digest=? AND revoked_at IS NULL
-               AND (expires_at IS NULL OR expires_at>?)""",
+            """SELECT t.* FROM strategy_tokens t JOIN strategies s ON s.id=t.strategy_id
+               WHERE t.digest=? AND t.revoked_at IS NULL AND s.archived_at IS NULL
+               AND (t.expires_at IS NULL OR t.expires_at>?)""",
             (digest(secret), now),
         )
         if row is None:

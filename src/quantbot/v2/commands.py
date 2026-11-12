@@ -61,6 +61,7 @@ class Commands:
         ]
 
     def capability(self, sid, action, *, live):
+        self.strategies.active(sid)
         agent = self.strategies.executor(sid, live=live)
         if not agent:
             raise Problem(409, "The strategy has no available executor")
@@ -407,3 +408,67 @@ class Commands:
                     self.transition(row, "expired", "Command expired before execution")
         if rows:
             self.wake()
+
+    def archive(self, sid, actor):
+        self.sweep()
+        with self.db.transaction():
+            strategy = self.strategies.row(sid)
+            if strategy["archived_at"] is None:
+                self.safe_change_executor(sid)
+                self.expire_queued(sid, "Strategy archived")
+                now = self.clock()
+                self.db.execute(
+                    "UPDATE strategies SET archived_at=?, presence='offline' WHERE id=?", (now, sid)
+                )
+                self.db.execute(
+                    "UPDATE strategy_tokens SET revoked_at=? "
+                    "WHERE strategy_id=? AND revoked_at IS NULL",
+                    (now, sid),
+                )
+                self.strategies.audit(actor, "strategy.archive", sid)
+        self.wake()
+        return self.strategies.detail(sid)
+
+    def assign(self, sid, instance_id, actor):
+        self.sweep()
+        with self.db.transaction():
+            row = self.strategies.active(sid)
+            if row["executor_id"] == instance_id:
+                return self.strategies.detail(sid)
+            if self.strategies.executor(sid, live=True):
+                raise Problem(409, "Disconnect the current executor before reassigning it")
+            agent = next(
+                (i for i in self.strategies.instances(sid) if i["instance_id"] == instance_id),
+                None,
+            )
+            if (
+                not self.strategies.eligible(agent)
+                or not json.loads(agent["declarations"])["executor"]
+            ):
+                raise Problem(422, "Select a connected instance that declared executor capability")
+            self.safe_change_executor(sid)
+            self.expire_queued(sid, "Executor reassigned", only_one_time=True)
+            self.db.execute("UPDATE strategies SET executor_id=? WHERE id=?", (instance_id, sid))
+            self.strategies.audit(
+                actor, "executor.assign", sid, instance_id=instance_id, previous=row["executor_id"]
+            )
+            self.strategies.refresh_presence(sid)
+        self.wake()
+        return self.strategies.detail(sid)
+
+    def safe_change_executor(self, sid):
+        if self.db.one(
+            """SELECT 1 FROM commands WHERE strategy_id=? AND
+               (state='executing' OR (state='unknown' AND risky=1))""",
+            (sid,),
+        ):
+            raise Problem(409, "Resolve executing or unknown trading commands first")
+
+    def expire_queued(self, sid, reason, *, only_one_time=False):
+        for row in self.db.all(
+            """SELECT * FROM commands WHERE strategy_id=?
+               AND state IN ('confirmation_required','pending','accepted')
+               AND (NOT ? OR revision IS NULL)""",
+            (sid, only_one_time),
+        ):
+            self.transition(row, "expired", reason)

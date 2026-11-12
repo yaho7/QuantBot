@@ -54,6 +54,21 @@ class Strategies:
             raise Problem(404, "Strategy not found")
         return row
 
+    def active(self, strategy_id):
+        row = self.row(strategy_id)
+        if row["archived_at"] is not None:
+            raise Problem(409, "Restore the strategy before changing its configuration")
+        return row
+
+    def restore(self, sid, actor):
+        with self.db.transaction():
+            row = self.row(sid)
+            if row["archived_at"] is not None:
+                self.db.execute("UPDATE strategies SET archived_at=NULL WHERE id=?", (sid,))
+                self.audit(actor, "strategy.restore", sid)
+        self.wake()
+        return self.detail(sid)
+
     def settings(self, strategy_id):
         return json.loads(self.row(strategy_id)["settings"])
 
@@ -74,7 +89,7 @@ class Strategies:
 
     def update(self, sid, body, actor):
         with self.db.transaction():
-            previous = self.settings(sid)
+            previous = json.loads(self.active(sid)["settings"])
             settings = body.model_dump(mode="json")
             self.db.execute("UPDATE strategies SET settings=? WHERE id=?", (encode(settings), sid))
             if settings["disconnect_policy"] != previous["disconnect_policy"]:
@@ -107,7 +122,7 @@ class Strategies:
 
     def change_token(self, sid, actor, options=None, revoke=None):
         with self.db.transaction():
-            self.row(sid)
+            self.active(sid)
             if revoke:
                 self.auth.token_metadata(sid, revoke)
                 self.db.execute(
@@ -298,10 +313,14 @@ class Strategies:
                 86400,
             )
 
-    def list(self):
+    def list(self, *, archived=False):
         return [
             self.summary(row)
-            for row in self.db.all("SELECT * FROM strategies ORDER BY created_at DESC, id")
+            for row in self.db.all(
+                """SELECT * FROM strategies WHERE (archived_at IS NOT NULL)=?
+                   ORDER BY created_at DESC, id""",
+                (archived,),
+            )
         ]
 
     def summary(self, row):
@@ -312,6 +331,7 @@ class Strategies:
             **json.loads(row["settings"]),
             "status": row["presence"],
             "executor_id": row["executor_id"],
+            "archived_at": timestamp(row["archived_at"]),
             "created_at": timestamp(row["created_at"]),
             "last_seen": timestamp(max((i["last_seen"] for i in instances), default=None)),
         }

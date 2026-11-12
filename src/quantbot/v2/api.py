@@ -23,8 +23,8 @@ from fastapi.staticfiles import StaticFiles
 
 from .auth import digest, password_matches
 from .dashboard_models import Component, Dashboard, HistoryQuery
-from .db import encode
 from .errors import Problem
+from .management import register as register_management
 from .models import (
     Category,
     CommandRequest,
@@ -480,6 +480,13 @@ async def audit(
     return [record(row, documents=("detail",), times=("created_at",)) for row in rows]
 
 
+def unique_json(items):
+    result = dict(items)
+    if len(result) != len(items):
+        raise ValueError("Duplicate JSON keys")
+    return result
+
+
 class Transport:
     def __init__(self, app, public_url):
         self.app = app
@@ -558,13 +565,14 @@ class Transport:
                     )
                     return
                 try:
-                    canonical = encode(json.loads(chunks))
+                    body = json.loads(chunks, object_pairs_hook=unique_json)
+                    canonical = json.dumps(body, ensure_ascii=False, allow_nan=False).encode()
                 except (ValueError, RecursionError):
                     await JSONResponse({"detail": "Invalid JSON"}, status_code=400)(
                         scope, receive, protected_send
                     )
                     return
-                chunks = canonical.encode()
+                chunks = canonical
             original_receive = receive
             delivered = False
 
@@ -626,6 +634,7 @@ def make_app(
     app = FastAPI(title="QuantBot API", version="2.0.0", lifespan=lifespan)
     app.add_middleware(Transport, public_url=public_url)
     app.include_router(agent)
+    register_management(app, administrator, set_cookie)
     app.include_router(admin)
 
     @app.exception_handler(Problem)
