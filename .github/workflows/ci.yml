@@ -45,3 +45,11 @@ jobs:
       - run: git diff --exit-code -- ../src/quantbot/web
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: QB_DOMAIN=quantbot.example.test docker compose config --quiet
+      - run: docker build --tag quantbot:ci .
+      - run: docker run --rm quantbot:ci --version

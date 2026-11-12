@@ -1,0 +1,38 @@
+services:
+  quantbot:
+    build: .
+    restart: unless-stopped
+    environment:
+      QB_PUBLIC_URL: https://${QB_DOMAIN:?Set QB_DOMAIN to your HTTPS hostname}
+      QB_TRUST_PROXY: 172.29.98.10
+    volumes:
+      - quantbot-data:/data
+    networks:
+      - frontend
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      QB_DOMAIN: ${QB_DOMAIN:?Set QB_DOMAIN to your HTTPS hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      frontend:
+        ipv4_address: 172.29.98.10
+
+networks:
+  frontend:
+    ipam:
+      config:
+        - subnet: 172.29.98.0/24
+
+volumes:
+  quantbot-data:
+  caddy-data:
+  caddy-config:

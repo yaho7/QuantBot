@@ -1,0 +1,27 @@
+FROM node:22-bookworm-slim AS frontend
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web/ ./
+RUN npm run build
+
+FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
+
+FROM python:3.12-slim-bookworm AS service
+WORKDIR /app
+COPY --from=uv /uv /usr/local/bin/uv
+COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY src/ ./src/
+RUN rm -rf src/quantbot/web
+COPY --from=frontend /app/src/quantbot/web/ ./src/quantbot/web/
+RUN uv sync --frozen --no-dev --no-editable \
+    && groupadd --gid 10001 quantbot \
+    && useradd --uid 10001 --gid 10001 --home-dir /data --no-create-home quantbot \
+    && install -d -m 0700 -o quantbot -g quantbot /data
+ENV PATH="/app/.venv/bin:$PATH" QB_DATA_DIR=/data QB_HOST=0.0.0.0 QB_PORT=23456
+USER 10001:10001
+EXPOSE 23456
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:23456/healthz', timeout=3).close()"]
+ENTRYPOINT ["quantbot"]
+CMD ["serve"]

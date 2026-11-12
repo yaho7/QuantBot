@@ -1,0 +1,15 @@
+[Unit]
+Description=QuantBot HTTP control platform
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-%h/.config/quantbot-v2/service.env
+ExecStart=%h/.local/bin/quantbot serve
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
