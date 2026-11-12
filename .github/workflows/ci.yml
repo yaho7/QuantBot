@@ -59,6 +59,8 @@ jobs:
           repo="$RUNNER_TEMP/quantbot-install.git"
           git init --bare --quiet "$repo"
           git push --quiet "$repo" HEAD:refs/tags/v0.0.0
+          # uv prefers shell version markers to inherited PowerShell settings.
+          export BASH_VERSION
           QUANTBOT_REPO="file://$repo" bash install.sh --non-interactive --no-service < /dev/null
         env:
           SHELL: /bin/bash
