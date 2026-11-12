@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import os
 import sys
@@ -117,6 +118,20 @@ def test_read_audit_newest_first(tmp_path: Path) -> None:
     assert [r["action"] for r in read_audit(path, 10)] == ["flatten", "pause"]
     assert read_audit(path, 1) == [{"action": "flatten"}]
     assert read_audit(tmp_path / "missing", 5) == []
+
+
+def test_audit_rotates_keeps_recent_records_and_protects_permissions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("quantbot.audit.MAX_BYTES", 300)
+    audit = Audit(tmp_path)
+    for index in range(12):
+        assert audit.write("order", op=f"op-{index}", result="simulated")
+    records = read_audit(audit.path, 50)
+    assert [row["op"] for row in records[:4]] == ["op-11", "op-10", "op-9", "op-8"]
+    paths = list(tmp_path.glob("audit.jsonl*"))
+    assert len(paths) == 4
+    assert all(file.stat().st_mode & 0o777 == 0o600 for file in paths)
 
 
 def scenario(
@@ -1089,7 +1104,9 @@ def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
     scenario(test, tmp_path / "audit.jsonl")
 
 
-def test_web_actions_go_through_the_strategy_and_the_audit_log(tmp_path: Path) -> None:
+def test_web_actions_go_through_the_strategy_and_the_audit_log(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from tests.test_core import Fake
 
     audit = tmp_path / "audit.jsonl"
@@ -1153,6 +1170,14 @@ def test_web_actions_go_through_the_strategy_and_the_audit_log(tmp_path: Path) -
             "pause", "cancel", "set_param", "manual_order", "flatten", "pause_all",
         ]  # fmt: skip
         assert all(r["user"] == "web" for r in records)
+
+        def disk_full(_audit: Audit) -> int:
+            raise OSError(errno.ENOSPC, "disk full")
+
+        monkeypatch.setattr(Audit, "_size", disk_full)
+        result = await confirm("manual_order", {**order, "qty": 2})
+        assert result["ok"] and result["state"] == "SUCCEEDED"
+        assert fake.ran[-1] == ("manual_order", {"side": "buy", "symbol": "QQQ", "qty": 2})
         serving.cancel()
 
     scenario(test, audit)

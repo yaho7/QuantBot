@@ -41,6 +41,7 @@ from typing import Any
 
 from aiohttp import WSMsgType, web
 
+from quantbot.audit import read_audit
 from quantbot.config import (
     BOT_TOKEN,
     ConfigError,
@@ -1778,23 +1779,6 @@ async def overview(request: web.Request) -> web.Response:
             "workspace_managed": bool(editor_root and Path(editor_root) in managed_roots),
         }
     )
-
-
-def read_audit(path: Path, limit: int) -> list[dict[str, Any]]:
-    """The newest `limit` audit records, newest first."""
-    try:
-        lines = path.read_text("utf-8").splitlines()[-limit:]
-    except FileNotFoundError:
-        return []
-    records = []
-    for line in reversed(lines):
-        try:
-            record = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(record, dict):
-            records.append(record)
-    return records
 
 
 async def audit(request: web.Request) -> web.Response:

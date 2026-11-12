@@ -266,7 +266,7 @@ class Store:
         return data
 
     def write(self, data: dict[str, Any]) -> None:
-        with self._locked():
+        with self.locked():
             self._write(data)
 
     def _write(self, data: dict[str, Any]) -> None:
@@ -283,7 +283,7 @@ class Store:
                 os.unlink(tmp)
 
     @contextmanager
-    def _locked(self) -> Iterator[None]:
+    def locked(self) -> Iterator[None]:
         self.dir.mkdir(parents=True, exist_ok=True)
         with self.path.with_name(f".{self.path.name}.lock").open("a") as lock:
             if os.name == "posix":
@@ -295,7 +295,7 @@ class Store:
     @contextmanager
     def edit(self) -> Iterator[dict[str, Any]]:
         """Merge edits against the current settings under a short process lock."""
-        with self._locked():
+        with self.locked():
             data = self.read()
             before = deepcopy(data)
             yield data
