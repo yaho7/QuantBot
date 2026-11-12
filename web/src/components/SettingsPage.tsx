@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, GitBranch, Globe, Languages, Radio, RefreshCw, Server, ShieldCheck, SlidersHorizontal, SunMoon, Wrench } from "lucide-react";
+import { Bell, ClipboardList, Download, GitBranch, Globe, Languages, Radio, RefreshCw, Server, ShieldCheck, SlidersHorizontal, SunMoon, Wrench } from "lucide-react";
 import { useState } from "react";
 import { AccountDialog } from "@/components/AccountDialog";
+import { AuditLog, Feed } from "@/components/Activity";
 import { PageHeader, QueryBoundary } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
 import { ServiceDialog } from "@/components/ServiceDialog";
@@ -11,11 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
 import { type Theme } from "@/hooks/useTheme";
-import { api, type Settings, type UpdateStatus } from "@/lib/api";
+import { api, type Notice, type Settings, type UpdateStatus } from "@/lib/api";
 import { tr, type Language } from "@/lib/i18n";
 
-export function SettingsPage({ update, onInstalled, theme, onTheme }: {
-  update?: UpdateStatus; onInstalled: (version: string) => void; theme: Theme; onTheme: (theme: Theme) => void;
+export function SettingsPage({ feed, update, onInstalled, theme, onTheme }: {
+  feed: Notice[]; update?: UpdateStatus; onInstalled: (version: string) => void; theme: Theme; onTheme: (theme: Theme) => void;
 }) {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
@@ -30,7 +31,8 @@ export function SettingsPage({ update, onInstalled, theme, onTheme }: {
   return (
     <>
       <PageHeader title={tr("设置")} />
-      <Tabs defaultValue={initialTab === "notifications" || initialTab === "maintenance" ? initialTab : "general"}
+      <Tabs defaultValue={initialTab && ["notifications", "maintenance", "feed", "audit"].includes(initialTab)
+        ? initialTab : "general"}
         onValueChange={(tab) => {
           const url = new URL(location.href);
           url.searchParams.set("tab", tab);
@@ -40,6 +42,8 @@ export function SettingsPage({ update, onInstalled, theme, onTheme }: {
           <TabsTrigger value="general" className="gap-1.5 px-2 sm:px-3"><SlidersHorizontal className="hidden size-3.5 min-[400px]:block" /> {tr("常规")}</TabsTrigger>
           <TabsTrigger value="notifications" className="gap-1.5 px-2 sm:px-3"><Radio className="hidden size-3.5 min-[400px]:block" /> {tr("通知")}</TabsTrigger>
           <TabsTrigger value="maintenance" className="gap-1.5 px-2 sm:px-3"><Wrench className="hidden size-3.5 min-[400px]:block" /> {tr("维护")}</TabsTrigger>
+          <TabsTrigger value="feed" className="gap-1.5 px-2 sm:px-3"><Bell className="hidden size-3.5 min-[400px]:block" /> {tr("推送")}</TabsTrigger>
+          <TabsTrigger value="audit" className="gap-1.5 px-2 sm:px-3"><ClipboardList className="hidden size-3.5 min-[400px]:block" /> {tr("操作记录")}</TabsTrigger>
         </TabsList>
         <TabsContent value="general">
           <QueryBoundary query={settings}>
@@ -115,6 +119,12 @@ export function SettingsPage({ update, onInstalled, theme, onTheme }: {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+        <TabsContent value="feed">
+          <Card><Feed items={feed} /></Card>
+        </TabsContent>
+        <TabsContent value="audit">
+          <Card className="py-2"><AuditLog /></Card>
         </TabsContent>
       </Tabs>
       {accountOpen && username !== undefined && <AccountDialog username={username} onClose={() => setAccountOpen(false)} />}

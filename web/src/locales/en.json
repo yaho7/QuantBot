@@ -57,6 +57,7 @@
   "添加策略可以生成连接令牌。也可以在策略项目里运行 quantbot link。": "Add a strategy to create a connection token, or run quantbot link in the strategy project.",
   "推送": "Notifications",
   "操作记录": "Activity",
+  "QuantBot 首页": "QuantBot home",
   "网页管理员": "Web administrator",
   "两次输入的新密码不同。": "The new passwords do not match.",
   "当前密码": "Current password",

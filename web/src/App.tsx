@@ -1,12 +1,12 @@
 import { tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Bell, ChartLine, ChevronRight, CircleDashed, ClipboardList, FolderCode, LayoutGrid, LogOut, Pause, Plus, Radio, Settings, SlidersHorizontal, Sparkles, Zap,
+  ChartLine, ChevronRight, CircleDashed, FolderCode, LayoutGrid, LogOut, Pause, Plus, Radio, Settings, SlidersHorizontal, Sparkles, Zap,
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { BrandIcon } from "@/components/BrandIcon";
-import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
+import { ConfirmDialog, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
 import { Quickstart } from "@/components/Quickstart";
 import { SettingsPage } from "@/components/SettingsPage";
 import { StrategyAdminDialog } from "@/components/StrategyAdminDialog";
@@ -14,16 +14,13 @@ import { PauseButton, StrategyPanel } from "@/components/StrategyPanel";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import {
-  Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Table, Td, Th,
+  Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input,
 } from "@/components/ui/primitives";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTheme } from "@/hooks/useTheme";
-import { api, ApiError, type Notice, type StrategyView } from "@/lib/api";
-import { actionLabel, ago, dateTime, NA } from "@/lib/format";
+import { api, ApiError, type StrategyView } from "@/lib/api";
+import { ago } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "loss" } as const;
-const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
 const StrategyTools = React.lazy(() => import("@/components/StrategyTools"));
 const WorkspaceWorkbench = React.lazy(() => import("@/components/WorkspaceWorkbench"));
 const pageFrame = "mx-auto max-w-6xl px-3 sm:px-8";
@@ -38,10 +35,11 @@ function TopBar({ onLogout, view, actions }: {
   const navButton = "size-8 shrink-0 px-0 sm:w-auto sm:px-3";
   return (
     <header className={cn(pageFrame, "flex items-center gap-1 pt-6 sm:gap-3")}>
-      <div className="flex shrink-0 items-center gap-2" aria-label="QuantBot">
+      <a href="/ui/" aria-label={tr("QuantBot 首页")} title={tr("QuantBot 首页")}
+        className="flex shrink-0 items-center gap-2 rounded-md hover:text-primary focus-visible:outline focus-visible:outline-ring">
         <BrandIcon className="size-6" />
         <span className="hidden font-display text-lg min-[460px]:inline">QuantBot</span>
-      </div>
+      </a>
       {view && (
         <nav aria-label={tr("主导航")} className="flex items-center gap-0.5 sm:gap-1">
           <Button asChild variant={view === "strategies" ? "secondary" : "ghost"} size="sm" className={navButton}>
@@ -177,59 +175,6 @@ function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }
   );
 }
 
-function Feed({ items }: { items: Notice[] }) {
-  if (!items.length) return <EmptyState title={tr("还没有推送")} description={tr("QuantBot 这次启动后发出的消息会显示在这里。")} />;
-  return (
-    <ul className="divide-y">
-      {items.map((n, i) => (
-        <li key={`${n.time}-${i}`} className="flex gap-3 px-5 py-3">
-          <span className="num w-28 shrink-0 text-xs text-muted-foreground">{dateTime(n.time)}</span>
-          <div className="min-w-0 flex-1">
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium">{n.strategy}</span>
-              <Badge tone={KIND_TONE[n.kind] ?? "neutral"}>{KIND_LABEL[n.kind] ?? n.kind}</Badge>
-            </div>
-            <p className="whitespace-pre-wrap break-words text-sm">{n.text}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-function AuditLog() {
-  const audit = useQuery({ queryKey: ["audit"], queryFn: api.audit, refetchInterval: 15_000 });
-  return (
-    <QueryBoundary query={audit}>
-      {({ records }) =>
-        records.length === 0 ? (
-          <EmptyState title={tr("还没有操作记录")} description={tr("在网页或 Telegram 里点过的按钮会记在这里。")} />
-        ) : (
-          <Table>
-            <thead>
-              <tr><Th>{tr("时间")}</Th><Th>{tr("操作")}</Th><Th>{tr("策略")}</Th><Th>{tr("从哪")}</Th><Th>{tr("结果")}</Th></tr>
-            </thead>
-            <tbody>
-              {records.map((r, i) => (
-                <tr key={`${r.time}-${i}`}>
-                  <Td className="num text-xs text-muted-foreground">{dateTime(r.time)}</Td>
-                  <Td>{actionLabel(r.action)}</Td>
-                  <Td className="font-mono text-xs">{r.strategy ?? r.strategies?.join(", ") ?? NA}</Td>
-                  <Td className="text-xs">{r.user === "web" ? tr("网页") : r.user === "cli" ? tr("终端") : r.user ? "Telegram" : NA}</Td>
-                  <Td className="max-w-md whitespace-normal text-xs">
-                    {r.ok === false && <Badge tone="loss" className="mr-2">{tr("失败")}</Badge>}
-                    {r.result ?? NA}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )
-      }
-    </QueryBoundary>
-  );
-}
-
 function PauseAll({ count, compact }: { count: number; compact: boolean }) {
   const qc = useQueryClient();
   const toast = useToast();
@@ -337,7 +282,7 @@ export function App() {
       <main className={cn(pageFrame, "view-enter pb-16 pt-10", view !== "workspace" && "px-5")}>
         {view === "settings" ? (
           <QueryBoundary query={overview}>
-            {() => <SettingsPage update={update.data} onInstalled={setUpdatedFrom} theme={theme} onTheme={setTheme} />}
+            {({ feed }) => <SettingsPage feed={feed} update={update.data} onInstalled={setUpdatedFrom} theme={theme} onTheme={setTheme} />}
           </QueryBoundary>
         ) : view === "workspace" ? (
           overview.data ? <React.Suspense fallback={<LoadingState />}><WorkspaceWorkbench /></React.Suspense>
@@ -365,18 +310,6 @@ export function App() {
                 )}
                 <Quickstart visible={data.strategies.length === 0}
                   requested={quickstartRequested} onStarted={setQuickstartProject} />
-                <Tabs defaultValue="feed">
-                  <TabsList>
-                    <TabsTrigger value="feed"><Bell className="size-3.5" /> {tr("推送")}</TabsTrigger>
-                    <TabsTrigger value="audit"><ClipboardList className="size-3.5" /> {tr("操作记录")}</TabsTrigger>
-                  </TabsList>
-                  <TabsContent value="feed">
-                    <Card><Feed items={data.feed} /></Card>
-                  </TabsContent>
-                  <TabsContent value="audit">
-                    <Card className="py-2"><AuditLog /></Card>
-                  </TabsContent>
-                </Tabs>
               </div>
             )}
           </QueryBoundary>
