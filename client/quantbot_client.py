@@ -41,7 +41,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -85,7 +86,21 @@ def _default_state_file(name: str) -> Path:
 
 def _url_from(listen: str) -> str:
     host, _, port = listen.rpartition(":")
-    return f"http://{'127.0.0.1' if host in {'0.0.0.0', '::', ''} else host}:{port}"  # noqa: S104
+    if host in {"0.0.0.0", "::", ""}:  # noqa: S104
+        host = "127.0.0.1"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return f"http://{host}:{port}"
+
+
+@contextmanager
+def _config_lock(path: Path) -> Iterator[None]:
+    with path.with_name(f".{path.name}.lock").open("a") as lock:
+        if os.name == "posix":
+            import fcntl
+
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
 
 
 def connect_locally(name: str, display_name: str | None = None) -> tuple[str, str]:
@@ -95,32 +110,43 @@ def connect_locally(name: str, display_name: str | None = None) -> tuple[str, st
     """
     path = _config_path()
     try:
-        data = json.loads(path.read_text("utf-8"))
+        with _config_lock(path):
+            data = json.loads(path.read_text("utf-8"))
+            listen = os.environ.get("QB_LISTEN") or data.get("listen")
+            if not listen:
+                raise RuntimeError(
+                    "QuantBot has not picked its port yet. Run `quantbot setup` first."
+                )
+            items = data.setdefault("strategies", [])
+            found = next((item for item in items if item.get("id") == name), None)
+            if found is None:
+                found = {
+                    "id": name,
+                    "name": display_name or name,
+                    "token": secrets.token_urlsafe(32),
+                }
+                items.append(found)
+                _write_local_config(path, data)
+                log.info("Added %s to QuantBot", name)
+            return _url_from(str(listen)), str(found["token"])
     except FileNotFoundError as exc:
         raise RuntimeError(
             f"No QuantBot settings at {path}. Install QuantBot on this machine and run "
             "`quantbot setup`, or set QB_URL and QB_TOKEN."
         ) from exc
-    items = data.setdefault("strategies", [])
-    found = next((item for item in items if item.get("id") == name), None)
-    if found is None:
-        found = {"id": name, "name": display_name or name, "token": secrets.token_urlsafe(32)}
-        items.append(found)
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".quantbot-")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(data, fh, ensure_ascii=False, indent=2)
-                fh.write("\n")
-            os.chmod(tmp, 0o600)
-            os.replace(tmp, path)
-        finally:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-        log.info("Added %s to QuantBot", name)
-    listen = os.environ.get("QB_LISTEN") or data.get("listen")
-    if not listen:
-        raise RuntimeError("QuantBot has not picked its port yet. Run `quantbot setup` first.")
-    return _url_from(str(listen)), str(found["token"])
+
+
+def _write_local_config(path: Path, data: dict[str, Any]) -> None:
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".quantbot-")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, ensure_ascii=False, indent=2)
+            fh.write("\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    finally:
+        Path(tmp).unlink(missing_ok=True)
 
 
 class CommandRejected(RuntimeError):

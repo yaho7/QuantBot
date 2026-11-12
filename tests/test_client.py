@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import socket
+import subprocess
 import sys
 import threading
 import time
@@ -15,7 +17,7 @@ from typing import Any
 import pytest
 from aiohttp import web
 
-from quantbot.config import StrategyConfig
+from quantbot.config import Store, StrategyConfig
 from quantbot.hub import Hub, Result
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "client"))
@@ -278,6 +280,46 @@ def test_connects_locally_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert QuantBot().name == "grid-bot"
     with pytest.raises(ValueError):
         QuantBot("Bad Name")
+
+
+@pytest.mark.skipif(os.name != "posix", reason="QuantBot's local config lock uses flock")
+def test_concurrent_client_registration_preserves_server_settings(tmp_path: Path) -> None:
+    store = Store(tmp_path)
+    store.write({"listen": "127.0.0.1:9001", "web_secret": "old"})
+    client_dir = Path(__file__).resolve().parents[1] / "client"
+    env = {**os.environ, "QB_DATA_DIR": str(tmp_path), "PYTHONPATH": str(client_dir)}
+    processes = []
+    try:
+        with store.edit() as config:
+            config["web_secret"] = "rotated"
+            for sid in ("one", "two"):
+                proc = subprocess.Popen(  # noqa: S603 - fixed Python fixture, separate strategy process
+                    [
+                        sys.executable,
+                        "-c",
+                        "import sys; from quantbot_client import connect_locally; "
+                        "print('ready', flush=True); connect_locally(sys.argv[1])",
+                        sid,
+                    ],
+                    env=env,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                )
+                processes.append(proc)
+                assert proc.stdout.readline().strip() == "ready"
+            for proc in processes:
+                with pytest.raises(subprocess.TimeoutExpired):
+                    proc.wait(timeout=0.1)
+        assert [proc.wait(timeout=5) for proc in processes] == [0, 0]
+        data = store.read()
+        assert data["web_secret"] == "rotated"
+        assert {item["id"] for item in data["strategies"]} == {"one", "two"}
+    finally:
+        for proc in processes:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+            proc.stdout.close()
 
 
 def test_client_reports_metric_and_runs_custom_action(server: Server, tmp_path: Path) -> None:

@@ -266,32 +266,41 @@ class Store:
         return data
 
     def write(self, data: dict[str, Any]) -> None:
-        self.dir.mkdir(parents=True, exist_ok=True)
+        with self._locked():
+            self._write(data)
+
+    def _write(self, data: dict[str, Any]) -> None:
         fd, tmp = tempfile.mkstemp(dir=self.dir, prefix=".quantbot-")
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 json.dump(data, fh, ensure_ascii=False, indent=2)
                 fh.write("\n")
-            os.chmod(tmp, 0o600)
+                fh.flush()
+                os.fsync(fh.fileno())
             os.replace(tmp, self.path)
         finally:
             if os.path.exists(tmp):
                 os.unlink(tmp)
 
     @contextmanager
-    def edit(self) -> Iterator[dict[str, Any]]:
-        """Merge edits against the current settings under a short process lock."""
+    def _locked(self) -> Iterator[None]:
         self.dir.mkdir(parents=True, exist_ok=True)
         with self.path.with_name(f".{self.path.name}.lock").open("a") as lock:
             if os.name == "posix":
                 import fcntl
 
                 fcntl.flock(lock, fcntl.LOCK_EX)
+            yield
+
+    @contextmanager
+    def edit(self) -> Iterator[dict[str, Any]]:
+        """Merge edits against the current settings under a short process lock."""
+        with self._locked():
             data = self.read()
             before = deepcopy(data)
             yield data
             if data != before:
-                self.write(data)
+                self._write(data)
 
     # ------------------------------------------------------------ settings
 
