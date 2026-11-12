@@ -14,12 +14,13 @@ import re
 import secrets
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from quantbot.audit import Audit
 from quantbot.hub import Hub, Result, Strategy
 from quantbot.i18n import tr
+from quantbot.operations import protected
 
 Buttons = list[list[tuple[str, str]]]  # rows of (label, callback data)
 
@@ -28,6 +29,7 @@ NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,63}$")
 CONFIRM_TEXT = {
     "flatten": "确定平掉 {name} 的仓位？只会平它能确认归属的仓位。",
     "stop": "确定让 {name} 停止？挂着的止损单会保留。",
+    "resume": "确定让 {name} 恢复开仓？",
 }
 LABELS = {
     "status": "状态", "pause": "暂停开仓", "resume": "恢复开仓", "positions": "持仓",
@@ -146,7 +148,12 @@ class Core:
         return "🟢" if self.hub.online(strategy) else "🔴"
 
     async def call(
-        self, strategy: Strategy, name: str, args: dict[str, Any] | None = None
+        self,
+        strategy: Strategy,
+        name: str,
+        args: dict[str, Any] | None = None,
+        *,
+        operation_id: str | None = None,
     ) -> tuple[bool, Result | str]:
         """Send a command and wait for the result. (False, text) when it fails, is slow or
         the strategy does not support it."""
@@ -159,7 +166,11 @@ class Core:
         if strategy.said_hello and not strategy.supports(name):
             return False, tr("{0} 不支持{1}。", strategy.name, label)
         online = self.hub.online(strategy)
-        command = self.hub.send(strategy, name, args)
+        if not online and name != "pause":
+            return False, tr("{0} 离线，命令未发送。", strategy.name)
+        command = self.hub.send(strategy, name, args, operation_id=operation_id)
+        if not online:
+            return False, tr("{0} 离线，暂停意图已保存，等待策略确认。", strategy.name)
         try:
             result = await asyncio.wait_for(asyncio.shield(command.future), self.command_timeout)
         except asyncio.TimeoutError:
@@ -172,9 +183,28 @@ class Core:
                     self.notify(strategy.name, f"{label}：{text}", kind)
 
             command.future.add_done_callback(later)
-            if not online:
-                return False, tr("{0} 离线，命令已排队。2 分钟内它上线才会执行。", strategy.name)
+            if protected(name):
+                row = self.hub.operations.get(strategy.id, command.id)
+                state = row["state"] if row is not None else "UNKNOWN"
+                return False, Result(
+                    False,
+                    tr("操作 {0} 尚无回执。请先核对操作记录和券商状态。", command.id),
+                    state=state,
+                    operation_id=command.id,
+                )
             return False, tr("命令已发出，还没回报结果。结果到了会推送给你。")
+        if result.operation_id:
+            if result.state == "UNKNOWN":
+                message = tr(
+                    "操作 {0} 的结果未知，请到券商端核对。{1}",
+                    result.operation_id,
+                    result.message,
+                )
+            elif result.state == "FAILED":
+                message = tr("失败：{0}", result.message or tr("没有说明原因"))
+            else:
+                message = result.message
+            return result.ok, replace(result, message=message)
         if not result.ok:
             return False, tr("失败：{0}", result.message or tr("没有说明原因"))
         return True, result
@@ -260,6 +290,8 @@ class Core:
     # -------------------------------------------------------- simple commands
 
     async def switch(self, s: Strategy, name: str, user_id: int) -> Reply:
+        if name == "resume":
+            return self.request(name, s)
         ok, outcome = await self.call(s, name)
         if ok and isinstance(outcome, Result):
             s.paused = name == "pause"
@@ -273,9 +305,7 @@ class Core:
 
     async def pause_all(self, user_id: int | str) -> Reply:
         targets = [
-            s
-            for s in self.hub.strategies.values()
-            if self.hub.online(s) and (not s.said_hello or s.supports("pause"))
+            s for s in self.hub.strategies.values() if not s.said_hello or s.supports("pause")
         ]
         if not targets:
             return Reply(tr("没有在线、能暂停的策略。"), [[(tr("⬅️ 全部策略"), "h")]])
@@ -430,11 +460,11 @@ class Core:
 
     async def execute(self, ticket: Ticket, s: Strategy, op: str, user_id: int) -> Reply:
         args = {k: v for k, v in ticket.args.items() if k != "old"}
-        ok, outcome = await self.call(s, ticket.action, args)
+        ok, outcome = await self.call(s, ticket.action, args, operation_id=op)
         label = tr(LABELS[ticket.action])
         if isinstance(outcome, Result):
             text = f"{s.name} {label}：{outcome.message or tr('完成')}"
-            if ticket.action == "set_param":
+            if ok and ticket.action == "set_param":
                 old, value = ticket.args.get("old"), ticket.args["value"]
                 change = f"{old!r} → {value!r}" if old is not None else repr(value)
                 text = f"✏️ {s.name} {ticket.args['name']}：{change}"

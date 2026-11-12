@@ -40,11 +40,12 @@ import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
+import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-__all__ = ["QuantBot"]
+__all__ = ["CommandRejected", "QuantBot"]
 
 log = logging.getLogger("quantbot_client")
 
@@ -53,6 +54,7 @@ COMMANDS = (
     "params", "set_param", "manual_order", "chart", "stop",
 )  # fmt: skip
 DATA_COMMANDS = {"status", "orders", "params", "chart"}  # the return value is data
+PROTECTED_COMMANDS = {"resume", "manual_order", "cancel", "flatten", "set_param", "stop"}
 POLL_WAIT = 25
 REMEMBER_RESULTS = 200
 EVENT_BACKLOG = 500
@@ -121,6 +123,10 @@ def connect_locally(name: str, display_name: str | None = None) -> tuple[str, st
     return _url_from(str(listen)), str(found["token"])
 
 
+class CommandRejected(RuntimeError):
+    """A handler can raise this when it can prove the operation had no effect."""
+
+
 class QuantBot:
     def __init__(
         self,
@@ -174,6 +180,7 @@ class QuantBot:
         self._closed = threading.Event()
         self._threads: list[threading.Thread] = []
         self._hello_sent = False
+        self._operation = threading.local()
         self._pause_lock = threading.Lock()
         self._pause_reasons = self._load_pause_reasons()
 
@@ -184,6 +191,11 @@ class QuantBot:
     @property
     def pause_reasons(self) -> frozenset[str]:
         return self._pause_reasons
+
+    @property
+    def operation_id(self) -> str | None:
+        """Stable ID available inside a protected handler for broker idempotency."""
+        return getattr(self._operation, "id", None)
 
     # ------------------------------------------------------------- setup
 
@@ -444,7 +456,7 @@ class QuantBot:
         with self._pause_lock:
             if self._pause_reasons - {"manual"}:
                 reasons = ", ".join(sorted(self._pause_reasons - {"manual"}))
-                raise RuntimeError(f"Protective pause requires explicit clearance: {reasons}")
+                raise CommandRejected(f"Protective pause requires explicit clearance: {reasons}")
             reasons: frozenset[str] = frozenset()
             self._write_pause_reasons(reasons)
             self._pause_reasons = reasons
@@ -465,7 +477,7 @@ class QuantBot:
         while not self.stopping:
             try:
                 reply = self._request(
-                    "GET", f"/v1/commands?wait={POLL_WAIT}", timeout=POLL_WAIT + 10
+                    "GET", f"/v1/commands?wait={POLL_WAIT}&claims=1", timeout=POLL_WAIT + 10
                 )
                 backoff = 1.0
             except urllib.error.HTTPError as exc:
@@ -491,12 +503,11 @@ class QuantBot:
             if cid in self._seen:
                 done = self._seen[cid]
                 if done is not None:  # ran already: report the same result again
-                    self._events.append((f"/v1/commands/{cid}/result", done))
+                    path = f"/v1/commands/{urllib.parse.quote(cid, safe='')}/result"
+                    self._events.append((path, done))
                     self._events_ready.set()
                 return
             self._seen[cid] = None
-            while len(self._seen) > REMEMBER_RESULTS:
-                self._seen.popitem(last=False)
         self._commands.put(command)
 
     def _run(self, item: Any) -> int:
@@ -504,15 +515,55 @@ class QuantBot:
             return 0
         cid, name = str(item["id"]), str(item.get("name"))
         args = item.get("args") or {}
+        path = f"/v1/commands/{urllib.parse.quote(cid, safe='')}"
+        grant = None
+        expires = item.get("expires_at")
+        if name in PROTECTED_COMMANDS or name.startswith("action:"):
+            remaining = expires - time.time() if type(expires) in (float, int) else 0
+            if not 0 < remaining <= 60:
+                self._forget(cid)
+                return 0
+            grant = uuid.uuid4().hex
+            try:
+                claimed = self._request(
+                    "POST", f"{path}/claim", {"grant": grant}, timeout=min(5, remaining)
+                )
+            except (OSError, ValueError) as exc:
+                log.info("No execution grant for %s (%s)", cid, exc)
+                self._forget(cid)
+                return 0
+            if not isinstance(claimed, dict) or claimed.get("ok") is not True:
+                self._forget(cid)
+                return 0
         try:
+            if grant:
+                if self.stopping or time.time() >= expires:
+                    raise CommandRejected("Execution permission expired before the handler started")
+                self._operation.id = cid
             result = {"ok": True, **self._execute(name, args)}
+            if grant:
+                json.dumps(result, allow_nan=False)
         except Exception as exc:  # noqa: BLE001 - the error is the answer
             result = {"ok": False, "message": f"{type(exc).__name__}: {exc}"}
+            if grant and not isinstance(exc, CommandRejected):
+                result["unknown"] = True
+        finally:
+            self._operation.id = None
+        if grant:
+            result["grant"] = grant
         with self._lock:
             self._seen[cid] = result
-        self._events.append((f"/v1/commands/{urllib.parse.quote(cid)}/result", result))
+            self._seen.move_to_end(cid)
+            completed = [key for key, value in self._seen.items() if value is not None]
+            if len(completed) > REMEMBER_RESULTS:
+                del self._seen[completed[0]]
+        self._events.append((f"{path}/result", result))
         self._events_ready.set()
         return 1
+
+    def _forget(self, cid: str) -> None:
+        with self._lock:
+            self._seen.pop(cid, None)
 
     def _execute(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
         handler = self._handlers.get(name)
@@ -533,7 +584,7 @@ class QuantBot:
                 else ("已暂停开仓。已有仓位和止损照常。" if name == "pause" else "已恢复开仓。")
             }
         if handler is None:
-            raise RuntimeError(f"这个程序不支持 {name}")
+            raise CommandRejected(f"这个程序不支持 {name}")
         value = handler(**args)
         if name.startswith("action:"):
             if isinstance(value, str):

@@ -348,7 +348,10 @@ async def command(request: web.Request) -> web.Response:
             ok=ok,
             result=f"{s.name} {tr(LABELS[name])}：{message or tr('完成')}",
         )
-    return _answer(ok, message or (tr("完成") if ok else tr("失败")), data)
+    response = {"ok": ok, "message": message or (tr("完成") if ok else tr("失败")), "data": data}
+    if isinstance(outcome, Result) and outcome.operation_id:
+        response.update(operation_id=outcome.operation_id, state=outcome.state)
+    return web.json_response(response)
 
 
 # ------------------------------------------------------------- settings
@@ -381,7 +384,31 @@ async def strategy_action(request: web.Request) -> web.Response:
     core.audit.write(
         "strategy_action", user=WEB_USER, strategy=strategy.id, operation=action.id, ok=ok
     )
-    return _answer(ok, message or tr("操作已完成。"), data)
+    response = {"ok": ok, "message": message or tr("操作已完成。"), "data": data}
+    if isinstance(outcome, Result) and outcome.operation_id:
+        response.update(operation_id=outcome.operation_id, state=outcome.state)
+    return web.json_response(response)
+
+
+async def strategy_operations(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    core = request.app[CORE_KEY]
+    hub, sid = core.hub, request.match_info["sid"]
+    if sid not in hub.strategies:
+        raise web.HTTPNotFound()
+    hub.operations.expire(hub.wall_clock(), hub.result_ttl)
+    if request.method == "GET":
+        return web.json_response({"operations": hub.operations.recent(sid)})
+    body = await _args(request)
+    ok, note = body.get("ok"), body.get("note")
+    if type(ok) is not bool or not isinstance(note, str) or not 1 <= len(note.strip()) <= 500:
+        return _answer(False, tr("请填写核对结果和说明。"))
+    cid = request.match_info["operation_id"]
+    if not hub.operations.reconcile(sid, cid, ok, note.strip(), hub.wall_clock()):
+        return _answer(False, tr("只能核对执行结果未知的操作。"))
+    core.audit.write("reconcile", strategy=sid, user=WEB_USER, op=cid, ok=ok, result=note)
+    return _answer(True, tr("已保存核对结果。"))
 
 
 async def strategy_metric(request: web.Request) -> web.Response:
@@ -1616,6 +1643,8 @@ def add_routes(
                 github_post,
             ),
             web.post("/ui/api/strategies/{sid}/actions/{action}", strategy_action),
+            web.get("/ui/api/strategies/{sid}/operations", strategy_operations),
+            web.post("/ui/api/strategies/{sid}/operations/{operation_id}", strategy_operations),
             web.get("/ui/api/strategies/{sid}/metrics", strategy_metric),
             web.post("/ui/api/strategies/{sid}/{command}", command),
             web.get("/ui/", page),

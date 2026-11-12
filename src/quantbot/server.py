@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -70,9 +72,28 @@ async def commands(request: web.Request) -> web.Response:
         wait = float(request.query.get("wait", "25"))
     except ValueError:
         return _error(400, "wait must be a number of seconds")
+    if not math.isfinite(wait):
+        return _error(400, "wait must be finite")
     wait = min(max(wait, 0.0), MAX_WAIT)
-    reply = await request.app[HUB_KEY].poll(request[STRATEGY_KEY], wait)
+    reply = await request.app[HUB_KEY].poll(
+        request[STRATEGY_KEY], wait, claims=request.query.get("claims") == "1"
+    )
     return _error(401, "unknown token") if reply is None else web.json_response(reply)
+
+
+async def claim(request: web.Request) -> web.Response:
+    strategy = request[STRATEGY_KEY]
+    hub = request.app[HUB_KEY]
+    token = strategy.token
+    body = await _body(request)
+    if not hub.authorized(strategy, token):
+        return _error(401, "unknown token")
+    grant = body.get("grant")
+    if not isinstance(grant, str) or not re.fullmatch(r"[0-9a-f]{32}", grant):
+        return _error(400, "grant must be a 32-digit hex nonce")
+    if not hub.claim(strategy, request.match_info["command_id"], grant):
+        return _error(409, "execution grant unavailable")
+    return web.json_response({"ok": True})
 
 
 async def result(request: web.Request) -> web.Response:
@@ -102,6 +123,7 @@ def make_app(hub: Hub, page: Callable[[web.Application], None] | None = None) ->
             web.get("/healthz", healthz),
             web.post("/v1/events", events),
             web.get("/v1/commands", commands),
+            web.post("/v1/commands/{command_id}/claim", claim),
             web.post("/v1/commands/{command_id}/result", result),
         ]
     )

@@ -6,6 +6,7 @@ import asyncio
 import base64
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 from aiohttp.test_utils import TestClient, TestServer
@@ -66,11 +67,9 @@ def test_command_round_trip_with_long_poll() -> None:
         momentum = hub.strategies["momentum"]
         poll = asyncio.create_task(client.get("/v1/commands?wait=5", headers=AUTH))
         await asyncio.sleep(0.05)
-        command = hub.send(momentum, "set_param", {"name": "rsi_len", "value": 10})
+        command = hub.send(momentum, "status", {})
         reply = await (await asyncio.wait_for(poll, 2)).json()
-        assert reply["commands"] == [
-            {"id": command.id, "name": "set_param", "args": {"name": "rsi_len", "value": 10}}
-        ]
+        assert reply["commands"] == [{"id": command.id, "name": "status", "args": {}}]
         url = f"/v1/commands/{command.id}/result"
         done = await client.post(url, json={"ok": True, "message": "改好了"}, headers=AUTH)
         assert done.status == 200
@@ -84,7 +83,9 @@ def test_command_round_trip_with_long_poll() -> None:
 
 def test_other_strategy_cannot_see_or_answer_commands() -> None:
     async def test(hub: Hub, client: TestClient, notes: Notes) -> None:
-        command = hub.send(hub.strategies["grid"], "flatten")
+        grid = hub.strategies["grid"]
+        await hub.poll(grid, 0, claims=True)
+        command = hub.send(grid, "flatten")
         reply = await (await client.get("/v1/commands?wait=0", headers=AUTH)).json()
         assert reply["commands"] == []
         url = f"/v1/commands/{command.id}/result"
@@ -97,7 +98,7 @@ def test_other_strategy_cannot_see_or_answer_commands() -> None:
 def test_redelivery_and_expiry() -> None:
     async def test(hub: Hub, client: TestClient, notes: Notes) -> None:
         momentum = hub.strategies["momentum"]
-        command = hub.send(momentum, "flatten")
+        command = hub.send(momentum, "status")
         first = await (await client.get("/v1/commands?wait=0", headers=AUTH)).json()
         assert [c["id"] for c in first["commands"]] == [command.id]
         second = await (await client.get("/v1/commands?wait=0", headers=AUTH)).json()
@@ -106,7 +107,7 @@ def test_redelivery_and_expiry() -> None:
         third = await (await client.get("/v1/commands?wait=0", headers=AUTH)).json()
         assert [c["id"] for c in third["commands"]] == [command.id]  # no result: sent again
 
-        stale = hub.send(hub.strategies["grid"], "pause")
+        stale = hub.send(hub.strategies["grid"], "status")
         await asyncio.sleep(0.22)
         hub.sweep()
         result = stale.future.result()
@@ -114,6 +115,80 @@ def test_redelivery_and_expiry() -> None:
         assert not command.future.done()  # delivered ones wait longer for a result
 
     scenario(test, redeliver_after=0.1, undelivered_ttl=0.2, result_ttl=5)
+
+
+def test_protected_command_claim_and_reconciliation_survive_restart(tmp_path: Path) -> None:
+    path = tmp_path / "operations.sqlite3"
+    now = 100.0
+
+    def clock() -> float:
+        return now
+
+    async def test(hub: Hub, client: TestClient, notes: Notes) -> None:
+        strategy = hub.strategies[A.id]
+        poll = "/v1/commands?wait=0"
+        await client.get(poll, headers=AUTH)
+        assert not hub.send(strategy, "manual_order").future.result().ok
+        await client.get(poll + "&claims=1", headers=AUTH)
+        first = hub.send(strategy, "manual_order", {"qty": 1})
+        assert (await (await client.get(poll, headers=AUTH)).json())["commands"] == []
+        ready = (await (await client.get(poll + "&claims=1", headers=AUTH)).json())["commands"]
+        assert ready == [
+            {"id": first.id, "name": "manual_order", "args": {"qty": 1}, "expires_at": 115}
+        ]
+        assert (await (await client.get(poll + "&claims=1", headers=AUTH)).json())["commands"] == []
+        claim_url = f"/v1/commands/{first.id}/claim"
+        grant = "a" * 32
+        assert (await client.post(claim_url, headers=AUTH, json={"grant": grant})).status == 200
+        assert (await client.post(claim_url, headers=AUTH, json={"grant": grant})).status == 409
+        restarted = Hub(
+            (A,), lambda *note: None, operation_path=path, wall_clock=clock, result_ttl=5
+        )
+        current = restarted.strategies[A.id]
+        await restarted.poll(current, 0, claims=True)
+        assert not restarted.claim(current, first.id, "b" * 32)
+        nonlocal now
+        now += 6
+        duplicate = restarted.send(current, "manual_order", {"qty": 2}).future.result()
+        assert duplicate.state == "UNKNOWN" and duplicate.operation_id == first.id
+        receipt = {"ok": True, "grant": grant, "message": "broker accepted"}
+        assert restarted.result(current, first.id, receipt)
+        assert restarted.result(current, first.id, receipt)
+        assert (
+            restarted.send(current, "manual_order", {"qty": 1}).future.result().state == "SUCCEEDED"
+        )
+        assert restarted.operations.recent(A.id)[0]["result"] == {
+            "ok": True,
+            "message": "broker accepted",
+        }
+
+    scenario(test, operation_path=path, wall_clock=clock)
+
+
+def test_expired_commands_cannot_be_claimed_and_pause_survives_restart(tmp_path: Path) -> None:
+    async def run() -> None:
+        now = [100.0]
+        path = tmp_path / "operations.sqlite3"
+        hub = Hub((A,), lambda *note: None, operation_path=path, wall_clock=lambda: now[0])
+        strategy = hub.strategies[A.id]
+        pause = hub.send(strategy, "pause")
+        await hub.poll(strategy, 0, claims=True)
+        resume = hub.send(strategy, "resume")
+        assert not resume.future.result().ok
+        trade = hub.send(strategy, "flatten")
+        await hub.poll(strategy, 0, claims=True)
+        now[0] += 16
+        assert not hub.claim(strategy, trade.id, "late")
+        hub.sweep()
+        assert trade.future.result().state == "FAILED"
+        restarted = Hub((A,), lambda *note: None, operation_path=path)
+        current = restarted.strategies[A.id]
+        polled = await restarted.poll(current, 0, claims=True)
+        assert polled["commands"] == [{"id": pause.id, "name": "pause", "args": {}}]
+        assert restarted.result(current, pause.id, {"ok": True})
+        assert restarted.operations.pause_intent(A.id) is None
+
+    asyncio.run(run())
 
 
 def test_offline_and_back_online_alerts() -> None:

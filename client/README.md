@@ -34,6 +34,19 @@ pause. After the strategy verifies that the cause has been resolved, call
 `qb.clear_pause("risk")` or `qb.clear_pause("connection")`. Remote resume clears
 the manual pause only, after a registered resume handler returns successfully.
 
+## Broker operations
+
+Update both QuantBot and the client before enabling remote trading commands.
+Inside a protected command handler, `qb.operation_id` contains its persistent
+operation ID. Use it as the broker's client order ID or idempotency key where
+supported. For a handler that submits multiple orders, derive a stable key
+for each order and keep the mapping in the strategy's own journal.
+
+If the broker request times out, reconcile by that key against the broker
+before attempting any further submission. Raise `CommandRejected` only when
+the strategy can establish that the operation had no effect. Other handler
+exceptions leave the outcome unknown for operator reconciliation.
+
 ## Metrics and custom actions
 
 ```python

@@ -116,7 +116,11 @@ class QuantBot:
         self.store = store
         self._config_mtime = store.mtime() if store else None
         self.tz = ZoneInfo(settings.timezone)
-        self.hub = Hub(settings.strategies, self._hub_notice)
+        self.hub = Hub(
+            settings.strategies,
+            self._hub_notice,
+            operation_path=settings.data_dir / "operations.sqlite3",
+        )
         self.core = Core(
             self.hub,
             Audit(settings.data_dir),

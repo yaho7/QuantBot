@@ -1,9 +1,7 @@
 """Everything QuantBot knows about each strategy, and the commands waiting for it.
 
 All of this lives on the bot's asyncio loop: the HTTP server and the Telegram
-handlers run there, so no locks are needed. Nothing is saved: after a restart
-the strategies say hello again and pending commands are gone, which is safer
-than running them late.
+handlers run there. Execution grants and pause intents survive restarts.
 """
 
 from __future__ import annotations
@@ -12,16 +10,19 @@ import asyncio
 import base64
 import binascii
 import hmac
+import json
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from quantbot.config import StrategyConfig
 from quantbot.i18n import tr
 from quantbot.notices import Connections, Expiries
+from quantbot.operations import Operations, protected
 from quantbot.strategy_features import ActionSpec, Metric, parse_actions, record_metric
 
 COMMANDS = (
@@ -51,6 +52,8 @@ class Result:
     ok: bool
     message: str = ""
     data: Any = None
+    state: str | None = None
+    operation_id: str | None = None
 
 
 @dataclass
@@ -61,6 +64,7 @@ class Command:
     created: float
     future: asyncio.Future[Result]
     delivered_at: float | None = None
+    expires_at: float | None = None
 
 
 @dataclass
@@ -77,6 +81,8 @@ class Strategy:
     status_at: float | None = None
     last_seen: float | None = None
     polling: int = 0
+    claim_poll_at: float | None = None
+    pause_retry_at: float = 0
     was_online: bool = False
     pending: dict[str, Command] = field(default_factory=dict)
     wake: asyncio.Event = field(default_factory=asyncio.Event)
@@ -103,6 +109,9 @@ class Hub:
         undelivered_ttl: float = 120.0,
         result_ttl: float = 600.0,
         clock: Callable[[], float] = time.monotonic,
+        wall_clock: Callable[[], float] = time.time,
+        operation_path: Path | None = None,
+        operation_ttl: float = 15.0,
     ) -> None:
         self.strategies = {s.id: Strategy(s.id, s.name, s.token) for s in strategies}
         self.notify = notify
@@ -111,6 +120,9 @@ class Hub:
         self.undelivered_ttl = undelivered_ttl
         self.result_ttl = result_ttl
         self.clock = clock
+        self.wall_clock = wall_clock
+        self.operation_ttl = operation_ttl
+        self.operations = Operations(operation_path)
         self.connections = Connections()
         self.expiries = Expiries()
 
@@ -134,6 +146,7 @@ class Hub:
                 continue
             if current.token != config.token:
                 current.token = config.token
+                current.claim_poll_at = None
                 current.wake.set()
                 changes.append(tr("换了 {0} 的 token", sid))
             if current.name != config.name:
@@ -163,16 +176,53 @@ class Hub:
 
     # ------------------------------------------------------- bot side
 
-    def send(self, strategy: Strategy, name: str, args: dict[str, Any] | None = None) -> Command:
+    def send(
+        self,
+        strategy: Strategy,
+        name: str,
+        args: dict[str, Any] | None = None,
+        *,
+        operation_id: str | None = None,
+    ) -> Command:
         if name not in COMMANDS and not (name.startswith("action:") and strategy.supports(name)):
             raise ValueError(f"unknown command {name}")
         command = Command(
-            uuid.uuid4().hex,
+            operation_id or uuid.uuid4().hex,
             name,
             dict(args or {}),
             self.clock(),
             asyncio.get_running_loop().create_future(),
         )
+        if protected(name):
+            now = self.wall_clock()
+            if not self.online(strategy):
+                command.future.set_result(Result(False, tr("策略离线，操作未发送。")))
+                return command
+            if (
+                strategy.claim_poll_at is None
+                or self.clock() - strategy.claim_poll_at >= self.offline_after
+            ):
+                command.future.set_result(Result(False, tr("请先更新策略客户端的交易控制协议。")))
+                return command
+            if name == "resume" and self.operations.pause_intent(strategy.id):
+                command.future.set_result(Result(False, tr("策略尚未确认暂停，暂时不能恢复开仓。")))
+                return command
+            self.operations.expire(now, self.result_ttl)
+            command.expires_at = now + self.operation_ttl
+            row, created = self.operations.create(
+                strategy.id, command.id, name, command.args, now, command.expires_at
+            )
+            if not created:
+                recorded = json.loads(row["result"]) if row["result"] is not None else {}
+                message = tr("已有同类操作 {0}（{1}）。请查看该操作记录。", row["id"], row["state"])
+                command.future.set_result(
+                    Result(False, message, recorded.get("data"), row["state"], row["id"])
+                )
+                return command
+        elif name == "pause":
+            command.id = self.operations.save_pause(strategy.id, command.id)
+            if command.id in strategy.pending:
+                return strategy.pending[command.id]
         strategy.pending[command.id] = command
         strategy.wake.set()
         return command
@@ -186,32 +236,60 @@ class Hub:
                 self.notify(strategy.name, tr("🟢 恢复在线"), "info", None)
             strategy.was_online = True
 
-    def _deliverable(self, strategy: Strategy) -> list[Command]:
+    def _deliverable(self, strategy: Strategy, claims: bool) -> list[Command]:
         now = self.clock()
-        ready = [
-            c
-            for c in strategy.pending.values()
-            if c.delivered_at is None or now - c.delivered_at >= self.redeliver_after
-        ]
-        for command in ready:
+        cid = self.operations.pause_intent(strategy.id)
+        if cid and cid not in strategy.pending and now >= strategy.pause_retry_at:
+            strategy.pending[cid] = Command(
+                cid, "pause", {}, now, asyncio.get_running_loop().create_future()
+            )
+        ready = []
+        for command in strategy.pending.values():
+            if command.expires_at is not None:
+                if (
+                    not claims
+                    or command.delivered_at is not None
+                    or not self.operations.accept(strategy.id, command.id, self.wall_clock())
+                ):
+                    continue
+            elif (
+                command.delivered_at is not None
+                and now - command.delivered_at < self.redeliver_after
+            ):
+                continue
             command.delivered_at = now
+            ready.append(command)
         return ready
 
     def authorized(self, strategy: Strategy, token: str) -> bool:
         return self.strategies.get(strategy.id) is strategy and strategy.token == token
 
-    async def poll(self, strategy: Strategy, wait: float) -> dict[str, Any] | None:
+    async def poll(
+        self, strategy: Strategy, wait: float, *, claims: bool = False
+    ) -> dict[str, Any] | None:
         self._seen(strategy)
+        if claims:
+            strategy.claim_poll_at = self.clock()
         strategy.polling += 1
         token = strategy.token
         try:
             deadline = self.clock() + wait
             while self.authorized(strategy, token):
-                ready = self._deliverable(strategy)
+                ready = self._deliverable(strategy, claims)
                 left = deadline - self.clock()
                 if ready or left <= 0:
                     return {
-                        "commands": [{"id": c.id, "name": c.name, "args": c.args} for c in ready],
+                        "commands": [
+                            {
+                                "id": c.id,
+                                "name": c.name,
+                                "args": c.args,
+                                **(
+                                    {"expires_at": c.expires_at} if c.expires_at is not None else {}
+                                ),
+                            }
+                            for c in ready
+                        ],
                         "need_hello": not strategy.said_hello,
                     }
                 strategy.wake.clear()
@@ -225,12 +303,41 @@ class Hub:
             if self.authorized(strategy, token):
                 self._seen(strategy)
 
+    def claim(self, strategy: Strategy, cid: str, grant: str) -> bool:
+        return self.operations.claim(strategy.id, cid, grant, self.wall_clock())
+
     def result(self, strategy: Strategy, command_id: str, body: dict[str, Any]) -> bool:
         self._seen(strategy)
+        operation = self.operations.get(strategy.id, command_id)
+        if operation is not None:
+            if not self.operations.finish(strategy.id, command_id, body, self.wall_clock()):
+                return False
+            operation = self.operations.get(strategy.id, command_id)
+            body = json.loads(operation["result"])
         command = strategy.pending.pop(command_id, None)
         if command is None:
-            return False
-        result = Result(bool(body.get("ok")), _text(body.get("message")), body.get("data"))
+            if body.get("ok") and self.operations.pause_intent(strategy.id) == command_id:
+                self.operations.clear_pause(strategy.id, command_id)
+                return True
+            return operation is not None
+        if command.name == "pause":
+            if body.get("ok"):
+                self.operations.clear_pause(strategy.id, command_id)
+                strategy.paused = True
+            else:
+                # The intent is still pending. Retry with a fresh ID so a failed cached
+                # result cannot prevent a pause after storage or connectivity recovers.
+                self.operations.retry_pause(strategy.id, command_id, uuid.uuid4().hex)
+                strategy.pause_retry_at = self.clock() + self.redeliver_after
+        if command.name == "resume" and body.get("ok"):
+            strategy.paused = False
+        result = Result(
+            bool(body.get("ok")),
+            _text(body.get("message")),
+            body.get("data"),
+            operation["state"] if operation is not None else None,
+            command_id if operation is not None else None,
+        )
         if command.name == "status" and result.ok and isinstance(result.data, dict):
             self._status(strategy, result.data)
         if not command.future.done():
@@ -303,6 +410,7 @@ class Hub:
     def sweep(self) -> None:
         """Run every few seconds: offline alerts, stale commands, expiry reminders."""
         now = self.clock()
+        self.operations.expire(self.wall_clock(), self.result_ttl)
         for strategy in self.strategies.values():
             if strategy.was_online and not self.online(strategy):
                 strategy.was_online = False
@@ -313,7 +421,19 @@ class Hub:
                     None,
                 )
             for command in list(strategy.pending.values()):
-                if command.delivered_at is None and now - command.created >= self.undelivered_ttl:
+                state = None
+                if command.expires_at is not None:
+                    row = self.operations.get(strategy.id, command.id)
+                    state = row["state"] if row is not None else "UNKNOWN"
+                    if state == "FAILED":
+                        message = tr("执行许可已过期，操作未执行。")
+                    elif state == "UNKNOWN":
+                        message = tr("执行结果未知，请到券商端核对。")
+                    else:
+                        continue
+                elif command.name == "pause":
+                    continue
+                elif command.delivered_at is None and now - command.created >= self.undelivered_ttl:
                     message = tr("命令 2 分钟内没有被策略取走，已作废。")
                 elif command.delivered_at is not None and now - command.created >= self.result_ttl:
                     message = tr("命令已发出，但一直没有回报结果。请到券商端核对。")
@@ -321,7 +441,11 @@ class Hub:
                     continue
                 strategy.pending.pop(command.id, None)
                 if not command.future.done():
-                    command.future.set_result(Result(False, message))
+                    command.future.set_result(
+                        Result(
+                            False, message, state=state, operation_id=command.id if state else None
+                        )
+                    )
         for key, message in self.expiries.due():
             strategy = self.strategies.get(key.split(":", 1)[0])
             if strategy is not None:

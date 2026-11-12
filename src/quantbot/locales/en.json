@@ -694,5 +694,19 @@
   "请等策略上线后再执行此操作。": "Wait for the strategy to come online before running this action.",
   "请先确认此操作。": "Confirm the action before running it.",
   "操作已完成。": "The action completed.",
-  "策略还没有上报此指标。": "The strategy has not reported this metric yet."
+  "策略还没有上报此指标。": "The strategy has not reported this metric yet.",
+  "已有同类操作 {0}（{1}）。请查看该操作记录。": "A matching operation already exists ({0}, {1}). Check its record.",
+  "策略离线，操作未发送。": "The strategy is offline. The operation was not sent.",
+  "请先更新策略客户端的交易控制协议。": "Update the strategy client to enable protected commands.",
+  "策略尚未确认暂停，暂时不能恢复开仓。": "The strategy has not confirmed the pause. Resume is unavailable.",
+  "执行许可已过期，操作未执行。": "Execution permission expired before the operation ran.",
+  "执行结果未知，请到券商端核对。": "The outcome is unknown. Verify it with the broker.",
+  "确定让 {name} 恢复开仓？": "Resume opening positions on {name}?",
+  "{0} 离线，命令未发送。": "{0} is offline. The command was not sent.",
+  "{0} 离线，暂停意图已保存，等待策略确认。": "{0} is offline. The pause request was saved and is awaiting acknowledgment.",
+  "操作 {0} 尚无回执。请先核对操作记录和券商状态。": "Operation {0} has no receipt yet. Check its record and verify the broker status.",
+  "操作 {0} 的结果未知，请到券商端核对。{1}": "The outcome of operation {0} is unknown. Verify it with the broker. {1}",
+  "请填写核对结果和说明。": "Enter the reconciliation outcome and a note.",
+  "只能核对执行结果未知的操作。": "Reconciliation is available for operations with an unknown outcome.",
+  "已保存核对结果。": "Reconciliation saved."
 }

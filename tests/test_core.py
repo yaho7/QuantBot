@@ -59,14 +59,17 @@ class Fake:
 
     async def serve(self) -> None:
         while True:
-            reply = await self.hub.poll(self.strategy, 0.2)
+            reply = await self.hub.poll(self.strategy, 0.2, claims=True)
             for command in reply["commands"]:
                 if self.silent:
                     continue
                 self.ran.append((command["name"], command["args"]))
-                self.hub.result(
-                    self.strategy, command["id"], self.answer(command["name"], command["args"])
-                )
+                grant = {}
+                if "expires_at" in command:
+                    assert self.hub.claim(self.strategy, command["id"], "grant")
+                    grant["grant"] = "grant"
+                result = self.answer(command["name"], command["args"])
+                self.hub.result(self.strategy, command["id"], {**result, **grant})
 
 
 Notes = list[tuple[str, str, str]]
@@ -149,7 +152,9 @@ def test_pause_resume_and_pause_all(tmp_path: Path) -> None:
         page = await core.tap("p:momentum", OWNER)
         assert fakes["momentum"].paused and "⏸ 已暂停开仓" in page.text
         assert "▶️ 恢复开仓" in labels(page) and "⏸ 暂停开仓" not in labels(page)
-        await core.tap("r:momentum", OWNER)
+        resume = await core.tap("r:momentum", OWNER)
+        assert fakes["momentum"].paused
+        await core.tap(button(resume, "✅ 确定"), OWNER)
         assert not fakes["momentum"].paused
         result = await core.tap("pa", OWNER)
         assert result.text == "⏸ 动量：已暂停\n⏸ 网格：已暂停"
@@ -264,7 +269,7 @@ def test_failures_slow_answers_and_unsupported(tmp_path: Path) -> None:
     scenario(test, tmp_path)
 
 
-def test_offline_strategy_queues_and_target_selection(tmp_path: Path) -> None:
+def test_offline_strategy_only_queues_pause(tmp_path: Path) -> None:
     async def main() -> None:
         hub = Hub(
             (StrategyConfig("a", "A", "a" * 20), StrategyConfig("b", "B", "b" * 20)),
@@ -279,7 +284,13 @@ def test_offline_strategy_queues_and_target_selection(tmp_path: Path) -> None:
         assert page.text.startswith("🔴 B · 还没有状态") and "还没有连上过" in page.text
         assert isinstance(core.target(), Strategy) and core.target().id == "b"
         reply = await core.tap("pos:b", OWNER)
-        assert "离线，命令已排队" in reply.text
+        assert "离线，命令未发送" in reply.text
+        strategy = hub.strategies["b"]
+        for command in ("manual_order", "cancel", "flatten", "resume", "stop"):
+            ok, _ = await core.call(strategy, command)
+            assert not ok and not strategy.pending
+        assert "暂停意图已保存" in (await core.tap("p:b", OWNER)).text
+        assert len(strategy.pending) == 1
 
     asyncio.run(main())
 

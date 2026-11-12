@@ -54,7 +54,16 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 
 `need_hello` 为 `true` 时，说明 QuantBot 刚重启、还不知道你的能力，请再发一次 `hello`。
 
-**同一个命令可能收到两次**：结果没回报的命令，20 秒后会重发。请按 `id` 去重，执行过的只回报上次的结果。
+查询和暂停命令可能重发。请按 `id` 去重，执行过的只回报上次结果。
+
+有副作用的命令（`manual_order`、`cancel`、`flatten`、`resume`、
+`set_param`、`stop` 及自定义操作）只发给使用
+`GET /v1/commands?wait=25&claims=1` 的客户端，并附带 Unix 秒 `expires_at`。
+客户端应在即将执行时先检查失效时间，再调用
+`POST /v1/commands/{id}/claim`，请求体为 `{"grant":"<32 位十六进制随机值>"}`。
+仅在明确收到 `200 {"ok":true}` 且仍在有效期内时执行。收到 `409`、连接断开
+或没有明确答复时，跳过该命令。服务器会持久化执行许可，且每个命令只签发一次。
+两端需同步系统时间。离线时只有暂停意图可以等待重新连接。
 
 命令名和参数见 [DESIGN.md](DESIGN.md) 的“能力和菜单”。
 
@@ -76,7 +85,16 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 
 失败时 `ok` 为 `false`，`message` 写原因，比如“分不清哪些仓位属于本策略，拒绝平仓”。
 
-同一个 id 第二次回报会被忽略，返回 `200`。不认识或已过期的 id 返回 `404`。
+受保护命令的结果还需带领取时使用的 `grant`。确认操作没有生效时回报
+`"ok": false`。执行后发生异常且效果不确定时回报
+`"ok": false, "unknown": true`。匹配同一许可的重复回报返回 `200`。
+其他已结束或未知的命令返回 `404`。
+
+控制台按 CREATED、ACCEPTED、EXECUTING、SUCCEEDED、FAILED 和 UNKNOWN 记录
+有副作用的操作。查询 `GET /ui/api/strategies/{sid}/operations` 可查看操作记录。
+若仍为 UNKNOWN，应核对券商和策略进程，确认处理函数已结束并查明实际结果后，
+用管理员会话向 `POST /ui/api/strategies/{sid}/operations/{id}` 提交
+`{"ok": true, "note": "券商订单号和核对结论"}`（确认未生效时用 `false`）。
 
 ## 最小例子（curl）
 

@@ -142,7 +142,7 @@ def test_hello_commands_and_events(server: Server, tmp_path: Path) -> None:
     assert not trading.is_alive() and qb.stopping
 
 
-def test_redelivered_command_runs_once(server: Server) -> None:
+def test_slow_protected_command_runs_once(server: Server) -> None:
     count = []
     qb = QuantBot(url=f"http://127.0.0.1:{server.port}", token=TOKEN)
 
@@ -159,6 +159,31 @@ def test_redelivered_command_runs_once(server: Server) -> None:
     assert count == [1]
     server.send("stop")
     trading.join(5)
+
+
+def test_lost_result_after_broker_acceptance_cannot_repeat_on_client_restart(
+    server: Server,
+) -> None:
+    async def command() -> dict[str, Any]:
+        await server.hub.poll(server.strategy, 0, claims=True)
+        server.hub.send(server.strategy, "manual_order")
+        return (await server.hub.poll(server.strategy, 0, claims=True))["commands"][0]
+
+    item = asyncio.run_coroutine_threadsafe(command(), server.loop).result(5)
+    settings = {"url": f"http://127.0.0.1:{server.port}", "token": TOKEN}
+    first = QuantBot("bot", **settings)
+    orders = []
+    first.on("manual_order", lambda: orders.append(first.operation_id))
+    first._accept(item)
+    assert first.process() == 1
+    # The process exits without a sender thread, simulating a lost command receipt.
+    restarted = QuantBot("bot", **settings)
+    restarted.on("manual_order", lambda: orders.append(restarted.operation_id))
+    restarted._accept(item)
+    assert restarted.process() == 0
+    assert orders == [item["id"]]
+    rejected = server.send("manual_order")
+    assert rejected.state == "EXECUTING" and rejected.operation_id == item["id"]
 
 
 def test_error_in_trading_loop_is_reported(server: Server) -> None:

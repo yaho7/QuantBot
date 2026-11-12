@@ -333,11 +333,14 @@ def test_strategy_custom_action_and_metric_api(tmp_path: Path) -> None:
         request = asyncio.create_task(
             client.post(endpoint, json={"args": {"limit": 3}, "confirmed": True}, headers=CSRF)
         )
-        batch = await hub.poll(strategy, 1)
+        batch = await hub.poll(strategy, 1, claims=True)
         assert batch is not None and len(batch["commands"]) == 1
         command = batch["commands"][0]
         assert command["name"] == "action:refresh" and command["args"] == {"limit": 3}
-        assert hub.result(strategy, command["id"], {"ok": True, "data": {"updated": 3}})
+        assert hub.claim(strategy, command["id"], "grant")
+        assert hub.result(
+            strategy, command["id"], {"ok": True, "grant": "grant", "data": {"updated": 3}}
+        )
         response = await (await request).json()
         assert response["ok"] and response["data"] == {"updated": 3}
         audit = read_audit(tmp_path / "audit.jsonl", 5)
