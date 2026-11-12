@@ -24,6 +24,12 @@ from quantbot_client import QuantBot  # noqa: E402
 TOKEN = "t" * 20
 
 
+@pytest.fixture(autouse=True)
+def isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.delenv("QB_STATE_FILE", raising=False)
+
+
 class Server:
     """QuantBot's hub and API on a free port, with helpers to drive it from the test."""
 
@@ -122,7 +128,7 @@ def test_hello_commands_and_events(server: Server, tmp_path: Path) -> None:
     assert not failed.ok and "不支持 flatten" in failed.message
 
     assert server.send("pause").ok and qb.paused and not qb.can_open()
-    assert json.loads((tmp_path / "s.json").read_text()) == {"paused": True}
+    assert json.loads((tmp_path / "s.json").read_text()) == {"paused": True, "reasons": ["manual"]}
     assert QuantBot(url="http://x", token=TOKEN, state_file=str(tmp_path / "s.json")).paused
 
     qb.status("净值 10000")
@@ -181,6 +187,48 @@ def test_bad_settings_and_unknown_command() -> None:
         QuantBot(url="quantbot:8080", token=TOKEN)
     with pytest.raises(ValueError):
         QuantBot(url="http://127.0.0.1:8080", token=TOKEN).on("rm", lambda: None)
+
+
+def test_resume_callback_failure_preserves_pause() -> None:
+    qb = QuantBot("bot", url="http://localhost", token=TOKEN)
+    qb._execute("pause", {})
+
+    def check() -> None:
+        assert not qb.can_open()
+        raise RuntimeError("broker unavailable")
+
+    qb.on("resume", check)
+    with pytest.raises(RuntimeError, match="broker unavailable"):
+        qb._execute("resume", {})
+    assert not qb.can_open()
+    assert QuantBot("bot", url=qb.url, token=TOKEN).pause_reasons == {"manual"}
+
+
+def test_protective_pauses_survive_restart_and_token_rotation() -> None:
+    qb = QuantBot("bot", url="http://localhost", token=TOKEN)
+    qb.risk_triggered("loss limit")
+    qb.connection("broker", False, pause_on_failure=True)
+    restarted = QuantBot("bot", url="http://localhost:9999", token="new")
+    assert restarted.pause_reasons == {"risk", "connection"}
+    with pytest.raises(RuntimeError, match="explicit clearance"):
+        restarted._execute("resume", {})
+    restarted.clear_pause("risk")
+    assert not restarted.can_open()
+    restarted.clear_pause("connection")
+    assert restarted.can_open()
+
+
+def test_failed_resume_write_preserves_pause(monkeypatch: pytest.MonkeyPatch) -> None:
+    qb = QuantBot("bot", url="http://localhost", token=TOKEN)
+    qb._execute("pause", {})
+
+    def write(_reasons: frozenset[str]) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(qb, "_write_pause_reasons", write)
+    with pytest.raises(OSError, match="disk full"):
+        qb._execute("resume", {})
+    assert not qb.can_open()
 
 
 def test_connects_locally_by_name(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

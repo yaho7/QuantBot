@@ -20,6 +20,19 @@ with qb:
 
 Running `quantbot link` in your project does all of this for you.
 
+## Pausing new positions
+
+Check `qb.can_open()` immediately before placing an order that opens or grows a
+position. Pause state is saved by strategy name under
+`$XDG_STATE_HOME/quantbot` or `~/.local/state/quantbot`. Set `QB_STATE_FILE` or
+pass `state_file=` to choose a different persistent path. Give separate trading
+processes separate strategy names and state files.
+
+`qb.risk_triggered(reason)` records a risk pause.
+`qb.connection("broker", ok, pause_on_failure=True)` can record a connection
+pause. After the strategy verifies that the cause has been resolved, call
+`qb.clear_pause("risk")` or `qb.clear_pause("connection")`. Remote resume clears
+the manual pause only, after a registered resume handler returns successfully.
 
 ## Metrics and custom actions
 

@@ -76,6 +76,11 @@ def _default_name() -> str:
     return name if NAME.match(name) else "strategy"
 
 
+def _default_state_file(name: str) -> Path:
+    base = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state")
+    return base / "quantbot" / f"{name}.json"
+
+
 def _url_from(listen: str) -> str:
     host, _, port = listen.rpartition(":")
     return f"http://{'127.0.0.1' if host in {'0.0.0.0', '::', ''} else host}:{port}"  # noqa: S104
@@ -134,12 +139,12 @@ class QuantBot:
         The strategy is added to QuantBot the first time it connects.
         QB_URL and QB_TOKEN (or url= and token=) connect to a QuantBot elsewhere.
         """
+        name = name or os.environ.get("QB_NAME") or _default_name()
+        if not NAME.fullmatch(name):
+            raise ValueError("Strategy name: lowercase letters, digits, - and _, e.g. momentum")
         url = url or os.environ.get("QB_URL", "")
         token = token or os.environ.get("QB_TOKEN", "")
         if not token:
-            name = name or os.environ.get("QB_NAME") or _default_name()
-            if not NAME.match(name):
-                raise ValueError("Strategy name: lowercase letters, digits, - and _, e.g. momentum")
             local_url, token = connect_locally(name, display_name)
             url = url or local_url
         if not url.startswith(("http://", "https://")):
@@ -151,7 +156,9 @@ class QuantBot:
         if self._heartbeat_url and not self._heartbeat_url.startswith(("http://", "https://")):
             raise ValueError("QB_HEARTBEAT_URL must start with https:// or http://")
         self._last_beat = float("-inf")
-        self._state_file = state_file or os.environ.get("QB_STATE_FILE") or None
+        self._state_file = Path(
+            state_file or os.environ.get("QB_STATE_FILE") or _default_state_file(name)
+        ).expanduser()
         self._handlers: dict[str, Callable[..., Any]] = {}
         self._actions: dict[str, dict[str, Any]] = {}
         self._commands: queue.Queue[Any] = queue.Queue()
@@ -167,7 +174,16 @@ class QuantBot:
         self._closed = threading.Event()
         self._threads: list[threading.Thread] = []
         self._hello_sent = False
-        self.paused = self._load_paused()
+        self._pause_lock = threading.Lock()
+        self._pause_reasons = self._load_pause_reasons()
+
+    @property
+    def paused(self) -> bool:
+        return bool(self._pause_reasons)
+
+    @property
+    def pause_reasons(self) -> frozenset[str]:
+        return self._pause_reasons
 
     # ------------------------------------------------------------- setup
 
@@ -334,8 +350,12 @@ class QuantBot:
         image = base64.b64encode(png).decode() if png else None
         self._event("summary", message=message, image=image)
 
-    def connection(self, name: str, ok: bool, detail: str = "") -> None:
+    def connection(
+        self, name: str, ok: bool, detail: str = "", *, pause_on_failure: bool = False
+    ) -> None:
         """Report a connection's state. QuantBot only notifies when it changes."""
+        if pause_on_failure and not ok:
+            self._pause("connection")
         self._event("connection", name=name, ok=ok, detail=detail)
 
     def expiry(self, name: str, expires_at: Any) -> None:
@@ -345,8 +365,17 @@ class QuantBot:
 
     def risk_triggered(self, reason: str) -> None:
         """Pause new positions and say why."""
-        self._set_paused(True)
+        self._pause("risk")
         self.alert(f"风控触发，已暂停开仓：{reason}")
+
+    def clear_pause(self, reason: str) -> None:
+        """Clear one protective pause after the strategy has checked its cause."""
+        if reason not in {"risk", "connection", "state_error"}:
+            raise ValueError("Unknown protective pause reason")
+        with self._pause_lock:
+            reasons = self._pause_reasons - {reason}
+            self._write_pause_reasons(reasons)
+            self._pause_reasons = reasons
 
     def heartbeat(self) -> bool:
         """Ping QB_HEARTBEAT_URL after a good round, at most every 30 seconds."""
@@ -376,24 +405,49 @@ class QuantBot:
         self._event("hello", commands=names, actions=actions)
         self._hello_sent = True
 
-    def _load_paused(self) -> bool:
-        if not self._state_file:
-            return False
+    def _load_pause_reasons(self) -> frozenset[str]:
         try:
-            with open(self._state_file, encoding="utf-8") as fh:
-                return bool(json.load(fh).get("paused"))
+            state = json.loads(self._state_file.read_text(encoding="utf-8"))
+            if not isinstance(state, dict) or type(state.get("paused")) is not bool:
+                raise ValueError("Invalid pause state")
+            reasons = state.get("reasons", ["manual"] if state["paused"] else [])
+            if (
+                not isinstance(reasons, list)
+                or not all(isinstance(reason, str) and reason for reason in reasons)
+                or bool(reasons) != state["paused"]
+            ):
+                raise ValueError("Invalid pause reasons")
+            return frozenset(reasons)
         except FileNotFoundError:
-            return False
+            return frozenset()
         except (OSError, ValueError):
-            return True  # a damaged file must not resume trading silently
+            return frozenset({"state_error"})
 
-    def _set_paused(self, paused: bool) -> None:
-        self.paused = paused
-        if self._state_file:
-            tmp = self._state_file + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump({"paused": paused}, fh)
-            os.replace(tmp, self._state_file)
+    def _write_pause_reasons(self, reasons: frozenset[str]) -> None:
+        self._state_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        fd, temp = tempfile.mkstemp(dir=self._state_file.parent, prefix=".pause-")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump({"paused": bool(reasons), "reasons": sorted(reasons)}, fh)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(temp, self._state_file)
+        finally:
+            Path(temp).unlink(missing_ok=True)
+
+    def _pause(self, reason: str) -> None:
+        with self._pause_lock:
+            self._pause_reasons |= {reason}
+            self._write_pause_reasons(self._pause_reasons)
+
+    def _resume(self) -> None:
+        with self._pause_lock:
+            if self._pause_reasons - {"manual"}:
+                reasons = ", ".join(sorted(self._pause_reasons - {"manual"}))
+                raise RuntimeError(f"Protective pause requires explicit clearance: {reasons}")
+            reasons: frozenset[str] = frozenset()
+            self._write_pause_reasons(reasons)
+            self._pause_reasons = reasons
 
     def _request(self, method: str, path: str, body: Any = None, timeout: float = 10) -> Any:
         data = None if body is None else json.dumps(body, default=str).encode()
@@ -467,15 +521,19 @@ class QuantBot:
                 handler(**args)
             self._stop.set()
             return {"message": "正在停止，交易循环退出后结束。"}
-        if handler is None and name in {"pause", "resume"}:
-            self._set_paused(name == "pause")
+        if name == "pause":
+            self._pause("manual")
+        if name in {"pause", "resume"}:
+            value = handler(**args) if handler else None
+            if name == "resume":
+                self._resume()
             return {
-                "message": "已暂停开仓。已有仓位和止损照常。" if name == "pause" else "已恢复开仓。"
+                "message": str(value)
+                if value is not None
+                else ("已暂停开仓。已有仓位和止损照常。" if name == "pause" else "已恢复开仓。")
             }
         if handler is None:
             raise RuntimeError(f"这个程序不支持 {name}")
-        if name in {"pause", "resume"}:
-            self._set_paused(name == "pause")
         value = handler(**args)
         if name.startswith("action:"):
             if isinstance(value, str):
