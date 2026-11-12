@@ -1,7 +1,8 @@
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
-import { FileCode, Files, GitBranch, Play, Search, SquareTerminal, X } from "lucide-react";
+import { FileCode, Files, GitBranch, Play, Search, Sparkles, SquareTerminal, X } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
+import { AiPromptDialog } from "@/components/AiPromptDialog";
 import { ConfirmDialog, EmptyState, LoadingState } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
 import { WorkspaceExplorer, WorkspaceSearch } from "@/components/WorkspaceExplorer";
@@ -33,6 +34,7 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
   const [sidebar, setSidebar] = useState<"files" | "search" | "git">("files");
   const [review, setReview] = useState(false);
   const [discard, setDiscard] = useState<{ path: string; close: boolean }>();
+  const [promptOpen, setPromptOpen] = useState(false);
   const [githubOpen, setGithubOpen] = useState(() => visible && new URLSearchParams(window.location.search).has("github"));
   const [directory, setDirectory] = useState("");
   const [terminalPath, setTerminalPath] = useState<string>();
@@ -133,6 +135,10 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
               onClick={() => setSidebar("search")}><Search /> {tr("搜索")}</Button>
             <Button size="sm" variant={sidebar === "git" ? "secondary" : "ghost"} aria-pressed={sidebar === "git"}
               onClick={() => setSidebar("git")}><GitBranch /> Git</Button>
+            <Button size="sm" variant="ghost" aria-label={tr("让 AI 接入策略")} title={tr("让 AI 接入策略")}
+              onClick={() => setPromptOpen(true)}>
+              <Sparkles /> <span className="hidden min-[360px]:inline">{tr("让 AI 接入策略")}</span>
+            </Button>
           </div>
           {managed && <div className="flex gap-1">
             <Button size="sm" variant={showTerminal ? "secondary" : "ghost"} aria-pressed={showTerminal}
@@ -233,6 +239,7 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
           }
           setDiscard(undefined);
         }} />
+      {visible && promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       {githubOpen && <GitHubDialog project={project.id} onProject={onOpenProject} onClose={() => {
         setGithubOpen(false);
         const url = new URL(window.location.href);
