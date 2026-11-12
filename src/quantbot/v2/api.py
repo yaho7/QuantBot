@@ -51,6 +51,7 @@ from .registry import Registry
 from .report_models import DATA_TYPES, MetricDefinitions, ReportBatch
 from .responses import (
     AgentSession,
+    AuditView,
     CommandQueue,
     CommandView,
     ControlCatalog,
@@ -552,19 +553,22 @@ async def reconcile(request: Request, command_id: Key, body: Reconciliation, act
     return runtime(request).commands.reconcile(command_id, body, actor)
 
 
-@admin.get("/audit")
+@admin.get("/audit", response_model=list[AuditView])
 async def audit(
     request: Request,
     strategy_id: Key | None = None,
+    command_id: Key | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     actor=ADMIN,
 ):
+    """Read the audit trail, optionally restricted to a strategy or command."""
     from .db import record
 
     rows = runtime(request).db.all(
         """SELECT * FROM audit_log WHERE (? IS NULL OR strategy_id=?)
+           AND (? IS NULL OR json_extract(detail, '$.command_id')=?)
            ORDER BY id DESC LIMIT ?""",
-        (strategy_id, strategy_id, limit),
+        (strategy_id, strategy_id, command_id, command_id, limit),
     )
     return [record(row, documents=("detail",), times=("created_at",)) for row in rows]
 

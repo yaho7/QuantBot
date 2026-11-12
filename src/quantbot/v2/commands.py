@@ -116,10 +116,10 @@ class Commands:
         return self.create(sid, body, actor, control_id=control_id)
 
     def create(self, sid, body, actor, *, control_id=None):
-        now = self.clock()
         request = encode([sid, control_id, body.model_dump(mode="json", exclude={"request_id"})])
         self.sweep()
         with self.db.transaction():
+            now = self.clock()
             existing = self.db.one(
                 "SELECT * FROM commands WHERE actor=? AND request_id=?", (actor, body.request_id)
             )
@@ -196,13 +196,17 @@ class Commands:
         return self.public(self.row(cid))
 
     def confirm(self, command_id, actor):
-        now = self.clock()
         self.sweep()
         with self.db.transaction():
+            now = self.clock()
             row = self.row(command_id)
             if row["actor"] != actor:
                 raise Problem(403, "Only the requesting administrator can confirm")
-            if not row["protected"] or row["state"] != "confirmation_required":
+            if (
+                not row["protected"]
+                or row["state"] != "confirmation_required"
+                or row["expires_at"] <= now
+            ):
                 raise Problem(409, "Confirmation is no longer available")
             sid = row["strategy_id"]
             shadow = row["action"] in SHADOW_ACTIONS
@@ -307,7 +311,10 @@ class Commands:
                     key, value = SHADOW_ACTIONS[row["action"]]
                     if reported[key] == value:
                         self.transition(
-                            row, "succeeded", result={"applied_revision": body.revision}
+                            row,
+                            "succeeded",
+                            result={"applied_revision": body.revision},
+                            actor=f"agent:{agent['instance_id']}",
                         )
         self.wake()
         return self.strategies.control(sid)
@@ -329,9 +336,9 @@ class Commands:
 
     def claim(self, agent, cid):
         sid = agent["strategy_id"]
-        now = self.clock()
         self.sweep()
         with self.db.transaction():
+            now = self.clock()
             row = self.row(cid, sid)
             if (
                 row["state"] != "accepted"
@@ -351,7 +358,7 @@ class Commands:
                 "INSERT INTO command_executions VALUES (?, ?, ?, ?, NULL)",
                 (cid, agent["instance_id"], digest(permit), now),
             )
-            self.transition(row, "executing")
+            self.transition(row, "executing", actor=f"agent:{agent['instance_id']}")
         self.wake()
         return {
             "permit": permit,
@@ -380,7 +387,9 @@ class Commands:
             self.db.execute(
                 "UPDATE command_executions SET receipt=? WHERE command_id=?", (receipt, cid)
             )
-            self.transition(row, body.status, body.error, body.result)
+            self.transition(
+                row, body.status, body.error, body.result, actor=f"agent:{agent['instance_id']}"
+            )
         self.wake()
         return self.public(self.row(cid))
 
@@ -509,11 +518,11 @@ class Commands:
         ):
             raise Problem(409, "Resolve executing or unknown trading commands first")
 
-    def expire_queued(self, sid, reason, *, only_one_time=False):
+    def expire_queued(self, sid, reason, *, only_one_time=False, only_risky=False):
         for row in self.db.all(
             """SELECT * FROM commands WHERE strategy_id=?
                AND state IN ('confirmation_required','pending','accepted')
-               AND (NOT ? OR revision IS NULL)""",
-            (sid, only_one_time),
+               AND (NOT ? OR revision IS NULL) AND (NOT ? OR risky=1)""",
+            (sid, only_one_time, only_risky),
         ):
             self.transition(row, "expired", reason)

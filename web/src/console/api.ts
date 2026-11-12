@@ -57,6 +57,7 @@ export interface Order {
   status: string;
   price: string | null;
   fee: string | null;
+  fee_currency?: string | null;
 }
 export interface Fill {
   fill_id: string;
@@ -68,6 +69,7 @@ export interface Fill {
   quantity: string;
   price: string;
   fee: string | null;
+  fee_currency?: string | null;
   occurred_at: string;
 }
 export interface Runtime {

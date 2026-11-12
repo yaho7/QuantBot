@@ -303,6 +303,11 @@ def test_long_poll_wakes_and_only_one_claim_succeeds(server):
     body["status"] = "failed"
     assert http.post(result, headers=headers, json=body).status_code == 409
     assert http.get(f"{ADMIN}/commands/{command['id']}").json()["state"] == "succeeded"
+    trail = http.get(ADMIN + "/audit", params={"command_id": command["id"]}).json()
+    assert [(row["action"], row["actor"]) for row in trail[:2]] == [
+        ("command.succeeded", "agent:primary"),
+        ("command.executing", "agent:primary"),
+    ]
 
 
 def test_protected_confirmation_expiry_and_strategy_isolation(server):
@@ -451,3 +456,13 @@ def test_resume_preserves_local_risk_lock(server):
         ).status_code
         == 422
     )
+
+
+def test_database_is_locked_by_one_service(tmp_path):
+    path = tmp_path / "exclusive.db"
+    with client(path, Clock()):
+        with (
+            pytest.raises(RuntimeError, match="already using this database"),
+            client(path, Clock()),
+        ):
+            pytest.fail("A second polling runtime acquired the active database")

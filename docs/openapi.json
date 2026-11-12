@@ -282,6 +282,55 @@
         "title": "AlertRecord",
         "type": "object"
       },
+      "AuditView": {
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "detail": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/JsonValue"
+            },
+            "title": "Detail",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "strategy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strategy Id"
+          }
+        },
+        "required": [
+          "id",
+          "strategy_id",
+          "actor",
+          "action",
+          "detail",
+          "created_at"
+        ],
+        "title": "AuditView",
+        "type": "object"
+      },
       "Button": {
         "additionalProperties": false,
         "properties": {
@@ -5696,6 +5745,7 @@
     },
     "/api/v2/admin/audit": {
       "get": {
+        "description": "Read the audit trail, optionally restricted to a strategy or command.",
         "operationId": "audit_api_v2_admin_audit_get",
         "parameters": [
           {
@@ -5717,6 +5767,23 @@
           },
           {
             "in": "query",
+            "name": "command_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Command Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -5732,7 +5799,13 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AuditView"
+                  },
+                  "title": "Response Audit Api V2 Admin Audit Get",
+                  "type": "array"
+                }
               }
             },
             "description": "Successful Response"

@@ -499,11 +499,15 @@ class TelegramInterface:
             except Problem:
                 continue
             request = f"tg:{update_id}:{item['id']}"
-            command = self.service.commands.create(
-                item["id"],
-                CommandRequest(action="pause_entry", request_id=request),
-                actor,
-            )
+            try:
+                command = self.service.commands.create(
+                    item["id"],
+                    CommandRequest(action="pause_entry", request_id=request),
+                    actor,
+                )
+            except Problem as exc:
+                lines.append(f"{item['name']} · {exc}")
+                continue
             lines.append(f"{item['name']} · {STATES[command['state']]}")
             if command["state"] == "confirmation_required":
                 rows.append([button(f"确认 {item['name']}", f"confirm:{command['id']}")])

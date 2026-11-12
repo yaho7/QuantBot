@@ -30,13 +30,13 @@ export function Orders({ rows }: { rows: Order[] }) {
   return <Table columns={["订单 ID", "标的", "方向", "委托 / 已成交", "价格", "手续费", "状态"]} empty={!rows.length}>
     {rows.map((row, index) => <tr key={`${row.account_id}/${row.order_id}/${index}`}><td className="mono">{row.order_id}</td><td>{row.symbol}</td>
       <td>{row.side === "buy" ? "买入" : "卖出"}</td><td className="mono">{row.quantity} / {row.filled_quantity ?? "—"}</td>
-      <td className="mono">{money(row.price, row.currency)}</td><td className="mono">{money(row.fee, row.currency)}</td><td>{row.status}</td></tr>)}
+      <td className="mono">{money(row.price, row.currency)}</td><td className="mono">{money(row.fee, row.fee_currency ?? row.currency)}</td><td>{row.status}</td></tr>)}
   </Table>;
 }
 export function Fills({ rows }: { rows: Fill[] }) {
   return <Table columns={["成交时间", "标的", "方向", "数量", "价格", "手续费"]} empty={!rows.length}>
     {rows.map((row) => <tr key={`${row.account_id}/${row.fill_id}`}><td>{when(row.occurred_at)}</td><td>{row.symbol}</td>
       <td>{row.side === "buy" ? "买入" : "卖出"}</td><td className="mono">{row.quantity}</td>
-      <td className="mono">{money(row.price, row.currency)}</td><td className="mono">{money(row.fee, row.currency)}</td></tr>)}
+      <td className="mono">{money(row.price, row.currency)}</td><td className="mono">{money(row.fee, row.fee_currency ?? row.currency)}</td></tr>)}
   </Table>;
 }

@@ -101,12 +101,7 @@ class Strategies:
             if settings["mode"] != previous["mode"] or (
                 previous["live_trading_enabled"] and not settings["live_trading_enabled"]
             ):
-                self.db.execute(
-                    """UPDATE commands SET state='expired', error='Trading policy changed',
-                       updated_at=? WHERE strategy_id=? AND risky=1
-                       AND state IN ('confirmation_required', 'pending', 'accepted')""",
-                    (self.clock(), sid),
-                )
+                self.commands.expire_queued(sid, "Trading policy changed", only_risky=True)
             self.audit(actor, "strategy.update", sid, previous=previous, settings=settings)
         self.wake()
         return self.detail(sid)

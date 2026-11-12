@@ -41,6 +41,7 @@ class Runtime:
         self.auth = Auth(self.db, clock)
         self.strategies = Strategies(self.db, self.auth, clock, self.wake)
         self.commands = Commands(self.db, self.strategies, clock, self.wake)
+        self.strategies.commands = self.commands
         self.telemetry = Telemetry(self.db, self.strategies, clock, self.wake)
         self.controls = Controls(self)
         self.commands.controls = self.controls

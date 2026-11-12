@@ -84,6 +84,9 @@ function OperationView({ command, strategy, close }: { command: Command; strateg
   const [evidence, setEvidence] = useState("");
   const [resolution, setResolution] = useState<"succeeded" | "failed">("failed");
   const session = useData<{ actor: string }>("session");
+  const audit = useData<Array<{ id: number; actor: string; action: string; created_at: string }>>(
+    `audit?command_id=${encodeURIComponent(command.id)}`,
+  );
   const act = useMutation({
     mutationFn: (action: "confirm" | "reconcile" | "cancel") => api<Command>(`commands/${command.id}/${action}`, "POST",
       action === "reconcile" ? { evidence, status: resolution } : undefined),
@@ -109,6 +112,12 @@ function OperationView({ command, strategy, close }: { command: Command; strateg
     {Object.keys(display.arguments).length > 0 && <Code label="提交参数">{JSON.stringify(display.arguments, null, 2)}</Code>}
     {display.result != null && <Code label="策略回执">{JSON.stringify(display.result, null, 2)}</Code>}
     {display.error && <div className="notice warn">{display.error}</div>}
+    {!!audit.data?.length && <details className="form-detail"><summary>执行审计</summary>
+      <Table columns={["时间", "操作", "执行者"]}>
+        {audit.data.map((row) => <tr key={row.id}><td>{when(row.created_at)}</td>
+          <td className="mono">{row.action}</td><td className="mono">{row.actor}</td></tr>)}
+      </Table>
+    </details>}
     {canConfirm && <div className="notice warn"><CircleAlert size={17} /><span>请核对策略和参数。确认后，授权实例可在有效期内领取一次性执行许可。</span></div>}
     {display.state === "unknown" && <form className="stack" onSubmit={(e) => { e.preventDefault(); act.mutate("reconcile"); }}>
       <div className="notice warn">请先核对程序与券商侧的实际记录，再填写核对依据。</div>

@@ -201,3 +201,12 @@ class ControlCatalog(BaseModel):
     controls: list[ControlDefinition]
     states: dict[str, ComponentState]
     updated_at: ISOTime | None
+
+
+class AuditView(BaseModel):
+    id: int
+    strategy_id: str | None
+    actor: str
+    action: str
+    detail: dict[str, JsonValue]
+    created_at: ISOTime
