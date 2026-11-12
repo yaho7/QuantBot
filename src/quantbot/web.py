@@ -25,6 +25,7 @@ import collections
 import hashlib
 import hmac
 import json
+import logging
 import re
 import secrets
 import subprocess
@@ -65,7 +66,13 @@ from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language,
 from quantbot.operations import protected
 from quantbot.service import Service, ServiceError
 from quantbot.strategy_features import action_arguments
-from quantbot.templates import QUICKSTART_COMMAND, QUICKSTART_FILE, quickstart_source
+from quantbot.templates import (
+    QUICKSTART_COMMAND,
+    QUICKSTART_FILE,
+    quickstart_source,
+    refresh_workspace_sources,
+    runtime_sdk,
+)
 from quantbot.updates import Updater
 from quantbot.workspace import (
     WORKSPACE_FILE,
@@ -93,6 +100,7 @@ MIN_PASSWORD = 8
 LOGIN_TRIES = 5
 LOGIN_LOCK = 15 * 60
 SCRYPT_N, SCRYPT_R, SCRYPT_P = 2**14, 8, 1
+log = logging.getLogger(__name__)
 
 
 def hash_password(password: str) -> str:
@@ -802,13 +810,55 @@ async def _start_program(app: web.Application, editor: Editor, runtime: Workspac
     hub, store = app[WEB_HUB_KEY], app[STORE_KEY]
     credentials = WorkspaceCredentials(editor.data_dir).for_root(editor.root)
     binding = credentials.read()
-    if not binding:
-        await runtime.start(workspace)
-        return
-    strategy = hub.by_token(binding.get("QB_TOKEN", ""))
-    if strategy is None or strategy.id != binding.get("QB_NAME"):
+    strategy = hub.by_token(binding.get("QB_TOKEN", "")) if binding else None
+    if binding and (strategy is None or strategy.id != binding.get("QB_NAME")):
         raise ConfigError(tr("工作区策略绑定已失效，请重新绑定。"))
-    await runtime.start(workspace, credentials.path, local_origin(store.ensure_listen()))
+    async with app[EDITOR_LOCK].setdefault(editor.root, asyncio.Lock()):
+        official = await asyncio.to_thread(refresh_workspace_sources, editor)
+    sdk = await asyncio.to_thread(runtime_sdk, store.dir)
+    await runtime.start(
+        workspace,
+        credentials.path if binding else None,
+        local_origin(store.ensure_listen()) if binding else "",
+        sdk,
+        official.get(QUICKSTART_FILE, ""),
+    )
+
+
+async def refresh_workspace_clients(app: web.Application) -> None:
+    """Install bundled SDK files and refresh running official paper demos after an upgrade."""
+    store, hub = app[STORE_KEY], app[WEB_HUB_KEY]
+    snapshot = store.read()
+    for project in workspace_projects(store.dir):
+        if not project["managed"]:
+            continue
+        try:
+            editor = Editor.for_project(store.dir, project["id"])
+            runtime = _runtime(app, editor)
+            async with runtime.lock:
+                async with app[EDITOR_LOCK].setdefault(editor.root, asyncio.Lock()):
+                    official = await asyncio.to_thread(refresh_workspace_sources, editor)
+                revision = official.get(QUICKSTART_FILE)
+                sid = f"quickstart-{project['id'][:16]}"
+                item = strategy_item(snapshot, sid)
+                if (
+                    not revision
+                    or revision == runtime.source_revision
+                    or item is None
+                    or item.get("quickstart_workspace") != project["id"]
+                ):
+                    continue
+                binding = WorkspaceCredentials(store.dir).for_root(editor.root).read()
+                strategy = hub.by_token(binding.get("QB_TOKEN", ""))
+                if strategy is None or strategy.id != sid:
+                    continue
+                status = await runtime.status()
+                if status["running"] and status["command"] == QUICKSTART_COMMAND:
+                    await runtime.stop()
+                    hub.mark_stopped(strategy)
+                    await _start_program(app, editor, runtime)
+        except (OSError, ConfigError, asyncio.TimeoutError):
+            log.exception("Could not refresh workspace SDK in %s", project["path"])
 
 
 async def launch_quickstart(app: web.Application, project: str = "") -> dict[str, Any]:
@@ -841,6 +891,7 @@ async def launch_quickstart(app: web.Application, project: str = "") -> dict[str
             raise ConfigError(tr("工作区程序已经在运行。"))
 
         def seed() -> None:
+            refresh_workspace_sources(editor)
             with editor_lock(store.dir, editor.root):
                 editor.seed(QUICKSTART_FILE, quickstart_source())
 

@@ -33,7 +33,15 @@ from quantbot.notices import LOUD, is_quiet
 from quantbot.server import make_app
 from quantbot.templates import QUICKSTART_FILE, quickstart_source
 from quantbot.updates import Updater, installed
-from quantbot.web import SESSIONS_FILE, Feed, WebAuth, add_routes, launch_quickstart, login_url
+from quantbot.web import (
+    SESSIONS_FILE,
+    Feed,
+    WebAuth,
+    add_routes,
+    launch_quickstart,
+    login_url,
+    refresh_workspace_clients,
+)
 
 log = logging.getLogger("quantbot")
 
@@ -142,6 +150,7 @@ class QuantBot:
         self._runner: web.AppRunner | None = None
         self._upkeep: asyncio.Task[None] | None = None
         self._update_task: asyncio.Task[None] | None = None
+        self._workspace_refresh: asyncio.Task[None] | None = None
         self._tasks: set[asyncio.Task[None]] = set()
         self._stop_event: asyncio.Event | None = None
         self.app: Application | None = None
@@ -244,6 +253,7 @@ class QuantBot:
         self._runner = web.AppRunner(server, access_log=None, shutdown_timeout=2)
         await self._runner.setup()
         await web.TCPSite(self._runner, self.settings.host, self.settings.port).start()
+        self._workspace_refresh = asyncio.create_task(refresh_workspace_clients(server))
         log.info("Strategy API on %s:%s", self.settings.host, self.settings.port)
         if app is not None:
             await self._set_commands(app)
@@ -260,6 +270,10 @@ class QuantBot:
             self._update_task.cancel()
             with suppress(asyncio.CancelledError):
                 await self._update_task
+        if self._workspace_refresh:
+            self._workspace_refresh.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._workspace_refresh
         if self._runner:
             await self._runner.cleanup()
 

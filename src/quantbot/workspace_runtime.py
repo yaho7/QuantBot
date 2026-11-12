@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import shlex
+import tempfile
 import time
 from contextlib import suppress
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 
 from quantbot.config import ConfigError, Store
 from quantbot.i18n import tr
+from quantbot.templates import CLIENT_FILE
 from quantbot.workspace import Workspace, stop_process
 
 RUN_FILE = "workspace-run.json"
@@ -20,9 +22,13 @@ LOG_LIMIT = 65_536
 LOAD_CREDENTIAL = """
 import json, os, sys
 from pathlib import Path
-credential = Path(os.environ["CREDENTIALS_DIRECTORY"]) / "quantbot"
-data = json.loads(credential.read_text(encoding="utf-8"))
-os.environ.update({key: data[key] for key in ("QB_NAME", "QB_TOKEN")})
+directory = Path(os.environ["CREDENTIALS_DIRECTORY"])
+credential = directory / "quantbot"
+if credential.is_file():
+    data = json.loads(credential.read_text(encoding="utf-8"))
+    os.environ.update({key: data[key] for key in ("QB_NAME", "QB_TOKEN")})
+if (directory / "quantbot_client.py").is_file():
+    os.environ["PYTHONPATH"] = str(directory)
 os.execvpe(sys.argv[1], sys.argv[1:], os.environ)
 """.strip()
 
@@ -85,6 +91,7 @@ class SystemdProgram:
         arguments: list[str],
         credentials: Path | None = None,
         url: str = "",
+        sdk: Path | None = None,
     ) -> None:
         # A completed or failed transient service can retain its name until it is stopped.
         await self._call("/usr/bin/systemctl", "stop", self.unit)
@@ -92,11 +99,15 @@ class SystemdProgram:
         environment = {**workspace.environment(), "PYTHONUNBUFFERED": "1"}
         credential_args = []
         executable = ["/usr/bin/env", "--"]
+        if credentials is not None or sdk is not None:
+            executable = ["/usr/bin/python3", "-I", "-c", LOAD_CREDENTIAL]
         if credentials is not None:
             environment["QB_URL"] = url
             path = str(credentials).replace("%", "%%")
-            credential_args = [f"--property=LoadCredential=quantbot:{path}"]
-            executable = ["/usr/bin/python3", "-I", "-c", LOAD_CREDENTIAL]
+            credential_args.append(f"--property=LoadCredential=quantbot:{path}")
+        if sdk is not None:
+            path = str(sdk).replace("%", "%%")
+            credential_args.append(f"--property=LoadCredential={CLIENT_FILE}:{path}")
         code, _ = await self._call(
             "/usr/bin/systemd-run",
             "--quiet",
@@ -149,6 +160,7 @@ class WorkspaceRuntime:
         self.lock = asyncio.Lock()
         self.process: asyncio.subprocess.Process | None = None
         self.capture: asyncio.Task[None] | None = None
+        self.sdk_dir: tempfile.TemporaryDirectory | None = None
         self.log = bytearray()
         self.systemd = (
             SystemdProgram(data_dir, None if self.store.read().get("root") == self.root else root)
@@ -166,7 +178,13 @@ class WorkspaceRuntime:
         command = self._settings().get("command")
         return command if isinstance(command, str) else ""
 
-    def _save(self, command: str, started_at: int | None = None) -> None:
+    @property
+    def source_revision(self) -> str:
+        return self._settings().get("source_revision", "")
+
+    def _save(
+        self, command: str, started_at: int | None = None, source_revision: str | None = None
+    ) -> None:
         with self.store.edit() as data:
             workspaces = data.setdefault("workspaces", {})
             previous = workspaces.get(self.root, data if data.get("root") == self.root else {})
@@ -175,6 +193,9 @@ class WorkspaceRuntime:
                 "started_at": started_at
                 if started_at is not None
                 else previous.get("started_at", 0),
+                "source_revision": source_revision
+                if source_revision is not None
+                else previous.get("source_revision", ""),
             }
 
     @property
@@ -222,6 +243,8 @@ class WorkspaceRuntime:
         workspace: Workspace,
         credentials: Path | None = None,
         url: str = "",
+        sdk: Path | None = None,
+        source_revision: str = "",
     ) -> None:
         running = (await self.systemd.state())[0] if self.systemd else self.running
         if running:
@@ -230,28 +253,42 @@ class WorkspaceRuntime:
         if not command:
             raise ConfigError(tr("请先保存启动命令。"))
         arguments = self._arguments(command)
+        since = int(time.time())
         if self.systemd:
-            since = int(time.time())
-            await self.systemd.start(workspace, arguments, credentials, url)
-            self._save(command, since)
+            await self.systemd.start(workspace, arguments, credentials, url, sdk)
+            self._save(command, since, source_revision)
             return
         await self._finish_capture()
         environment = {**workspace.environment(), "PYTHONUNBUFFERED": "1"}
         if credentials is not None:
             values = json.loads(credentials.read_text("utf-8"))
             environment.update(QB_URL=url, QB_NAME=values["QB_NAME"], QB_TOKEN=values["QB_TOKEN"])
-        process = await asyncio.create_subprocess_exec(
-            *workspace.command(arguments),
-            stdin=asyncio.subprocess.DEVNULL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
-            start_new_session=True,
-            env=environment,
-            **workspace.process_options(),
-        )
+        try:
+            if sdk is not None:
+                self.sdk_dir = tempfile.TemporaryDirectory(prefix="quantbot-sdk-")
+                path = Path(self.sdk_dir.name)
+                (path / CLIENT_FILE).write_bytes(sdk.read_bytes())
+                (path / CLIENT_FILE).chmod(0o644)
+                path.chmod(0o755)
+                environment["PYTHONPATH"] = str(path)
+            process = await asyncio.create_subprocess_exec(
+                *workspace.command(arguments),
+                stdin=asyncio.subprocess.DEVNULL,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                start_new_session=True,
+                env=environment,
+                **workspace.process_options(),
+            )
+        except BaseException:
+            if self.sdk_dir is not None:
+                self.sdk_dir.cleanup()
+                self.sdk_dir = None
+            raise
         self.process = process
         self.log.clear()
         self.capture = asyncio.create_task(self._read_log(process))
+        self._save(command, since, source_revision)
 
     async def _read_log(self, process: asyncio.subprocess.Process) -> None:
         assert process.stdout is not None
@@ -268,6 +305,9 @@ class WorkspaceRuntime:
         except asyncio.TimeoutError:
             pass
         self.capture = None
+        if self.sdk_dir is not None:
+            self.sdk_dir.cleanup()
+            self.sdk_dir = None
 
     async def stop(self) -> None:
         if self.systemd:

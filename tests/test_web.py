@@ -964,7 +964,11 @@ def test_web_shutdown_leaves_independent_workspace_units_running(tmp_path: Path)
 def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from quantbot.templates import QUICKSTART_FILE, quickstart_source
+    import hashlib
+
+    from quantbot.templates import CLIENT_FILE, OFFICIAL_SOURCES, QUICKSTART_FILE, quickstart_source
+    from quantbot.templates import client_source as sdk_source
+    from quantbot.web import CORE_KEY, RUNTIME_KEY, refresh_workspace_clients
     from quantbot.workspace_credentials import WorkspaceCredentials
 
     root = tmp_path / "paper"
@@ -996,6 +1000,10 @@ def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
     )
     monkeypatch.setattr("quantbot.web.web_initialize", initialize)
     monkeypatch.setattr("quantbot.web.WorkspaceRuntime", LocalRuntime)
+    old_sdk = "# old official SDK\n"
+    monkeypatch.setitem(
+        OFFICIAL_SOURCES, CLIENT_FILE, {hashlib.sha256(old_sdk.encode()).hexdigest()}
+    )
 
     async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
         hub.sync(())
@@ -1009,6 +1017,7 @@ def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
         }
         folder = await client.post("/ui/api/workspace/init", json={"path": "paper"}, headers=CSRF)
         project = (await folder.json())["data"]["id"]
+        (root / CLIENT_FILE).write_text(old_sdk, encoding="utf-8")
         launch = await client.post(base, params={"workspace": project}, headers=CSRF)
         result = await launch.json()
         assert result["ok"], result
@@ -1019,6 +1028,7 @@ def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
         )
         path = root / QUICKSTART_FILE
         assert path.read_text("utf-8") == quickstart_source()
+        assert (root / CLIENT_FILE).read_text("utf-8") == sdk_source()
         assert (await (await client.get(base + "/file")).text()) == path.read_text("utf-8")
         binding = WorkspaceCredentials(tmp_path / "settings").for_root(root)
         original = binding.read()["QB_TOKEN"]
@@ -1040,12 +1050,26 @@ def test_quickstart_reuses_workspace_setup_and_runs_real_paper_strategy(
         )
         assert (await applied.json())["state"] == "SUCCEEDED"
 
-        from quantbot.web import CORE_KEY
-
         core = client.server.app[CORE_KEY]
         prompt = core.request("flatten", strategy)
         reply = await core.tap(prompt.buttons[0][0][1], 42)
         assert "模拟 QQQ SELL 3" in reply.text
+
+        runtime = client.server.app[RUNTIME_KEY][root]
+        running_process = runtime.process
+        previous_instance = strategy.instance
+        (root / CLIENT_FILE).write_text("# project customization\n", encoding="utf-8")
+        await refresh_workspace_clients(client.server.app)
+        assert runtime.process is running_process
+        runtime._save(runtime._saved(), source_revision="previous release")
+        await refresh_workspace_clients(client.server.app)
+        for _ in range(60):
+            if strategy.instance != previous_instance and hub.ready_for_claims(strategy):
+                break
+            await asyncio.sleep(0.1)
+        assert strategy.instance != previous_instance and hub.ready_for_claims(strategy)
+        assert runtime.process is not running_process
+        assert (root / CLIENT_FILE).read_text("utf-8") == "# project customization\n"
 
         run = "/ui/api/workspace/program"
         rotated = await client.post(run + "/rotate", params={"workspace": project}, headers=CSRF)
