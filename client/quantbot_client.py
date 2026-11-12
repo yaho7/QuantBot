@@ -596,7 +596,7 @@ class QuantBot:
             return {"message": "" if value is None else str(value)}
         if name == "status" and isinstance(value, str):
             value = {"text": value, "paused": self.paused}
-        if name == "chart" and isinstance(value, bytes | bytearray):
+        if name == "chart" and isinstance(value, (bytes, bytearray)):
             value = base64.b64encode(bytes(value)).decode()
         return {"data": value}
 
