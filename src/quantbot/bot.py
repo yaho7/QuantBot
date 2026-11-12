@@ -6,6 +6,7 @@ import asyncio
 import logging
 import secrets
 import signal
+import sqlite3
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
@@ -29,13 +30,12 @@ from quantbot.core import Buttons, Core, Reply
 from quantbot.heartbeat import Heartbeat
 from quantbot.hub import Hub, Strategy
 from quantbot.i18n import tr, use_language
-from quantbot.notices import LOUD, Notice, is_quiet
+from quantbot.notices import LOUD, Feed, Notice, is_quiet
 from quantbot.server import make_app
 from quantbot.templates import QUICKSTART_FILE, quickstart_source
 from quantbot.updates import Updater, installed
 from quantbot.web import (
     SESSIONS_FILE,
-    Feed,
     WebAuth,
     add_routes,
     launch_quickstart,
@@ -139,7 +139,7 @@ class QuantBot:
             notify=lambda name, text, kind: self._hub_notice(name, text, kind, None),
         )
         self.heartbeat = Heartbeat(settings.heartbeat_url, min_interval=HEARTBEAT_EVERY - 5)
-        self.feed = Feed()
+        self.feed = Feed(settings.data_dir)
         version = installed()
         self.updater = Updater(settings.data_dir, current=lambda: version)
         secret = store.web_secret() if store else secrets.token_urlsafe(32)
@@ -339,7 +339,10 @@ class QuantBot:
     # ------------------------------------------------------------- sending
 
     def _hub_notice(self, name: str, text: str, kind: str, image: bytes | None) -> None:
-        self.feed.add(name, text, kind)
+        try:
+            self.feed.add(name, text, kind)
+        except (OSError, sqlite3.Error):
+            log.exception("Could not persist the Web notification for %s", name)
         task = asyncio.get_running_loop().create_task(self._send(f"[{name}] {text}", kind, image))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)

@@ -1,4 +1,4 @@
-import { tr } from "@/lib/i18n";
+import { locale, tr } from "@/lib/i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ChartLine, ChevronRight, CircleDashed, FolderCode, LayoutGrid, LogOut, Pause, Plus, Radio, Settings, SlidersHorizontal, Sparkles, Zap,
@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/primitives";
 import { useTheme } from "@/hooks/useTheme";
 import { api, ApiError, type StrategyView } from "@/lib/api";
-import { ago } from "@/lib/format";
+import { ago, NA } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const StrategyTools = React.lazy(() => import("@/components/StrategyTools"));
@@ -124,6 +124,7 @@ function Login() {
 }
 
 function OnlineBadge({ s }: { s: StrategyView }) {
+  if (s.online && !s.ready) return <Badge tone="warning"><Radio /> {tr("控制受限")}</Badge>;
   if (s.online) return <Badge tone="gain"><Radio /> {tr("在线")}</Badge>;
   if (s.stopped) return <Badge>{tr("已停止")}</Badge>;
   if (!s.connected && s.last_seen === null) return <Badge><CircleDashed /> {tr("还没连上过")}</Badge>;
@@ -133,6 +134,7 @@ function OnlineBadge({ s }: { s: StrategyView }) {
 function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }) {
   const [open, setOpen] = React.useState(false);
   const [tools, setTools] = React.useState<"metrics" | "actions">();
+  const metrics = (s.metrics ?? []).slice(0, 3);
   return (
     <Card className={cn(!s.online && "opacity-80")}>
       <CardHeader>
@@ -150,14 +152,24 @@ function StrategyCard({ s, onManage }: { s: StrategyView; onManage: () => void }
           <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{s.status}</p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            {s.connected ? tr("还没有报状态。") : tr("在策略项目里运行 quantbot link，接上后就会出现在这里。")}
+            {s.connected ? tr("还没有报状态。") : s.workspace ? tr("查看项目运行状态，确认策略完成连接。")
+              : tr("打开工作区配置策略，或在外部项目运行 quantbot link。")}
           </p>
         )}
+        {metrics.length > 0 && <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-2 rounded-md border px-3 py-2">
+          {metrics.map(({ id, label, unit, value }) => <div key={id}>
+            <dt className="text-xs text-muted-foreground">{label || id}</dt>
+            <dd className="num text-sm font-medium">{value.toLocaleString(locale, { maximumFractionDigits: 4 })}{unit && ` ${unit}`}</dd>
+          </div>)}
+        </dl>}
         <p className="mt-4 text-xs text-muted-foreground">{tr("状态")} {ago(s.status_age)} {tr("· 最后联系")} {ago(s.last_seen)}
           {s.pending > 0 && tr(" · {0} 个命令在排队", s.pending)}
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <PauseButton s={s} />
+          {s.workspace && <Button size="sm" variant="outline" asChild>
+            <a href={`/ui/?view=workspace&workspace=${encodeURIComponent(s.workspace)}&run=1`}><FolderCode /> {tr("运行诊断")}</a>
+          </Button>}
           {!!s.metrics?.length && <Button size="sm" variant="outline" onClick={() => setTools("metrics")}>
             <ChartLine /> {tr("指标")}</Button>}
           {!!s.actions?.length && <Button size="sm" variant="outline" onClick={() => setTools("actions")}>
@@ -221,24 +233,23 @@ function StrategyActions({ compact = false, online, onAdd, onPrompt }: {
   );
 }
 
-function TelegramNote() {
-  const key = "quantbot-hide-telegram-tip";
-  const [dismissed, setDismissed] = React.useState(() => localStorage.getItem(key) === "1");
-  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, staleTime: 60_000, enabled: !dismissed });
-  if (dismissed || !settings.data || settings.data.telegram) return null;
+function SetupChecklist({ managed, connected }: { managed: boolean; connected: boolean }) {
+  const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings, staleTime: 60_000 });
+  const checks = [
+    { label: tr("工作区已就绪"), done: managed, action: tr("添加项目"), href: "/ui/?view=workspace&add=1" },
+    { label: tr("策略已连接"), done: connected, action: tr("打开工作区"), href: "/ui/?view=workspace" },
+    { label: tr("Telegram 通知（可选）"), done: settings.data?.telegram, action: tr("去设置"), href: "/ui/?view=settings&tab=notifications" },
+  ];
   return (
-    <Alert tone="info" className="flex-wrap items-center justify-between">
-      <span>{tr("Telegram 没接，推送只显示在这个网页上。想在手机上收推送、点按钮，可以在设置里接上。")}</span>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="ghost" onClick={() => {
-          localStorage.setItem(key, "1");
-          setDismissed(true);
-        }}>{tr("不再显示")}</Button>
-        <Button asChild size="sm" variant="outline">
-          <a href="/ui/?view=settings&tab=notifications">{tr("去设置")}</a>
-        </Button>
-      </div>
-    </Alert>
+    <details open={!connected} className="rounded-lg border bg-card px-4 py-3">
+      <summary className="cursor-pointer text-sm font-medium">{tr("设置检查")}</summary>
+      <ul className="mt-2 divide-y">
+        {checks.map(({ label, done, action, href }) => <li key={label} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+          <span>{label}</span>
+          {done ? <Badge tone="gain">{tr("已完成")}</Badge> : <Button size="sm" variant="ghost" asChild><a href={href}>{action}</a></Button>}
+        </li>)}
+      </ul>
+    </details>
   );
 }
 
@@ -282,7 +293,7 @@ export function App() {
       <main className={cn(pageFrame, "view-enter pb-16 pt-10", view !== "workspace" && "px-5")}>
         {view === "settings" ? (
           <QueryBoundary query={overview}>
-            {({ feed }) => <SettingsPage feed={feed} update={update.data} onInstalled={setUpdatedFrom} theme={theme} onTheme={setTheme} />}
+            {() => <SettingsPage update={update.data} onInstalled={setUpdatedFrom} theme={theme} onTheme={setTheme} />}
           </QueryBoundary>
         ) : view === "workspace" ? (
           overview.data ? <React.Suspense fallback={<LoadingState />}><WorkspaceWorkbench /></React.Suspense>
@@ -290,13 +301,20 @@ export function App() {
         ) : <>
           <PageHeader
             title={tr("策略")}
-            description={overview.data ? tr("{0} 个策略，{1} 个在线 · 每 5 秒刷新", strategies.length, online) : undefined}
             actions={<div className="hidden flex-wrap gap-2 sm:flex"><StrategyActions {...actions} /></div>}
           />
           <QueryBoundary query={overview} rows={4}>
             {(data) => (
-              <div className="grid gap-8">
-                <TelegramNote />
+              <div className="grid gap-5">
+                <dl className="grid grid-cols-3 divide-x rounded-lg border bg-card">
+                  <div className="px-3 py-3 sm:px-5"><dt className="text-xs text-muted-foreground">{tr("在线策略")}</dt>
+                    <dd className="num text-xl font-medium">{online}/{strategies.length}</dd></div>
+                  <div className="px-3 py-3 sm:px-5"><dt className="text-xs text-muted-foreground">{tr("暂停开仓")}</dt>
+                    <dd className="num text-xl font-medium">{strategies.filter(({ paused }) => paused).length}</dd></div>
+                  <div className="px-3 py-3 sm:px-5"><dt className="text-xs text-muted-foreground">{tr("未读异常")}</dt>
+                    <dd className="num text-xl font-medium"><a className="hover:underline" href="/ui/?view=settings&tab=feed&unread=1&kind=critical">{data.unread_alerts ?? NA}</a></dd></div>
+                </dl>
+                <SetupChecklist managed={data.workspace_managed} connected={strategies.some(({ online, connected }) => online && connected)} />
                 {quickstartProject && <Alert tone="info" className="flex-wrap items-center justify-between">
                   <span>{tr("模拟策略已启动。现在可以在这里或 Telegram 试用策略按钮。")}</span>
                   <Button size="sm" variant="outline" asChild>

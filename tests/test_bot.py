@@ -110,7 +110,7 @@ def test_runs_without_telegram(tmp_path: Path) -> None:
                 await asyncio.sleep(0.05)
         assert json.loads(body) == {"ok": True}
         qg._hub_notice("A", "hello", "info", None)  # no Telegram: only the web feed
-        assert qg.feed.items[-1]["text"] == "hello"
+        assert qg.feed.summary()[0][0]["text"] == "hello"
         data = store.read()
         data["telegram"] = {"token": "123456:" + "A" * 35, "owner_id": 42}
         store.write(data)

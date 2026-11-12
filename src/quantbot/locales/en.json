@@ -740,5 +740,9 @@
   "无法读取工作区程序日志。请检查 systemd 日志权限。": "Could not read the workspace program logs. Check systemd journal permissions.",
   "读取工作区程序日志超时，请重试。": "Reading the workspace program logs timed out. Try again.",
   "已生成 main.py。": "Generated main.py.",
-  "已保存启动命令和策略绑定。": "Launch command and strategy binding saved."
+  "已保存启动命令和策略绑定。": "Launch command and strategy binding saved.",
+  "请选择一条推送。": "Select a notification.",
+  "此推送已不存在，请刷新列表。": "This notification is gone. Refresh the list.",
+  "推送筛选条件无效。": "Invalid notification filters.",
+  "无法访问推送历史，请在设置中查看服务日志。": "Could not access notification history. Check the service logs in Settings."
 }

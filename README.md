@@ -76,7 +76,7 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 | 添加策略 / 管理 | 添加和移除策略、改显示名称、复制连接信息、换发令牌 |
 | 更多操作 | 刷新状态、持仓、挂单和撤单、净值图、改参数、手动下单、平仓、停止程序 |
 | 全部暂停开仓 | 所有在线策略一起暂停 |
-| 设置 → 推送 | QuantBot 这次启动后的所有推送 |
+| 设置 → 推送 | 最近 30 天的推送，可按策略、类型和时间筛选，并标记已读 |
 | 设置 → 操作记录 | 网页和 Telegram 上点过的每个按钮 |
 | 设置 | 查看网页地址和版本，管理 Telegram、静音时段、时区和心跳地址 |
 | 设置 → 后台服务 | 查看服务状态和最近日志，确认后重启服务 |
@@ -119,7 +119,9 @@ quantbot editor status
 quantbot editor off
 ```
 
-网页顶栏的「工作区」无需注册策略即可打开。「打开文件夹」可新建或打开项目，「最近打开」会记住当前浏览器的访问记录。可以同时打开多个项目标签，切换时保留各自的文件标签、未保存草稿和终端。工作区按项目保存运行命令和日志。也可以用 `quantbot workspace` 获取一次性直达链接，或用 `quantbot workspace list` 查看目录和 ID，再用 `quantbot workspace --workspace <ID>` 打开指定项目。启用目录后，可以编辑其中的 UTF-8 文件，单个文件最大 256 KiB。请选择存放策略代码的目录。打开 Python 文件时，可以在光标处插入连接、等待、开仓检查、状态、推送和按钮回调的示例。
+网页顶栏的「工作区」无需注册策略即可打开。用「添加项目」从 GitHub 导入、打开服务器目录或创建空白项目，再核对检测到的 Python 入口和启动命令。可以直接注册并绑定策略，也可以选择已注册的策略。「保存并启动」会立即运行所选命令，显示进程与 QuantBot 连接的状态。「最近打开」会记住当前浏览器的访问记录。可以同时打开多个项目标签，切换时保留各自的文件标签、未保存草稿和终端。也可以用 `quantbot workspace` 获取一次性直达链接，或用 `quantbot workspace list` 查看目录和 ID，再用 `quantbot workspace --workspace <ID>` 打开指定项目。
+
+编辑器支持 UTF-8 文件，单个文件最大 256 KiB。`Ctrl/Cmd+S` 直接保存，「预览差异」可在写入前查看改动。打开 Python 文件时，可以在光标处插入连接、等待、开仓检查、状态、推送和按钮回调的示例。
 
 在文件栏工具条或右键菜单新建文件、文件夹，右键可重命名、剪切、复制、粘贴和删除，也可拖拽移动。支持打开多个文件，并搜索文件名和内容。文件树默认显示隐藏文件，可用工具栏的眼睛按钮切换。搜索可选「包含被忽略的文件」，Git 内部元数据由 Git 面板管理。在终端或另一网页修改文件后，文件树和 Git 状态会自动刷新。
 
@@ -145,7 +147,7 @@ quantbot workspace run stop
 
 #### 绑定 GitHub 策略仓库
 
-在「设置 → 常规 → 连接 GitHub」或「工作区 → 从 GitHub 导入」点「使用 GitHub 登录」。把显示的一次性验证码输入 GitHub 的 **Authorize your device** 页面，授权后在 QuantBot 选择账号可访问的私有或公开仓库。默认会为仓库创建一个独立工作区，也可从 Git 面板选择导入到当前空目录。GitHub 上尚未提交的空仓库也能导入。已有项目可以继续使用它的远端。[GitHub CLI 登录](https://cli.github.com/manual/gh_auth_login)
+在「设置 → 常规 → 连接 GitHub」或「工作区 → 添加项目 → 从 GitHub 导入」点「使用 GitHub 登录」。把显示的一次性验证码输入 GitHub 的 **Authorize your device** 页面，授权后在 QuantBot 选择账号可访问的私有或公开仓库。默认会为仓库创建一个独立工作区，也可从 Git 面板选择导入到当前空目录。GitHub 上尚未提交的空仓库也能导入。已有项目可以继续使用它的远端。[GitHub CLI 登录](https://cli.github.com/manual/gh_auth_login)
 
 网页和 CLI 共用服务器工作区账号的 GitHub CLI 登录状态。GitHub CLI 管理凭据，GitHub 组织的访问策略仍适用。退出登录后，已克隆的文件和本地提交仍可使用。
 

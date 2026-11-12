@@ -24,9 +24,10 @@ from quantbot.core import Core
 from quantbot.editor import EDITOR_FILE, Editor
 from quantbot.github import DEVICE_URL, GitHubEditor
 from quantbot.hub import Hub
+from quantbot.notices import Feed
 from quantbot.server import make_app
 from quantbot.updates import Installed, Updater
-from quantbot.web import COOKIE, Feed, WebAuth, add_routes, login_url, read_audit, static_dir
+from quantbot.web import COOKIE, WebAuth, add_routes, login_url, read_audit, static_dir
 from quantbot.workspace import WORKSPACE_FILE, Workspace, workspace_id
 from quantbot.workspace_runtime import SystemdProgram, WorkspaceRuntime
 
@@ -140,8 +141,8 @@ def scenario(
     async def main() -> None:
         hub = Hub((StrategyConfig("momentum", "动量", "m" * 20),), lambda *n: None)
         core = Core(hub, Audit(audit.parent), owner_id=42, notify=lambda *n: None)
-        auth, feed = WebAuth(SECRET), Feed()
         store = Store(audit.parent / "settings")
+        auth, feed = WebAuth(SECRET), Feed(store.dir)
         store.write({"telegram": {"token": BOT, "owner_id": 42, "bot_username": "old_bot"}})
         app = make_app(
             hub, lambda a: add_routes(a, core, auth, feed, audit, store, FakeTelegram(), **options)
@@ -150,6 +151,31 @@ def scenario(
             await test(hub, auth, feed, client)
 
     asyncio.run(main())
+
+
+def test_web_notices_survive_restarts_and_can_be_filtered_and_marked_read(tmp_path: Path) -> None:
+    settings = tmp_path / "settings"
+    notice_id = "momentum:feed-event"
+    Feed(settings).add("动量", " risk alert", "alert", notice_id=notice_id)
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        feed.add("动量", "repeated delivery", "alert", notice_id=notice_id)
+        feed.add("another", "trade", "trade")
+        url = "/ui/api/notices"
+        assert (await client.get(url)).status == 401
+        await client.get(f"/ui/login?t={auth.link_token()}")
+        params = {"kind": "critical", "strategy": "动量", "days": "1", "unread": "1"}
+        result = await (await client.get(url, params=params)).json()
+        (item,) = result["data"]["items"]
+        assert item["id"] == notice_id and item["text"] == " risk alert" and not item["read"]
+        assert (await (await client.get("/ui/api/overview")).json())["unread_alerts"] == 1
+        body = {"id": notice_id, "read": True}
+        assert (await client.post(url, json=body)).status == 403
+        assert (await (await client.post(url, json=body, headers=CSRF)).json())["ok"]
+        assert not (await (await client.get(url, params=params)).json())["data"]["items"]
+        assert Feed(settings).summary()[1] == 0
+
+    scenario(test, tmp_path / "audit.jsonl")
 
 
 def test_web_language_switch_keeps_the_session(tmp_path: Path) -> None:
@@ -1200,6 +1226,9 @@ def test_project_setup_starts_a_python_program_and_verifies_workspace_connection
             await asyncio.sleep(0.05)
         assert status["running"] and status["connection"] == "ready", status
         assert "QuantBot project started" in status["logs"]
+        overview = await (await client.get("/ui/api/overview")).json()
+        (strategy,) = overview["strategies"]
+        assert strategy["ready"] and strategy["workspace"] == workspace_id(root)
         assert len(Store(settings).strategies()) == 1
         assert (await (await client.post(url + "/stop", headers=CSRF)).json())["data"][
             "connection"

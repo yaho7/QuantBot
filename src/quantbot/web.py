@@ -21,7 +21,6 @@ which signs everyone out; so does removing it.
 from __future__ import annotations
 
 import asyncio
-import collections
 import hashlib
 import hmac
 import json
@@ -29,12 +28,12 @@ import logging
 import os
 import re
 import secrets
+import sqlite3
 import subprocess
 import time
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 from importlib import resources
 from ipaddress import ip_address
 from pathlib import Path
@@ -65,6 +64,7 @@ from quantbot.editor import EDITOR_FILE, Editor, editor_lock
 from quantbot.github import DEVICE_URL, DeviceLogin, GitHubEditor
 from quantbot.hub import Hub, Result, Strategy
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
+from quantbot.notices import FEED_RETENTION_DAYS, KINDS, Feed
 from quantbot.operations import protected
 from quantbot.project_setup import PROJECT_TEMPLATE, preflight
 from quantbot.service import Service, ServiceError
@@ -97,7 +97,6 @@ SESSION_TTL = 12 * 3600
 SESSION_IDLE = 30 * 60
 SESSIONS_FILE = "web-sessions.json"
 COOKIE = "quantbot_session"
-FEED_SIZE = 300
 AUDIT_LIMIT = 500
 USERNAME = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 MIN_PASSWORD = 8
@@ -143,24 +142,6 @@ def check_password(password: str, stored: str) -> bool:
 
 def static_dir() -> Path:
     return Path(str(resources.files("quantbot") / "web"))
-
-
-@dataclass
-class Feed:
-    """The last notices QuantBot sent, newest last, for the page."""
-
-    items: collections.deque[dict[str, Any]] = field(
-        default_factory=lambda: collections.deque(maxlen=FEED_SIZE)
-    )
-
-    def add(self, strategy: str, text: str, kind: str, *, notice_id: str | None = None) -> None:
-        if notice_id and any(item.get("id") == notice_id for item in self.items):
-            return
-        now = datetime.now(timezone.utc).isoformat()
-        item = {"time": now, "strategy": strategy, "text": text, "kind": kind}
-        if notice_id:
-            item["id"] = notice_id
-        self.items.append(item)
 
 
 def _sign(secret: str, message: str) -> str:
@@ -1890,6 +1871,15 @@ async def overview(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None:
         return denied
     hub = request.app[WEB_HUB_KEY]
+    directory = request.app[STORE_KEY].dir
+    projects = {
+        item["QB_NAME"]: item["workspace"]
+        for item in WorkspaceCredentials(directory).records()
+        if isinstance(item.get("QB_TOKEN"), str)
+        and isinstance(item.get("workspace"), str)
+        and (strategy := hub.by_token(item["QB_TOKEN"])) is not None
+        and item.get("QB_NAME") == strategy.id
+    }
     strategies = []
     for s in hub.strategies.values():
         seen = None if s.last_seen is None else round(hub.clock() - s.last_seen, 1)
@@ -1898,6 +1888,7 @@ async def overview(request: web.Request) -> web.Response:
                 "id": s.id,
                 "name": s.name,
                 "online": hub.online(s),
+                "ready": s.said_hello and hub.ready_for_claims(s),
                 "stopped": s.stopped,
                 "connected": s.said_hello,
                 "paused": s.paused,
@@ -1908,20 +1899,67 @@ async def overview(request: web.Request) -> web.Response:
                 "actions": [asdict(action) for action in s.actions.values()],
                 "metrics": [metric.summary() for metric in s.metrics.values()],
                 "pending": len(s.pending),
+                "workspace": projects.get(s.id),
             }
         )
-    feed = list(request.app[FEED_KEY].items)[::-1]
-    directory = request.app[STORE_KEY].dir
+    try:
+        feed, unread_alerts = request.app[FEED_KEY].summary()
+    except (OSError, sqlite3.Error):
+        log.exception("Could not read Web notification summary")
+        feed, unread_alerts = [], None
     editor_root = Store(directory, filename=EDITOR_FILE).read().get("root")
     managed_roots = registered_roots(Store(directory, filename=WORKSPACE_FILE).read())
     return web.json_response(
         {
             "strategies": strategies,
             "feed": feed,
+            "unread_alerts": unread_alerts,
             "editor_enabled": bool(editor_root),
             "workspace_managed": bool(editor_root and Path(editor_root) in managed_roots),
         }
     )
+
+
+async def web_notices(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    feed = request.app[FEED_KEY]
+    try:
+        if request.method == "POST":
+            body = await _args(request)
+            notice_id, read = body.get("id"), body.get("read")
+            if (
+                not isinstance(notice_id, str)
+                or not 1 <= len(notice_id) <= 80
+                or not isinstance(read, bool)
+            ):
+                return _answer(False, tr("请选择一条推送。"))
+            if not feed.mark(notice_id, read=read):
+                return _answer(False, tr("此推送已不存在，请刷新列表。"))
+            return _answer(True, "")
+        query = request.query
+        days = int(query.get("days", str(FEED_RETENTION_DAYS)))
+        offset = int(query.get("offset", "0"))
+        kind = query.get("kind", "")
+        if (
+            not 1 <= days <= FEED_RETENTION_DAYS
+            or not 0 <= offset <= 100_000
+            or kind not in ("", "critical", *KINDS)
+        ):
+            raise ValueError
+        result = feed.list(
+            strategy=query.get("strategy", ""),
+            kind=kind,
+            days=days,
+            unread=query.get("unread") == "1",
+            offset=offset,
+        )
+        return _answer(True, "", result)
+    except ValueError:
+        return _answer(False, tr("推送筛选条件无效。"))
+    except (OSError, sqlite3.Error):
+        log.exception("Could not access Web notifications")
+        return _answer(False, tr("无法访问推送历史，请在设置中查看服务日志。"))
 
 
 async def audit(request: web.Request) -> web.Response:
@@ -2063,6 +2101,8 @@ def add_routes(
             web.post("/ui/api/password", password_change),
             web.post("/ui/api/web-link", web_link),
             web.get("/ui/api/overview", overview),
+            web.get("/ui/api/notices", web_notices),
+            web.post("/ui/api/notices", web_notices),
             web.get("/ui/api/audit", audit),
             web.post("/ui/api/pause-all", pause_all),
             web.get("/ui/api/quickstart/file", quickstart),

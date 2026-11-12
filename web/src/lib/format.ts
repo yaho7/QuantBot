@@ -41,6 +41,8 @@ const ACTIONS: Record<string, string> = {
   git_commit: tr("提交工作区文件"),
   terminal_open: tr("打开工作区终端"),
   workspace_configure: tr("保存启动命令"),
+  workspace_setup: tr("配置项目"),
+  workspace_template: tr("生成 Python 入口"),
   workspace_start: tr("启动工作区程序"),
   workspace_stop: tr("停止工作区程序"),
   password: tr("改管理员账号"),

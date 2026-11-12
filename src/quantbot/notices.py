@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import threading
+import time
+import uuid
+from collections.abc import Iterator
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 from quantbot.i18n import tr
 
@@ -14,6 +21,112 @@ from quantbot.i18n import tr
 KINDS = ("info", "trade", "alert", "error")
 LOUD = {"alert", "error"}
 REMIND_BEFORE = (timedelta(hours=48), timedelta(hours=12), timedelta(0))
+FEED_RETENTION_DAYS = 30
+FEED_PAGE_SIZE = 50
+
+
+class Feed:
+    """Web notification history, separate from the client delivery inbox."""
+
+    def __init__(self, data_dir: Path) -> None:
+        self.path = data_dir / "web-notices.sqlite3"
+        self.initialized = False
+
+    @contextmanager
+    def _connect(self) -> Iterator[sqlite3.Connection]:
+        if not self.initialized:
+            self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.close(os.open(self.path, os.O_CREAT | os.O_WRONLY, 0o600))
+        with closing(sqlite3.connect(self.path, timeout=0.25)) as db, db:
+            db.row_factory = sqlite3.Row
+            if not self.initialized:
+                db.executescript("""
+                    CREATE TABLE IF NOT EXISTS web_notices (
+                        id TEXT PRIMARY KEY, created REAL NOT NULL, strategy TEXT NOT NULL,
+                        text TEXT NOT NULL, kind TEXT NOT NULL, seen INTEGER NOT NULL DEFAULT 0
+                    );
+                    CREATE INDEX IF NOT EXISTS web_notices_recent ON web_notices(created);
+                    CREATE INDEX IF NOT EXISTS web_notices_unread_alerts ON web_notices(created)
+                        WHERE seen=0 AND kind IN ('alert', 'error');
+                    """)
+                self.initialized = True
+            yield db
+
+    def add(self, strategy: str, text: str, kind: str, *, notice_id: str | None = None) -> None:
+        now = time.time()
+        with self._connect() as db:
+            db.execute(
+                "DELETE FROM web_notices WHERE created < ?", (now - FEED_RETENTION_DAYS * 86400,)
+            )
+            db.execute(
+                """INSERT OR IGNORE INTO web_notices (id, created, strategy, text, kind)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (notice_id or uuid.uuid4().hex, now, strategy, text, kind),
+            )
+
+    @staticmethod
+    def _item(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "id": row["id"],
+            "time": datetime.fromtimestamp(row["created"], timezone.utc).isoformat(),
+            "strategy": row["strategy"],
+            "text": row["text"],
+            "kind": row["kind"],
+            "read": bool(row["seen"]),
+        }
+
+    def summary(self) -> tuple[list[dict[str, Any]], int]:
+        since = time.time() - FEED_RETENTION_DAYS * 86400
+        with self._connect() as db:
+            recent = db.execute(
+                "SELECT * FROM web_notices WHERE created >= ? ORDER BY created DESC LIMIT 20",
+                (since,),
+            )
+            items = [self._item(row) for row in recent]
+            unread = db.execute(
+                """SELECT COUNT(*) FROM web_notices
+                   WHERE created >= ? AND seen=0 AND kind IN ('alert', 'error')""",
+                (since,),
+            ).fetchone()[0]
+        return items, unread
+
+    def list(
+        self, *, strategy: str, kind: str, days: int, unread: bool, offset: int
+    ) -> dict[str, Any]:
+        with self._connect() as db:
+            rows = db.execute(
+                """SELECT * FROM web_notices
+                   WHERE created >= ? AND (?='' OR strategy=?) AND (?=0 OR seen=0)
+                     AND (?='' OR kind=? OR (?='critical' AND kind IN ('alert', 'error')))
+                   ORDER BY created DESC, id DESC LIMIT ? OFFSET ?""",
+                (
+                    time.time() - days * 86400,
+                    strategy,
+                    strategy,
+                    unread,
+                    kind,
+                    kind,
+                    kind,
+                    FEED_PAGE_SIZE + 1,
+                    offset,
+                ),
+            ).fetchall()
+            strategies = db.execute(
+                "SELECT DISTINCT strategy FROM web_notices WHERE created >= ? ORDER BY strategy",
+                (time.time() - FEED_RETENTION_DAYS * 86400,),
+            )
+            return {
+                "items": [self._item(row) for row in rows[:FEED_PAGE_SIZE]],
+                "has_more": len(rows) > FEED_PAGE_SIZE,
+                "strategies": [row[0] for row in strategies],
+            }
+
+    def mark(self, notice_id: str, *, read: bool) -> bool:
+        with self._connect() as db:
+            return (
+                db.execute("UPDATE web_notices SET seen=? WHERE id=?", (read, notice_id)).rowcount
+                > 0
+            )
 
 
 def parse_quiet(spec: str | None) -> tuple[int, int] | None:

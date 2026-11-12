@@ -56,6 +56,7 @@ export interface StrategyView {
   id: string;
   name: string;
   online: boolean;
+  ready: boolean;
   stopped: boolean;
   connected: boolean;
   paused: boolean | null;
@@ -66,13 +67,16 @@ export interface StrategyView {
   actions?: StrategyAction[];
   metrics?: StrategyMetric[];
   pending: number;
+  workspace: string | null;
 }
 
 export interface Notice {
+  id: string;
   time: string;
   strategy: string;
   text: string;
   kind: "info" | "trade" | "alert" | "error";
+  read: boolean;
 }
 
 export interface AuditRecord {
@@ -232,7 +236,12 @@ export type Command =
   | "flatten" | "params" | "set_param" | "manual_order" | "chart" | "stop";
 
 export const api = {
-  overview: () => request<{ strategies: StrategyView[]; feed: Notice[]; editor_enabled: boolean; workspace_managed: boolean }>("GET", "overview"),
+  overview: () => request<{ strategies: StrategyView[]; unread_alerts: number | null; editor_enabled: boolean; workspace_managed: boolean }>("GET", "overview"),
+  notices: (filters: { strategy: string; kind: string; days: string; unread: boolean; offset: number }) =>
+    answerData<{ items: Notice[]; strategies: string[]; has_more: boolean }>("GET", `notices?${new URLSearchParams({
+      ...filters, unread: filters.unread ? "1" : "0", offset: String(filters.offset),
+    })}`),
+  markNotice: (id: string, read: boolean) => answerData<null>("POST", "notices", { id, read }),
   audit: () => request<{ records: AuditRecord[] }>("GET", "audit?limit=200"),
   login: (username: string, password: string) =>
     request<Answer>("POST", "login", { username, password }),

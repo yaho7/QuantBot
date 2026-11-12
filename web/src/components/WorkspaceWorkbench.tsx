@@ -92,7 +92,10 @@ export default function WorkspaceWorkbench() {
   const [filter, setFilter] = useState("");
   const [github, setGithub] = useState(false);
   const [launch, setLaunch] = useState<string>();
-  const [runProject, setRunProject] = useState<string>();
+  const [runProject, setRunProject] = useState<string | undefined>(() => {
+    const params = new URLSearchParams(location.search);
+    return params.has("run") ? params.get("workspace") ?? undefined : undefined;
+  });
   const [closing, setClosing] = useState<WorkspaceProject>();
   const [removing, setRemoving] = useState<WorkspaceProject>();
   const remove = useMutation({

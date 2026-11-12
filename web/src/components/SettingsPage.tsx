@@ -12,11 +12,11 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, Badge, Card, CardContent, CardHeader, CardTitle, Field, Input, Select } from "@/components/ui/primitives";
 import { type Theme } from "@/hooks/useTheme";
-import { api, type Notice, type Settings, type UpdateStatus } from "@/lib/api";
+import { api, type Settings, type UpdateStatus } from "@/lib/api";
 import { tr, type Language } from "@/lib/i18n";
 
-export function SettingsPage({ feed, update, onInstalled, theme, onTheme }: {
-  feed: Notice[]; update?: UpdateStatus; onInstalled: (version: string) => void; theme: Theme; onTheme: (theme: Theme) => void;
+export function SettingsPage({ update, onInstalled, theme, onTheme }: {
+  update?: UpdateStatus; onInstalled: (version: string) => void; theme: Theme; onTheme: (theme: Theme) => void;
 }) {
   const qc = useQueryClient();
   const settings = useQuery({ queryKey: ["settings"], queryFn: api.settings });
@@ -121,7 +121,7 @@ export function SettingsPage({ feed, update, onInstalled, theme, onTheme }: {
           </div>
         </TabsContent>
         <TabsContent value="feed">
-          <Card><Feed items={feed} /></Card>
+          <Card><Feed /></Card>
         </TabsContent>
         <TabsContent value="audit">
           <Card className="py-2"><AuditLog /></Card>
