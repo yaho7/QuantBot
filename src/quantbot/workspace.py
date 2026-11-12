@@ -62,6 +62,32 @@ def workspace_projects(data_dir: Path) -> list[dict[str, Any]]:
     ]
 
 
+def unregister_workspace(data_dir: Path, root: Path) -> None:
+    """Remove a project from the catalog, promoting the next default if needed."""
+    from quantbot.editor import EDITOR_FILE, Editor, editor_lock
+
+    registry = Store(data_dir, filename=WORKSPACE_FILE)
+    editor_store = Store(data_dir, filename=EDITOR_FILE)
+    with editor_lock(data_dir):
+        state = registry.read()
+        roots = registered_roots(state)
+        editor = Editor.configured(data_dir)
+        if root not in roots and (editor is None or editor.root != root):
+            return
+        remaining = [path for path in roots if path != root]
+        if root in roots:
+            state.update(
+                root=str(remaining[0]) if remaining else "",
+                roots=[str(path) for path in remaining],
+            )
+            registry.write(state)
+        if editor is not None and editor.root == root:
+            if remaining:
+                Editor(remaining[0], data_dir).write_config()
+            else:
+                editor_store.path.unlink(missing_ok=True)
+
+
 def _web_parts(path: str) -> list[str]:
     parts = path.split("/") if path else []
     try:

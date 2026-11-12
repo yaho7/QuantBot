@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { Clock3, FolderCode, FolderOpen, GitBranch, Plus, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Clock3, FolderCode, FolderOpen, GitBranch, Plus, Trash2, X } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog, EmptyState, LoadingState, PageHeader, QueryBoundary } from "@/components/common";
 import { GitHubDialog } from "@/components/GitHubDialog";
@@ -7,7 +7,7 @@ import { WorkspaceContext, workspaceScope } from "@/components/WorkspaceContext"
 import { WorkspaceSetup } from "@/components/WorkspaceSetup";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/primitives";
+import { Alert, Input } from "@/components/ui/primitives";
 import { api, type WorkspaceProject } from "@/lib/api";
 import { tr } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -52,24 +52,35 @@ function ProjectView({ project, active, onDirty, onOpen }: {
   );
 }
 
-function ProjectList({ projects, onOpen }: { projects: WorkspaceProject[]; onOpen: (id: string) => void }) {
+function ProjectList({ projects, onOpen, onRemove }: {
+  projects: WorkspaceProject[];
+  onOpen: (id: string) => void;
+  onRemove: (project: WorkspaceProject) => void;
+}) {
   return (
     <div className="max-h-64 divide-y overflow-auto rounded-lg border bg-card">
       {projects.map((project) => (
-        <button key={project.id} type="button" onClick={() => onOpen(project.id)}
-          className="flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-muted">
-          <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
-          <span className="grid min-w-0">
-            <span className="truncate text-sm font-medium">{project.name}</span>
-            <code title={project.path} className="truncate text-xs text-muted-foreground">{project.path}</code>
-          </span>
-        </button>
+        <div key={project.id} className="flex items-center gap-1 pr-2">
+          <button type="button" onClick={() => onOpen(project.id)}
+            className="flex min-w-0 flex-1 items-center gap-2.5 px-3 py-2 text-left hover:bg-muted">
+            <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
+            <span className="grid min-w-0">
+              <span className="truncate text-sm font-medium">{project.name}</span>
+              <code title={project.path} className="truncate text-xs text-muted-foreground">{project.path}</code>
+            </span>
+          </button>
+          <Button variant="ghost" size="icon" aria-label={tr("移除工作区 {0}", project.name)}
+            title={tr("移除工作区 {0}", project.name)} onClick={() => onRemove(project)}>
+            <Trash2 />
+          </Button>
+        </div>
       ))}
     </div>
   );
 }
 
 export default function WorkspaceWorkbench() {
+  const client = useQueryClient();
   const catalog = useQuery({
     queryKey: ["workspace", "projects"], queryFn: api.workspaceProjects, staleTime: 5_000, refetchInterval: 10_000,
   });
@@ -78,6 +89,16 @@ export default function WorkspaceWorkbench() {
   const [filter, setFilter] = useState("");
   const [github, setGithub] = useState(false);
   const [closing, setClosing] = useState<WorkspaceProject>();
+  const [removing, setRemoving] = useState<WorkspaceProject>();
+  const remove = useMutation({
+    mutationFn: api.removeWorkspace,
+    onSuccess: (result, id) => {
+      close(id);
+      setSession((previous) => previous && { ...previous, recent: previous.recent.filter((entry) => entry !== id) });
+      client.setQueryData(["workspace", "projects"], result);
+      setRemoving(undefined);
+    },
+  });
   const [dirty, setDirty] = useState<Record<string, boolean>>({});
   const requested = useRef(new URLSearchParams(location.search).get("workspace"));
   const reportDirty = useCallback((id: string, value: boolean) => {
@@ -129,6 +150,11 @@ export default function WorkspaceWorkbench() {
     setPicker(mode);
   }
 
+  function askRemove(project: WorkspaceProject) {
+    remove.reset();
+    setRemoving(project);
+  }
+
   const known = catalog.data?.projects ?? [];
   const byId = new Map(known.map((project) => [project.id, project]));
   const projects = (session?.open ?? []).flatMap((id) => byId.get(id) ?? []);
@@ -144,6 +170,7 @@ export default function WorkspaceWorkbench() {
         <Button variant="outline" onClick={() => setGithub(true)}><GitBranch /> {tr("从 GitHub 导入")}</Button>
         <Button variant="outline" onClick={() => showPicker("recent")}><Clock3 /> {tr("最近打开")}</Button>
         <Button variant="outline" onClick={() => showPicker("folder")}><FolderOpen /> {tr("打开文件夹")}</Button>
+        {current && <Button variant="outline" onClick={() => askRemove(current)}><Trash2 /> {tr("移除工作区")}</Button>}
       </>} />
       {!catalog.data ? <QueryBoundary query={catalog}>{() => null}</QueryBoundary> :
         projects.length ? (
@@ -185,7 +212,7 @@ export default function WorkspaceWorkbench() {
         ) : recent.length || known.length ? (
           <div className="max-w-xl space-y-2">
             <h2 className="text-sm font-medium">{tr(recent.length ? "最近打开" : "工作区目录")}</h2>
-            <ProjectList projects={recent.length ? recent : known} onOpen={open} />
+            <ProjectList projects={recent.length ? recent : known} onOpen={open} onRemove={askRemove} />
           </div>
         ) : (
           <EmptyState icon={FolderCode} title={tr("打开一个工作区")}
@@ -197,11 +224,11 @@ export default function WorkspaceWorkbench() {
             <div className="grid gap-3">
               <Input value={filter} onChange={(event) => setFilter(event.target.value)} autoFocus
                 aria-label={tr("搜索工作区目录")} placeholder={tr("搜索工作区目录")} />
-              {recent.filter(matches).length > 0 && <ProjectList projects={recent.filter(matches)} onOpen={open} />}
+              {recent.filter(matches).length > 0 && <ProjectList projects={recent.filter(matches)} onOpen={open} onRemove={askRemove} />}
               {remaining.filter(matches).length > 0 && (
                 <section className="grid gap-1.5">
                   <h3 className="text-xs font-medium text-muted-foreground">{tr("其他工作区")}</h3>
-                  <ProjectList projects={remaining.filter(matches)} onOpen={open} />
+                  <ProjectList projects={remaining.filter(matches)} onOpen={open} onRemove={askRemove} />
                 </section>
               )}
               {!known.some(matches) && <p className="text-sm text-muted-foreground">{tr("没有匹配的工作区")}</p>}
@@ -216,6 +243,17 @@ export default function WorkspaceWorkbench() {
       <ConfirmDialog open={!!closing} onOpenChange={(open) => { if (!open) setClosing(undefined); }}
         title={tr("关闭工作区并放弃草稿？")} description={closing?.path} confirmLabel={tr("关闭工作区")} destructive
         onConfirm={() => { if (closing) close(closing.id); }} />
+      <ConfirmDialog open={!!removing} onOpenChange={(open) => {
+        if (!open && !remove.isPending) setRemoving(undefined);
+      }}
+        title={tr("移除工作区 {0}？", removing?.name ?? "")}
+        description={tr("将关闭这个工作区并撤销其策略连接。服务器上的目录和文件会保留。")}
+        confirmLabel={tr("移除工作区")} destructive loading={remove.isPending}
+        onConfirm={() => { if (removing) remove.mutate(removing.id); }}>
+        {removing && <code className="break-all text-xs">{removing.path}</code>}
+        {removing && dirty[removing.id] && <Alert tone="warning">{tr("此工作区有未保存的改动。")}</Alert>}
+        {remove.error && <Alert tone="loss">{remove.error.message}</Alert>}
+      </ConfirmDialog>
     </>
   );
 }

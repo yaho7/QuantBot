@@ -725,5 +725,7 @@
   "模拟策略尚未连接。请在工作区查看程序日志。": "The paper strategy has not connected. Check its workspace logs.",
   "打开快速入手，在网页选择并初始化工作区后会自动启动模拟策略。\n{0}": "Open Quickstart to select a workspace and start the paper strategy.\n{0}",
   "策略已停止。": "The strategy has already stopped.",
-  "策略命令连接尚未就绪，请稍后再试。": "The strategy command connection is not ready. Try again shortly."
+  "策略命令连接尚未就绪，请稍后再试。": "The strategy command connection is not ready. Try again shortly.",
+  "请先停止工作区程序，再移除工作区。": "Stop the workspace program before removing the workspace.",
+  "已移除工作区。": "Workspace removed."
 }

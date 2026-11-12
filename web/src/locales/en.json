@@ -448,7 +448,7 @@
   "暂无操作记录": "No operations yet",
   "快速入手": "Quickstart",
   "选择工作区后，QuantBot 会写入模板并启动模拟策略。": "Choose a workspace to save the template and start the paper strategy.",
-  "正在启动模拟策略…": "Starting the paper strategy\u2026",
+  "正在启动模拟策略…": "Starting the paper strategy…",
   "下载 Python 模板": "Download Python template",
   "模拟策略已启动。现在可以在这里或 Telegram 试用策略按钮。": "The paper strategy is running. Try its controls here or in Telegram.",
   "启动模拟策略，试用网页和 Telegram 控制。": "Start a paper strategy to try the Web and Telegram controls.",
@@ -456,5 +456,10 @@
   "工作区程序启动时会收到独立的连接令牌。轮换后需重新启动程序。": "The workspace program receives a dedicated connection token at launch. Restart it after rotating the token.",
   "绑定策略": "Bind strategy",
   "撤销绑定": "Revoke binding",
-  "选择其他工作区": "Select another workspace"
+  "选择其他工作区": "Select another workspace",
+  "移除工作区": "Remove workspace",
+  "移除工作区 {0}": "Remove workspace {0}",
+  "移除工作区 {0}？": "Remove workspace {0}?",
+  "将关闭这个工作区并撤销其策略连接。服务器上的目录和文件会保留。": "This closes the workspace and revokes its strategy connection. Its directory and files remain on the server.",
+  "此工作区有未保存的改动。": "This workspace has unsaved changes."
 }

@@ -202,6 +202,9 @@ class WorkspaceRuntime:
     def running(self) -> bool:
         return self.process is not None and self.process.returncode is None
 
+    async def is_running(self) -> bool:
+        return (await self.systemd.state())[0] if self.systemd else self.running
+
     async def status(self) -> dict[str, Any]:
         if self.systemd:
             running, exit_code = await self.systemd.state()

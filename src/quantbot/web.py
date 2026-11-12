@@ -78,6 +78,7 @@ from quantbot.updates import Updater
 from quantbot.workspace import (
     WORKSPACE_FILE,
     registered_roots,
+    unregister_workspace,
     web_create_directory,
     web_directories,
     web_initialize,
@@ -557,7 +558,7 @@ class GitHubActions:
 
 
 GITHUB_KEY = web.AppKey("web_github", GitHubActions)
-TERMINALS_KEY = web.AppKey("web_workspace_terminals", set)
+TERMINALS_KEY = web.AppKey("web_workspace_terminals", dict)
 RUNTIME_KEY = web.AppKey("web_workspace_runtimes", dict)
 CHANGES_KEY = web.AppKey("web_workspace_changes", WorkspaceChanges)
 CHANGES_CLOSING_KEY = web.AppKey("web_workspace_changes_closing", asyncio.Event)
@@ -593,6 +594,35 @@ async def workspace_list(request: web.Request) -> web.Response:
         return _answer(True, "", {"projects": projects})
     except ConfigError as exc:
         return _answer(False, str(exc))
+
+
+async def workspace_remove(request: web.Request) -> web.Response:
+    if (denied := _need_login(request)) is not None:
+        return denied
+    app, store = request.app, request.app[STORE_KEY]
+    project = request.match_info["project"]
+    try:
+        editor = Editor.for_project(store.dir, project)
+        runtime = _runtime(app, editor)
+        async with runtime.lock, _edit_lock(request, editor):
+            if await runtime.is_running():
+                return _answer(False, tr("请先停止工作区程序，再移除工作区。"))
+            credentials = WorkspaceCredentials(store.dir)
+            credentials.revoke(editor.root)
+            app[WEB_HUB_KEY].set_workspace_credentials(credentials.records())
+            await asyncio.to_thread(unregister_workspace, store.dir, editor.root)
+            await asyncio.gather(
+                *(
+                    socket.close(code=1001)
+                    for socket, root in tuple(app[TERMINALS_KEY].items())
+                    if root == editor.root
+                )
+            )
+            app[RUNTIME_KEY].pop(editor.root, None)
+    except (ConfigError, OSError, asyncio.TimeoutError) as exc:
+        return _answer(False, str(exc))
+    app[CORE_KEY].audit.write("workspace_remove", user=WEB_USER, project=str(editor.root), ok=True)
+    return _answer(True, tr("已移除工作区。"), {"projects": workspace_projects(store.dir)})
 
 
 async def workspace_setup(request: web.Request) -> web.Response:
@@ -667,7 +697,7 @@ async def workspace_terminal(request: web.Request) -> web.StreamResponse:
         return _answer(False, str(exc))
 
     audit = request.app[CORE_KEY].audit
-    terminals.add(socket)
+    terminals[socket] = workspace.root
     try:
         await socket.prepare(request)
         try:
@@ -683,7 +713,7 @@ async def workspace_terminal(request: web.Request) -> web.StreamResponse:
         finally:
             await terminal.close()
     finally:
-        terminals.discard(socket)
+        terminals.pop(socket, None)
         await socket.close()
     return socket
 
@@ -1873,7 +1903,7 @@ def add_routes(
     app[UPDATE_KEY] = UpdateActions(updater or Updater(store.dir), restart)
     app[EDITOR_LOCK] = {}
     app[GITHUB_KEY] = GitHubActions(GitHubEditor(store.dir))
-    app[TERMINALS_KEY] = set()
+    app[TERMINALS_KEY] = {}
     app[RUNTIME_KEY] = {}
     app[CHANGES_KEY] = WorkspaceChanges()
     app[CHANGES_CLOSING_KEY] = asyncio.Event()
@@ -1917,6 +1947,7 @@ def add_routes(
             web.get("/ui/api/editor/git", local_git),
             web.get("/ui/api/workspace/terminal", workspace_terminal),
             web.get("/ui/api/workspaces", workspace_list),
+            web.post("/ui/api/workspaces/{project:[a-f0-9]{24}}/remove", workspace_remove),
             web.get("/ui/api/workspace/directories", workspace_setup),
             web.post("/ui/api/workspace/{action:folder|init}", workspace_setup),
             web.get("/ui/api/workspace/program", workspace_program),

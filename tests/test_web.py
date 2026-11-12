@@ -860,6 +860,17 @@ def test_workspaces_keep_file_and_program_state_separate(
             await client.get("/ui/api/editor/tree", params={"workspace": str(first)})
         ).json()
         assert not unknown["ok"]
+        remove = f"/ui/api/workspaces/{workspace_id(first)}/remove"
+        assert (await client.post(remove)).status == 403
+        removed = await (await client.post(remove, headers=CSRF)).json()
+        assert removed["ok"]
+        assert [project["id"] for project in removed["data"]["projects"]] == [workspace_id(second)]
+        assert removed["data"]["projects"][0]["default"]
+        assert (first / ".env").read_text() == "first"
+        denied = await (
+            await client.get("/ui/api/editor/tree", params={"workspace": workspace_id(first)})
+        ).json()
+        assert not denied["ok"]
 
     scenario(test, tmp_path / "audit.jsonl")
 
@@ -954,9 +965,13 @@ def test_workspace_program_survives_the_browser_session_and_can_stop(
             await asyncio.sleep(0.005)
         assert status["running"] and "ready" in status["logs"]
         assert not (await (await client.post(url + "/start", headers=CSRF)).json())["ok"]
+        remove = f"/ui/api/workspaces/{workspace_id(root)}/remove"
+        assert not (await (await client.post(remove, headers=CSRF)).json())["ok"]
         stopped = await (await client.post(url + "/stop", headers=CSRF)).json()
         assert stopped["ok"] and not stopped["data"]["running"]
         assert "ready" in stopped["data"]["logs"]
+        assert (await (await client.post(remove, headers=CSRF)).json())["ok"]
+        assert root.is_dir() and Editor.configured(tmp_path / "settings") is None
 
     scenario(test, tmp_path / "audit.jsonl")
 

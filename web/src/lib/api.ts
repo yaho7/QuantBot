@@ -230,6 +230,8 @@ export const api = {
   restartService: () => request<Answer>("POST", "service/restart"),
   githubStatus: () => answerData<GitHubStatus>("GET", "editor/github"),
   workspaceProjects: () => answerData<{ projects: WorkspaceProject[] }>("GET", "workspaces"),
+  removeWorkspace: (id: string) =>
+    answerData<{ projects: WorkspaceProject[] }>("POST", `workspaces/${encodeURIComponent(id)}/remove`),
   workspaceDirectories: (path: string) =>
     answerData<WorkspaceDirectories>("GET", `workspace/directories?${new URLSearchParams({ path })}`),
   createWorkspaceFolder: (path: string, name: string) =>
