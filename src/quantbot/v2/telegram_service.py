@@ -13,11 +13,12 @@ from uuid import UUID
 from PIL import Image, ImageDraw
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest, TelegramError
-from telegram.ext import Application, CallbackQueryHandler, CommandHandler
+from telegram.ext import Application, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 from .commands import Commands
 from .errors import Problem
 from .models import SHADOW_ACTIONS, Capability, CommandRequest
+from .telegram_controls import TelegramControls
 from .telegram_settings import TelegramUpdate
 
 log = logging.getLogger(__name__)
@@ -32,6 +33,7 @@ STATES = {
     "failed": "执行失败",
     "unknown": "结果未知，需核对",
     "expired": "已过期",
+    "cancelled": "已取消",
     "superseded": "已被新操作替代",
 }
 SHORTCUTS = {
@@ -59,6 +61,7 @@ MENU = {
     "resume": "恢复新开仓",
     "refresh": "请求刷新数据",
     "action": "执行已声明的自定义操作",
+    "controls": "已注册的控制组件",
     "notifications": "通知状态或开关",
     "web": "一次性网页登录",
     "quickstart": "HTTP 接入说明",
@@ -99,6 +102,7 @@ class TelegramInterface:
         self.service = service
         self.config = config
         self.public_url = public_url
+        self.components = TelegramControls(service, button, self.operation)
 
     async def handle(self, update, context):
         query = update.callback_query
@@ -117,11 +121,29 @@ class TelegramInterface:
             return
         uid = user.id
         actor = f"telegram:{uid}"
-        data = query.data if query else update.effective_message.text.split()[0].split("@")[0][1:]
-        args = [] if query else context.args
         photo = None
         try:
-            text, keyboard, photo = self.dispatch(data or "", args, actor, uid, update.update_id)
+            if query and (query.data or "").startswith("tc:"):
+                response = self.components.route(query.data[3:], actor, uid, update.update_id)
+            elif not query and not update.effective_message.text.startswith("/"):
+                response = self.components.text(
+                    uid,
+                    actor,
+                    update.update_id,
+                    update.effective_message.text,
+                )
+                if response is None:
+                    return
+            else:
+                self.components.dismiss(uid)
+                data = (
+                    query.data
+                    if query
+                    else update.effective_message.text.split()[0].split("@")[0][1:]
+                )
+                args = [] if query else context.args
+                response = self.dispatch(data or "", args, actor, uid, update.update_id)
+            text, keyboard, photo = response
         except (Problem, ValueError, IndexError) as exc:
             text = str(exc) if isinstance(exc, Problem) else "参数格式无效，请检查命令说明。"
             keyboard = [[button("策略列表", "p:0")]]
@@ -180,19 +202,26 @@ class TelegramInterface:
             )
         if route in {"alerts", "notifications"}:
             return self.notifications(route, args, actor)
-        if route in {"confirm", "op"}:
-            command = (
-                self.service.commands.confirm(str(UUID(parts[1])), actor)
-                if route == "confirm"
-                else self.service.commands.public(self.service.commands.row(str(UUID(parts[1]))))
-            )
-            return self.operation(command)
+        if route in {"confirm", "cancelop", "op"}:
+            cid = str(UUID(parts[1]))
+            row = self.service.commands.row(cid)
+            if route != "op" and row["control_id"]:
+                raise Problem(409, "请使用控制面板生成的确认或取消按钮")
+            if route == "confirm":
+                command = self.service.commands.confirm(cid, actor)
+            elif route == "cancelop":
+                command = self.service.commands.cancel(cid, actor)
+            else:
+                command = self.service.commands.public(row)
+            return self.operation(command, uid)
         if route == "pauseall":
             return self.pause_all(actor, update_id)
         explicit = args[0] if route == "use" else parts[1] if len(parts) > 1 else None
         strategy = self.target(uid, explicit)
         sid = strategy["id"]
         back = [[button("返回策略", f"s:{sid}"), button("所有策略", "p:0")]]
+        if route in {"controls", "controlpanel"}:
+            return self.components.open(sid, uid)
         if route in {"s", "status", "use"}:
             text, rows = self.strategy(strategy)
             return text, rows, None
@@ -236,7 +265,7 @@ class TelegramInterface:
                 CommandRequest(action=action, arguments=parsed, request_id=f"tg:{update_id}"),
                 actor,
             )
-            return self.operation(command)
+            return self.operation(command, uid)
         raise Problem(404, "请使用 /help 查看命令")
 
     def menu(self, page):
@@ -296,12 +325,16 @@ class TelegramInterface:
         settings = self.service.strategies.settings(sid)
         for raw in strategy["capabilities"]:
             action = raw["id"]
+            if self.service.controls.bound_action(sid, action) and action not in SHADOW_ACTIONS:
+                continue
             if action not in SHADOW_ACTIONS and not strategy["executor_online"]:
                 continue
             risky, _ = Commands.safety(Capability.model_validate(raw))
             if risky and settings["mode"] == "live" and not settings["live_trading_enabled"]:
                 continue
             rows.append([button(raw["label"], f"a:{sid}:{action}")])
+        if self.service.controls.public(sid)["controls"]:
+            rows.insert(1, [button("控制面板", f"controlpanel:{sid}")])
         rows.append([button("所有策略", "p:0")])
         return "\n".join(lines), rows
 
@@ -329,7 +362,11 @@ class TelegramInterface:
                 ]
             ]
             for cap in strategy["capabilities"]:
-                if cap["id"] == "cancel_order" and strategy["executor_online"]:
+                if (
+                    cap["id"] == "cancel_order"
+                    and strategy["executor_online"]
+                    and not self.service.controls.bound_action(sid, "cancel_order")
+                ):
                     back.insert(0, [button("撤销订单", f"a:{sid}:cancel_order")])
         elif route in {"chart", "equ"}:
             samples = self.service.telemetry.history(sid, "account.equity", limit=500)
@@ -414,7 +451,7 @@ class TelegramInterface:
             args[name] = value
         return args
 
-    def operation(self, command):
+    def operation(self, command, user=None):
         cid = command["id"]
         strategy = self.service.strategies.detail(command["strategy_id"])
         text = f"{strategy['name']} · {command['action']}\n{STATES[command['state']]}\n{cid}"
@@ -430,9 +467,26 @@ class TelegramInterface:
         rows = [
             [button("刷新结果", f"op:{cid}"), button("返回策略", f"s:{command['strategy_id']}")]
         ]
-        if command["state"] == "confirmation_required":
-            rows.insert(0, [button("确认执行", f"confirm:{cid}")])
+        owner = user is not None and command["actor"] == f"telegram:{user}"
+        if owner and command["state"] == "confirmation_required":
+            confirm = (
+                self.components.command_button("确认执行", user, command, "confirm")
+                if command["control_id"]
+                else button("确认执行", f"confirm:{cid}")
+            )
+            rows.insert(0, [confirm])
             text += f"\n确认截止 {command['expires_at']}"
+        if (
+            owner
+            and command["state"] in {"confirmation_required", "pending", "accepted"}
+            and command["revision"] is None
+        ):
+            cancel = (
+                self.components.command_button("取消请求", user, command, "cancel_command")
+                if command["control_id"]
+                else button("取消请求", f"cancelop:{cid}")
+            )
+            rows.insert(1, [cancel])
         return text, rows, None
 
     def pause_all(self, actor, update_id):
@@ -551,6 +605,9 @@ async def supervise(service, config, public_url):
                         )
                     )
                     app.add_handler(CallbackQueryHandler(interface.handle))
+                    app.add_handler(
+                        MessageHandler(filters.TEXT & ~filters.COMMAND, interface.handle)
+                    )
                     app.add_error_handler(handle_error)
                     await app.initialize()
                     await app.start()
