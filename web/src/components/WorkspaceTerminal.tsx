@@ -114,17 +114,20 @@ function TerminalSession({ path, onReconnect }: { path: string; onReconnect: () 
   return (
     <Card className="min-w-0 overflow-hidden">
       <header className="flex min-h-11 flex-wrap items-center justify-between gap-2 border-b px-3 py-1.5">
-        <h2 className="flex min-w-0 items-center gap-2 text-sm font-medium">
-          <SquareTerminal className="size-4 shrink-0" /> {tr("终端")}
-          {path && <code className="truncate text-xs text-muted-foreground" title={path}>{path}</code>}
-        </h2>
-        <div className="flex items-center gap-2">
-          <Badge tone={connection === "connected" ? "gain" : "neutral"}>{status}</Badge>
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="flex shrink-0 items-center gap-2 text-sm font-medium">
+            <SquareTerminal className="size-4 shrink-0" /> {tr("终端")}
+          </h2>
           {connection === "connected" && (
-            <span className="font-mono text-xs tabular-nums text-muted-foreground" title={tr("浏览器到终端的往返时间")}>
+            <span className="shrink-0 whitespace-nowrap font-mono text-xs tabular-nums text-muted-foreground"
+              title={tr("浏览器到终端的往返时间")}>
               {tr("延迟")} {latency === undefined ? "—" : `${latency} ms`}
             </span>
           )}
+          {path && <code className="truncate text-xs text-muted-foreground" title={path}>{path}</code>}
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge tone={connection === "connected" ? "gain" : "neutral"}>{status}</Badge>
           {connection === "closed" && (
             <Button variant="ghost" size="sm" onClick={onReconnect}><RefreshCw /> {tr("重新连接")}</Button>
           )}
