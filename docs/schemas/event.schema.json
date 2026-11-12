@@ -1,0 +1,296 @@
+{
+  "$defs": {
+    "EventMarker": {
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "order",
+            "fill",
+            "signal",
+            "risk"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "order_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Order Id"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "side": {
+          "anyOf": [
+            {
+              "enum": [
+                "buy",
+                "sell"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Side"
+        },
+        "symbol": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Symbol",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "symbol"
+      ],
+      "title": "EventMarker",
+      "type": "object"
+    },
+    "Fill": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z0-9]{2,12}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "fee": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fee"
+        },
+        "fee_currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z0-9]{2,12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fee Currency"
+        },
+        "fill_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Fill Id",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "order_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "price": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Price",
+          "type": "string"
+        },
+        "quantity": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Quantity",
+          "type": "string"
+        },
+        "side": {
+          "enum": [
+            "buy",
+            "sell"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "symbol": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Symbol",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fill_id",
+        "order_id",
+        "account_id",
+        "symbol",
+        "currency",
+        "side",
+        "quantity",
+        "price",
+        "occurred_at"
+      ],
+      "title": "Fill",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "attributes": {
+      "maxProperties": 100,
+      "patternProperties": {
+        "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "Attributes",
+      "type": "object"
+    },
+    "category": {
+      "enum": [
+        "trade",
+        "open",
+        "close",
+        "risk",
+        "error",
+        "warning",
+        "log",
+        "custom",
+        "alert"
+      ],
+      "title": "Category",
+      "type": "string"
+    },
+    "dedup_key": {
+      "anyOf": [
+        {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Dedup Key"
+    },
+    "fill": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Fill"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "id": {
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+      "title": "Id",
+      "type": "string"
+    },
+    "marker": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EventMarker"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "message": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "severity": {
+      "default": "info",
+      "enum": [
+        "debug",
+        "info",
+        "warning",
+        "error",
+        "critical"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "type": {
+      "const": "event",
+      "title": "Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "type",
+    "schema_version",
+    "id",
+    "occurred_at",
+    "category",
+    "message"
+  ],
+  "title": "Event",
+  "type": "object"
+}

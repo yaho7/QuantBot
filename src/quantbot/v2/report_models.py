@@ -22,6 +22,7 @@ from .models import (
     Severity,
     ShortText,
     Stamp,
+    unique_records,
 )
 
 DATA_TYPES = (
@@ -68,11 +69,22 @@ class PositionRecord(Record):
     strategy_positions: list[Position] = Field(max_length=2000)
     broker_positions: list[Position] = Field(max_length=2000)
 
+    @model_validator(mode="after")
+    def unique_positions(self):
+        unique_records(self.strategy_positions, "account_id", "position_id")
+        unique_records(self.broker_positions, "account_id", "position_id")
+        return self
+
 
 class OrderRecord(Record):
     type: Literal["order"]
     open_orders: list[Order] = Field(max_length=1000)
     completed_orders: list[Order] = Field(max_length=1000)
+
+    @model_validator(mode="after")
+    def unique_orders(self):
+        unique_records(self.open_orders + self.completed_orders, "account_id", "order_id")
+        return self
 
 
 class EquityRecord(Record):

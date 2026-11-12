@@ -1,0 +1,1511 @@
+{
+  "$defs": {
+    "Account": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "balance": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Balance"
+        },
+        "buying_power": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Buying Power"
+        },
+        "cash": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cash"
+        },
+        "currency": {
+          "pattern": "^[A-Z0-9]{2,12}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "daily_pnl": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Daily Pnl"
+        },
+        "equity": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Equity"
+        },
+        "realized_pnl": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Realized Pnl"
+        },
+        "unrealized_pnl": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unrealized Pnl"
+        }
+      },
+      "required": [
+        "account_id",
+        "currency"
+      ],
+      "title": "Account",
+      "type": "object"
+    },
+    "AlertRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "dedup_key": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dedup Key"
+        },
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "message": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "severity": {
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "type": {
+          "const": "alert",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "id",
+        "type",
+        "code",
+        "severity",
+        "message"
+      ],
+      "title": "AlertRecord",
+      "type": "object"
+    },
+    "ConnectionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization_expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorization Expires At"
+        },
+        "broker_connected": {
+          "title": "Broker Connected",
+          "type": "boolean"
+        },
+        "message": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Message",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "connection",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "type",
+        "broker_connected"
+      ],
+      "title": "ConnectionRecord",
+      "type": "object"
+    },
+    "EquityRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z0-9]{2,12}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "drawdown": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Drawdown"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "equity",
+          "title": "Type",
+          "type": "string"
+        },
+        "value": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "type",
+        "account_id",
+        "currency",
+        "value"
+      ],
+      "title": "EquityRecord",
+      "type": "object"
+    },
+    "Fill": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "currency": {
+          "pattern": "^[A-Z0-9]{2,12}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "fee": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fee"
+        },
+        "fee_currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z0-9]{2,12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fee Currency"
+        },
+        "fill_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Fill Id",
+          "type": "string"
+        },
+        "occurred_at": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "order_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "price": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Price",
+          "type": "string"
+        },
+        "quantity": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Quantity",
+          "type": "string"
+        },
+        "side": {
+          "enum": [
+            "buy",
+            "sell"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "symbol": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Symbol",
+          "type": "string"
+        }
+      },
+      "required": [
+        "fill_id",
+        "order_id",
+        "account_id",
+        "symbol",
+        "currency",
+        "side",
+        "quantity",
+        "price",
+        "occurred_at"
+      ],
+      "title": "Fill",
+      "type": "object"
+    },
+    "FillRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "fill": {
+          "$ref": "#/$defs/Fill"
+        },
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "fill",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "id",
+        "type",
+        "fill"
+      ],
+      "title": "FillRecord",
+      "type": "object"
+    },
+    "Heartbeat": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization_expires_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Authorization Expires At"
+        },
+        "broker_connected": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Broker Connected"
+        },
+        "health": {
+          "default": "healthy",
+          "enum": [
+            "healthy",
+            "degraded",
+            "error"
+          ],
+          "title": "Health",
+          "type": "string"
+        },
+        "uptime_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Uptime Seconds"
+        }
+      },
+      "title": "Heartbeat",
+      "type": "object"
+    },
+    "LogRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "logger": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Logger"
+        },
+        "message": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "severity": {
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "type": {
+          "const": "log",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "id",
+        "type",
+        "severity",
+        "message"
+      ],
+      "title": "LogRecord",
+      "type": "object"
+    },
+    "MetricPoint": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Account Id"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Label"
+        },
+        "name": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "metric",
+          "title": "Type",
+          "type": "string"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "value": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Value",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "value",
+        "type",
+        "schema_version",
+        "observed_at"
+      ],
+      "title": "MetricPoint",
+      "type": "object"
+    },
+    "OhlcvRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "close": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Close",
+          "type": "string"
+        },
+        "high": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "High",
+          "type": "string"
+        },
+        "interval_seconds": {
+          "maximum": 2678400,
+          "minimum": 1,
+          "title": "Interval Seconds",
+          "type": "integer"
+        },
+        "low": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Low",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "open": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Open",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "symbol": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Symbol",
+          "type": "string"
+        },
+        "type": {
+          "const": "ohlcv",
+          "title": "Type",
+          "type": "string"
+        },
+        "volume": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Volume",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "type",
+        "symbol",
+        "interval_seconds",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume"
+      ],
+      "title": "OhlcvRecord",
+      "type": "object"
+    },
+    "Order": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "broker_status": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Broker Status"
+        },
+        "currency": {
+          "pattern": "^[A-Z0-9]{2,12}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "fee": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fee"
+        },
+        "fee_currency": {
+          "anyOf": [
+            {
+              "pattern": "^[A-Z0-9]{2,12}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fee Currency"
+        },
+        "filled_quantity": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Filled Quantity"
+        },
+        "order_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Order Id",
+          "type": "string"
+        },
+        "price": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price"
+        },
+        "quantity": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Quantity",
+          "type": "string"
+        },
+        "side": {
+          "enum": [
+            "buy",
+            "sell"
+          ],
+          "title": "Side",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "new",
+            "pending",
+            "submitted",
+            "open",
+            "working",
+            "partially_filled",
+            "filled",
+            "pending_cancel",
+            "cancelled",
+            "rejected",
+            "expired"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "symbol": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Symbol",
+          "type": "string"
+        },
+        "updated_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Updated At"
+        }
+      },
+      "required": [
+        "order_id",
+        "account_id",
+        "symbol",
+        "currency",
+        "quantity",
+        "side",
+        "status"
+      ],
+      "title": "Order",
+      "type": "object"
+    },
+    "OrderRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "completed_orders": {
+          "items": {
+            "$ref": "#/$defs/Order"
+          },
+          "maxItems": 1000,
+          "title": "Completed Orders",
+          "type": "array"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "open_orders": {
+          "items": {
+            "$ref": "#/$defs/Order"
+          },
+          "maxItems": 1000,
+          "title": "Open Orders",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "order",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "type",
+        "open_orders",
+        "completed_orders"
+      ],
+      "title": "OrderRecord",
+      "type": "object"
+    },
+    "Performance": {
+      "additionalProperties": false,
+      "properties": {
+        "cumulative_return": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cumulative Return"
+        },
+        "daily_return": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Daily Return"
+        },
+        "max_drawdown": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Drawdown"
+        },
+        "profit_factor": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profit Factor"
+        },
+        "profit_loss_ratio": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Profit Loss Ratio"
+        },
+        "sharpe_ratio": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sharpe Ratio"
+        },
+        "sortino_ratio": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sortino Ratio"
+        },
+        "win_rate": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Win Rate"
+        }
+      },
+      "title": "Performance",
+      "type": "object"
+    },
+    "PerformanceRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "performance": {
+          "$ref": "#/$defs/Performance"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "performance",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "type",
+        "performance"
+      ],
+      "title": "PerformanceRecord",
+      "type": "object"
+    },
+    "PortfolioRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "accounts": {
+          "items": {
+            "$ref": "#/$defs/Account"
+          },
+          "maxItems": 100,
+          "title": "Accounts",
+          "type": "array"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "portfolio",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "type",
+        "accounts"
+      ],
+      "title": "PortfolioRecord",
+      "type": "object"
+    },
+    "Position": {
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Account Id",
+          "type": "string"
+        },
+        "cost": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cost"
+        },
+        "currency": {
+          "pattern": "^[A-Z0-9]{2,12}$",
+          "title": "Currency",
+          "type": "string"
+        },
+        "market_price": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Market Price"
+        },
+        "position_id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Position Id",
+          "type": "string"
+        },
+        "quantity": {
+          "maxLength": 64,
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+          "title": "Quantity",
+          "type": "string"
+        },
+        "symbol": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Symbol",
+          "type": "string"
+        },
+        "unrealized_pnl": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unrealized Pnl"
+        }
+      },
+      "required": [
+        "position_id",
+        "account_id",
+        "symbol",
+        "currency",
+        "quantity"
+      ],
+      "title": "Position",
+      "type": "object"
+    },
+    "PositionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "broker_positions": {
+          "items": {
+            "$ref": "#/$defs/Position"
+          },
+          "maxItems": 2000,
+          "title": "Broker Positions",
+          "type": "array"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "strategy_positions": {
+          "items": {
+            "$ref": "#/$defs/Position"
+          },
+          "maxItems": 2000,
+          "title": "Strategy Positions",
+          "type": "array"
+        },
+        "type": {
+          "const": "position",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "type",
+        "strategy_positions",
+        "broker_positions"
+      ],
+      "title": "PositionRecord",
+      "type": "object"
+    },
+    "RiskRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Code",
+          "type": "string"
+        },
+        "dedup_key": {
+          "anyOf": [
+            {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dedup Key"
+        },
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "locked": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locked"
+        },
+        "message": {
+          "maxLength": 1000,
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "severity": {
+          "default": "warning",
+          "enum": [
+            "debug",
+            "info",
+            "warning",
+            "error",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "symbol": {
+          "anyOf": [
+            {
+              "maxLength": 100,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Symbol"
+        },
+        "type": {
+          "const": "risk",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "id",
+        "type",
+        "code",
+        "message"
+      ],
+      "title": "RiskRecord",
+      "type": "object"
+    },
+    "SignalRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "direction": {
+          "enum": [
+            "buy",
+            "sell",
+            "long",
+            "short",
+            "flat",
+            "hold"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "message": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Message",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+          "title": "Name",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "strength": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Strength"
+        },
+        "symbol": {
+          "maxLength": 100,
+          "minLength": 1,
+          "title": "Symbol",
+          "type": "string"
+        },
+        "type": {
+          "const": "signal",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "id",
+        "type",
+        "symbol",
+        "name",
+        "direction"
+      ],
+      "title": "SignalRecord",
+      "type": "object"
+    },
+    "StatusRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "runtime": {
+          "$ref": "#/$defs/Heartbeat"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "status",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "observed_at",
+        "type",
+        "runtime"
+      ],
+      "title": "StatusRecord",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "records": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "alert": "#/$defs/AlertRecord",
+            "connection": "#/$defs/ConnectionRecord",
+            "equity": "#/$defs/EquityRecord",
+            "fill": "#/$defs/FillRecord",
+            "log": "#/$defs/LogRecord",
+            "metric": "#/$defs/MetricPoint",
+            "ohlcv": "#/$defs/OhlcvRecord",
+            "order": "#/$defs/OrderRecord",
+            "performance": "#/$defs/PerformanceRecord",
+            "portfolio": "#/$defs/PortfolioRecord",
+            "position": "#/$defs/PositionRecord",
+            "risk": "#/$defs/RiskRecord",
+            "signal": "#/$defs/SignalRecord",
+            "status": "#/$defs/StatusRecord"
+          },
+          "propertyName": "type"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/StatusRecord"
+          },
+          {
+            "$ref": "#/$defs/PortfolioRecord"
+          },
+          {
+            "$ref": "#/$defs/PositionRecord"
+          },
+          {
+            "$ref": "#/$defs/OrderRecord"
+          },
+          {
+            "$ref": "#/$defs/FillRecord"
+          },
+          {
+            "$ref": "#/$defs/EquityRecord"
+          },
+          {
+            "$ref": "#/$defs/PerformanceRecord"
+          },
+          {
+            "$ref": "#/$defs/MetricPoint"
+          },
+          {
+            "$ref": "#/$defs/OhlcvRecord"
+          },
+          {
+            "$ref": "#/$defs/SignalRecord"
+          },
+          {
+            "$ref": "#/$defs/RiskRecord"
+          },
+          {
+            "$ref": "#/$defs/LogRecord"
+          },
+          {
+            "$ref": "#/$defs/ConnectionRecord"
+          },
+          {
+            "$ref": "#/$defs/AlertRecord"
+          }
+        ]
+      },
+      "maxItems": 250,
+      "minItems": 1,
+      "title": "Records",
+      "type": "array"
+    }
+  },
+  "required": [
+    "records"
+  ],
+  "title": "ReportBatch",
+  "type": "object"
+}

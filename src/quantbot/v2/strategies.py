@@ -249,10 +249,12 @@ class Strategies:
     def heartbeat(self, agent, body):
         now = self.clock()
         sid = agent["strategy_id"]
+        fields = json.loads(agent["runtime"])
+        fields.update(body.model_dump(mode="json", exclude_unset=True))
         with self.db.transaction():
             self.db.execute(
                 "UPDATE agent_instances SET last_seen=?, runtime=? WHERE session_id=?",
-                (now, encode(body.model_dump(mode="json")), agent["session_id"]),
+                (now, encode(fields), agent["session_id"]),
             )
             self.refresh_presence(sid)
         return {"server_time": timestamp(now), "control": self.control(sid)}
@@ -392,7 +394,12 @@ class Strategies:
         state = json.loads(desired["state"])
         executor = self.executor(sid, live=True)
         report = json.loads(reported["state"]) if reported else None
-        current = bool(reported and executor and reported["session_id"] == executor["session_id"])
+        current = bool(
+            reported
+            and executor
+            and reported["session_id"] == executor["session_id"]
+            and json.loads(executor["declarations"])["executor"]
+        )
         synced = bool(
             current
             and reported["revision"] == desired["revision"]

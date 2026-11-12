@@ -1,0 +1,107 @@
+{
+  "$defs": {
+    "Disabled": {
+      "additionalProperties": false,
+      "properties": {
+        "disabled": {
+          "title": "Disabled",
+          "type": "boolean"
+        },
+        "reason": {
+          "default": "",
+          "maxLength": 1000,
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "disabled"
+      ],
+      "title": "Disabled",
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "disabled": {
+      "maxProperties": 40,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{0,31}$": {
+          "$ref": "#/$defs/Disabled"
+        }
+      },
+      "title": "Disabled",
+      "type": "object"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "revision": {
+      "maximum": 2147483647,
+      "minimum": 1,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "values": {
+      "maxProperties": 40,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{0,31}$": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "maxProperties": 12,
+              "minProperties": 1,
+              "patternProperties": {
+                "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$": {
+                  "anyOf": [
+                    {
+                      "type": "boolean"
+                    },
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "integer"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "Values",
+      "type": "object"
+    }
+  },
+  "required": [
+    "revision",
+    "observed_at"
+  ],
+  "title": "ControlValues",
+  "type": "object"
+}

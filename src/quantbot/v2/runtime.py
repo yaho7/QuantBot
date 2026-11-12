@@ -3,6 +3,7 @@
 import asyncio
 import fcntl
 import logging
+import math
 import time
 from collections import defaultdict, deque
 from contextlib import contextmanager
@@ -65,7 +66,9 @@ class Runtime:
         while queue and queue[0] <= now - seconds:
             queue.popleft()
         if len(queue) >= count:
-            raise Problem(429, "Rate limit exceeded")
+            raise Problem(
+                429, "Rate limit exceeded", retry_after=max(1, math.ceil(queue[0] + seconds - now))
+            )
         queue.append(now)
 
     async def upkeep(self):

@@ -252,6 +252,21 @@ class Position(Payload):
     unrealized_pnl: Number | None = None
 
 
+OrderStatus = Literal[
+    "new",
+    "pending",
+    "submitted",
+    "open",
+    "working",
+    "partially_filled",
+    "filled",
+    "pending_cancel",
+    "cancelled",
+    "rejected",
+    "expired",
+]
+
+
 class Order(Payload):
     order_id: Key
     account_id: Key
@@ -260,10 +275,21 @@ class Order(Payload):
     quantity: Number
     filled_quantity: Number | None = None
     side: Literal["buy", "sell"]
-    status: Name
+    status: OrderStatus
+    broker_status: Name | None = None
     price: Number | None = None
     fee: Number | None = None
+    fee_currency: Currency | None = None
     updated_at: Stamp | None = None
+
+    @model_validator(mode="after")
+    def valid_quantity(self):
+        quantity = Decimal(self.quantity)
+        if quantity <= 0 or (
+            self.filled_quantity is not None and not 0 <= Decimal(self.filled_quantity) <= quantity
+        ):
+            raise ValueError("order quantities are invalid")
+        return self
 
 
 class Fill(Payload):
@@ -276,7 +302,14 @@ class Fill(Payload):
     quantity: Number
     price: Number
     fee: Number | None = None
+    fee_currency: Currency | None = None
     occurred_at: Stamp
+
+    @model_validator(mode="after")
+    def positive_quantity(self):
+        if Decimal(self.quantity) <= 0:
+            raise ValueError("fill quantity must be positive")
+        return self
 
 
 class Performance(Payload):
@@ -296,6 +329,12 @@ class Metric(Payload):
     unit: Name | None = None
     label: Name | None = None
     account_id: Key | None = None
+
+
+def unique_records(items, *keys):
+    identities = {tuple(getattr(item, key) for key in keys) for item in items}
+    if len(identities) != len(items):
+        raise ValueError(f"duplicate records by {', '.join(keys)}")
 
 
 class Snapshot(Payload):
@@ -323,6 +362,10 @@ class Snapshot(Payload):
         accounts = {(item.account_id, item.currency) for item in self.accounts}
         if len(accounts) != len(self.accounts):
             raise ValueError("duplicate account and currency")
+        unique_records(self.strategy_positions, "account_id", "position_id")
+        unique_records(self.broker_positions, "account_id", "position_id")
+        unique_records(self.open_orders + self.completed_orders, "account_id", "order_id")
+        unique_records(self.fills, "account_id", "fill_id")
         return self
 
 

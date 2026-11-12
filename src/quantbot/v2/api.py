@@ -33,12 +33,10 @@ from .models import (
     CommandRequest,
     CommandResult,
     ControlReport,
-    Event,
     Events,
     Heartbeat,
     Key,
     Login,
-    MetricPoint,
     Metrics,
     Name,
     Reconciliation,
@@ -50,8 +48,29 @@ from .models import (
     TokenSettings,
 )
 from .registry import Registry
-from .report_models import DATA_TYPES, REPORT_SCHEMA, MetricDefinitions, ReportBatch
+from .report_models import DATA_TYPES, MetricDefinitions, ReportBatch
+from .responses import (
+    AgentSession,
+    CommandQueue,
+    CommandView,
+    ControlCatalog,
+    ControlView,
+    CredentialIssued,
+    CredentialView,
+    Error,
+    EventAck,
+    HeartbeatAck,
+    MetricDefinitionsAck,
+    MetricsAck,
+    Permit,
+    ReportsAck,
+    SnapshotAck,
+    StrategyCreated,
+    StrategyDetail,
+    StrategyView,
+)
 from .runtime import Runtime, exclusive_database
+from .schemas import schema_document
 from .telegram_service import supervise
 from .telegram_settings import TelegramConfig, TelegramUpdate
 
@@ -59,8 +78,14 @@ COOKIE = "quantbot_v2_session"
 BODY_LIMIT = 1024 * 1024
 bearer = HTTPBearer(auto_error=False, scheme_name="StrategyToken")
 cookie = APIKeyCookie(name=COOKIE, auto_error=False, scheme_name="AdministratorSession")
-agent = APIRouter(prefix="/api/v2/agent", tags=["Agent"])
-admin = APIRouter(prefix="/api/v2/admin", tags=["Administration"])
+COMMON_ERRORS = {
+    401: {"model": Error, "description": "Credential missing, invalid, revoked or expired"},
+    403: {"model": Error, "description": "Insufficient permission"},
+    409: {"model": Error, "description": "Session, revision, idempotency or state conflict"},
+    422: {"model": Error, "description": "Invalid schema or parameters"},
+}
+agent = APIRouter(prefix="/api/v2/agent", tags=["Agent"], responses=COMMON_ERRORS)
+admin = APIRouter(prefix="/api/v2/admin", tags=["Administration"], responses=COMMON_ERRORS)
 log = logging.getLogger(__name__)
 
 
@@ -101,13 +126,13 @@ EXECUTOR_CONTROL = credentials("control", executor=True)
 EXECUTOR_COMMANDS = credentials("commands", executor=True)
 
 
-@agent.post("/session")
+@agent.post("/session", response_model=AgentSession, response_model_exclude_unset=True)
 async def session(request: Request, body: SessionOpen, credential=REGISTER):
     """Register an instance and obtain its session ID."""
     return runtime(request).strategies.connect(credential, body)
 
 
-@agent.put("/heartbeat")
+@agent.put("/heartbeat", response_model=HeartbeatAck, response_model_exclude_unset=True)
 async def heartbeat(
     request: Request,
     body: Heartbeat,
@@ -118,59 +143,59 @@ async def heartbeat(
     return service.strategies.heartbeat(source, body)
 
 
-@agent.put("/snapshot")
+@agent.put("/snapshot", response_model=SnapshotAck)
 async def snapshot(request: Request, body: Snapshot, source=TELEMETRY):
     """Replace the instance snapshot, retaining time-series samples."""
     return runtime(request).telemetry.snapshot(source, body)
 
 
-@agent.post("/events")
+@agent.post("/events", response_model=EventAck)
 async def events(request: Request, body: Events, source=TELEMETRY):
     """Ingest events idempotently by strategy and event ID."""
     return runtime(request).telemetry.events(source, body)
 
 
-@agent.post("/metrics")
+@agent.post("/metrics", response_model=MetricsAck)
 async def metrics(request: Request, body: Metrics, source=TELEMETRY):
     """Ingest a batch of timestamped metric points, including historical backfill."""
     return runtime(request).telemetry.metrics(source, body)
 
 
-@agent.post("/reports")
+@agent.post("/reports", response_model=ReportsAck)
 async def reports(request: Request, body: ReportBatch, source=TELEMETRY):
     """Ingest a batch of validated, explicitly typed records."""
     return runtime(request).registry.reports(source, body)
 
 
-@agent.put("/metric-definitions")
+@agent.put("/metric-definitions", response_model=MetricDefinitionsAck)
 async def define_metrics(request: Request, body: MetricDefinitions, source=TELEMETRY):
     """Register metric metadata. Charts become available after points are received."""
     return runtime(request).registry.register_metrics(source, body)
 
 
-@agent.put("/controls")
+@agent.put("/controls", response_model=ControlCatalog, response_model_exclude_unset=True)
 async def publish_controls(request: Request, body: ControlRegistry, source=EXECUTOR_CONTROL):
     """Publish a complete control registry. Use a higher revision to update or remove controls."""
     return runtime(request).controls.publish(source, body)
 
 
-@agent.put("/controls/state")
+@agent.put("/controls/state", response_model=ControlCatalog, response_model_exclude_unset=True)
 async def publish_values(request: Request, body: ControlValues, source=EXECUTOR_CONTROL):
     """Report actual values and disabled states for the currently registered revision."""
     return runtime(request).controls.actual(source, body)
 
 
-@agent.get("/control")
+@agent.get("/control", response_model=ControlView, response_model_exclude_unset=True)
 async def control(request: Request, source=CONTROL):
     return runtime(request).strategies.control(source["strategy_id"])
 
 
-@agent.put("/control/reported")
+@agent.put("/control/reported", response_model=ControlView, response_model_exclude_unset=True)
 async def report_control(request: Request, body: ControlReport, source=EXECUTOR_CONTROL):
     return runtime(request).commands.report(source, body)
 
 
-@agent.get("/commands")
+@agent.get("/commands", response_model=CommandQueue, response_model_exclude_unset=True)
 async def commands(
     request: Request,
     token: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
@@ -209,13 +234,13 @@ async def commands(
         service.polling.discard(session_id)
 
 
-@agent.post("/commands/{command_id}/claim")
+@agent.post("/commands/{command_id}/claim", response_model=Permit)
 async def claim(request: Request, command_id: Key, source=EXECUTOR_COMMANDS):
     """Consume the only opportunity to obtain a permit for this command."""
     return runtime(request).commands.claim(source, command_id)
 
 
-@agent.post("/commands/{command_id}/result")
+@agent.post("/commands/{command_id}/result", response_model=CommandView)
 async def result(
     request: Request,
     command_id: Key,
@@ -249,7 +274,8 @@ async def login(request: Request, body: Login):
         raise Problem(503, "Initialize an administrator on the server")
     account = json.loads(configured["value"])
     matched = await asyncio.to_thread(password_matches, body.password, account["password_hash"])
-    if not matched or body.username != account["username"]:
+    latest = service.db.one("SELECT value FROM settings WHERE name='administrator'")
+    if not matched or body.username != account["username"] or latest != configured:
         raise Problem(401, "Invalid administrator credentials")
     service.strategies.audit(f"web:{body.username}", "admin.login")
     return set_cookie(request, service.auth.session(f"web:{body.username}"))
@@ -280,37 +306,50 @@ async def logout(request: Request, actor=ADMIN):
     return response
 
 
-@admin.get("/strategies")
+@admin.get("/strategies", response_model=list[StrategyView])
 async def list_strategies(request: Request, actor=ADMIN):
     return runtime(request).strategies.list()
 
 
-@admin.post("/strategies", status_code=201)
+@admin.post(
+    "/strategies",
+    status_code=201,
+    response_model=StrategyCreated,
+    response_model_exclude_unset=True,
+)
 async def create_strategy(request: Request, body: StrategyCreate, actor=ADMIN):
     return runtime(request).strategies.create(body, actor)
 
 
-@admin.get("/strategies/{strategy_id}")
+@admin.get(
+    "/strategies/{strategy_id}", response_model=StrategyDetail, response_model_exclude_unset=True
+)
 async def strategy(request: Request, strategy_id: Key, instance: Key | None = None, actor=ADMIN):
     return runtime(request).strategies.detail(strategy_id, instance)
 
 
-@admin.put("/strategies/{strategy_id}")
+@admin.put(
+    "/strategies/{strategy_id}", response_model=StrategyDetail, response_model_exclude_unset=True
+)
 async def update_strategy(request: Request, strategy_id: Key, body: StrategySettings, actor=ADMIN):
     return runtime(request).strategies.update(strategy_id, body, actor)
 
 
-@admin.get("/strategies/{strategy_id}/tokens")
+@admin.get("/strategies/{strategy_id}/tokens", response_model=list[CredentialView])
 async def tokens(request: Request, strategy_id: Key, actor=ADMIN):
     return runtime(request).strategies.tokens(strategy_id)
 
 
-@admin.post("/strategies/{strategy_id}/tokens", status_code=201)
+@admin.post("/strategies/{strategy_id}/tokens", status_code=201, response_model=CredentialIssued)
 async def new_token(request: Request, strategy_id: Key, body: TokenSettings, actor=ADMIN):
     return runtime(request).strategies.change_token(strategy_id, actor, body)
 
 
-@admin.post("/strategies/{strategy_id}/tokens/{token_id}/rotate", status_code=201)
+@admin.post(
+    "/strategies/{strategy_id}/tokens/{token_id}/rotate",
+    status_code=201,
+    response_model=CredentialIssued,
+)
 async def rotate_token(
     request: Request, strategy_id: Key, token_id: Key, body: TokenSettings, actor=ADMIN
 ):
@@ -441,7 +480,7 @@ async def alerts(
     return runtime(request).strategies.alert_rows(strategy_id, limit)
 
 
-@admin.get("/commands")
+@admin.get("/commands", response_model=list[CommandView])
 async def list_commands(
     request: Request,
     strategy_id: Key | None = None,
@@ -454,20 +493,28 @@ async def list_commands(
     return service.list(strategy_id, limit, before)
 
 
-@admin.get("/commands/{command_id}")
+@admin.get("/commands/{command_id}", response_model=CommandView)
 async def command_detail(request: Request, command_id: Key, actor=ADMIN):
     service = runtime(request).commands
     service.sweep()
     return service.public(service.row(command_id))
 
 
-@admin.get("/strategies/{strategy_id}/controls")
+@admin.get(
+    "/strategies/{strategy_id}/controls",
+    response_model=ControlCatalog,
+    response_model_exclude_unset=True,
+)
 async def read_controls(request: Request, strategy_id: Key, actor=ADMIN):
     """Read the registered components and last agent-reported state."""
     return runtime(request).controls.public(strategy_id)
 
 
-@admin.post("/strategies/{strategy_id}/controls/{control_id}/invoke", status_code=201)
+@admin.post(
+    "/strategies/{strategy_id}/controls/{control_id}/invoke",
+    status_code=201,
+    response_model=CommandView,
+)
 async def invoke_control(
     request: Request,
     strategy_id: Key,
@@ -481,26 +528,26 @@ async def invoke_control(
     return service.commands.create_control(strategy_id, control_id, body, actor)
 
 
-@admin.post("/commands/{command_id}/cancel")
+@admin.post("/commands/{command_id}/cancel", response_model=CommandView)
 async def cancel_command(request: Request, command_id: Key, actor=ADMIN):
     return runtime(request).commands.cancel(command_id, actor)
 
 
-@admin.post("/strategies/{strategy_id}/commands", status_code=201)
+@admin.post("/strategies/{strategy_id}/commands", status_code=201, response_model=CommandView)
 async def create_command(request: Request, strategy_id: Key, body: CommandRequest, actor=ADMIN):
     service = runtime(request)
     service.limit("operations", actor, 30, 60)
     return service.commands.create(strategy_id, body, actor)
 
 
-@admin.post("/commands/{command_id}/confirm")
+@admin.post("/commands/{command_id}/confirm", response_model=CommandView)
 async def confirm(request: Request, command_id: Key, actor=ADMIN):
     service = runtime(request)
     service.limit("operations", actor, 30, 60)
     return service.commands.confirm(command_id, actor)
 
 
-@admin.post("/commands/{command_id}/reconcile")
+@admin.post("/commands/{command_id}/reconcile", response_model=CommandView)
 async def reconcile(request: Request, command_id: Key, body: Reconciliation, actor=ADMIN):
     return runtime(request).commands.reconcile(command_id, body, actor)
 
@@ -684,7 +731,8 @@ def make_app(
 
     @app.exception_handler(Problem)
     async def problem(request, exc):
-        return JSONResponse({"detail": str(exc)}, status_code=exc.status)
+        headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
+        return JSONResponse({"detail": str(exc)}, status_code=exc.status, headers=headers)
 
     @app.get("/api/v2/data-types", tags=["Schemas"])
     async def data_types():
@@ -692,24 +740,7 @@ def make_app(
 
     @app.get("/api/v2/schemas/{kind}", tags=["Schemas"])
     async def schema(kind: str):
-        root = {"$schema": "https://json-schema.org/draft/2020-12/schema"}
-        auxiliary = {
-            "snapshot": Snapshot,
-            "event": Event,
-            "metric": MetricPoint,
-            "batch": ReportBatch,
-            "metric-definitions": MetricDefinitions,
-            "controls": ControlRegistry,
-            "control-state": ControlValues,
-            "control-invocation": ControlInvocation,
-        }
-        if kind in auxiliary:
-            return {**root, **auxiliary[kind].model_json_schema()}
-        document = REPORT_SCHEMA.json_schema()
-        mapping = document["discriminator"]["mapping"]
-        if kind not in mapping:
-            raise Problem(404, "Unknown telemetry data type")
-        return {**root, "$ref": mapping[kind], "$defs": document["$defs"]}
+        return schema_document(kind)
 
     @app.exception_handler(RequestValidationError)
     async def validation(request, exc):
