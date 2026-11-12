@@ -3,7 +3,8 @@ name = "quantbot"
 version = "0.5.0"
 description = "One Telegram bot to control all your trading programs"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 dependencies = [
     "aiohttp>=3.10,<4",

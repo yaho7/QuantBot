@@ -18,6 +18,10 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check . && uv run ruff format --check .
       - run: uv run pytest
+      - name: Audit locked Python dependencies
+        run: |
+          uv export --frozen --no-dev --no-emit-project --no-hashes --output-file "$RUNNER_TEMP/quantbot-requirements.txt" >/dev/null
+          uvx --python 3.12 pip-audit --disable-pip --no-deps --requirement "$RUNNER_TEMP/quantbot-requirements.txt"
       - name: Verify the workspace terminal drops Linux root privileges
         run: |
           sudo apt-get update -qq
@@ -41,6 +45,7 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci --no-audit --no-fund
+      - run: npm audit --audit-level=high
       - run: npm run build
       - name: Built page matches the source
         run: git diff --exit-code -- ../src/quantbot/web || (echo "Run npm run build in web/ and commit src/quantbot/web" && exit 1)
