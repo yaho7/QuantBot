@@ -51,6 +51,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The fixture push requires the history behind HEAD.
+          fetch-depth: 0
       - name: Install a tag from an isolated Git repository
         run: |
           repo="$RUNNER_TEMP/quantbot-install.git"
