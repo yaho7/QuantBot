@@ -124,8 +124,7 @@ class Commands:
                 "SELECT * FROM commands WHERE actor=? AND request_id=?", (actor, body.request_id)
             )
             if existing:
-                legacy = encode([sid, body.action, body.arguments]) if not control_id else None
-                if existing["fingerprint"] not in (request, legacy):
+                if existing["fingerprint"] != request:
                     raise Problem(409, "This request ID was used for another operation")
                 return self.public(existing)
             if control_id:

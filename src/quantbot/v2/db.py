@@ -3,9 +3,11 @@
 import json
 import sqlite3
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+
+SCHEMA_VERSION = 6
 
 SCHEMA = """
 CREATE TABLE strategies (
@@ -13,7 +15,8 @@ CREATE TABLE strategies (
     settings TEXT NOT NULL,
     created_at REAL NOT NULL,
     executor_id TEXT,
-    presence TEXT NOT NULL DEFAULT 'offline'
+    presence TEXT NOT NULL DEFAULT 'offline',
+    archived_at REAL
 );
 CREATE TABLE strategy_tokens (
     id TEXT PRIMARY KEY,
@@ -35,6 +38,7 @@ CREATE TABLE agent_instances (
     declarations TEXT NOT NULL,
     runtime TEXT NOT NULL,
     last_seen REAL NOT NULL,
+    runtime_observations TEXT NOT NULL DEFAULT '{}',
     PRIMARY KEY (strategy_id, instance_id)
 );
 CREATE TABLE snapshots (
@@ -66,6 +70,11 @@ CREATE TABLE strategy_events (
 );
 CREATE INDEX event_time ON strategy_events(strategy_id, occurred_at DESC);
 CREATE INDEX global_event_time ON strategy_events(occurred_at DESC);
+CREATE INDEX strategy_fill_identity ON strategy_events(
+    strategy_id,
+    json_extract(payload, '$.fill.account_id'),
+    json_extract(payload, '$.fill.fill_id')
+) WHERE json_type(payload, '$.fill')='object';
 CREATE TABLE desired_state (
     strategy_id TEXT PRIMARY KEY REFERENCES strategies(id),
     revision INTEGER NOT NULL,
@@ -99,6 +108,8 @@ CREATE TABLE commands (
     expires_at REAL NOT NULL,
     result TEXT,
     error TEXT,
+    control_id TEXT,
+    control_revision INTEGER,
     UNIQUE (actor, request_id)
 );
 CREATE INDEX commands_strategy ON commands(strategy_id, state, created_at);
@@ -110,7 +121,7 @@ CREATE TABLE command_executions (
     receipt TEXT
 );
 CREATE TABLE alerts (
-    id INTEGER PRIMARY KEY,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     strategy_id TEXT REFERENCES strategies(id),
     category TEXT NOT NULL,
     severity TEXT NOT NULL,
@@ -139,27 +150,6 @@ CREATE TABLE login_links (
     expires_at REAL NOT NULL
 );
 CREATE TABLE settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
-PRAGMA user_version = 1;
-"""
-
-
-TELEGRAM_SCHEMA = """
-ALTER TABLE alerts RENAME TO old_alerts;
-DROP INDEX alerts_time;
-DROP INDEX alerts_dedup;
-CREATE TABLE alerts (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    strategy_id TEXT REFERENCES strategies(id),
-    category TEXT NOT NULL,
-    severity TEXT NOT NULL,
-    message TEXT NOT NULL,
-    dedup_key TEXT,
-    created_at REAL NOT NULL
-);
-INSERT INTO alerts SELECT * FROM old_alerts;
-DROP TABLE old_alerts;
-CREATE INDEX alerts_time ON alerts(created_at DESC);
-CREATE INDEX alerts_dedup ON alerts(strategy_id, dedup_key, created_at DESC);
 CREATE TABLE telegram_cursors (
     user_id INTEGER PRIMARY KEY,
     alert_id INTEGER NOT NULL,
@@ -167,11 +157,6 @@ CREATE TABLE telegram_cursors (
     retry_at REAL NOT NULL DEFAULT 0,
     failures INTEGER NOT NULL DEFAULT 0
 );
-PRAGMA user_version = 2;
-"""
-
-
-TELEMETRY_SCHEMA = """
 CREATE TABLE typed_reports (
     strategy_id TEXT NOT NULL REFERENCES strategies(id),
     instance_id TEXT NOT NULL,
@@ -210,17 +195,6 @@ CREATE TABLE dashboards (
     revision INTEGER NOT NULL,
     widgets TEXT NOT NULL
 );
-PRAGMA user_version = 3;
-"""
-
-
-LIFECYCLE_SCHEMA = """
-ALTER TABLE strategies ADD COLUMN archived_at REAL;
-PRAGMA user_version = 4;
-"""
-
-
-CONTROL_SCHEMA = """
 CREATE TABLE control_registries (
     strategy_id TEXT PRIMARY KEY REFERENCES strategies(id),
     instance_id TEXT NOT NULL,
@@ -238,20 +212,6 @@ CREATE TABLE control_values (
     payload TEXT NOT NULL,
     PRIMARY KEY (strategy_id, control_id, kind)
 );
-ALTER TABLE commands ADD COLUMN control_id TEXT;
-ALTER TABLE commands ADD COLUMN control_revision INTEGER;
-PRAGMA user_version = 5;
-"""
-
-
-OBSERVATION_SCHEMA = """
-ALTER TABLE agent_instances ADD COLUMN runtime_observations TEXT NOT NULL DEFAULT '{}';
-CREATE INDEX strategy_fill_identity ON strategy_events(
-    strategy_id,
-    json_extract(payload, '$.fill.account_id'),
-    json_extract(payload, '$.fill.fill_id')
-) WHERE json_type(payload, '$.fill')='object';
-PRAGMA user_version = 6;
 """
 
 
@@ -278,33 +238,30 @@ def record(row: sqlite3.Row, *, documents=(), times=(), omit=()) -> dict:
 class Database:
     def __init__(self, path: Path):
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        path.touch(mode=0o600, exist_ok=True)
+        try:
+            path.touch(mode=0o600, exist_ok=False)
+        except FileExistsError:
+            pass
         self.conn = sqlite3.connect(path, isolation_level=None)
         self.conn.row_factory = sqlite3.Row
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA foreign_keys=ON")
-        self.conn.execute("PRAGMA busy_timeout=3000")
-        version = self.conn.execute("PRAGMA user_version").fetchone()[0]
-        if version == 0:
-            self.conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nCOMMIT;")
-            version = 1
-        if version == 1:
-            self.conn.executescript("BEGIN IMMEDIATE;\n" + TELEGRAM_SCHEMA + "\nCOMMIT;")
-            version = 2
-        if version == 2:
-            self.conn.executescript("BEGIN IMMEDIATE;\n" + TELEMETRY_SCHEMA + "\nCOMMIT;")
-            version = 3
-        if version == 3:
-            self.conn.executescript("BEGIN IMMEDIATE;\n" + LIFECYCLE_SCHEMA + "\nCOMMIT;")
-            version = 4
-        if version == 4:
-            self.conn.executescript("BEGIN IMMEDIATE;\n" + CONTROL_SCHEMA + "\nCOMMIT;")
-            version = 5
-        if version == 5:
-            self.conn.executescript("BEGIN IMMEDIATE;\n" + OBSERVATION_SCHEMA + "\nCOMMIT;")
-        elif version != 6:
+        try:
+            version = self.conn.execute("PRAGMA user_version").fetchone()[0]
+            if version not in {0, SCHEMA_VERSION}:
+                raise RuntimeError(f"Unsupported QuantBot database schema {version}")
+            if version == 0 and self.conn.execute("SELECT 1 FROM sqlite_schema LIMIT 1").fetchone():
+                raise RuntimeError(
+                    "Unrecognized database layout. Use a fresh QuantBot data directory."
+                )
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            self.conn.execute("PRAGMA foreign_keys=ON")
+            self.conn.execute("PRAGMA busy_timeout=3000")
+            if version == 0:
+                self.conn.executescript(
+                    f"BEGIN IMMEDIATE;\n{SCHEMA}\nPRAGMA user_version={SCHEMA_VERSION};\nCOMMIT;"
+                )
+        except BaseException:
             self.conn.close()
-            raise RuntimeError(f"Unsupported QuantBot database schema {version}")
+            raise
 
     def execute(self, sql: str, args=()) -> sqlite3.Cursor:
         return self.conn.execute(sql, args)
@@ -327,3 +284,22 @@ class Database:
 
     def close(self):
         self.conn.close()
+
+
+def backup_sqlite(source: Path, destination: Path):
+    if not source.is_file():
+        raise ValueError(f"Database does not exist: {source}")
+    destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    destination.touch(mode=0o600, exist_ok=False)
+    try:
+        source_uri = source.resolve().as_uri() + "?mode=ro"
+        with (
+            closing(sqlite3.connect(source_uri, uri=True)) as old,
+            closing(sqlite3.connect(destination)) as new,
+        ):
+            old.backup(new)
+            if new.execute("PRAGMA quick_check").fetchone()[0] != "ok":
+                raise ValueError("Backup database integrity check failed")
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise

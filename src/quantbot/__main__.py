@@ -5,7 +5,6 @@ import getpass
 import logging
 import os
 import sqlite3
-from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -14,13 +13,11 @@ import uvicorn
 from quantbot import __version__
 from quantbot.v2.api import make_app
 from quantbot.v2.auth import password_hash
-from quantbot.v2.db import encode
+from quantbot.v2.db import backup_sqlite, encode
 from quantbot.v2.errors import Problem
-from quantbot.v2.migration import backup_sqlite, migrate
 from quantbot.v2.runtime import Runtime, exclusive_database
 
 DEFAULT_DATA = Path.home() / ".local/share/quantbot"
-OLD_DATA = Path.home() / ".config/quantbot"
 
 
 def secret(name):
@@ -121,10 +118,6 @@ def parser():
     admin.add_argument("--username", default=os.environ.get("QB_ADMIN_USERNAME", "admin"))
     backup = sub.add_parser("backup", help="Create an integrity-checked SQLite backup")
     backup.add_argument("file", type=Path)
-    migration = sub.add_parser("migrate-v1", help="Back up and import legacy server data")
-    migration.add_argument("--from", dest="source", type=Path, default=OLD_DATA)
-    migration.add_argument("--backup-dir", type=Path)
-    migration.add_argument("--mode", choices=("live", "paper", "backtest"), default="live")
     return command
 
 
@@ -151,23 +144,11 @@ def run():
         elif args.operation == "backup":
             backup_sqlite(path, args.file.expanduser())
             print(f"Backup verified at {args.file}")
-        elif args.operation == "migrate-v1":
-            now = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-            backup = args.backup_dir or path.parent / "backups" / f"v1-{now}"
-            result = migrate(args.source.expanduser(), path, backup.expanduser(), args.mode)
-            print(encode(result))
         else:
             command.print_help()
         return 0
     except (OSError, RuntimeError, ValueError, sqlite3.Error, Problem) as exc:
-        # Validation and SQL errors may contain legacy secrets. The operators' messages do not.
-        message = (
-            "Invalid legacy configuration"
-            if args.operation == "migrate-v1"
-            and (exc.__class__.__module__.startswith(("pydantic", "json")))
-            else str(exc)
-        )
-        command.exit(1, f"QuantBot: {message}\n")
+        command.exit(1, f"QuantBot: {exc}\n")
 
 
 if __name__ == "__main__":

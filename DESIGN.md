@@ -12,16 +12,16 @@ Telegram ── 授权私聊 ─────────────────
 
 | 路径 | 职责 |
 |---|---|
-| `src/quantbot/__main__.py` | 服务启动、管理员初始化、备份、v1 迁移 |
+| `src/quantbot/__main__.py` | 服务启动、管理员初始化和备份 |
 | `src/quantbot/v2/api.py`、`management.py`、`responses.py` | HTTP 路由、会话、系统设置和接口契约 |
 | `src/quantbot/v2/auth.py`、`strategies.py` | 独立认证、Token、实例、在线状态与开仓权限对账 |
 | `src/quantbot/v2/models.py`、`report_models.py`、`schemas.py` | 版本化报告、控件及操作数据类型 |
 | `src/quantbot/v2/telemetry.py`、`registry.py`、`dashboard_models.py` | 快照、事件、时序存储、可视化注册表和布局 |
 | `src/quantbot/v2/control_models.py`、`control_registry.py`、`commands.py` | 声明控件、实际值、命令队列、执行许可与回执 |
 | `src/quantbot/v2/telegram_*.py` | 授权交互、动态控件、通知及 Polling 生命周期 |
-| `src/quantbot/v2/db.py`、`runtime.py`、`migration.py` | SQLite Schema、事务、单进程锁、回收和导入 |
+| `src/quantbot/v2/db.py`、`runtime.py` | SQLite Schema、事务、备份、单进程锁和回收 |
 | `web/src/console/`、`src/quantbot/web/` | React 源码和打包控制台 |
-| `tests/v2/`、`web/tests/` | API、迁移、模拟 Telegram 与浏览器回归 |
+| `tests/v2/`、`web/tests/` | API、存储、模拟 Telegram 与浏览器回归 |
 | `examples/`、`docs/`、`deploy/` | 普通 HTTP 示例、协议和部署文件 |
 
 ## 关键设计

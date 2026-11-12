@@ -19,7 +19,7 @@
 | `/controls` | 查看按组及顺序渲染的动态控制组件 |
 | `/pause`、`/resume` | 请求暂停或恢复新开仓 |
 | `/refresh`、`/action <ID> 参数=值` | 执行会话声明的刷新或业务操作 |
-| `/flatten`、`/cancel`、`/close`、`/set`、`/buy`、`/sell` | 兼容的会话快捷操作，需由策略主动声明 |
+| `/flatten`、`/cancel`、`/close`、`/set`、`/buy`、`/sell` | 会话快捷操作，需由策略主动声明 |
 | `/operations` | 查看指令进度、回执及可取消的请求 |
 | `/notifications on`、`/notifications off` | 查看或切换推送状态 |
 | `/web`、`/quickstart` | 获取一次性网页登录链接或 HTTP 接入说明 |
