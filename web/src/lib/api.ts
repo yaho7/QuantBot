@@ -190,6 +190,14 @@ async function answerData<T>(method: string, path: string, body?: unknown): Prom
 }
 
 export type OrderItem = { id: string; text: string };
+export type Operation = {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+  state: "CREATED" | "ACCEPTED" | "EXECUTING" | "SUCCEEDED" | "FAILED" | "UNKNOWN";
+  updated: number;
+  result: { message?: string } | null;
+};
 export type Command =
   | "status" | "pause" | "resume" | "positions" | "orders" | "cancel"
   | "flatten" | "params" | "set_param" | "manual_order" | "chart" | "stop";
@@ -237,11 +245,20 @@ export const api = {
     answerData<StrategyMetric & { points: { time: number; value: number }[] }>(
       "GET", `strategies/${encodeURIComponent(sid)}/metrics?${new URLSearchParams({ name })}`,
     ),
-  strategyAction: (sid: string, action: string, args: Record<string, unknown>, confirmed: boolean) =>
+  strategyAction: (sid: string, action: string, args: Record<string, unknown>, ticket?: string) =>
     request<Answer>("POST", `strategies/${encodeURIComponent(sid)}/actions/${encodeURIComponent(action)}`,
-      { args, confirmed }),
-  command: <T = unknown>(sid: string, name: Command, args: Record<string, unknown> = {}) =>
-    request<Answer<T>>("POST", `strategies/${encodeURIComponent(sid)}/${name}`, args),
+      { args, ticket }),
+  prepareAction: (sid: string, action: string, args: Record<string, unknown>) =>
+    answerData<{ ticket: string }>("POST", `strategies/${encodeURIComponent(sid)}/actions/${encodeURIComponent(action)}`,
+      { args, prepare: true }),
+  prepareCommand: (sid: string, name: Command, args: Record<string, unknown> = {}) =>
+    answerData<{ ticket: string }>("POST", `strategies/${encodeURIComponent(sid)}/${name}`, { ...args, prepare: true }),
+  command: <T = unknown>(sid: string, name: Command, args: Record<string, unknown> = {}, ticket?: string) =>
+    request<Answer<T>>("POST", `strategies/${encodeURIComponent(sid)}/${name}`, { ...args, ticket }),
+  operations: (sid: string) =>
+    request<{ operations: Operation[] }>("GET", `strategies/${encodeURIComponent(sid)}/operations`),
+  reconcile: (sid: string, id: string, ok: boolean, note: string) =>
+    answerData<null>("POST", `strategies/${encodeURIComponent(sid)}/operations/${encodeURIComponent(id)}`, { ok, note }),
 };
 
 

@@ -106,29 +106,37 @@ function Metrics({ strategy }: { strategy: StrategyView }) {
 function ActionForm({ strategy, action }: { strategy: StrategyView; action: StrategyAction }) {
   const prefix = useId();
   const [values, setValues] = useState<Record<string, string | boolean>>({});
-  const [confirm, setConfirm] = useState(false);
+  const [confirmation, setConfirmation] = useState<{ args: Record<string, unknown>; ticket: string }>();
+  const prepare = useMutation({
+    mutationFn: async (args: Record<string, unknown>) => {
+      const { ticket } = await api.prepareAction(strategy.id, action.id, args);
+      return { ticket, args };
+    },
+    onSuccess: setConfirmation,
+  });
   const run = useMutation({
-    mutationFn: async (confirmed: boolean) => {
-      const args: Record<string, unknown> = Object.create(null);
-      for (const [name, field] of Object.entries(action.fields)) {
-        const value = Object.hasOwn(values, name) ? values[name] : undefined;
-        if (field.type === "boolean") args[name] = value === true;
-        else if (value !== undefined && value !== "") args[name] = field.type === "number" ? Number(value) : value;
-      }
-      const result = await api.strategyAction(strategy.id, action.id, args, confirmed);
+    mutationFn: async ({ args, ticket }: { args: Record<string, unknown>; ticket?: string }) => {
+      const result = await api.strategyAction(strategy.id, action.id, args, ticket);
       if (!result.ok) throw new Error(result.message);
       return result;
     },
-    onSettled: () => setConfirm(false),
+    onSettled: () => setConfirmation(undefined),
   });
   return (
     <>
       <form className="grid gap-3" onSubmit={(event) => {
         event.preventDefault();
-        if (!strategy.online || run.isPending) return;
-        if (action.confirm) setConfirm(true);
-        else run.mutate(false);
+        if (!strategy.online || run.isPending || prepare.isPending || confirmation) return;
+        const args: Record<string, unknown> = Object.create(null);
+        for (const [name, field] of Object.entries(action.fields)) {
+          const value = Object.hasOwn(values, name) ? values[name] : undefined;
+          if (field.type === "boolean") args[name] = value === true;
+          else if (value !== undefined && value !== "") args[name] = field.type === "number" ? Number(value) : value;
+        }
+        if (action.confirm) prepare.mutate(args);
+        else run.mutate({ args });
       }}>
+        <fieldset disabled={!!confirmation || prepare.isPending || run.isPending} className="grid gap-3">
         {Object.entries(action.fields).map(([name, field]) => {
           const id = prefix + name;
           const value = Object.hasOwn(values, name) ? values[name] : undefined;
@@ -154,6 +162,8 @@ function ActionForm({ strategy, action }: { strategy: StrategyView; action: Stra
             </Field>
           );
         })}
+        </fieldset>
+        {prepare.error && <Alert tone="loss">{prepare.error.message}</Alert>}
         {run.error && <Alert tone="loss">{run.error.message}</Alert>}
         {run.data && <Alert tone="info">{run.data.message}</Alert>}
         {run.data?.data != null && (
@@ -161,19 +171,19 @@ function ActionForm({ strategy, action }: { strategy: StrategyView; action: Stra
             {JSON.stringify(run.data.data, null, 2)}
           </pre>
         )}
-        {confirm ? (
+        {confirmation ? (
           <Alert tone="warning" className="grid gap-2">
             <p>{tr("执行 {0}？", action.label)}</p>
             <DialogFooter>
-              <Button type="button" variant="outline" disabled={run.isPending} onClick={() => setConfirm(false)}>{tr("取消")}</Button>
-              <Button type="button" loading={run.isPending} disabled={!strategy.online} onClick={() => run.mutate(true)}>
+              <Button type="button" variant="outline" disabled={run.isPending} onClick={() => setConfirmation(undefined)}>{tr("取消")}</Button>
+              <Button type="button" loading={run.isPending} disabled={!strategy.online} onClick={() => run.mutate(confirmation)}>
                 <Play /> {tr("执行")}
               </Button>
             </DialogFooter>
           </Alert>
         ) : (
           <DialogFooter>
-            <Button type="submit" disabled={!strategy.online} loading={run.isPending}><Play /> {action.label}</Button>
+            <Button type="submit" disabled={!strategy.online} loading={run.isPending || prepare.isPending}><Play /> {action.label}</Button>
           </DialogFooter>
         )}
       </form>

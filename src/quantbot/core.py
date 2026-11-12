@@ -18,6 +18,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any
 
 from quantbot.audit import Audit
+from quantbot.config import valid_order_qty
 from quantbot.hub import Hub, Result, Strategy
 from quantbot.i18n import tr
 from quantbot.operations import protected
@@ -62,7 +63,9 @@ def parse_value(raw: str) -> Any:
     if text in {"True", "False"}:
         return text == "True"
     try:
-        return json.loads(text)
+        value = json.loads(text)
+        json.dumps(value, allow_nan=False)
+        return value
     except ValueError:
         return text
 
@@ -412,8 +415,8 @@ class Core:
         if len(parts) != 2 or not SYMBOL.match(parts[0]):
             return Reply(tr("用法：/{0} 代码 数量，例如 /{1} QQQ 10", side, side))
         qty = parse_value(parts[1])
-        if isinstance(qty, bool) or not isinstance(qty, int | float) or not qty > 0:
-            return Reply(tr("数量要是大于 0 的数。"))
+        if not valid_order_qty(qty, s.max_order_qty):
+            return Reply(tr("数量要是大于 0 且不超过 {0} 的有限数。", s.max_order_qty))
         symbol = parts[0].upper()
         args = {"side": side, "symbol": symbol, "qty": qty}
         return self.ask(

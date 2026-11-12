@@ -427,5 +427,22 @@
   "自定义操作": "Custom action",
   "执行 {0}？": "Run {0}?",
   "执行": "Run",
-  "请等策略上线后再执行此操作。": "Wait for the strategy to come online before running this action."
+  "请等策略上线后再执行此操作。": "Wait for the strategy to come online before running this action.",
+  "确定让 {0} 恢复开仓？": "Resume opening positions on {0}?",
+  "确认后，策略可恢复开仓。": "The strategy may open positions after you confirm.",
+  "策略离线。暂停请求会保存，其他命令需要策略在线。": "The strategy is offline. Pause requests are saved. Other commands require a connection.",
+  "已创建": "Created",
+  "已投递": "Delivered",
+  "执行中": "Executing",
+  "已完成": "Completed",
+  "结果未知": "Outcome unknown",
+  "确认策略已结束此操作，并在券商端核对结果后再填写。": "Verify that the strategy has finished and check the outcome with the broker before submitting.",
+  "核对结果": "Reconciliation outcome",
+  "选择核对结果": "Select an outcome",
+  "已生效": "Applied",
+  "未生效": "Did not apply",
+  "核对说明": "Reconciliation note",
+  "券商订单号或核对说明": "Broker order ID or reconciliation note",
+  "保存核对结果": "Save reconciliation",
+  "暂无操作记录": "No operations yet"
 }

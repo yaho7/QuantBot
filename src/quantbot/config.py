@@ -9,6 +9,7 @@ the first time, so only programs on this machine can connect).
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import secrets
@@ -74,11 +75,20 @@ class ConfigError(ValueError):
     pass
 
 
+MAX_ORDER_QTY = 1_000_000
+
+
+def valid_order_qty(value: object, maximum: float) -> bool:
+    # Compare before isfinite() so oversized integers cannot overflow float conversion.
+    return type(value) in (int, float) and 0 < value <= maximum and math.isfinite(value)
+
+
 @dataclass(frozen=True)
 class StrategyConfig:
     id: str
     name: str
     token: str = field(repr=False)
+    max_order_qty: float = MAX_ORDER_QTY
 
 
 @dataclass(frozen=True)
@@ -315,7 +325,10 @@ class Store:
             sid, token = str(item.get("id", "")), str(item.get("token", ""))
             if not STRATEGY_ID.match(sid) or len(token) < MIN_TOKEN:
                 raise ConfigError(tr("{0} 里的策略 {1!r} 不完整", self.path, sid))
-            found.append(StrategyConfig(sid, str(item.get("name") or sid), token))
+            limit = item.get("max_order_qty", MAX_ORDER_QTY)
+            if not valid_order_qty(limit, MAX_ORDER_QTY):
+                raise ConfigError(tr("策略 {0} 的下单数量上限无效。", sid))
+            found.append(StrategyConfig(sid, str(item.get("name") or sid), token, limit))
         return tuple(found)
 
     def settings(self, env: Mapping[str, str] | None = None) -> Settings:

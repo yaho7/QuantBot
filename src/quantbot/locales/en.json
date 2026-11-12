@@ -708,5 +708,9 @@
   "操作 {0} 的结果未知，请到券商端核对。{1}": "The outcome of operation {0} is unknown. Verify it with the broker. {1}",
   "请填写核对结果和说明。": "Enter the reconciliation outcome and a note.",
   "只能核对执行结果未知的操作。": "Reconciliation is available for operations with an unknown outcome.",
-  "已保存核对结果。": "Reconciliation saved."
+  "已保存核对结果。": "Reconciliation saved.",
+  "策略 {0} 的下单数量上限无效。": "The order quantity limit for strategy {0} is invalid.",
+  "数量要是大于 0 且不超过 {0} 的有限数。": "Quantity must be a finite number above zero and no greater than {0}.",
+  "参数值必须是有效的 JSON，数值必须有限。": "Parameter values must be valid JSON with finite numbers.",
+  "请使用未过期的一次性票据确认此操作。": "Confirm this operation with a fresh one-time ticket."
 }

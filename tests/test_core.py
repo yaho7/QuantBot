@@ -234,6 +234,8 @@ def test_manual_order_validates_then_confirms(tmp_path: Path) -> None:
         s = core.hub.strategies["momentum"]
         assert "用法" in core.request_order(s, "buy", "QQQ").text
         assert "大于 0" in core.request_order(s, "buy", "QQQ -5").text
+        for qty in ("NaN", "Infinity", "1e100"):
+            assert "有限数" in core.request_order(s, "buy", f"QQQ {qty}").text
         assert "用法" in core.request_order(s, "buy", "QQ;Q 5").text
         ask = core.request_order(s, "buy", "qqq 10")
         assert ask.text.startswith("确定让 动量 买入 QQQ 10？")

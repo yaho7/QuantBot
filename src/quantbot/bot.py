@@ -32,7 +32,7 @@ from quantbot.i18n import tr, use_language
 from quantbot.notices import LOUD, is_quiet
 from quantbot.server import make_app
 from quantbot.updates import Updater, installed
-from quantbot.web import Feed, WebAuth, add_routes, login_url
+from quantbot.web import SESSIONS_FILE, Feed, WebAuth, add_routes, login_url
 
 log = logging.getLogger("quantbot")
 
@@ -133,7 +133,9 @@ class QuantBot:
         self.updater = Updater(settings.data_dir, current=lambda: version)
         secret = store.web_secret() if store else secrets.token_urlsafe(32)
         self.web_auth = WebAuth(
-            secret, used_links=Store(settings.data_dir, filename=USED_LINKS_FILE)
+            secret,
+            used_links=Store(settings.data_dir, filename=USED_LINKS_FILE),
+            sessions=Store(settings.data_dir, filename=SESSIONS_FILE),
         )
         self._runner: web.AppRunner | None = None
         self._upkeep: asyncio.Task[None] | None = None

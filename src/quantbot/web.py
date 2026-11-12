@@ -5,7 +5,8 @@ only (open it through an SSH tunnel or Tailscale) or on every address. You sign 
 with the admin username and password set in `quantbot setup` (or `quantbot password`).
 Five wrong tries lock the form for 15 minutes. As a fallback, `/web` in Telegram or
 `quantbot web` on the server gives a one-time login link that is valid for 5 minutes.
-Either way you get a session cookie for 12 hours.
+Either way you get a revocable session cookie with a 12-hour lifetime and a
+30-minute idle limit.
 
 Every action goes through the same Core.call as Telegram, so a strategy sees the
 same commands, and each change is written to the audit log with `user: "web"`.
@@ -29,6 +30,7 @@ import secrets
 import subprocess
 import time
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from importlib import resources
@@ -51,12 +53,14 @@ from quantbot.config import (
     require_strategy,
     set_web_admin,
     timezones,
+    valid_order_qty,
 )
 from quantbot.core import LABELS, NAME, SYMBOL, Core, check_type
 from quantbot.editor import EDITOR_FILE, Editor, editor_lock
 from quantbot.github import DEVICE_URL, DeviceLogin, GitHubEditor
-from quantbot.hub import Hub, Result
+from quantbot.hub import Hub, Result, Strategy
 from quantbot.i18n import LANGUAGES, language, language_tag, normalize_language, tr, use_language
+from quantbot.operations import protected
 from quantbot.service import Service, ServiceError
 from quantbot.strategy_features import action_arguments
 from quantbot.updates import Updater
@@ -75,6 +79,8 @@ from quantbot.workspace_terminal import TerminalProcess
 
 LINK_TTL = 5 * 60
 SESSION_TTL = 12 * 3600
+SESSION_IDLE = 30 * 60
+SESSIONS_FILE = "web-sessions.json"
 COOKIE = "quantbot_session"
 FEED_SIZE = 300
 AUDIT_LIMIT = 500
@@ -140,17 +146,53 @@ class WebAuth:
         clock: Callable[[], float] = time.time,
         *,
         used_links: Store | None = None,
+        sessions: Store | None = None,
     ) -> None:
         self.secret = secret
         self.clock = clock
         self.used_links = used_links
+        self.sessions = sessions
+        self._sessions: dict[str, Any] = {}
         self._used: dict[str, float] = {}  # login nonce -> expiry
         self._fails: dict[str, list[float]] = {}  # client -> times of wrong passwords
+        self._confirmations: dict[str, tuple[float, str]] = {}
+
+    def confirmation(self, scope: str) -> str:
+        now = self.clock()
+        self._confirmations = {
+            key: value for key, value in self._confirmations.items() if value[0] > now
+        }
+        if len(self._confirmations) >= 1024:
+            self._confirmations.pop(next(iter(self._confirmations)))
+        ticket = secrets.token_hex(16)
+        self._confirmations[ticket] = (now + 30, scope)
+        return ticket
+
+    def consume_confirmation(self, ticket: object, scope: str) -> bool:
+        if not isinstance(ticket, str) or ticket not in self._confirmations:
+            return False
+        expires, expected = self._confirmations[ticket]
+        if expires <= self.clock() or not hmac.compare_digest(expected, scope):
+            return False
+        del self._confirmations[ticket]
+        return True
 
     def session(self) -> str:
         """A fresh session cookie value."""
-        expires = int(self.clock()) + SESSION_TTL
-        return f"{expires}.{_sign(self.secret, f'session.{expires}')}"
+        now = self.clock()
+        expires = int(now) + SESSION_TTL
+        sid = secrets.token_urlsafe(24)
+        with self._session_data() as sessions:
+            for key, entry in list(sessions.items()):
+                if entry["expires"] <= now or entry["seen"] <= now - SESSION_IDLE:
+                    del sessions[key]
+            if len(sessions) >= 256:
+                del sessions[min(sessions, key=lambda key: sessions[key]["seen"])]
+            sessions[sid] = {"expires": expires, "seen": now}
+        return f"{expires}.{sid}.{_sign(self.secret, f'session.{expires}.{sid}')}"
+
+    def _session_data(self) -> AbstractContextManager[dict[str, Any]]:
+        return self.sessions.edit() if self.sessions else nullcontext(self._sessions)
 
     def locked(self, who: str) -> int:
         """Seconds until `who` may try a password again; 0 if they may now."""
@@ -179,7 +221,9 @@ class WebAuth:
         except ValueError:
             return None
         now = self.clock()
-        good = hmac.compare_digest(sig, _sign(self.secret, f"login.{expires}.{nonce}"))
+        good = hmac.compare_digest(
+            sig.encode(), _sign(self.secret, f"login.{expires}.{nonce}").encode()
+        )
         if not good or expires <= now:
             return None
         if self.used_links is not None:
@@ -200,16 +244,39 @@ class WebAuth:
         used[nonce] = expires
         return True
 
-    def valid(self, cookie: str | None) -> bool:
+    def _session_id(self, cookie: str | None) -> str | None:
         if not cookie:
-            return False
+            return None
         try:
-            expires_text, sig = cookie.split(".")
+            expires_text, sid, sig = cookie.split(".")
             expires = int(expires_text)
         except ValueError:
+            return None
+        good = hmac.compare_digest(
+            sig.encode(), _sign(self.secret, f"session.{expires}.{sid}").encode()
+        )
+        return sid if good and expires > self.clock() else None
+
+    def valid(self, cookie: str | None, *, touch: bool = True) -> bool:
+        sid = self._session_id(cookie)
+        if sid is None:
             return False
-        good = hmac.compare_digest(sig, _sign(self.secret, f"session.{expires}"))
-        return good and expires > self.clock()
+        now = self.clock()
+        with self._session_data() as sessions:
+            entry = sessions.get(sid)
+            if entry is None:
+                return False
+            if entry["expires"] <= now or entry["seen"] <= now - SESSION_IDLE:
+                del sessions[sid]
+                return False
+            if touch and now - entry["seen"] >= 60:
+                entry["seen"] = now
+            return True
+
+    def revoke(self, cookie: str | None) -> None:
+        if (sid := self._session_id(cookie)) is not None:
+            with self._session_data() as sessions:
+                sessions.pop(sid, None)
 
 
 def login_url(
@@ -258,7 +325,9 @@ UPDATE_KEY = web.AppKey("web_update", UpdateActions)
 
 
 def _need_login(request: web.Request) -> web.Response | None:
-    if not request.app[AUTH_KEY].valid(request.cookies.get(COOKIE)):
+    # Read-only background polling does not renew idle sessions.
+    touch = request.method != "GET"
+    if not request.app[AUTH_KEY].valid(request.cookies.get(COOKIE), touch=touch):
         return web.json_response({"ok": False, "error": "login required"}, status=401)
     if request.method == "POST" and request.headers.get(CSRF_HEADER) != "1":
         return web.json_response({"ok": False, "error": "missing X-QuantBot header"}, status=403)
@@ -279,11 +348,13 @@ async def _args(request: web.Request) -> dict[str, Any]:
     return body if isinstance(body, dict) else {}
 
 
-def _check_args(name: str, args: dict[str, Any], params: dict[str, Any] | None) -> dict[str, Any]:
+def _check_args(
+    name: str, args: dict[str, Any], params: dict[str, Any] | None, strategy: Strategy
+) -> dict[str, Any]:
     """The arguments a command may carry, validated like the Telegram commands."""
     if name == "cancel":
-        order_id = str(args.get("order_id") or "")
-        if not order_id:
+        order_id = args.get("order_id")
+        if not isinstance(order_id, str) or not 1 <= len(order_id) <= 256:
             raise ValueError(tr("缺少挂单 id"))
         return {"order_id": order_id}
     if name == "set_param":
@@ -291,6 +362,10 @@ def _check_args(name: str, args: dict[str, Any], params: dict[str, Any] | None) 
         if not NAME.match(key) or "value" not in args:
             raise ValueError(tr("要给出参数名和值"))
         value = args["value"]
+        try:
+            json.dumps(value, allow_nan=False)
+        except ValueError as exc:
+            raise ValueError(tr("参数值必须是有效的 JSON，数值必须有限。")) from exc
         if params is not None:
             if key not in params:
                 raise ValueError(tr("没有参数 {0}", key))
@@ -302,12 +377,32 @@ def _check_args(name: str, args: dict[str, Any], params: dict[str, Any] | None) 
         return {"name": key, "value": value}
     if name == "manual_order":
         side, symbol, qty = args.get("side"), str(args.get("symbol") or ""), args.get("qty")
-        if side not in {"buy", "sell"} or not SYMBOL.match(symbol):
+        if side not in ("buy", "sell") or not SYMBOL.fullmatch(symbol):
             raise ValueError(tr("要给出方向（买或卖）和代码"))
-        if isinstance(qty, bool) or not isinstance(qty, int | float) or not qty > 0:
-            raise ValueError(tr("数量要是大于 0 的数"))
+        if not valid_order_qty(qty, strategy.max_order_qty):
+            raise ValueError(tr("数量要是大于 0 且不超过 {0} 的有限数。", strategy.max_order_qty))
         return {"side": side, "symbol": symbol.upper(), "qty": qty}
     return {}
+
+
+def _confirm(
+    request: web.Request, strategy: Strategy, name: str, args: dict[str, Any], body: dict[str, Any]
+) -> web.Response | None:
+    auth = request.app[AUTH_KEY]
+    if not auth.valid(request.cookies.get(COOKIE)):
+        return web.json_response({"ok": False, "error": "login required"}, status=401)
+    scope = _sign(
+        auth.secret,
+        json.dumps(
+            [request.cookies[COOKIE], strategy.id, strategy.token, name, args],
+            sort_keys=True,
+        ),
+    )
+    if body.get("prepare") is True:
+        return _answer(True, "", {"ticket": auth.confirmation(scope)})
+    if not auth.consume_confirmation(body.get("ticket"), scope):
+        return _answer(False, tr("请使用未过期的一次性票据确认此操作。"))
+    return None
 
 
 async def command(request: web.Request) -> web.Response:
@@ -327,11 +422,16 @@ async def command(request: web.Request) -> web.Response:
         if not isinstance(outcome, Result):
             return _answer(False, str(outcome))
         params = outcome.data if isinstance(outcome.data, dict) else {}
+    body = await _args(request)
     try:
-        args = _check_args(name, await _args(request), params)
+        args = _check_args(name, body, params, s)
     except ValueError as exc:
         return _answer(False, str(exc))
-    ok, outcome = await core.call(s, name, args)
+    if protected(name) and (answer := _confirm(request, s, name, args, body)) is not None:
+        return answer
+    ok, outcome = await core.call(
+        s, name, args, operation_id=body["ticket"] if protected(name) else None
+    )
     message = outcome.message if isinstance(outcome, Result) else str(outcome)
     data = outcome.data if isinstance(outcome, Result) else None
     if ok and name in {"pause", "resume"}:
@@ -344,6 +444,7 @@ async def command(request: web.Request) -> web.Response:
             name,
             strategy=s.id,
             user=WEB_USER,
+            op=outcome.operation_id if isinstance(outcome, Result) else None,
             args=args,
             ok=ok,
             result=f"{s.name} {tr(LABELS[name])}：{message or tr('完成')}",
@@ -372,17 +473,25 @@ async def strategy_action(request: web.Request) -> web.Response:
     if not core.hub.online(strategy):
         return _answer(False, tr("请等策略上线后再执行此操作。"))
     body = await _args(request)
-    if action.confirm and body.get("confirmed") is not True:
-        return _answer(False, tr("请先确认此操作。"))
     try:
         args = action_arguments(action, body.get("args", {}))
     except ValueError as exc:
         return _answer(False, str(exc))
-    ok, outcome = await core.call(strategy, f"action:{action.id}", args)
+    name = f"action:{action.id}"
+    if action.confirm and (answer := _confirm(request, strategy, name, args, body)) is not None:
+        return answer
+    ok, outcome = await core.call(
+        strategy, name, args, operation_id=body["ticket"] if action.confirm else None
+    )
     message = outcome.message if isinstance(outcome, Result) else str(outcome)
     data = outcome.data if isinstance(outcome, Result) else None
     core.audit.write(
-        "strategy_action", user=WEB_USER, strategy=strategy.id, operation=action.id, ok=ok
+        "strategy_action",
+        user=WEB_USER,
+        strategy=strategy.id,
+        operation=action.id,
+        ok=ok,
+        op=outcome.operation_id if isinstance(outcome, Result) else None,
     )
     response = {"ok": ok, "message": message or tr("操作已完成。"), "data": data}
     if isinstance(outcome, Result) and outcome.operation_id:
@@ -1443,6 +1552,7 @@ async def web_link(request: web.Request) -> web.Response:
 async def logout(request: web.Request) -> web.Response:
     if (denied := _need_login(request)) is not None and denied.status == 403:
         return denied
+    request.app[AUTH_KEY].revoke(request.cookies.get(COOKIE))
     response = web.json_response({"ok": True})
     response.del_cookie(COOKIE, path="/ui")
     return response

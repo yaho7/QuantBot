@@ -19,7 +19,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from quantbot.config import StrategyConfig
+from quantbot.config import MAX_ORDER_QTY, StrategyConfig, valid_order_qty
 from quantbot.i18n import tr
 from quantbot.notices import Connections, Expiries
 from quantbot.operations import Operations, protected
@@ -72,6 +72,7 @@ class Strategy:
     id: str
     name: str
     token: str = field(repr=False)
+    max_order_qty: float = MAX_ORDER_QTY
     commands: tuple[str, ...] = ()
     actions: dict[str, ActionSpec] = field(default_factory=dict)
     metrics: dict[str, Metric] = field(default_factory=dict)
@@ -113,7 +114,9 @@ class Hub:
         operation_path: Path | None = None,
         operation_ttl: float = 15.0,
     ) -> None:
-        self.strategies = {s.id: Strategy(s.id, s.name, s.token) for s in strategies}
+        self.strategies = {
+            s.id: Strategy(s.id, s.name, s.token, s.max_order_qty) for s in strategies
+        }
         self.notify = notify
         self.offline_after = offline_after
         self.redeliver_after = redeliver_after
@@ -141,7 +144,9 @@ class Hub:
         for sid, config in wanted.items():
             current = self.strategies.get(sid)
             if current is None:
-                self.strategies[sid] = Strategy(sid, config.name, config.token)
+                self.strategies[sid] = Strategy(
+                    sid, config.name, config.token, config.max_order_qty
+                )
                 changes.append(tr("添加 {0}", sid))
                 continue
             if current.token != config.token:
@@ -152,6 +157,7 @@ class Hub:
             if current.name != config.name:
                 current.name = config.name
                 changes.append(tr("{0} 改名为 {1}", sid, config.name))
+            current.max_order_qty = config.max_order_qty
         order = list(wanted)
         self.strategies = dict(sorted(self.strategies.items(), key=lambda kv: order.index(kv[0])))
         return changes
@@ -195,6 +201,15 @@ class Hub:
         )
         if protected(name):
             now = self.wall_clock()
+            if name == "manual_order" and not valid_order_qty(
+                command.args.get("qty"), strategy.max_order_qty
+            ):
+                command.future.set_result(
+                    Result(
+                        False, tr("数量要是大于 0 且不超过 {0} 的有限数。", strategy.max_order_qty)
+                    )
+                )
+                return command
             if not self.online(strategy):
                 command.future.set_result(Result(False, tr("策略离线，操作未发送。")))
                 return command

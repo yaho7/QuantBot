@@ -20,12 +20,13 @@ import {
 } from "lucide-react";
 import * as React from "react";
 import { AiPromptDialog } from "@/components/AiPromptDialog";
+import { StrategyOperations } from "@/components/StrategyOperations";
 import { ConfirmDialog, EmptyState } from "@/components/common";
 import { useToast } from "@/components/toast";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Alert, Badge, Field, Input, Select } from "@/components/ui/primitives";
-import { api, type Answer, type Command, type OrderItem, type StrategyView } from "@/lib/api";
+import { api, type Command, type OrderItem, type StrategyView } from "@/lib/api";
 
 type View =
   | { kind: "none" }
@@ -35,7 +36,14 @@ type View =
   | { kind: "params"; values: Record<string, unknown> }
   | { kind: "order" };
 
-type Pending = { title: string; description: string; label: string; run: () => void } | null;
+type Confirmation = {
+  title: string;
+  description: string;
+  label: string;
+  name: Command;
+  args?: Record<string, unknown>;
+  after?: () => void;
+};
 
 /** Turn what the user typed into the type the parameter has now. */
 function convert(old: unknown, typed: string): unknown {
@@ -57,14 +65,15 @@ export function useCommand(s: StrategyView) {
   const qc = useQueryClient();
   const toast = useToast();
   return useMutation({
-    mutationFn: ({ name, args }: { name: Command; args?: Record<string, unknown> }) =>
-      api.command(s.id, name, args),
+    mutationFn: ({ name, args, ticket }: { name: Command; args?: Record<string, unknown>; ticket?: string }) =>
+      api.command(s.id, name, args, ticket),
     onSuccess: (answer, { name }) => {
       if (["pause", "resume", "cancel", "flatten", "set_param", "manual_order", "stop"].includes(name)) {
         if (answer.ok) toast.success(answer.message);
         else toast.error(answer.message);
         void qc.invalidateQueries({ queryKey: ["overview"] });
         void qc.invalidateQueries({ queryKey: ["audit"] });
+        void qc.invalidateQueries({ queryKey: ["operations", s.id] });
       }
     },
     onError: toast.error,
@@ -73,14 +82,28 @@ export function useCommand(s: StrategyView) {
 
 export function PauseButton({ s }: { s: StrategyView }) {
   const command = useCommand(s);
+  const toast = useToast();
+  const [ticket, setTicket] = React.useState<string>();
+  const prepare = useMutation({
+    mutationFn: () => api.prepareCommand(s.id, "resume"),
+    onSuccess: (result) => setTicket(result.ticket),
+    onError: toast.error,
+  });
   const paused = s.paused === true;
   const name = paused ? "resume" : "pause";
   if (s.connected && !s.commands.includes(name)) return null;
   return (
-    <Button size="sm" variant="outline" loading={command.isPending}
-      onClick={() => command.mutate({ name })}>
-      {paused ? <Play /> : <Pause />} {paused ? tr("恢复开仓") : tr("暂停开仓")}
-    </Button>
+    <>
+      <Button size="sm" variant="outline" loading={command.isPending || prepare.isPending}
+        disabled={paused && !s.online}
+        onClick={() => { if (paused) prepare.mutate(); else command.mutate({ name }); }}>
+        {paused ? <Play /> : <Pause />} {paused ? tr("恢复开仓") : tr("暂停开仓")}
+      </Button>
+      {ticket && <ConfirmDialog open onOpenChange={(open) => { if (!open) setTicket(undefined); }}
+        title={tr("确定让 {0} 恢复开仓？", s.name)} description={tr("确认后，策略可恢复开仓。")}
+        confirmLabel={tr("恢复开仓")}
+        onConfirm={() => { command.mutate({ name: "resume", ticket }); setTicket(undefined); }} />}
+    </>
   );
 }
 
@@ -90,9 +113,15 @@ export function StrategyPanel({ s, open, onOpenChange }: {
   onOpenChange: (open: boolean) => void;
 }) {
   const command = useCommand(s);
+  const toast = useToast();
   const [view, setView] = React.useState<View>({ kind: "none" });
-  const [pending, setPending] = React.useState<Pending>(null);
+  const [pending, setPending] = React.useState<(Confirmation & { ticket: string }) | null>(null);
   const [askAi, setAskAi] = React.useState(false);
+  const prepare = useMutation({
+    mutationFn: (confirmation: Confirmation) => api.prepareCommand(s.id, confirmation.name, confirmation.args),
+    onSuccess: (result, confirmation) => setPending({ ...confirmation, ticket: result.ticket }),
+    onError: toast.error,
+  });
   const has = (name: Command) => s.commands.includes(name);
 
   async function read(name: Command, title: string) {
@@ -115,19 +144,13 @@ export function StrategyPanel({ s, open, onOpenChange }: {
     setView({ kind: "text", title, text: answer.message || tr("没有内容。") });
   }
 
-  function confirm(p: NonNullable<Pending>) {
-    setPending(p);
-  }
-
-  async function change(name: Command, args?: Record<string, unknown>): Promise<Answer | undefined> {
+  async function change({ name, args, ticket, after }: NonNullable<typeof pending>) {
     setPending(null);
-    const answer = await command.mutateAsync({ name, args }).catch(() => undefined);
-    if (!answer) return undefined;
-    if (name === "cancel" && answer.ok) void read("orders", tr("挂单"));
-    return answer;
+    const answer = await command.mutateAsync({ name, args, ticket }).catch(() => undefined);
+    if (answer?.ok) after?.();
   }
 
-  const busy = command.isPending;
+  const busy = command.isPending || prepare.isPending;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent title={s.name} className="max-w-2xl"
@@ -139,7 +162,7 @@ export function StrategyPanel({ s, open, onOpenChange }: {
           </span>
         }>
         {!s.online && (
-          <Alert tone="warning">{tr("策略离线：命令会排队，2 分钟内它上线才会执行。")}</Alert>
+          <Alert tone="warning">{tr("策略离线。暂停请求会保存，其他命令需要策略在线。")}</Alert>
         )}
         {s.status && <p className="whitespace-pre-wrap rounded-lg bg-card p-3 text-sm">{s.status}</p>}
 
@@ -175,51 +198,51 @@ export function StrategyPanel({ s, open, onOpenChange }: {
         </div>
         {askAi && <AiPromptDialog open onOpenChange={setAskAi} strategy={{ id: s.id, name: s.name }} />}
 
-        <ViewArea view={view} busy={busy} s={s}
-          onCancel={(item) => confirm({
+        <ViewArea view={view} busy={busy || !s.online} s={s}
+          onCancel={(item) => prepare.mutate({
             title: tr("撤掉这个挂单？"), description: item.text, label: tr("撤单"),
-            run: () => void change("cancel", { order_id: item.id }),
+            name: "cancel", args: { order_id: item.id }, after: () => void read("orders", tr("挂单")),
           })}
-          onSet={(name, value, old) => confirm({
+          onSet={(name, value, old) => prepare.mutate({
             title: tr("把 {0} 改成 {1}？", name, show(value)), description: tr("现在是 {0}。", show(old)), label: tr("改参数"),
-            run: () => void change("set_param", { name, value }).then((a) => {
-              if (a?.ok && has("params")) void read("params", tr("参数"));
-            }),
+            name: "set_param", args: { name, value },
+            after: () => { if (has("params")) void read("params", tr("参数")); },
           })}
-          onOrder={(side, symbol, qty) => confirm({
+          onOrder={(side, symbol, qty) => prepare.mutate({
             title: `${side === "buy" ? tr("买入") : tr("卖出")} ${symbol} ${qty}？`,
             description: tr("这会让策略向券商下一个真实订单。"), label: side === "buy" ? tr("买入") : tr("卖出"),
-            run: () => void change("manual_order", { side, symbol, qty }),
+            name: "manual_order", args: { side, symbol, qty },
           })}
         />
 
         {(has("flatten") || has("stop")) && (
           <div className="flex flex-wrap gap-2 border-t pt-4">
             {has("flatten") && (
-              <Button size="sm" variant="destructive" disabled={busy}
-                onClick={() => confirm({
+              <Button size="sm" variant="destructive" disabled={busy || !s.online}
+                onClick={() => prepare.mutate({
                   title: tr("平掉 {0} 的仓位？", s.name),
                   description: tr("只会平它能确认归属的仓位。"), label: tr("平仓"),
-                  run: () => void change("flatten"),
+                  name: "flatten",
                 })}>
                 <X /> {tr("平仓")}</Button>
             )}
             {has("stop") && (
-              <Button size="sm" variant="outline" disabled={busy}
-                onClick={() => confirm({
+              <Button size="sm" variant="outline" disabled={busy || !s.online}
+                onClick={() => prepare.mutate({
                   title: tr("让 {0} 停止？", s.name),
                   description: tr("程序会退出，挂着的止损单会保留。要再跑起来，得在服务器上启动它。"), label: tr("停止"),
-                  run: () => void change("stop"),
+                  name: "stop",
                 })}>
                 <Square /> {tr("停止程序")}</Button>
             )}
           </div>
         )}
 
+        {open && <StrategyOperations sid={s.id} />}
         {pending && (
           <ConfirmDialog open onOpenChange={(o) => { if (!o) setPending(null); }}
             title={pending.title} description={pending.description} confirmLabel={pending.label}
-            destructive loading={busy} onConfirm={pending.run} />
+            destructive loading={busy} onConfirm={() => void change(pending)} />
         )}
       </DialogContent>
     </Dialog>

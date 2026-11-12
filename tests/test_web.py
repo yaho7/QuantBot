@@ -82,15 +82,29 @@ def test_login_url_and_secret(tmp_path: Path) -> None:
 def test_restarting_preserves_used_login_links(tmp_path: Path) -> None:
     clock = Clock()
     used = Store(tmp_path, filename="used-web-links.json")
-    auth = WebAuth(SECRET, clock, used_links=used)
+    sessions = Store(tmp_path, filename="sessions.json")
+    auth = WebAuth(SECRET, clock, used_links=used, sessions=sessions)
     link = auth.link_token()
     session = auth.redeem(link)
-    restarted = WebAuth(SECRET, clock, used_links=used)
+    restarted = WebAuth(SECRET, clock, used_links=used, sessions=sessions)
     assert restarted.valid(session)
     assert restarted.redeem(link) is None
     clock.now += 301
     assert restarted.redeem(restarted.link_token())
     assert len(used.read()) == 1
+
+
+def test_sessions_are_unique_revocable_and_expire_when_idle() -> None:
+    clock = Clock()
+    auth = WebAuth(SECRET, clock)
+    first, second = auth.session(), auth.session()
+    assert first != second
+    auth.revoke(first)
+    assert not auth.valid(first) and auth.valid(second)
+    clock.now += 29 * 60
+    assert auth.valid(second, touch=False)
+    clock.now += 61
+    assert not auth.valid(second)
 
 
 def test_read_audit_newest_first(tmp_path: Path) -> None:
@@ -330,8 +344,11 @@ def test_strategy_custom_action_and_metric_api(tmp_path: Path) -> None:
             answer = await (await client.post(endpoint, json=data, headers=CSRF)).json()
             assert not answer["ok"]
             assert not strategy.pending
+        args = {"limit": 3}
+        offer = await client.post(endpoint, json={"args": args, "prepare": True}, headers=CSRF)
+        ticket = (await offer.json())["data"]["ticket"]
         request = asyncio.create_task(
-            client.post(endpoint, json={"args": {"limit": 3}, "confirmed": True}, headers=CSRF)
+            client.post(endpoint, json={"args": args, "ticket": ticket}, headers=CSRF)
         )
         batch = await hub.poll(strategy, 1, claims=True)
         assert batch is not None and len(batch["commands"]) == 1
@@ -941,21 +958,42 @@ def test_web_actions_go_through_the_strategy_and_the_audit_log(tmp_path: Path) -
             assert response.status == 200, await response.text()
             return await response.json()
 
+        async def confirm(name: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+            args = body or {}
+            offer = await post(name, {**args, "prepare": True})
+            return await post(name, {**args, "ticket": offer["data"]["ticket"]})
+
         assert (await client.post(f"{url}/pause")).status == 403  # no header, no action
         assert not fake.paused
         assert (await post("pause"))["ok"] and fake.paused
         assert hub.strategies["momentum"].paused is True
         assert (await post("positions"))["message"] == "QQQ 10 股"
         assert (await post("orders"))["data"] == [{"id": "ord-1", "text": "卖出 QQQ 10 @ 520 止损"}]
-        assert (await post("cancel", {"order_id": "ord-1"}))["ok"]
+        assert not (await post("cancel", {"order_id": "ord-1"}))["ok"]
+        assert (await confirm("cancel", {"order_id": "ord-1"}))["ok"]
         bad = await post("set_param", {"name": "rsi_len", "value": "abc"})
         assert not bad["ok"] and "不能改成" in bad["message"]
-        done = await post("set_param", {"name": "rsi_len", "value": 10})
+        done = await confirm("set_param", {"name": "rsi_len", "value": 10})
         assert done["ok"] and done["message"] == "rsi_len：14 → 10" and fake.params["rsi_len"] == 10
-        assert not (await post("manual_order", {"side": "buy", "symbol": "QQQ", "qty": -1}))["ok"]
-        assert (await post("manual_order", {"side": "buy", "symbol": "qqq", "qty": 5}))["ok"]
+        order = {"side": "buy", "symbol": "qqq"}
+        for qty in (-1, 1e100, float("nan"), float("inf")):
+            assert "有限数" in (await post("manual_order", {**order, "qty": qty}))["message"]
+        offer = await post("manual_order", {**order, "qty": 5, "prepare": True})
+        ticket = offer["data"]["ticket"]
+        assert not (await post("manual_order", {**order, "qty": 6, "ticket": ticket}))["ok"]
+        foreign = await client.post(
+            f"{url}/manual_order",
+            json={**order, "qty": 5, "ticket": ticket},
+            headers=CSRF,
+            cookies={COOKIE: auth.session()},
+        )
+        assert not (await foreign.json())["ok"]
+        assert (await post("manual_order", {**order, "qty": 5, "ticket": ticket}))["ok"]
+        assert not (await post("manual_order", {**order, "qty": 5, "ticket": ticket}))["ok"]
         assert fake.ran[-1] == ("manual_order", {"side": "buy", "symbol": "QQQ", "qty": 5})
-        assert (await post("flatten"))["message"] == "flatten 完成"
+        assert (await confirm("flatten"))["message"] == "flatten 完成"
+        operations = (await (await client.get(f"{url}/operations")).json())["operations"]
+        assert any(row["id"] == ticket and row["state"] == "SUCCEEDED" for row in operations)
         everyone = await client.post("/ui/api/pause-all", headers=CSRF)
         assert "动量" in (await everyone.json())["message"]
         missing = await client.post("/ui/api/strategies/nope/pause", headers=CSRF)

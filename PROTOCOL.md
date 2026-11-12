@@ -96,6 +96,10 @@ token 错误返回 `401`。请求体超过 6 MB 返回 `413`。JSON 不对返回
 用管理员会话向 `POST /ui/api/strategies/{sid}/operations/{id}` 提交
 `{"ok": true, "note": "券商订单号和核对结论"}`（确认未生效时用 `false`）。
 
+Web 管理 API 的受保护命令先用同一 POST 路径提交参数和 `"prepare": true`，
+取得 `data.ticket`，再携带原参数和 `"ticket": "<票据>"` 确认。票据绑定当前
+会话、策略、命令和参数，30 秒内限用一次。
+
 ## 最小例子（curl）
 
 `QB_URL` 是 `http://` 加 `quantbot list` 里的监听地址，`QB_TOKEN` 用 `quantbot token <id>` 查看。
