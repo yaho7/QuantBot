@@ -43,6 +43,8 @@ from .models import (
     TokenSettings,
 )
 from .runtime import Runtime, exclusive_database
+from .telegram_service import supervise
+from .telegram_settings import TelegramConfig, TelegramUpdate
 
 COOKIE = "quantbot_v2_session"
 BODY_LIMIT = 1024 * 1024
@@ -492,25 +494,48 @@ class Transport:
         await self.app(scope, receive, protected_send)
 
 
-def make_app(path: Path, *, public_url=None, bootstrap=None, clock=time.time, configure=None):
+@admin.get("/telegram")
+async def telegram_settings(request: Request, actor=ADMIN):
+    return runtime(request).telegram.public()
+
+
+@admin.put("/telegram")
+async def update_telegram(request: Request, body: TelegramUpdate, actor=ADMIN):
+    return runtime(request).telegram.update(body, actor)
+
+
+def make_app(
+    path: Path,
+    *,
+    public_url=None,
+    bootstrap=None,
+    clock=time.time,
+    configure=None,
+    telegram_token=None,
+    telegram_network=True,
+):
     @asynccontextmanager
     async def lifespan(app):
         with exclusive_database(path):
             service = Runtime(path, clock)
             app.state.runtime = service
             app.state.public_url = public_url
-            worker = None
+            workers = []
+            service.telegram = TelegramConfig(service, telegram_token)
             try:
                 if bootstrap:
                     bootstrap(service)
                 service.commands.sweep(restart=True)
-                worker = asyncio.create_task(service.upkeep())
+                workers.append(asyncio.create_task(service.upkeep()))
+                if telegram_network:
+                    workers.append(
+                        asyncio.create_task(supervise(service, service.telegram, public_url))
+                    )
                 yield
             finally:
-                if worker:
+                for worker in workers:
                     worker.cancel()
-                    with suppress(asyncio.CancelledError):
-                        await worker
+                await asyncio.gather(*workers, return_exceptions=True)
                 service.db.close()
 
     app = FastAPI(title="QuantBot API", version="2.0.0", lifespan=lifespan)

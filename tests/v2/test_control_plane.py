@@ -48,7 +48,9 @@ def bootstrap(runtime):
 
 def client(path, clock, configure=None):
     return TestClient(
-        make_app(path, clock=clock, bootstrap=bootstrap, configure=configure),
+        make_app(
+            path, clock=clock, bootstrap=bootstrap, configure=configure, telegram_network=False
+        ),
         base_url="https://testserver",
     )
 

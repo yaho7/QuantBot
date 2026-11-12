@@ -143,6 +143,34 @@ PRAGMA user_version = 1;
 """
 
 
+TELEGRAM_SCHEMA = """
+ALTER TABLE alerts RENAME TO old_alerts;
+DROP INDEX alerts_time;
+DROP INDEX alerts_dedup;
+CREATE TABLE alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy_id TEXT REFERENCES strategies(id),
+    category TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    message TEXT NOT NULL,
+    dedup_key TEXT,
+    created_at REAL NOT NULL
+);
+INSERT INTO alerts SELECT * FROM old_alerts;
+DROP TABLE old_alerts;
+CREATE INDEX alerts_time ON alerts(created_at DESC);
+CREATE INDEX alerts_dedup ON alerts(strategy_id, dedup_key, created_at DESC);
+CREATE TABLE telegram_cursors (
+    user_id INTEGER PRIMARY KEY,
+    alert_id INTEGER NOT NULL,
+    last_sent REAL NOT NULL DEFAULT 0,
+    retry_at REAL NOT NULL DEFAULT 0,
+    failures INTEGER NOT NULL DEFAULT 0
+);
+PRAGMA user_version = 2;
+"""
+
+
 def timestamp(value: float | None) -> str | None:
     if value is None:
         return None
@@ -175,7 +203,10 @@ class Database:
         version = self.conn.execute("PRAGMA user_version").fetchone()[0]
         if version == 0:
             self.conn.executescript("BEGIN IMMEDIATE;\n" + SCHEMA + "\nCOMMIT;")
-        elif version != 1:
+            version = 1
+        if version == 1:
+            self.conn.executescript("BEGIN IMMEDIATE;\n" + TELEGRAM_SCHEMA + "\nCOMMIT;")
+        elif version != 2:
             self.conn.close()
             raise RuntimeError(f"Unsupported QuantBot database schema {version}")
 
