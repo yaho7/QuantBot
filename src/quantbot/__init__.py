@@ -1,3 +1,3 @@
-"""Telegram control for any Python trading program."""
+"""QuantBot API monitoring and control service."""
 
-__version__ = "0.6.0"
+__version__ = "2.0.0"

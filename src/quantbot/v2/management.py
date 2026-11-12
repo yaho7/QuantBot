@@ -7,6 +7,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 from pydantic import StringConstraints
 
+from quantbot import __version__
+
 from .auth import password_hash, password_matches
 from .db import encode
 from .errors import Problem
@@ -82,7 +84,7 @@ def register(app, administrator, session_cookie):
         service = request.app.state.runtime
         db = service.db
         return {
-            "version": "2.0.0",
+            "version": __version__,
             "public_url": request.app.state.public_url,
             "storage": "SQLite",
             "schema_version": db.one("PRAGMA user_version")[0],

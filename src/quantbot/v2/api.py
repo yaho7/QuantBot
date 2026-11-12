@@ -21,6 +21,8 @@ from fastapi.responses import (
 from fastapi.security import APIKeyCookie, HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 
+from quantbot import __version__
+
 from .auth import digest, password_matches
 from .control_models import ControlID, ControlInvocation, ControlRegistry, ControlValues
 from .dashboard_models import Component, Dashboard, HistoryQuery
@@ -644,6 +646,7 @@ def make_app(
     configure=None,
     telegram_token=None,
     telegram_network=True,
+    local_url=None,
 ):
     @asynccontextmanager
     async def lifespan(app):
@@ -660,7 +663,9 @@ def make_app(
                 workers.append(asyncio.create_task(service.upkeep()))
                 if telegram_network:
                     workers.append(
-                        asyncio.create_task(supervise(service, service.telegram, public_url))
+                        asyncio.create_task(
+                            supervise(service, service.telegram, public_url or local_url)
+                        )
                     )
                 yield
             finally:
@@ -669,7 +674,7 @@ def make_app(
                 await asyncio.gather(*workers, return_exceptions=True)
                 service.db.close()
 
-    app = FastAPI(title="QuantBot API", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="QuantBot API", version=__version__, lifespan=lifespan)
     app.add_middleware(Transport, public_url=public_url)
     app.include_router(agent)
     register_management(app, administrator, set_cookie)

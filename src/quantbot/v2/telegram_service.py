@@ -195,11 +195,11 @@ class TelegramInterface:
                 return f"HTTP 接入说明\n{self.public_url}/ui/#api\n{self.public_url}/docs", [], None
             link = self.service.auth.login_link(actor)
             self.service.strategies.audit(actor, "admin.login_link")
-            return (
-                f"5 分钟内可用一次\n{self.public_url}/ui/#login?{urlencode({'ticket': link})}",
-                [],
-                None,
+            suffix = (
+                "\n本机地址可通过 SSH 端口转发访问。" if self.public_url.startswith("http:") else ""
             )
+            target = f"{self.public_url}/ui/#login?{urlencode({'ticket': link})}"
+            return f"5 分钟内可用一次\n{target}{suffix}", [], None
         if route in {"alerts", "notifications"}:
             return self.notifications(route, args, actor)
         if route in {"confirm", "cancelop", "op"}:

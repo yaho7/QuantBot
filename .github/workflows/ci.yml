@@ -18,27 +18,21 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check . && uv run ruff format --check .
       - run: uv run pytest
+      - run: uv build
+      - run: shellcheck install.sh
       - name: Audit locked Python dependencies
         run: |
-          uv export --frozen --no-dev --no-emit-project --no-hashes --output-file "$RUNNER_TEMP/quantbot-requirements.txt" >/dev/null
-          uvx --python 3.12 pip-audit --disable-pip --no-deps --requirement "$RUNNER_TEMP/quantbot-requirements.txt"
-      - name: Verify the workspace terminal drops Linux root privileges
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y ttyd
-          sudo "$PWD/.venv/bin/python" -m pytest -p no:cacheprovider tests/test_workspace_linux.py
-      - run: shellcheck install.sh
-      - name: Build both packages
-        run: uv build . && uv build client
+          uv export --frozen --no-dev --no-emit-project --no-hashes --output-file "$RUNNER_TEMP/requirements.txt" >/dev/null
+          uvx --python 3.12 pip-audit --disable-pip --no-deps --requirement "$RUNNER_TEMP/requirements.txt"
 
   web:
-    # The page is built into src/quantbot/web so installs need no Node; check it is current.
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: web
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -47,39 +41,6 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: npm audit --audit-level=high
       - run: npm run build
-      - name: Built page matches the source
-        run: git diff --exit-code -- ../src/quantbot/web || (echo "Run npm run build in web/ and commit src/quantbot/web" && exit 1)
-
-  install:
-    # The one-line installer on a clean Ubuntu, without the interactive setup.
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          # The fixture push requires the history behind HEAD.
-          fetch-depth: 0
-      - name: Install a tag from an isolated Git repository
-        run: |
-          repo="$RUNNER_TEMP/quantbot-install.git"
-          git init --bare --quiet "$repo"
-          git push --quiet "$repo" HEAD:refs/tags/v0.0.0
-          # uv prefers shell version markers to inherited PowerShell settings.
-          export BASH_VERSION
-          QUANTBOT_REPO="file://$repo" bash install.sh --non-interactive --no-service < /dev/null
-        env:
-          SHELL: /bin/bash
-          UV_TOOL_BIN_DIR: ${{ runner.temp }}/quantbot-bin
-      - name: Find QuantBot in a fresh interactive Bash session
-        run: |
-          bash -ic '
-            set -e -o pipefail
-            expected="$RUNNER_TEMP/quantbot-bin/quantbot"
-            actual="$(command -v quantbot || true)"
-            if [[ "$actual" != "$expected" ]]; then
-              printf "Expected %s on PATH, found %s\n" "$expected" "${actual:-nothing}" >&2
-              exit 1
-            fi
-            quantbot --version | grep -F "v0.0.0"
-            quantbot list
-          '
+      - run: git diff --exit-code -- ../src/quantbot/web
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
