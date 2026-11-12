@@ -1233,3 +1233,44 @@ def test_settings_change_the_telegram_link(tmp_path: Path) -> None:
         assert NEW_BOT not in json.dumps(record)
 
     scenario(test, audit)
+
+
+def test_secure_public_url_rejects_untrusted_plain_http(tmp_path: Path) -> None:
+    from aiohttp import web
+    from aiohttp.test_utils import make_mocked_request
+
+    from quantbot.web import STORE_KEY, _protect_transport
+
+    app = web.Application()
+    app[STORE_KEY] = Store(tmp_path)
+    app[STORE_KEY].write({"public_url": "https://bot.example.com"})
+
+    async def handle(_request):
+        return web.Response()
+
+    async def check():
+        request = make_mocked_request(
+            "GET", "/ui/api/settings", headers={"X-Forwarded-Proto": "https"}, app=app
+        )
+        assert (await _protect_transport(request.clone(remote="192.0.2.1"), handle)).status == 426
+        assert (await _protect_transport(request.clone(remote="127.0.0.1"), handle)).status == 200
+
+    asyncio.run(check())
+
+
+def test_web_security_headers_allow_bundled_theme_script(tmp_path: Path) -> None:
+    import base64
+    import hashlib
+    import re
+
+    async def test(hub: Hub, auth: WebAuth, feed: Feed, client: TestClient) -> None:
+        page = await client.get("/ui/")
+        assert page.headers["X-Content-Type-Options"] == "nosniff"
+        assert page.headers["Referrer-Policy"] == "no-referrer"
+        scripts = re.findall(r"<script>(.*?)</script>", await page.text(), re.S)
+        assert scripts
+        for script in scripts:
+            checksum = base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
+            assert f"'sha256-{checksum}'" in page.headers["Content-Security-Policy"]
+
+    scenario(test, tmp_path / "audit.jsonl")

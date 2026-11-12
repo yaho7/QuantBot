@@ -62,6 +62,8 @@ curl -fsSL https://raw.githubusercontent.com/yaho7/QuantBot/main/install.sh | ba
 
 选择“通过 Tunnel”后，填写 HTTPS 域名，QuantBot 会把它保存为 `public_url`。在 Cloudflare Tunnel 添加该域名的 Published application 路由，将源站设为安装时打印的 `http://127.0.0.1:<端口>`。QuantBot 在 HTTPS 下使用 Secure 登录 Cookie，并通过 Tunnel 提供的访客 IP 分别计算登录失败次数。 [Cloudflare Tunnel 配置指南](https://developers.cloudflare.com/tunnel/get-started/)
 
+配置 HTTPS 公网地址后，QuantBot 拒绝从非本机地址直接发来的明文请求。本机反向代理和 SSH 隧道仍可访问回环端口。也可用 `QB_REQUIRE_HTTPS=1` 明确启用此限制。
+
 忘了密码，在服务器上运行 `quantbot password`。也可以运行 `quantbot web`，或在 Telegram 里给 bot 发 `/web`，拿一个不用密码的一次性链接（5 分钟内有效，只能用一次）。
 
 已经登录时，在“设置 → 网页管理员”可用当前密码更新用户名和密码，也可生成一次性登录链接。更新后，当前浏览器会继续保持登录，其他会话需要重新登录。

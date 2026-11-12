@@ -26,6 +26,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import re
 import secrets
 import subprocess
@@ -103,6 +104,13 @@ LOGIN_TRIES = 5
 LOGIN_LOCK = 15 * 60
 SCRYPT_N, SCRYPT_R, SCRYPT_P = 2**14, 8, 1
 log = logging.getLogger(__name__)
+CONTENT_SECURITY = (
+    "default-src 'self'; "
+    "script-src 'self' 'sha256-zaV3cqbEF7/lEt8EvoL8K5MC0f9bqUjrq0UokUoEpvU='; "
+    "style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+    "connect-src 'self' ws: wss:; worker-src 'self' blob:; "
+    "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+)
 
 
 def hash_password(password: str) -> str:
@@ -1879,6 +1887,39 @@ async def _use_web_language(
         return await handler(request)
 
 
+def _loopback_peer(request: web.Request) -> bool:
+    try:
+        peer = ip_address(request.remote or "")
+    except ValueError:
+        return False
+    return (getattr(peer, "ipv4_mapped", None) or peer).is_loopback
+
+
+@web.middleware
+async def _protect_transport(
+    request: web.Request, handler: Callable[..., Any]
+) -> web.StreamResponse:
+    if request.path != "/healthz" and not request.secure and not _loopback_peer(request):
+        public_url = check_public_url(request.app[STORE_KEY].read().get("public_url"))
+        if os.environ.get("QB_REQUIRE_HTTPS") == "1" or (public_url or "").startswith("https://"):
+            return web.json_response({"ok": False, "error": "HTTPS required"}, status=426)
+    return await handler(request)
+
+
+async def _security_headers(request: web.Request, response: web.StreamResponse) -> None:
+    headers = response.headers
+    headers.setdefault("X-Content-Type-Options", "nosniff")
+    headers.setdefault("X-Frame-Options", "DENY")
+    headers.setdefault("Referrer-Policy", "no-referrer")
+    headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    if request.path.startswith("/ui"):
+        headers.setdefault("Content-Security-Policy", CONTENT_SECURITY)
+    if request.path.startswith("/ui/api/"):
+        headers.setdefault("Cache-Control", "no-store")
+    if request.secure:
+        headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+
+
 def add_routes(
     app: web.Application,
     core: Core,
@@ -1897,6 +1938,8 @@ def add_routes(
         telegram = telegram_api
     app[STORE_KEY] = store
     app.middlewares.append(_use_web_language)
+    app.middlewares.insert(0, _protect_transport)
+    app.on_response_prepare.append(_security_headers)
     app[TELEGRAM_KEY] = telegram
     hub = core.hub
     hub.set_workspace_credentials(WorkspaceCredentials(store.dir).records())
