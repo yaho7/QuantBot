@@ -25,6 +25,7 @@ const KIND_TONE = { info: "neutral", trade: "info", alert: "warning", error: "lo
 const KIND_LABEL = { info: tr("消息"), trade: tr("成交"), alert: tr("提醒"), error: tr("报错") };
 const StrategyTools = React.lazy(() => import("@/components/StrategyTools"));
 const WorkspaceWorkbench = React.lazy(() => import("@/components/WorkspaceWorkbench"));
+const pageFrame = "mx-auto max-w-6xl px-3 sm:px-8";
 
 type View = "strategies" | "workspace" | "settings";
 
@@ -35,7 +36,7 @@ function TopBar({ onLogout, view, actions }: {
 }) {
   const navButton = "size-8 shrink-0 px-0 sm:w-auto sm:px-3";
   return (
-    <header className="mx-auto flex max-w-6xl items-center gap-1 px-3 pt-6 sm:gap-3 sm:px-8">
+    <header className={cn(pageFrame, "flex items-center gap-1 pt-6 sm:gap-3")}>
       <div className="flex shrink-0 items-center gap-2" aria-label="QuantBot">
         <BrandIcon className="size-6" />
         <span className="hidden font-display text-lg min-[460px]:inline">QuantBot</span>
@@ -329,7 +330,7 @@ export function App() {
         actions={overview.data && view === "strategies" ? <StrategyActions compact {...actions} /> : undefined} />
       {promptOpen && <AiPromptDialog open onOpenChange={setPromptOpen} />}
       {manage !== undefined && <StrategyAdminDialog strategy={manage ?? undefined} onClose={() => setManage(undefined)} />}
-      <main className={cn("view-enter mx-auto px-5 pb-16 pt-10 sm:px-8", view === "workspace" ? "max-w-[100rem]" : "max-w-6xl")}>
+      <main className={cn(pageFrame, "view-enter pb-16 pt-10", view !== "workspace" && "px-5")}>
         {view === "settings" ? (
           <QueryBoundary query={overview}>
             {() => <SettingsPage update={update.data} onInstalled={setUpdatedFrom} theme={theme} onTheme={setTheme} />}
