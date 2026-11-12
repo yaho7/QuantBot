@@ -93,6 +93,8 @@ QuantBot 每 6 小时检查一次 GitHub 上的 `vX.Y.Z` 稳定标签，按版�
 - 在终端运行 `quantbot update --check` 只检查更新。运行 `quantbot update` 会显示目标标签并询问是否安装，`--yes` 跳过确认。`quantbot --version` 显示安装标签和提交。
 - 也可以再运行一次安装命令，它会安装最新标签并重启后台服务。
 
+更新前会在隔离环境验证目标提交，再按提交安装。安装或命令校验失败时恢复上一提交。用 CLI 更新后台服务时还会检查重启后的健康状态。设置 `QB_PINNED_VERSION=v0.5.1` 可将自动检测的版本锁定到指定标签。
+
 控制台更新包含 Web 页面、Telegram 机器人和同一版本发布的 Python SDK。重启控制台后会同步托管工作区中未修改的官方 `quantbot_client.py` 和 `quickstart.py`。已运行的官方模拟策略会加载新版模板并重新启动，模拟资金和订单会重置。其他托管策略继续运行，在下次启动时使用随控制台发布的 SDK。自己修改过的 SDK 文件会保留。
 
 外部机器上独立部署的策略需要在其项目环境中更新 SDK 并重启策略。对 `v0.5.0` 可使用 `uv add "quantbot-client @ git+https://github.com/yaho7/QuantBot@v0.5.0#subdirectory=client"`。直接复制 SDK 的项目可重新运行 `quantbot link` 并选择替换文件。

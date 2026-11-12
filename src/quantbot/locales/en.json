@@ -727,5 +727,14 @@
   "策略已停止。": "The strategy has already stopped.",
   "策略命令连接尚未就绪，请稍后再试。": "The strategy command connection is not ready. Try again shortly.",
   "请先停止工作区程序，再移除工作区。": "Stop the workspace program before removing the workspace.",
-  "已移除工作区。": "Workspace removed."
+  "已移除工作区。": "Workspace removed.",
+  "QB_PINNED_VERSION 必须是 vX.Y.Z。": "QB_PINNED_VERSION must be a vX.Y.Z tag.",
+  "无法确认更新标签对应的提交，请重新检查更新。": "The update commit could not be verified. Check for updates again.",
+  "版本锁已变更，请重新检查更新。": "The version pin changed. Check for updates again.",
+  "无法确认当前提交，不能准备回滚。": "The currently installed commit could not be verified for rollback.",
+  "更新预检失败：{0}": "Update preflight failed: {0}",
+  "安装后的命令未报告目标提交 {0}。": "The installed command did not report the expected commit {0}.",
+  "没有可用的回滚版本。": "No rollback version is available.",
+  "更新失败，已恢复上一版本：{0}": "The update failed. The previous version was restored: {0}",
+  "更新失败：{0}。恢复上一版本也失败：{1}": "The update failed: {0}. Restoring the previous version also failed: {1}"
 }

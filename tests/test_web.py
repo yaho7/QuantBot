@@ -190,7 +190,9 @@ def test_update_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, servi
 
     def run(command: list[str], **kwargs: Any) -> CompletedProcess[str]:
         commands.append(command)
-        return CompletedProcess(command, 0, "done", "")
+        return CompletedProcess(
+            command, 0, "v0.2.3 (2222222)" if command[-1] == "--version" else "done", ""
+        )
 
     updater = Updater(tmp_path, fetch=fetch, current=lambda: current, run=run, uv=lambda: "/bin/uv")
     monkeypatch.setattr("quantbot.web._service_installed", lambda: service)
@@ -219,8 +221,8 @@ def test_update_endpoints(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, servi
         assert checked_again["ok"] and checked_again["data"]["available"]
         assert len(fetches) == 2
         updated = await (await client.post(url, headers=CSRF)).json()
-        assert updated["ok"] and len(commands) == 1
-        assert commands[0][-1] == f"quantbot @ git+{repo}@refs/tags/v0.2.3"
+        assert updated["ok"] and len(commands) == 3
+        assert commands[1][-1] == f"quantbot @ git+{repo}@" + "2" * 40
         assert bool(restarts) == service
         assert ("自动重连" if service else "quantbot run") in updated["message"]
         assert read_audit(audit, 1)[0]["action"] == "update"

@@ -890,12 +890,25 @@ def cmd_update(store: Store, io: Console, api: Api, args: argparse.Namespace) ->
             io.say(tr("已取消更新。"))
             return 0
     io.status("step", tr("正在安装 QuantBot 更新。"))
+    previous = updater.current()
     ok, output = updater.upgrade()
     if not ok:
         raise Abort(tr("更新失败。{0}", output))
     service = _service_or_none()
     if service is not None and service.installed():
-        service.restart()
+        origin = local_origin(store.ensure_listen())
+        try:
+            service.restart()
+            wait_until_ready(origin)
+        except (ServiceError, OSError) as exc:
+            restored, detail = updater.restore(previous)
+            if restored:
+                try:
+                    service.restart()
+                    wait_until_ready(origin)
+                except (ServiceError, OSError) as restore_error:
+                    restored, detail = False, str(restore_error)
+            raise Abort(updater.rollback_message(str(exc), restored, detail)) from exc
         io.status("ok", tr("QuantBot 已更新，后台服务已重启。"))
     else:
         io.status("ok", tr("QuantBot 已更新。"))

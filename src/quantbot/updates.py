@@ -28,13 +28,17 @@ from pathlib import Path
 from typing import Any
 
 from quantbot import __version__
+from quantbot.config import Store, data_dir
 from quantbot.i18n import tr
+from quantbot.service import executable
 
 log = logging.getLogger(__name__)
 
 API = "https://api.github.com/repos/yaho7/QuantBot"
 CHECK_EVERY = 6 * 3600
 CACHE_FILE = "update.json"
+PIN_FILE = "update-pins.json"
+COMMIT = re.compile(r"[0-9a-f]{40}")
 TAG = re.compile(r"v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 TAG_INSTALL_REQUIRED = "请用一键安装脚本安装版本标签，再检查更新。"
 
@@ -75,7 +79,15 @@ def installed() -> Installed:
     commit = vcs.get("commit_id") if vcs.get("vcs") == "git" else None
     if not commit:
         return Installed(__version__, None, None)
-    return Installed(__version__, commit, vcs.get("requested_revision"), direct.get("url"))
+    url, ref = direct.get("url"), vcs.get("requested_revision")
+    if ref == commit:
+        try:
+            pinned = Store(data_dir(), filename=PIN_FILE).read().get(commit, {})
+            if pinned.get("url") == url and tag_version(pinned.get("tag", "")):
+                ref = pinned["tag"]
+        except (OSError, ValueError, AttributeError):
+            pass
+    return Installed(__version__, commit, ref, url)
 
 
 def github_json(path: str, source: str | None = None) -> Any:
@@ -126,6 +138,7 @@ class Updater:
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.path = Path(data_dir) / CACHE_FILE
+        self.pins = Store(Path(data_dir), filename=PIN_FILE)
         self.current = current
         self.fetch = fetch or (lambda path: github_json(path, self.current().url))
         self.run = run
@@ -161,8 +174,12 @@ class Updater:
         with self._lock:
             return self._check()
 
-    def _latest_tag(self) -> str:
-        latest: tuple[tuple[int, ...], str] = ((), "")
+    def _latest_tag(self) -> tuple[str, str | None]:
+        latest: tuple[int, ...] = ()
+        target = ("", None)
+        pin = os.environ.get("QB_PINNED_VERSION")
+        if pin and not tag_version(pin):
+            raise ValueError(tr("QB_PINNED_VERSION 必须是 vX.Y.Z。"))
         page = 1
         while True:
             tags = self.fetch(f"/tags?per_page=100&page={page}")
@@ -170,10 +187,13 @@ class Updater:
                 raise ValueError(tr("GitHub 返回的标签列表格式不对。"))
             for tag in tags:
                 name = str(tag.get("name", ""))
-                if version := tag_version(name):
-                    latest = max(latest, (version, name))
+                version = tag_version(name)
+                if version > latest and (not pin or name == pin):
+                    latest = version
+                    sha = (tag.get("commit") or {}).get("sha")
+                    target = (name, sha if isinstance(sha, str) and COMMIT.fullmatch(sha) else None)
             if len(tags) < 100:
-                return latest[1]
+                return target
             page += 1
 
     def _check(self) -> dict[str, Any]:
@@ -188,6 +208,7 @@ class Updater:
             "checked_at": None,
             "available": False,
             "latest": None,
+            "latest_commit": None,
             "error": None,
             "notified": previous.get("notified"),
         }
@@ -198,14 +219,18 @@ class Updater:
             result["error"] = tr(TAG_INSTALL_REQUIRED)
             return result
         try:
-            tag = self._latest_tag()
+            tag, commit = self._latest_tag()
             if tag:
-                result.update(latest=tag, available=tag_version(tag) > tag_version(now.tag))
+                result.update(
+                    latest=tag,
+                    latest_commit=commit,
+                    available=tag_version(tag) > tag_version(now.tag),
+                )
             else:
                 result["error"] = tr("仓库还没有可安装的版本标签。")
         except (OSError, ValueError, KeyError, TypeError, AttributeError) as exc:
             code = getattr(exc, "code", None)
-            for key in ("available", "latest"):
+            for key in ("available", "latest", "latest_commit"):
                 if key in previous:
                     result[key] = previous[key]
             result["error"] = (
@@ -266,8 +291,84 @@ class Updater:
             return False, tr("已经是最新的版本。")
         if not now.url:
             return False, tr("找不到安装来源。请重新运行安装命令。")
-        source = f"quantbot @ git+{now.url.removeprefix('git+')}@refs/tags/{latest}"
-        command = [uv, "tool", "install", "--force", "--reinstall", "--python", "3.12", source]
+        commit = cached.get("latest_commit")
+        if not isinstance(commit, str) or not COMMIT.fullmatch(commit):
+            return False, tr("无法确认更新标签对应的提交，请重新检查更新。")
+        pin = os.environ.get("QB_PINNED_VERSION")
+        if pin and pin != latest:
+            return False, tr("版本锁已变更，请重新检查更新。")
+        if not now.commit or not COMMIT.fullmatch(now.commit):
+            return False, tr("无法确认当前提交，不能准备回滚。")
+
+        source = self._source(now.url, commit)
+        good, output = self._run(
+            [
+                uv,
+                "tool",
+                "run",
+                "--isolated",
+                "--python",
+                "3.12",
+                "--from",
+                source,
+                "quantbot",
+                "--version",
+            ]
+        )
+        if not good:
+            return False, tr("更新预检失败：{0}", output)
+
+        self._remember(now.url, now.commit, now.tag)
+        self._remember(now.url, commit, latest)
+        good, output = self._install(uv, source)
+        if good:
+            good, validation = self._run([executable(), "--version"])
+            if good and commit[:7] not in validation:
+                good = False
+                validation = tr("安装后的命令未报告目标提交 {0}。", commit[:7])
+            if not good:
+                output = validation
+        if not good:
+            restored, detail = self.restore(now)
+            return False, self.rollback_message(output, restored, detail)
+        try:
+            self.path.unlink(missing_ok=True)  # describe the new commit next time
+        except OSError:
+            log.exception("Could not clear the update cache")
+        return True, output
+
+    @staticmethod
+    def _source(url: str, commit: str) -> str:
+        return f"quantbot @ git+{url.removeprefix('git+')}@{commit}"
+
+    def _remember(self, url: str, commit: str, tag: str) -> None:
+        with self.pins.edit() as pins:
+            pins[commit] = {"url": url, "tag": tag}
+
+    def _install(self, uv: str, source: str) -> tuple[bool, str]:
+        return self._run(
+            [uv, "tool", "install", "--force", "--reinstall", "--python", "3.12", source]
+        )
+
+    def restore(self, previous: Installed) -> tuple[bool, str]:
+        with self._lock:
+            uv = self.uv()
+            if (
+                not uv
+                or not previous.url
+                or not previous.commit
+                or not COMMIT.fullmatch(previous.commit)
+            ):
+                return False, tr("没有可用的回滚版本。")
+            return self._install(uv, self._source(previous.url, previous.commit))
+
+    @staticmethod
+    def rollback_message(error: str, restored: bool, detail: str) -> str:
+        if restored:
+            return tr("更新失败，已恢复上一版本：{0}", error)
+        return tr("更新失败：{0}。恢复上一版本也失败：{1}", error, detail)
+
+    def _run(self, command: list[str]) -> tuple[bool, str]:
         try:
             done = self.run(command, capture_output=True, text=True, timeout=600, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -275,8 +376,4 @@ class Updater:
         output = ((done.stdout or "") + (done.stderr or "")).strip()
         if done.returncode != 0:
             return False, output[-2000:] or tr("uv 退出码 {0}", done.returncode)
-        try:
-            self.path.unlink(missing_ok=True)  # describe the new commit next time
-        except OSError:
-            log.exception("Could not clear the update cache")
         return True, output[-2000:]

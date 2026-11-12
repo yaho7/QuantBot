@@ -20,11 +20,13 @@ def test_tag_cache_schedule_notice_and_upgrade(tmp_path: Path) -> None:
     def fetch(path: str) -> Any:
         fetches.append(path)
         assert path == "/tags?per_page=100&page=1"
-        return [{"name": "v0.3.0"}]
+        return [{"name": "v0.3.0", "commit": {"sha": NEW}}]
 
     def run(command: list[str], **kwargs: Any) -> CompletedProcess[str]:
         commands.append(command)
-        return CompletedProcess(command, 0, "installed", "")
+        return CompletedProcess(
+            command, 0, f"v0.3.0 ({NEW[:7]})" if command[-1] == "--version" else "installed", ""
+        )
 
     current = Installed("0.1.0", OLD, "v0.2.0", REPO)
     updater = Updater(
@@ -44,7 +46,9 @@ def test_tag_cache_schedule_notice_and_upgrade(tmp_path: Path) -> None:
     assert fetches == ["/tags?per_page=100&page=1"] * 2
 
     assert updater.upgrade() == (True, "installed")
-    assert commands[0][-1] == f"quantbot @ git+{REPO}@refs/tags/v0.3.0"
+    assert commands[0][1:4] == ["tool", "run", "--isolated"]
+    assert commands[1][-1] == f"quantbot @ git+{REPO}@{NEW}"
+    assert commands[2][-1] == "--version"
     assert updater.cached() is None
 
 
@@ -57,14 +61,18 @@ def test_tag_upgrade_and_error_preserve_cache(tmp_path: Path) -> None:
 
     def run(command: list[str], **kwargs: Any) -> CompletedProcess[str]:
         commands.append(command)
+        if command[1:3] == ["tool", "run"] or command[-1].endswith(OLD):
+            return CompletedProcess(command, 0, "ok", "")
         return CompletedProcess(command, 1, "", "uv failed")
 
     current = Installed("0.1.0", OLD, "refs/tags/v0.2.0", REPO)
     updater = Updater(tmp_path, fetch=fetch, current=lambda: current, run=run, uv=lambda: "/bin/uv")
     assert current.label == "v0.2.0 (1111111)"
     assert updater.check()["latest"] == "v0.3.0"
-    assert updater.upgrade() == (False, "uv failed")
-    assert commands[0][-1] == f"quantbot @ git+{REPO}@refs/tags/v0.3.0"
+    ok, message = updater.upgrade()
+    assert not ok and "已恢复" in message and "uv failed" in message
+    assert commands[1][-1] == f"quantbot @ git+{REPO}@{NEW}"
+    assert commands[2][-1] == f"quantbot @ git+{REPO}@{OLD}"
 
     def offline(path: str) -> Any:
         raise OSError("offline")
