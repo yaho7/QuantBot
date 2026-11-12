@@ -132,6 +132,7 @@ export interface LocalGitStatus {
   repository: boolean;
   branch: string;
   remote: boolean;
+  remote_branch?: boolean;
   repo?: string;
   ahead?: number;
   behind?: number;

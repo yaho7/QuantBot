@@ -338,17 +338,20 @@ class GitHubEditor:
             "--untracked-files=all",
             raw=True,
         )
-        upstream = self._git(editor, "rev-parse", "--abbrev-ref", "@{upstream}", optional=True)
+        remote_ref = f"refs/remotes/origin/{branch}"
+        remote_branch = bool(
+            branch and self._git(editor, "rev-parse", "--verify", remote_ref, optional=True)
+        )
         counts = (
             self._git(
                 editor,
                 "rev-list",
                 "--left-right",
                 "--count",
-                "HEAD...@{upstream}",
+                f"HEAD...{remote_ref}",
                 optional=True,
             )
-            if upstream
+            if remote_branch
             else ""
         )
         ahead, behind = map(int, counts.split()) if counts else (0, 0)
@@ -357,6 +360,7 @@ class GitHubEditor:
             "branch": branch,
             "ahead": ahead,
             "behind": behind,
+            "remote_branch": remote_branch,
             "repo": self._origin(editor),
             "remote": bool(self._git(editor, "remote", "get-url", "origin", optional=True)),
             "files": [{"path": row[3:], "status": row[:2]} for row in files.split("\0") if row],

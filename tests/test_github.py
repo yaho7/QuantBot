@@ -112,6 +112,10 @@ def test_workspace_git_staging_diff_and_branches(tmp_path: Path) -> None:
     git(root, "branch", "feature")
     assert service.branches()["branches"] == ["feature", "main"]
     assert service.switch("feature")["branch"] == "feature"
+    git(root, "update-ref", "refs/remotes/origin/feature", "HEAD")
+    assert service.local_status()["remote_branch"]
+    commit(root, "value = 3\n")
+    assert service.local_status()["ahead"] == 1
 
 
 def test_gh_process_handles_official_device_login(

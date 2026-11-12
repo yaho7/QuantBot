@@ -478,5 +478,14 @@
   "快速入手更新后可能重启，模拟资金和订单可能重置。": "Quickstart may restart after the update, resetting its simulated funds and orders.",
   "程序会独立运行。更新后请核对策略连接和操作回执。": "The program runs independently. Check the strategy connection and operation receipts after updating.",
   "QuantBot 关闭时会停止此程序。更新后请手动启动。": "The program will stop when QuantBot shuts down. Start it manually after updating.",
-  "无法确认程序状态，请检查工作区。": "Could not determine the program status. Check the workspace."
+  "无法确认程序状态，请检查工作区。": "Could not determine the program status. Check the workspace.",
+  "预览差异": "Preview diff",
+  "请先选择分支，再同步远端。": "Select a branch before syncing.",
+  "本地与远端分支已分叉。请在终端合并后再同步。": "The local and remote branches have diverged. Merge them in the terminal before syncing.",
+  "先拉取远端提交，再推送。": "Pull the remote commits before pushing.",
+  "请先保存并处理本地改动，再拉取。": "Save and resolve your local changes before pulling.",
+  "未找到对应的远端分支。请检查远端，或推送以创建该分支。": "No matching remote branch was found. Check the remote, or push to create the branch.",
+  "{0} 个提交尚未推送": "Unpushed commits: {0}",
+  "远端有 {0} 个新提交": "New remote commits: {0}",
+  "与上次检查的远端一致": "Up to date as of the last check."
 }

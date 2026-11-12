@@ -53,7 +53,7 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
   const conflicted = !!draft && (fileQuery?.isError || (disk && disk.revision !== draft.base.revision));
 
   const refresh = useCallback(() => {
-    void qc.invalidateQueries({ queryKey: key() });
+    void qc.invalidateQueries({ queryKey: key(), predicate: ({ queryKey }) => queryKey[2] !== "program" });
   }, [qc, key]);
   useEffect(() => {
     if (!visible) return;
@@ -93,6 +93,11 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
       toast.success(tr("文件已保存。"));
     },
   });
+  function saveDraft() {
+    if (active && draft && !conflicted && !save.isPending) {
+      save.mutate({ path: active, content: draft.text, revision: draft.base.revision });
+    }
+  }
   function open(path: string, line?: number) {
     setTabs((previous) => previous.includes(path) ? previous : [...previous, path]);
     setActive(path);
@@ -166,7 +171,7 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
                   event.preventDefault();
-                  if (draft && !conflicted) setReview(true);
+                  saveDraft();
                 }
               }}>
               {tabs.length > 0 && <div className="flex shrink-0 overflow-x-auto border-b bg-card">
@@ -190,9 +195,14 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
                   {base && <>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <code className="break-all text-xs text-muted-foreground">{active}</code>
-                      <Button size="sm" variant="outline" disabled={!draft || !!conflicted || save.isPending}
-                        onClick={() => { save.reset(); setReview(true); }}>{tr("预览并保存")}</Button>
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="ghost" disabled={!draft || save.isPending}
+                          onClick={() => setReview(true)}>{tr("预览差异")}</Button>
+                        <Button size="sm" variant="outline" disabled={!draft || !!conflicted} loading={save.isPending}
+                          onClick={saveDraft}>{tr("保存文件")}</Button>
+                      </div>
                     </div>
+                    {save.error && !review && <Alert tone="loss">{save.error.message}</Alert>}
                     {conflicted && <Alert tone="warning">
                       {tr("磁盘上的文件已变更，草稿仍保留。")}
                       <Button variant="ghost" size="sm" onClick={() => setDiscard({ path: active, close: false })}>
@@ -216,16 +226,14 @@ export default function WorkspaceEditor({ onDirty, onOpenProject }: { onDirty: (
         </div>}
       </div>
       <Dialog open={review && !!draft} onOpenChange={(open) => { if (!open && !save.isPending) setReview(false); }}>
-        <DialogContent title={tr("确认保存")} description={active} className="max-w-4xl">
+        <DialogContent title={tr("预览差异")} description={active} className="max-w-4xl">
           {draft && <Suspense fallback={<LoadingState rows={2} />}>
             <WorkspaceDiff before={draft.base.content} after={draft.text} labels={[tr("保存前"), tr("保存后")]} />
           </Suspense>}
           {save.error && <Alert tone="loss">{save.error.message}</Alert>}
           <DialogFooter>
             <Button variant="outline" disabled={save.isPending} onClick={() => setReview(false)}>{tr("返回编辑")}</Button>
-            <Button loading={save.isPending} disabled={!!conflicted} onClick={() => {
-              if (active && draft) save.mutate({ path: active, content: draft.text, revision: draft.base.revision });
-            }}>{tr("保存文件")}</Button>
+            <Button loading={save.isPending} disabled={!!conflicted} onClick={saveDraft}>{tr("保存文件")}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
