@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from .db import encode, record, timestamp
 from .errors import Problem
+from .models import SessionOpen
 
 HEARTBEAT_INTERVAL = 15
 OFFLINE_AFTER = 50
@@ -161,6 +162,21 @@ class Strategies:
             return None
         return executor
 
+    def monitor(self, credential, instance_id):
+        prior = self.db.one(
+            "SELECT * FROM agent_instances WHERE strategy_id=? AND instance_id=?",
+            (credential.strategy_id, instance_id),
+        )
+        if (
+            prior is not None
+            and prior["token_id"] == credential.id
+            and prior["boot_id"] == self.boot
+            and prior["last_seen"] + OFFLINE_AFTER > self.clock()
+        ):
+            return prior
+        session = self.connect(credential, SessionOpen(instance_id=instance_id))
+        return self.agent(credential, session["session_id"])
+
     def connect(self, credential, body):
         sid = credential.strategy_id
         if (body.executor or body.capabilities) and "control" not in credential.scopes:
@@ -243,7 +259,7 @@ class Strategies:
             raise Problem(403, "This instance is not the authorized executor")
         return row
 
-    def heartbeat(self, agent, body):
+    def heartbeat(self, agent, body=None):
         now = self.clock()
         sid = agent["strategy_id"]
         with self.db.transaction():
@@ -251,7 +267,8 @@ class Strategies:
                 "UPDATE agent_instances SET last_seen=? WHERE session_id=?",
                 (now, agent["session_id"]),
             )
-            self.update_runtime(agent, body.model_dump(mode="json", exclude_unset=True), now)
+            if body is not None:
+                self.update_runtime(agent, body.model_dump(mode="json", exclude_unset=True), now)
             self.refresh_presence(sid)
         return {"server_time": timestamp(now), "control": self.control(sid)}
 

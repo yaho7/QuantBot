@@ -1,6 +1,17 @@
 from uuid import uuid4
 
-from .test_control_plane import ADMIN, AGENT, NOW, Clock, client, connect, create, log_in, stamp
+from .test_control_plane import (
+    ADMIN,
+    AGENT,
+    NOW,
+    Clock,
+    client,
+    connect,
+    create,
+    log_in,
+    stamp,
+    token_headers,
+)
 
 
 def packet(kind, offset=0, **fields):
@@ -15,6 +26,41 @@ def discover(http, sid):
     response = http.get(f"{ADMIN}/strategies/{sid}/components")
     assert response.status_code == 200, response.text
     return {item["id"]: item for item in response.json()["components"]}
+
+
+def test_token_only_monitor_survives_outage_and_server_restart(tmp_path):
+    path = tmp_path / "monitor.db"
+    clock = Clock()
+    with client(path, clock) as http:
+        log_in(http)
+        sid, credential = create(http, scopes=["session", "telemetry"])
+        headers = token_headers(credential)
+        url = AGENT + "/monitor/strategy-a"
+        for offset in (0, 15, 30, 45, 60):
+            clock.value = NOW + offset
+            point = packet("metric", offset, name="rsi", unit="index", value="12.2")
+            assert (
+                http.post(url, headers=headers, json={"records": [point]}).json()["inserted"] == 1
+            )
+        assert http.get(f"{ADMIN}/strategies/{sid}").json()["status"] == "online"
+        assert http.get(AGENT + "/control", headers=headers).status_code == 403
+        assert http.post(url, json={"records": [point]}).status_code == 401
+        _, restricted = create(http, scopes=["session"])
+        assert (
+            http.post(url, headers=token_headers(restricted), json={"records": [point]}).status_code
+            == 403
+        )
+        assert (
+            http.post(
+                AGENT + "/session", headers=headers, json={"instance_id": "monitor:strategy-a"}
+            ).status_code
+            == 422
+        )
+    clock.value += 90
+    with client(path, clock) as http:
+        log_in(http)
+        assert http.post(url, headers=headers, json={"records": [point]}).json()["duplicates"] == 1
+        assert http.get(f"{ADMIN}/strategies/{sid}").json()["status"] == "online"
 
 
 def test_registry_schema_discovery_and_stale_data(tmp_path):

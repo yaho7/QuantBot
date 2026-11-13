@@ -11,11 +11,20 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await page.getByRole("button", { name: "添加策略", exact: true }).last().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("策略名称").fill("Web 回归策略");
-  await dialog.getByLabel("同步开仓权限").check();
-  await dialog.getByLabel("领取一次性指令").check();
+  await expect(dialog.getByLabel("交易模式")).toHaveValue("paper");
+  await expect(dialog.locator("input, select, textarea")).toHaveCount(2);
   await dialog.getByRole("button", { name: "创建并生成 Token" }).click();
-  const token = await page.getByRole("dialog").locator("code").filter({ hasText: /^qb2_/ }).textContent();
-  expect(token).toMatch(/^qb2_/);
+  const basicToken = await dialog.locator("code").filter({ hasText: /^qb2_/ }).textContent();
+  expect(basicToken).toMatch(/^qb2_/);
+  await expect(dialog.getByText(/request\("\/monitor\/my-program"/)).toBeVisible();
+  await dialog.getByRole("button", { name: "完成" }).click();
+  await expect(page.getByRole("heading", { name: "Web 回归策略" })).toBeVisible();
+  const strategyId = decodeURIComponent(new URL(page.url()).hash.split("/")[1]!);
+  const issued = await page.request.post(`/api/v2/admin/strategies/${strategyId}/tokens`, {
+    data: { scopes: ["session", "telemetry", "control", "commands"] },
+  });
+  expect(issued.status()).toBe(201);
+  const token = (await issued.json()).token;
   const session = await request.post("/api/v2/agent/session", {
     headers: { Authorization: `Bearer ${token}` },
     data: { instance_id: "browser-agent", executor: true,
@@ -29,8 +38,6 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
     accounts: [{ account_id: "paper", currency: "USD", equity: "100.01" }],
   }] } });
   expect(reported.ok()).toBeTruthy();
-  await page.getByRole("button", { name: "完成" }).click();
-  await expect(page.getByRole("heading", { name: "Web 回归策略" })).toBeVisible();
   await expect(page.getByText("browser-agent", { exact: true })).toBeVisible();
   await expect(page.locator("main")).not.toContainText(token!);
   await page.getByRole("link", { name: "远程控制" }).click();

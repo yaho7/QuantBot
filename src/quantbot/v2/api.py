@@ -100,7 +100,7 @@ async def administrator(request: Request, session: Annotated[str | None, Depends
     return runtime(request).auth.administrator(session)
 
 
-def credentials(scope, *, executor=False, registration=False):
+def credentials(scope, *, executor=False, registration=False, stateless=False):
     async def dependency(
         request: Request,
         token: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
@@ -112,10 +112,14 @@ def credentials(scope, *, executor=False, registration=False):
         if registration:
             service.limit("session", credential.id, 30, 60)
             return credential
-        instance = service.strategies.agent(credential, session, executor=executor)
+        source = (
+            credential
+            if stateless
+            else service.strategies.agent(credential, session, executor=executor)
+        )
         if scope == "telemetry":
-            request.state.telemetry_source = instance["strategy_id"]
-        return instance
+            request.state.telemetry_source = credential.strategy_id
+        return source
 
     return Depends(dependency)
 
@@ -124,6 +128,7 @@ ADMIN = Depends(administrator)
 REGISTER = credentials("session", registration=True)
 SESSION = credentials("session")
 TELEMETRY = credentials("telemetry")
+MONITOR = credentials("telemetry", stateless=True)
 CONTROL = credentials("control")
 EXECUTOR_CONTROL = credentials("control", executor=True)
 EXECUTOR_COMMANDS = credentials("commands", executor=True)
@@ -132,6 +137,8 @@ EXECUTOR_COMMANDS = credentials("commands", executor=True)
 @agent.post("/session", response_model=AgentSession, response_model_exclude_unset=True)
 async def session(request: Request, body: SessionOpen, credential=REGISTER):
     """Register an instance and obtain its session ID."""
+    if body.instance_id.startswith("monitor:"):
+        raise Problem(422, "Instance IDs starting with monitor: are reserved for basic monitoring")
     return runtime(request).strategies.connect(credential, body)
 
 
@@ -168,6 +175,18 @@ async def metrics(request: Request, body: Metrics, source=TELEMETRY):
 async def reports(request: Request, body: ReportBatch, source=TELEMETRY):
     """Ingest a batch of validated, explicitly typed records."""
     return runtime(request).registry.reports(source, body)
+
+
+@agent.post("/monitor/{instance_id}", response_model=ReportsAck)
+async def monitor(request: Request, instance_id: Key, body: ReportBatch, credential=MONITOR):
+    """Report telemetry and refresh presence with a Bearer Token, without a session header."""
+    if len(instance_id) > 56:
+        raise Problem(422, "Monitoring instance ID must have at most 56 characters")
+    service = runtime(request)
+    source = service.strategies.monitor(credential, f"monitor:{instance_id}")
+    counts = service.registry.reports(source, body)
+    service.strategies.heartbeat(source)
+    return counts
 
 
 @agent.put("/metric-definitions", response_model=MetricDefinitionsAck)
@@ -816,7 +835,9 @@ def make_app(
                 "metric-definitions": "metric",
             }.get(resource, "unrecognized")
             rejected = {kind}
-            if resource == "reports" and isinstance(exc.body, dict):
+            if (resource == "reports" or "/monitor/" in request.url.path) and isinstance(
+                exc.body, dict
+            ):
                 records = exc.body.get("records")
                 if isinstance(records, list):
                     rejected = set()
