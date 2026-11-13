@@ -1,6 +1,8 @@
+import * as Switch from "@radix-ui/react-switch";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CircleDot, ListChecks, SlidersHorizontal } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { submitted } from "./command-feedback";
 import { api, strategyApi, type Command, type Detail, type Parameter, type Scalar } from "./api";
 import { Dialog, Empty, ErrorNotice, Field, Loading, Panel, ParameterInput, useData, when } from "./ui";
 
@@ -117,7 +119,7 @@ function Invocation({ strategy, definition, report, revision, close, operation, 
       revision, request_id: requestId,
       ...(definition.type === "form" ? { arguments: fields } : definition.type !== "button" ? { value } : {}),
     }),
-    onSuccess: (result) => { setCommand(result); void client.invalidateQueries({ queryKey: ["live"] }); },
+    onSuccess: (result) => { setCommand(result); submitted(result); void client.invalidateQueries({ queryKey: ["live"] }); },
   });
   const currentCommand = latest.data ?? command;
   const dismiss = () => {
@@ -133,8 +135,7 @@ function Invocation({ strategy, definition, report, revision, close, operation, 
         {report.value_stale ? "上次上报" : "策略实际值"} {actual(definition, report.value)}
         {report.value_observed_at && ` · ${when(report.value_observed_at)}`}
       </div>}
-      {definition.type === "toggle" && <label className="checkbox"><input type="checkbox" role="switch"
-        checked={value === true} onChange={(e) => setValue(e.target.checked)} /> 请求开启</label>}
+      {definition.type === "toggle" && <label className="checkbox"><Switch.Root className="parameter-switch" checked={value === true} onCheckedChange={setValue}><Switch.Thumb /></Switch.Root> 请求开启</label>}
       {definition.type === "select" && <Field label="请求选项"><select required value={String(value ?? "")} onChange={(e) => setValue(e.target.value)}>
         <option value="">请选择</option>{definition.options?.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
       </select></Field>}

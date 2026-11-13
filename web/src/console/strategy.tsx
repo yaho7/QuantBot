@@ -31,6 +31,11 @@ export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab
     <nav className="tabs" aria-label="策略详情">
       {tabs.map(([key, label]) => <a key={key} href={strategyPath(strategyId, key)} aria-current={tab === key ? "page" : undefined}>{label}</a>)}
     </nav>
+    <label className="field mobile-strategy-tabs"><span>策略详情</span>
+      <select value={tabs.some(([key]) => key === tab) ? tab : ""} onChange={(event) => { location.hash = strategyPath(strategyId, event.target.value); }}>
+        {tabs.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+      </select>
+    </label>
     <ErrorNotice error={query.error} />
     {!tab && <StrategyOverview strategy={strategy} />}
     {tab === "charts" && <Suspense fallback={<Loading />}><DashboardBuilder strategy={strategy} /></Suspense>}

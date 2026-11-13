@@ -285,3 +285,28 @@ dialog::backdrop { background: #100f0f80; }
   .workbench-grid .widget-actions .icon-button { width: 44px; height: 44px; }
   .workbench-grid .widget > .react-resizable-handle { width: 44px; height: 44px; }
 }
+
+.bottom-nav, .mobile-strategy-tabs { display: none; }
+.parameter-switch { display: inline-flex; align-items: center; width: 44px; height: 26px; padding: 3px; border: 0; border-radius: 999px; background: var(--input); cursor: pointer; }
+.parameter-switch[data-state="checked"] { background: var(--gain); }
+.parameter-switch > span { width: 20px; height: 20px; border-radius: 50%; background: var(--base); }
+.parameter-switch[data-state="checked"] > span { transform: translateX(18px); }
+[cmdk-list] { max-height: min(55dvh, 26rem); overflow: auto; margin-top: .75rem; }
+[cmdk-group-heading] { padding: .5rem; color: var(--muted); font-size: .85rem; }
+[cmdk-item] { padding: .65rem; border-radius: 8px; cursor: pointer; }
+[cmdk-item][data-selected="true"] { background: var(--border); }
+
+@media (max-width: 840px) {
+  .console-topbar { padding-block: .5rem; }
+  .bottom-nav { position: fixed; inset: auto 0 0; z-index: 10; display: flex; justify-content: space-around; background: var(--surface); border-top: 1px solid var(--border); padding: .25rem .35rem max(.25rem, env(safe-area-inset-bottom)); }
+  .bottom-nav a { flex: 1; min-height: 48px; display: grid; justify-items: center; align-content: center; gap: .18rem; color: var(--muted); text-decoration: none; font-size: .75rem; }
+  .bottom-nav a[aria-current] { color: var(--info); font-weight: 700; }
+  .bottom-nav + .page { padding-bottom: calc(4.75rem + env(safe-area-inset-bottom)); }
+  .button, select, .icon-button, [cmdk-item], .parameter-switch { min-height: 44px; }
+  .icon-button { min-width: 44px; }
+  .tabs { display: none; }
+  .mobile-strategy-tabs { display: grid; margin: .6rem 0 1rem; }
+  .workbench-status { position: sticky; top: 0; z-index: 5; background: var(--base); padding-block: .6rem; }
+  .workbench-status a { min-height: 44px; display: inline-flex; align-items: center; }
+  .workbench-grid .widget h2 { font-size: 1rem; }
+}

@@ -7,7 +7,7 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await page.getByLabel("用户名").fill("admin");
   await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "运行总览" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
   await page.getByRole("button", { name: "添加策略", exact: true }).last().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("策略名称").fill("Web 回归策略");
@@ -91,10 +91,9 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   expect(diagnostic).not.toContain(token);
   expect(diagnostic).not.toContain(regenerated!);
   await expect(page.locator("main")).not.toContainText(token!);
-  await page.getByRole("link", { name: "远程控制" }).click();
+  await page.getByRole("link", { name: "打开工作台" }).click();
   await page.getByRole("button", { name: /暂停新开仓/ }).click();
-  await page.getByRole("button", { name: "提交请求" }).click();
-  await expect(page.getByRole("dialog").getByText("等待策略", { exact: true })).toBeVisible();
+  await expect(page.locator(".entry-control").getByText("等待策略", { exact: true })).toBeVisible();
   const control = await request.get("/api/agent/control", { headers });
   expect(control.ok()).toBeTruthy();
   const desired = (await control.json()).desired;
@@ -104,9 +103,9 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
       disconnect_policy_applied: "continue" },
   });
   expect(receipt.ok()).toBeTruthy();
-  await expect(page.getByRole("dialog").getByText("策略确认成功", { exact: true })).toBeVisible();
-  await page.getByRole("dialog").getByRole("button", { name: "关闭", exact: true }).last().click();
+  await expect(page.locator(".entry-control").getByText("策略确认成功", { exact: true })).toBeVisible();
   await expect(page.getByText("已锁定", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "策略详情", exact: true }).click();
   await page.getByRole("link", { name: "资金与绩效" }).click();
   await expect(page.getByText("100.01", { exact: true })).toBeVisible();
   expect(errors).toEqual([]);
@@ -118,14 +117,15 @@ test("mobile navigation and API schema are accessible", async ({ page }) => {
   await page.getByLabel("用户名").fill("admin");
   await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "运行总览" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
   const added = await page.request.post("/api/admin/strategies", {
     data: { name: "手机连接状态", mode: "paper", group: "响应式布局" },
   });
   expect(added.ok()).toBeTruthy();
+  await page.getByRole("navigation", { name: "移动导航" }).getByRole("link", { name: "策略" }).click();
   const row = page.getByRole("row").filter({ hasText: "手机连接状态" });
   await expect(row.getByText("离线", { exact: true })).toBeInViewport();
-  await page.getByRole("button", { name: "打开导航" }).click();
+  await page.getByRole("navigation", { name: "移动导航" }).getByRole("link", { name: "设置" }).click();
   await page.getByRole("link", { name: "API 接入", exact: true }).click();
   await expect(page.getByRole("heading", { name: "API 接入", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "GitHub 接入文档" })).toBeVisible();
@@ -147,7 +147,7 @@ test("serves the original brand and remembers the appearance setting", async ({ 
   await page.getByLabel("用户名").fill("admin");
   await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
-  await page.getByRole("link", { name: "系统设置", exact: true }).click();
+  await page.getByRole("link", { name: "设置", exact: true }).click();
   const theme = page.getByLabel("主题");
   await theme.selectOption("light");
   await expect(page.locator("html")).toHaveCSS("background-color", "rgb(255, 252, 240)");
@@ -232,7 +232,7 @@ test("builds a dashboard using real metrics, OHLCV, and chart markers", async ({
   const { strategy, credential } = await response.json();
   await page.goto(`/ui/#strategy/${strategy.id}/charts`);
   await expect(page.getByText("等待标准数据上报", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "添加组件" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "编辑布局" })).toBeEnabled();
 
   const token = { Authorization: `Bearer ${credential.token}` };
   const session = await http.post("/api/agent/session", { headers: token, data: { instance_id: "history-agent" } });
@@ -250,6 +250,7 @@ test("builds a dashboard using real metrics, OHLCV, and chart markers", async ({
   ] } });
   expect(result.ok()).toBeTruthy();
   await expect(page.getByRole("img", { name: "历史时间序列" })).toBeVisible();
+  await page.getByRole("button", { name: "编辑布局" }).click();
   await page.getByRole("button", { name: "添加组件" }).click();
   await expect(page.getByRole("button", { name: "添加 持仓", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "添加 交易 K 线" }).click();
@@ -265,4 +266,71 @@ test("builds a dashboard using real metrics, OHLCV, and chart markers", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
   expect(errors).toEqual([]);
+});
+
+test("persists a dragged desktop layout and a separately resized mobile layout without sending commands", async ({ page }) => {
+  const http = page.request;
+  expect((await http.post("/api/admin/login", { data: { username: "admin", password: "browser-test-password" } })).ok()).toBeTruthy();
+  const response = await http.post("/api/admin/strategies", {
+    data: { name: "工作台网格验收", mode: "paper", token: { scopes: ["session", "telemetry", "control", "commands"] } },
+  });
+  const { strategy, credential } = await response.json();
+  const token = { Authorization: `Bearer ${credential.token}` };
+  const session = await http.post("/api/agent/session", { headers: token, data: {
+    instance_id: "grid-agent", executor: true, capabilities: [{ id: "pause_entry", label: "暂停新开仓" }],
+  } });
+  const headers = { ...token, "X-Agent-Session": (await session.json()).session_id };
+  const root = `/api/admin/strategies/${strategy.id}/dashboard`;
+  await page.goto(`/ui/#workbench/${strategy.id}`);
+  await expect(page.getByRole("button", { name: "暂停新开仓" })).toBeEnabled();
+  let commands = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && /\/commands$|\/invoke$/.test(request.url())) commands++;
+  });
+  await page.getByRole("button", { name: "编辑布局" }).click();
+  await expect(page.getByRole("button", { name: "暂停新开仓" })).toHaveCount(0);
+  const handle = page.getByRole("button", { name: "拖动 程序状态" });
+  const entry = page.locator('[data-widget="builtin-entry"]');
+  await handle.scrollIntoViewIfNeeded();
+  const from = (await handle.boundingBox())!;
+  const to = (await entry.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, to.y + 28, { steps: 15 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "保存布局" }).click();
+  await expect(page.getByRole("button", { name: "编辑布局" })).toBeVisible();
+  const before = (await (await http.get(root)).json()).widgets.find((widget: { id: string }) => widget.id === "builtin-program").placement;
+  expect(before.desktop.y).toBe(0);
+  await page.reload();
+  await expect(page.locator("[data-widget]").first()).toHaveAttribute("data-widget", "builtin-program");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "编辑布局" }).click();
+  const program = page.locator('[data-widget="builtin-program"]');
+  const resizer = program.locator(".react-resizable-handle");
+  await resizer.scrollIntoViewIfNeeded();
+  const corner = (await resizer.boundingBox())!;
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2 + 116, { steps: 10 });
+  await page.mouse.up();
+  await page.getByRole("button", { name: "保存布局" }).click();
+  await expect(page.getByRole("button", { name: "编辑布局" })).toBeVisible();
+  const after = (await (await http.get(root)).json()).widgets.find((widget: { id: string }) => widget.id === "builtin-program").placement;
+  expect(after.desktop).toEqual(before.desktop);
+  expect(after.mobile.h).toBe(before.mobile.h + 1);
+
+  const stamp = Date.now() - 1_000;
+  for (let i = 0; i < 3; i++) {
+    const observed_at = new Date(stamp + i).toISOString();
+    expect((await http.post("/api/agent/reports", { headers, data: { records: [
+      { type: "portfolio", schema_version: 1, observed_at, accounts: [{ account_id: "grid", currency: "USD", equity: String(100 + i) }] },
+      { type: "equity", schema_version: 1, observed_at, account_id: "grid", currency: "USD", value: String(100 + i) },
+    ] } })).ok()).toBeTruthy();
+  }
+  await page.reload();
+  await expect(program).toHaveCSS("height", `${after.mobile.h * 116 - 12}px`);
+  await expect(page.getByRole("button", { name: "暂停新开仓" })).toBeEnabled();
+  expect(commands).toBe(0);
 });

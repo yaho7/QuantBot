@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChartNoAxesCombined, GripVertical, PencilLine, Plus, Save, Trash2 } from "lucide-react";
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import GridLayout, { collides, useContainerWidth, verticalCompactor, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
 import { api, strategyApi, strategyPath, type Detail, type Strategy } from "./api";
@@ -61,7 +61,7 @@ function newWidget(item: Candidate): Widget {
   };
 }
 
-export default function DashboardBuilder({ strategy, workbench = false }: { strategy: Detail; workbench?: boolean }) {
+export default function DashboardBuilder({ strategy, workbench = false, focus }: { strategy: Detail; workbench?: boolean; focus?: string }) {
   const sid = strategy.id;
   const client = useQueryClient();
   const { width, containerRef, mounted } = useContainerWidth();
@@ -140,6 +140,14 @@ export default function DashboardBuilder({ strategy, workbench = false }: { stra
     widget.kind === item.kind && widget.ref === item.ref));
   const sorted = [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
   const editable = !!draft && !save.isPending;
+  const focused = focus && widgets.find((widget) => "kind" in widget && (widget.ref ?? widget.kind) === focus);
+  const focusedId = focused && focused.id;
+  useEffect(() => {
+    if (!focusedId || !mounted || draft) return;
+    const target = document.getElementById(`widget-${focusedId}`);
+    target?.focus({ preventScroll: true });
+    target?.scrollIntoView({ block: "center" });
+  }, [focusedId, mounted, draft]);
   return <div className="stack" ref={containerRef}>
     <Panel title={workbench ? "策略组件" : "动态仪表盘"} action={<ChartNoAxesCombined size={21} />}>
       <ErrorNotice error={board.error ?? catalog.error ?? registry.error ?? save.error} />
@@ -151,6 +159,11 @@ export default function DashboardBuilder({ strategy, workbench = false }: { stra
             setDraft(undo.at(-1) ?? null);
             setUndo(undo.slice(0, -1));
           }}>撤销</button>
+          <select aria-label="应用布局模板" value="" disabled={!editable} onChange={(event) => {
+            const template = event.target.value;
+            edit(template === "监控" ? [...controls.slice(0, 2), ...charts] :
+              [...controls, ...charts.filter((widget) => widget.component === "accounts")].slice(0, 24));
+          }}><option value="" disabled>布局模板</option><option>监控</option><option>控制</option></select>
           <button type="button" className="button secondary" disabled={!editable} onClick={() => edit(defaults)}>恢复默认</button>
           <button type="button" className="button primary" disabled={!editable} onClick={() => save.mutate()}><Save size={16} /> 保存布局</button>
           <button type="button" className="button quiet" disabled={!editable} onClick={() => {
@@ -180,7 +193,7 @@ export default function DashboardBuilder({ strategy, workbench = false }: { stra
           const item = "kind" in widget ? undefined : components.find((candidate) => candidate.id === widget.component);
           const compact = position.h === 1;
           const expanded = position.h >= 3 && position.w >= Math.min(4, cols);
-          return <article className="panel widget" data-widget={widget.id} key={widget.id}>
+          return <article className="panel widget" data-widget={widget.id} id={`widget-${widget.id}`} tabIndex={-1} key={widget.id}>
             <header className="panel-heading widget-header"><div><h2>{widget.title}</h2>
               {!compact && item && !("kind" in widget) && <p>{chartName[widget.chart]} · {availabilityLabel[item.state]} · {when(item.last_observed_at)}</p>}
             </div>{draft && <div className="widget-actions">

@@ -1,5 +1,8 @@
+import { Toaster } from "sonner";
+import { CommandFeedback } from "./command-feedback";
+import { QuickSearch } from "./quick-search";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Braces, CircleHelp, ClipboardList, LayoutDashboard, LayoutGrid, LogOut, Menu, Settings } from "lucide-react";
+import { Bell, Braces, CircleHelp, ClipboardList, LayoutDashboard, LayoutGrid, LogOut, Settings } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { api, ApiError, MIN_PASSWORD_LENGTH, readSession, sessionKey } from "./api";
 import { ApiPage, CreateStrategy } from "./onboarding";
@@ -15,10 +18,9 @@ const Workbench = lazy(() => import("./workbench"));
 const nav = [
   { key: "workbench", title: "工作台", icon: LayoutDashboard },
   { key: "strategies", title: "策略", icon: LayoutGrid },
-  { key: "api", title: "API 接入", icon: Braces },
   { key: "operations", title: "操作记录", icon: ClipboardList },
-  { key: "telegram", title: "通知与 Telegram", icon: Bell },
-  { key: "system", title: "系统设置", icon: Settings },
+  { key: "telegram", title: "通知", icon: Bell },
+  { key: "system", title: "设置", icon: Settings },
 ];
 
 function useHash() {
@@ -137,8 +139,6 @@ export function App() {
     refetchOnReconnect: (query) => !!query.state.data,
   });
   const [adding, setAdding] = useState(false);
-  const [menu, setMenu] = useState(false);
-  const menuButton = useRef<HTMLButtonElement>(null);
   const { theme, setTheme, dark } = useTheme();
   const actor = session.data?.actor;
   useLive(!!actor);
@@ -153,39 +153,39 @@ export function App() {
   if (session.data === null) return <Login hash={hash} />;
   if (!actor) return <main className="login"><ConnectionError error={session.error} retry={() => void session.refetch()} /></main>;
   const [section, id, tab] = hash.slice(1).split("/");
-  const page = section === "strategy" ? "strategies" : section === "overview" || nav.some((item) => item.key === section) ? section : "workbench";
+  const page = section === "strategy" ? "strategies" : ["overview", "api"].includes(section ?? "") || nav.some((item) => item.key === section) ? section : "workbench";
   const add = () => setAdding(true);
   return <DarkMode value={dark}>
-    <header className="topbar" onKeyDown={(event) => {
-      if (event.key === "Escape" && menu) {
-        setMenu(false);
-        menuButton.current?.focus();
-      }
-    }}>
-      <a href="#workbench" onClick={() => setMenu(false)} aria-label="QuantBot 工作台"><Brand /></a>
-      <button className="icon-button hamburger" ref={menuButton} aria-label={menu ? "关闭导航" : "打开导航"}
-        aria-controls="main-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)}><Menu size={20} /></button>
-      <nav id="main-navigation" className={`top-nav${menu ? " open" : ""}`} aria-label="主导航">
+    <header className="topbar console-topbar">
+      <a href="#workbench" aria-label="QuantBot 工作台"><Brand /></a>
+      <nav className="top-nav" aria-label="主导航">
         {nav.map(({ key, title: label, icon: Icon }) => <a href={`#${key}`}
-          onClick={() => setMenu(false)} key={key} aria-current={page === key ? "page" : undefined}>
+          key={key} aria-current={page === key ? "page" : undefined}>
           <Icon size={16} /><span>{label}</span></a>)}
       </nav>
       <div className="top-actions">
+        <QuickSearch strategyId={id && (section === "strategy" || section === "workbench") ? decodeURIComponent(id) : undefined} />
         <a className="icon-button" href="https://github.com/yaho7/QuantBot/blob/main/PROTOCOL.md" target="_blank" rel="noreferrer" aria-label="API 文档" title="API 文档"><CircleHelp size={18} /></a>
         <button className="icon-button" onClick={() => logout.mutate()} aria-label="退出登录" title="退出登录"><LogOut size={18} /></button>
       </div>
     </header>
+    <nav className="bottom-nav" aria-label="移动导航">
+      {nav.map(({ key, title, icon: Icon }) => <a key={key} href={`#${key}`}
+        aria-current={page === key ? "page" : undefined}><Icon size={19} /><span>{title}</span></a>)}
+    </nav>
     <main id="main" className="page">
       <ErrorNotice error={logout.error} />
-      {page === "workbench" && <Suspense fallback={<Loading />}><Workbench strategyId={id ? decodeURIComponent(id) : undefined} /></Suspense>}
+      {page === "workbench" && <Suspense fallback={<Loading />}><Workbench add={add} focus={tab ? decodeURIComponent(tab) : undefined} strategyId={id ? decodeURIComponent(id) : undefined} /></Suspense>}
       {page === "overview" && <OverviewPage add={add} />}
       {page === "strategies" && (section === "strategy" && id ?
         <StrategyPage key={id} strategyId={decodeURIComponent(id)} tab={tab} /> : <StrategiesPage add={add} />)}
       {page === "api" && <ApiPage strategyId={id ? decodeURIComponent(id) : undefined} />}
       {page === "operations" && <OperationsPage commandId={id} />}
       {page === "telegram" && <TelegramPage />}
-      {page === "system" && <SystemPage theme={theme} onTheme={setTheme} />}
+      {page === "system" && <><div className="toolbar"><a className="button secondary" href="#api"><Braces size={16} /> API 接入</a></div><SystemPage theme={theme} onTheme={setTheme} /></>}
     </main>
+    <CommandFeedback />
+    <Toaster theme={dark ? "dark" : "light"} position="top-right" />
     {adding && <CreateStrategy close={() => setAdding(false)} />}
   </DarkMode>;
 }

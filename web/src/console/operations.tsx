@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert } from "lucide-react";
 import { useState } from "react";
 import { DynamicControls, type ControlRegistryView } from "./dynamic-controls";
+import { submitted } from "./command-feedback";
 import { api, readSession, sessionKey, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
 import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, ParameterInput, Table, stateText, useData, when } from "./ui";
 
@@ -69,7 +70,7 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
     onSuccess: (result) => {
       setConfirm(false);
       setRequestIds([crypto.randomUUID(), crypto.randomUUID()]);
-      setCommand(result);
+      setCommand(result); submitted(result);
       void client.invalidateQueries({ queryKey: ["live"] });
     },
   });
@@ -118,7 +119,7 @@ export function CommandDialog({ capability, strategy, close }: { capability: Cap
   const create = useMutation({
     mutationFn: () => api<Command>(strategyApi(strategy.id, "commands"), "POST",
       { action: capability.id, request_id: requestId, arguments: parameters }),
-    onSuccess: (result) => { setCommand(result); void client.invalidateQueries({ queryKey: ["live"] }); },
+    onSuccess: (result) => { setCommand(result); submitted(result); void client.invalidateQueries({ queryKey: ["live"] }); },
   });
   return <Dialog title={capability.label} close={close}>
     {record ? <OperationView command={record} strategy={strategy.name} close={close} /> :
