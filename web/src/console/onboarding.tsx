@@ -138,11 +138,38 @@ if __name__ == "__main__":
 }
 
 function aiInstructions(origin: string, strategyId?: string) {
-  return `为我的独立量化程序添加 QuantBot HTTP 接入。API 地址 ${origin}/api/agent${strategyId ? `，Strategy ID ${strategyId}` : ""}。
-从环境变量 QB_TOKEN 读取策略凭据，并作为 Authorization: Bearer 发送。仅监控时每 15 秒 POST /monitor/{稳定实例名}，使用 {"records":[...]} 上报状态和指标，不需要会话或额外心跳。网络错误后重试。
-用 OpenAPI 和 JSON Schema 校验数据。金额和数量用十进制字符串，时间戳带时区，事件 ID 在重传时保持不变。
-只有需要远程控制时才启用控制权限并 POST /session，后续带 X-Agent-Session，按返回的间隔 PUT /heartbeat，遇 409 重建会话。应用并本地持久化期望开仓权限，再回报 revision 与风险锁。一次性指令须先领取许可，记录命令 ID，结果未知先核对。
-接口与数据定义：${origin}/openapi.json、${origin}/api/data-types。`;
+  return `请帮我将当前量化交易项目接入 **QuantBot**。
+
+**QuantBot GitHub 仓库：**
+[https://github.com/yaho7/QuantBot](https://github.com/yaho7/QuantBot)
+
+**我的 QuantBot 服务器：**
+[${origin}](${origin})
+
+**策略 ID：**
+\`${strategyId ?? "请填写策略 ID"}\`
+
+请先阅读 GitHub 仓库中的 README、PROTOCOL.md 和接入示例，然后根据当前项目的实际代码，**直接完成接入，不要只给我操作建议**。
+
+要求：
+
+1. **尽量简单**：优先使用 HTTP API，不安装不必要的依赖。基础监控从 \`${origin}/api/agent/monitor/{实例名}\` 开始。
+2. **不影响原有交易**：不要修改现有交易策略、下单逻辑和风控规则。QuantBot 断线时，原程序仍能独立运行。
+3. **自动上报信息**：包括运行状态、心跳、日志，以及程序已有的资金、持仓、订单、盈亏等数据。没有的数据不要编造。
+4. **保持连接可靠**：支持自动重连、异常处理，不让 QuantBot 通信阻塞交易程序。
+5. **远程控制按需接入**：只有项目本身能安全支持的操作才添加，不强制实现交易控制功能。
+6. **保护密钥**：通过环境变量 \`QB_TOKEN\` 读取 Token，不写死在代码中，也不输出到日志。
+
+完成后请检查代码，告诉我修改了哪些文件，并用新手能理解的方式说明：**我需要在哪里填写 Token、如何启动、如何确认接入成功。**
+
+优先复用原有代码，避免过度设计。`;
+}
+
+function AgentPrompt({ origin, strategyId }: { origin: string; strategyId?: string }) {
+  const prompt = aiInstructions(origin, strategyId);
+  return <Panel title="AI 接入提示词" action={<CopyButton value={prompt} label="复制 AI 提示词" />}>
+    <pre className="agent-prompt">{prompt}</pre>
+  </Panel>;
 }
 
 function CredentialDialog({ credential, close }: { credential: Credential; close: () => void }) {
@@ -152,9 +179,9 @@ function CredentialDialog({ credential, close }: { credential: Credential; close
     <KeyValue label="API 地址" value={`${origin}/api/agent`} />
     <KeyValue label="策略 ID" value={credential.strategy_id} />
     <KeyValue label="API Token" value={credential.token} />
-    <details className="form-detail" open><summary>HTTP 接入示例和 AI 提示词</summary><div className="stack">
+    <AgentPrompt origin={origin} strategyId={credential.strategy_id} />
+    <details className="form-detail"><summary>curl 和 Python 示例</summary><div className="stack">
       <Code label="curl">{shell(origin)}</Code><Code label="Python">{python(origin)}</Code>
-      <Code label="AI 接入提示词">{aiInstructions(origin, credential.strategy_id)}</Code>
     </div></details>
     <div className="dialog-actions"><button className="button primary" onClick={close}>完成</button></div>
   </div></Dialog>;
@@ -254,6 +281,7 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
   return <>
     <PageTitle title="API 接入" sub="使用标准 HTTP 注册、上报和接收控制指令。" action={<a href="/docs" className="button secondary"><BookOpen size={16} /> 交互文档</a>} />
     <div className="stack">
+      <AgentPrompt origin={origin} strategyId={strategyId} />
       <Panel title="连接信息">
         <Field label="策略接入地址" hint="从其他机器接入时，使用策略所在机器可以访问的地址。">
           <input type="url" placeholder={defaultOrigin} value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} />
@@ -322,7 +350,7 @@ request(f"/commands/{command_id}/result", "POST", {
       </Panel>
       <Panel title="HTTP 示例" hint="使用环境变量传入策略 Token。">
         <div className="stack"><Code label="curl">{shell(origin)}</Code><Code label="Python 标准库">{python(origin)}</Code>
-          <Code label="AI 接入提示词">{aiInstructions(origin, strategyId)}</Code></div>
+        </div>
       </Panel>
     </div>
   </>;

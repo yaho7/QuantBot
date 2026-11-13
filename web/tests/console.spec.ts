@@ -16,7 +16,11 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await dialog.getByRole("button", { name: "创建并生成 Token" }).click();
   const basicToken = await dialog.locator("code").filter({ hasText: /^qb2_/ }).textContent();
   expect(basicToken).toMatch(/^qb2_/);
-  await expect(dialog.getByText(/request\("\/monitor\/my-program"/)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "复制 AI 提示词" })).toBeVisible();
+  await expect(dialog.locator(".agent-prompt")).toContainText("github.com/yaho7/QuantBot");
+  await expect(dialog.locator(".agent-prompt")).toContainText("/api/agent/monitor/");
+  await expect(dialog.locator(".agent-prompt")).not.toContainText(basicToken!);
+  await expect(dialog.getByText(/request\("\/monitor\/my-program"/)).toBeHidden();
   await dialog.getByRole("button", { name: "完成" }).click();
   await expect(page.getByRole("heading", { name: "Web 回归策略" })).toBeVisible();
   const strategyId = decodeURIComponent(new URL(page.url()).hash.split("/")[1]!);
