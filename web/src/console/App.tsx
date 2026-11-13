@@ -50,20 +50,30 @@ function Login({ hash }: { hash: string }) {
   const client = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const setup = useData<{ required: boolean; available: boolean }>("setup");
+  const [confirmation, setConfirmation] = useState("");
+  const creating = setup.data?.required === true && setup.data.available;
+  const setupElsewhere = setup.data?.required === true && !setup.data.available;
   const [ticket] = useState(() => hash.startsWith("#login?") ? new URLSearchParams(hash.slice(7)).get("ticket") : null);
   const [linkError, setLinkError] = useState<unknown>();
   const usedLink = useRef(false);
   useEffect(() => {
-    if (!ticket || usedLink.current) return;
+    if (!ticket || usedLink.current || setup.data?.required !== false) return;
     usedLink.current = true;
     history.replaceState(null, "", "#overview");
     void api("login/link", "POST", { ticket })
       .then(() => client.invalidateQueries({ queryKey: ["live", "session"] }))
       .catch(setLinkError);
-  }, [client, ticket]);
+  }, [client, setup.data?.required, ticket]);
   const login = useMutation({
-    mutationFn: () => api("login", "POST", { username, password }),
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["live", "session"] }),
+    mutationFn: () => {
+      if (creating && password !== confirmation) throw new Error("两次输入的密码不一致");
+      return api(creating ? "setup" : "login", "POST", { username, password });
+    },
+    onSuccess: () => void client.invalidateQueries({ queryKey: ["live"] }),
+    onError: (error) => {
+      if (creating && error instanceof ApiError && error.status === 409) void setup.refetch();
+    },
   });
   return <main className="login">
     <section className="login-story">
@@ -72,13 +82,23 @@ function Login({ hash }: { hash: string }) {
       <div className="login-decoration" aria-hidden="true"><Activity /></div>
     </section>
     <section className="login-form"><div className="login-content">
-      <h2>登录 QuantBot</h2><p>使用管理员账号进入控制台。</p>
-      <form className="stack" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
-        <Field label="用户名"><input required autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
-        <Field label="密码"><input required type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-        <ErrorNotice error={login.error ?? linkError} />
-        <button className="button primary" disabled={login.isPending}>登录 <ChevronRight size={17} /></button>
-      </form>
+      {setup.isPending ? <Loading /> : setupElsewhere ? <>
+        <h2>初始化 QuantBot</h2>
+        <p>请通过部署主机的本机地址或 SSH 端口转发访问控制台，然后创建管理员。</p>
+      </> : <>
+        <h2>{creating ? "初始化 QuantBot" : "登录 QuantBot"}</h2>
+        <p>{creating ? "创建管理员账号，完成后进入控制台。" : "使用管理员账号进入控制台。"}</p>
+        <form className="stack" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
+          <Field label="用户名"><input required maxLength={100} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+          <Field label="密码" hint={creating ? "至少 12 个字符" : undefined}><input required type="password"
+            minLength={creating ? 12 : undefined} maxLength={1024}
+            autoComplete={creating ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+          {creating && <Field label="确认密码"><input required type="password" autoComplete="new-password"
+            maxLength={1024} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} /></Field>}
+          <ErrorNotice error={login.error ?? linkError ?? setup.error} />
+          <button className="button primary" disabled={login.isPending}>{creating ? "创建管理员" : "登录"} <ChevronRight size={17} /></button>
+        </form>
+      </>}
     </div></section>
   </main>;
 }

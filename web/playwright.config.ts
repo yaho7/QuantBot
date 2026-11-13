@@ -5,10 +5,19 @@ const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./tests",
-  use: { baseURL, channel: process.env.QB_BROWSER_CHANNEL || undefined },
-  webServer: {
+  use: { channel: process.env.QB_BROWSER_CHANNEL || undefined },
+  projects: [
+    { name: "console", testMatch: "console.spec.ts", use: { baseURL } },
+    { name: "setup", testMatch: "setup.spec.ts", use: { baseURL: `http://127.0.0.1:${Number(port) + 1}` } },
+  ],
+  webServer: [{
     command: "uv run --directory .. python -m tests.v2.browser_server",
     url: `${baseURL}/healthz`,
     timeout: 20_000,
-  },
+  }, {
+    command: "uv run --directory .. python -m tests.v2.browser_server",
+    env: { QB_BROWSER_PORT: String(Number(port) + 1), QB_BROWSER_FRESH: "1" },
+    url: `http://127.0.0.1:${Number(port) + 1}/healthz`,
+    timeout: 20_000,
+  }],
 });

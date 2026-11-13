@@ -5,6 +5,7 @@ import json
 import logging
 import time
 from contextlib import asynccontextmanager, suppress
+from ipaddress import IPv4Address, ip_address
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlsplit
@@ -23,7 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from quantbot import __version__
 
-from .auth import digest, password_matches
+from .auth import digest, password_hash, password_matches
 from .control_models import ControlID, ControlInvocation, ControlRegistry, ControlValues
 from .dashboard_models import Component, Dashboard, HistoryQuery
 from .errors import Problem
@@ -41,6 +42,7 @@ from .models import (
     Name,
     Reconciliation,
     SessionOpen,
+    SetupAdmin,
     Snapshot,
     Stamp,
     StrategyCreate,
@@ -262,6 +264,39 @@ def set_cookie(request, value):
         max_age=43200,
         secure=request.url.scheme == "https",
     )
+    return response
+
+
+def setup_allowed(request: Request) -> bool:
+    return request.state.local_access
+
+
+@admin.get("/setup")
+async def setup_status(request: Request) -> dict[str, bool]:
+    required = not runtime(request).auth.has_administrator()
+    return {"required": required, "available": required and setup_allowed(request)}
+
+
+@admin.post("/setup", status_code=201)
+async def setup_admin(request: Request, body: SetupAdmin):
+    if not setup_allowed(request):
+        raise Problem(403, "Open the console on localhost to set up the administrator")
+    origin = f"{request.url.scheme}://{request.url.netloc}"
+    if request.headers.get("origin") != origin:
+        raise Problem(403, "Setup requires a same-origin browser request")
+    service = runtime(request)
+    if service.auth.has_administrator():
+        raise Problem(409, "An administrator is already configured")
+    service.limit("setup", "global", 8, 60)
+    hashed_password = await asyncio.to_thread(password_hash, body.password)
+    actor = f"web:{body.username}"
+    with service.db.transaction():
+        if not service.auth.create_administrator(body.username, hashed_password):
+            raise Problem(409, "An administrator is already configured")
+        service.strategies.audit(actor, "admin.configure")
+        session = service.auth.session(actor)
+    response = set_cookie(request, session)
+    response.status_code = 201
     return response
 
 
@@ -580,10 +615,22 @@ def unique_json(items):
     return result
 
 
+def docker_bridge_peer(peer: str) -> bool:
+    try:
+        address = ip_address(peer)
+    except ValueError:
+        return False
+    if not isinstance(address, IPv4Address):
+        return False
+    first, second, *_ = address.packed
+    return first == 10 or (first == 172 and 16 <= second <= 31) or (first, second) == (192, 168)
+
+
 class Transport:
-    def __init__(self, app, public_url):
+    def __init__(self, app, public_url, docker_local_http):
         self.app = app
         self.origin = public_url
+        self.docker_local_http = docker_local_http
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -594,11 +641,22 @@ class Transport:
         peer = request.client.host if request.client else ""
         host = request.url.netloc
         origin = f"{request.url.scheme}://{host}"
+        local_host = request.url.hostname in {"127.0.0.1", "::1", "localhost"}
+        local_peer = peer in {"127.0.0.1", "::1"}
+        # The default Compose publishes on host loopback. Docker can NAT its source
+        # address to a private bridge address before forwarding it into the container.
+        local_access = local_host and (
+            local_peer
+            or (
+                self.docker_local_http
+                and docker_bridge_peer(peer)
+                and not request.headers.get("x-forwarded-for")
+                and not request.headers.get("forwarded")
+            )
+        )
+        request.state.local_access = local_access
         error = None
-        if request.url.scheme != "https" and (
-            peer not in {"127.0.0.1", "::1"}
-            or request.url.hostname not in {"127.0.0.1", "::1", "localhost"}
-        ):
+        if request.url.scheme != "https" and not local_access:
             error = (426, "HTTPS is required for remote connections")
         elif self.origin and request.url.scheme == "https" and host != urlsplit(self.origin).netloc:
             error = (421, "Request host does not match the configured public URL")
@@ -700,6 +758,7 @@ def make_app(
     telegram_token=None,
     telegram_network=True,
     local_url=None,
+    docker_local_http=False,
 ):
     @asynccontextmanager
     async def lifespan(app):
@@ -728,7 +787,7 @@ def make_app(
                 service.db.close()
 
     app = FastAPI(title="QuantBot API", version=__version__, lifespan=lifespan)
-    app.add_middleware(Transport, public_url=public_url)
+    app.add_middleware(Transport, public_url=public_url, docker_local_http=docker_local_http)
     app.include_router(agent)
     register_management(app, administrator, set_cookie)
     app.include_router(admin)

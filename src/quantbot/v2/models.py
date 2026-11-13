@@ -445,3 +445,7 @@ class Reconciliation(Payload):
 class Login(Payload):
     username: Name
     password: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
+
+
+class SetupAdmin(Login):
+    password: Annotated[str, StringConstraints(min_length=12, max_length=1024)]

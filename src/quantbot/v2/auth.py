@@ -46,6 +46,16 @@ class Auth:
         self.db = db
         self.clock = clock
 
+    def has_administrator(self) -> bool:
+        return self.db.one("SELECT 1 FROM settings WHERE name='administrator'") is not None
+
+    def create_administrator(self, username: str, hashed_password: str) -> bool:
+        inserted = self.db.execute(
+            "INSERT OR IGNORE INTO settings VALUES ('administrator', ?)",
+            (encode({"username": username, "password_hash": hashed_password}),),
+        )
+        return inserted.rowcount == 1
+
     def issue(self, strategy_id, options):
         now = self.clock()
         expiry = options.expires_at.timestamp() if options.expires_at else None

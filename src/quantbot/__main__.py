@@ -74,14 +74,14 @@ def serve(args, path):
         logging.getLogger(name).setLevel(logging.CRITICAL)
 
     def bootstrap(service):
-        if service.db.one("SELECT 1 FROM settings WHERE name='administrator'"):
+        if service.auth.has_administrator():
             return
         password = secret("QB_ADMIN_PASSWORD")
         if password:
             configure_admin(service, os.environ.get("QB_ADMIN_USERNAME", "admin"), password)
         else:
             logging.getLogger("quantbot").info(
-                "No administrator configured. Use quantbot admin or QB_ADMIN_PASSWORD_FILE."
+                "Open the local web console to create the administrator."
             )
 
     local_url = f"http://127.0.0.1:{args.port}"
@@ -91,6 +91,7 @@ def serve(args, path):
         bootstrap=bootstrap,
         telegram_token=secret("QB_TELEGRAM_TOKEN"),
         local_url=local_url,
+        docker_local_http=os.environ.get("QB_DOCKER_LOCAL_HTTP") == "1",
     )
     uvicorn.run(
         app,
