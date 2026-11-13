@@ -57,7 +57,7 @@ QB_TRUST_PROXY=127.0.0.1,::1
 ```bash
 quantbot backup ~/quantbot-backup-$(date -u +%Y%m%dT%H%M%SZ).sqlite3
 systemctl --user stop quantbot
-bash install.sh --ref v2.0.0
+bash install.sh --ref v2.0.1
 systemctl --user start quantbot
 ```
 
