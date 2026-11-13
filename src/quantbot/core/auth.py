@@ -9,7 +9,6 @@ from .db import Database, encode, record
 from .errors import Problem
 
 TOKEN_PREFIX = "qb_"  # noqa: S105 - Public prefix, not a credential.
-TOKEN_LENGTH = len(TOKEN_PREFIX) + 43
 
 
 def digest(secret: str) -> str:
@@ -90,7 +89,7 @@ class Auth:
         )
 
     def authenticate(self, secret: str | None, scope: str) -> Credential:
-        if not secret or len(secret) != TOKEN_LENGTH or not secret.startswith(TOKEN_PREFIX):
+        if not secret or len(secret) > 128:
             raise Problem(401, "Invalid strategy credential")
         now = self.clock()
         row = self.db.one(

@@ -19,6 +19,7 @@
 
 | 方法 | 路径 | 权限 | 用途 |
 |---|---|---|---|
+| POST | `/monitor/{instance_id}` | telemetry | 使用 Token 上报并更新在线状态 |
 | POST | `/session` | session | 声明版本、券商、语言、框架和实际控制能力 |
 | PUT | `/heartbeat` | session | 维持会话、上报运行健康和券商状态 |
 | POST | `/reports` | telemetry | 批量发送 14 种标准记录 |
@@ -38,7 +39,7 @@ JSON 体积上限为 1 MiB。校验错误会返回字段位置和错误类型。
 
 ## 标准数据与图表
 
-基础监控使用 `POST /api/agent/monitor/{instance_id}`。发送策略 Bearer Token 和 `{"records":[...]}`，无需会话头。固定使用同一个实例名（最长 56 个字符），每 15 秒上报一次。上报会更新在线状态，断网或服务重启后重试即可。需要控制指令时使用下文的 Session 协议。
+基础监控使用 `POST /api/agent/monitor/{instance_id}`。发送策略 Bearer Token 和 `{"records":[...]}`，无需会话头。固定使用同一个实例名（最长 56 个字符），每 15 秒上报一次。上报会更新在线状态，断网或服务重启后重试即可。需要控制指令时使用上文的 Session 协议。
 
 `POST /reports` 和基础监控接受相同的记录。每条记录显式包含 `type`、整数 `schema_version: 1` 和 RFC 3339 `observed_at`。服务端统一为 UTC。交易金额、价格、数量、费用、净值、收益、指标值等使用十进制字符串。百分比按百分数值上报，例如 `"1.25"` 表示 1.25%。币种使用大写代码。
 
