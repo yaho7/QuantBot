@@ -75,6 +75,16 @@ jobs:
           sudo chmod 0755 data
           docker compose up -d --pull never --wait --wait-timeout 60
           curl --fail --silent --show-error "$setup" | jq -e '.required == false'
+          docker compose down
+          sudo mv data/quantbot.sqlite3 data/quantbot-v2.sqlite3
+          sudo chown root:root data/quantbot-v2.sqlite3
+          docker compose up -d --pull never --wait --wait-timeout 60
+          curl --fail --silent --show-error "$setup" | jq -e '.required == false'
+          curl --fail --silent --show-error http://localhost:8888/api/admin/login \
+            -H 'Origin: http://localhost:8888' -H 'Content-Type: application/json' \
+            --data '{"username":"compose-admin","password":"compose-smoke-test"}' \
+            | jq -e '.authenticated'
+          sudo test ! -e data/quantbot.sqlite3
 
   publish-image:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')

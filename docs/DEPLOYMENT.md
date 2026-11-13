@@ -82,7 +82,16 @@ QB_TRUST_PROXY=127.0.0.1,::1
 
 ## 更新与备份
 
-使用 SQLite 在线备份获取包含已提交 WAL 的一致副本。备份文件必须是新的路径，包含管理员密码哈希和加密后的接入凭据。需要在恢复后继续查看 Secret 时，请同时备份数据目录中的 `quantbot.key`，并单独存放在只有运维人员可访问的位置。
+Docker 升级请在原来的 Compose 目录执行，继续挂载同一份 `./data` 到 `/data`。管理员、策略、设置和历史都保存在此目录。若打开网页又看见初始化，先确认容器实际挂载的位置：
+
+```bash
+docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' \
+  "$(docker compose ps -q quantbot)"
+```
+
+如果此前换过部署目录，或在目录挂载和 Docker 命名卷之间切换过，请先备份，再把 Compose 指回原来的存储。升级会继续打开同目录中唯一的 QuantBot 数据库。如果同一目录有两份数据库，服务使用 `quantbot.sqlite3` 并在启动日志中提示，保留另一份供恢复。需要恢复旧数据时，请先停止服务并备份两份数据库及各自的 WAL、SHM 和密钥文件，再从选定备份恢复。
+
+使用 SQLite 在线备份获取包含已提交 WAL 的一致副本。备份文件必须是新的路径，包含管理员密码哈希和加密后的接入凭据。需要在恢复后继续查看 Secret 时，请同时备份原数据库同名的 `.key` 文件（默认 `quantbot.key`），并单独存放在只有运维人员可访问的位置。
 
 ```bash
 quantbot backup ~/quantbot-backup-$(date -u +%Y%m%dT%H%M%SZ).sqlite3

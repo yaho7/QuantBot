@@ -6,13 +6,10 @@ import sys
 
 SERVICE_ID = 10001
 DATA = "/data"
-DATA_FILES = (
-    "quantbot.key",
-    "quantbot.lock",
-    "quantbot.sqlite3",
-    "quantbot.sqlite3-wal",
-    "quantbot.sqlite3-shm",
-    "quantbot.sqlite3-journal",
+DATA_FILES = tuple(
+    stem + suffix
+    for stem in ("quantbot", "quantbot-v2")
+    for suffix in (".key", ".lock", ".sqlite3", ".sqlite3-wal", ".sqlite3-shm", ".sqlite3-journal")
 )
 
 

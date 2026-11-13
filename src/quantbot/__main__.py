@@ -149,11 +149,30 @@ def parser():
     return command
 
 
+def database_path(data_dir: Path) -> Path:
+    directory = data_dir.expanduser().resolve()
+    current = directory / "quantbot.sqlite3"
+    previous = directory / "quantbot-v2.sqlite3"
+    if previous.exists():
+        if not current.exists():
+            return previous
+        logging.getLogger("quantbot").warning(
+            "Found two databases in %s. Using %s and leaving %s untouched.",
+            directory,
+            current.name,
+            previous.name,
+        )
+    return current
+
+
 def run():
     command = parser()
     args = command.parse_args()
-    path = args.data_dir.expanduser().resolve() / "quantbot.sqlite3"
+    if args.operation is None:
+        command.print_help()
+        return 0
     try:
+        path = database_path(args.data_dir)
         if args.operation == "serve":
             serve(args, path)
         elif args.operation == "admin":
@@ -172,8 +191,6 @@ def run():
         elif args.operation == "backup":
             backup_sqlite(path, args.file.expanduser())
             print(f"Backup verified at {args.file}")
-        else:
-            command.print_help()
         return 0
     except (OSError, RuntimeError, ValueError, sqlite3.Error, Problem) as exc:
         command.exit(1, f"QuantBot: {exc}\n")
