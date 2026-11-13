@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Activity, AlertCircle, ArrowUpRight, Check, Copy, Inbox, LoaderCircle, X } from "lucide-react";
+import { AlertCircle, ArrowUpRight, Check, Copy, Inbox, LoaderCircle, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type CommandState, type Mode, type Parameter, type Scalar, type Status } from "./api";
 
@@ -43,9 +43,9 @@ export function money(value?: string | null, unit?: string | null) {
     + (fraction ? `.${fraction}` : "") + (unit ? ` ${unit}` : "");
 }
 
-export function Brand({ compact = false }: { compact?: boolean }) {
-  return <div className="brand"><span className="brand-icon"><Activity size={22} strokeWidth={2.5} /></span>
-    {!compact && <span>QuantBot</span>}</div>;
+export function Brand() {
+  return <span className="brand"><span className="brand-icon" aria-hidden="true" />
+    <span className="brand-name">QuantBot</span></span>;
 }
 export function PageTitle({ title, sub, action }: { title: string; sub?: string; action?: ReactNode }) {
   return <header className="page-title"><div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{action}</header>;

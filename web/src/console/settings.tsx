@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bot, Database, ExternalLink, KeyRound, Server } from "lucide-react";
+import { Bot, Database, ExternalLink, KeyRound, Server, SunMoon } from "lucide-react";
+import type { Theme } from "./theme";
 import { useState } from "react";
 import { api, type Alert, type System, type TelegramSettings } from "./api";
 import { CategoryPicker } from "./onboarding";
@@ -95,7 +96,7 @@ function TelegramForm({ config }: { config: TelegramSettings }) {
 
 const countLabels: Record<string, string> = { strategies: "策略", archived: "已归档", metrics: "指标点", events: "事件", reports: "标准记录", commands: "指令" };
 
-export function SystemPage() {
+export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: Theme) => void }) {
   const system = useData<System>("system");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -106,6 +107,11 @@ export function SystemPage() {
   return <>
     <PageTitle title="系统设置" sub="管理员安全、服务版本与数据存储。" />
     <div className="stack">
+      <Panel title="外观" action={<SunMoon size={21} />}>
+        <Field label="主题"><select value={theme} onChange={(e) => onTheme(e.target.value as Theme)}>
+          <option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option>
+        </select></Field>
+      </Panel>
       <Panel title="管理员密码" action={<KeyRound size={21} />}>
         <form className="stack" onSubmit={(e) => { e.preventDefault(); password.mutate(); }}>
           <div className="form-grid"><Field label="当前密码"><input type="password" required autoComplete="current-password" value={current}

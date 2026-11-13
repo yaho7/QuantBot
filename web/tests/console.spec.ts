@@ -75,6 +75,31 @@ test("mobile navigation and API schema are accessible", async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 
+test("serves the original brand and remembers the appearance setting", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/ui/");
+  const brand = page.getByRole("link", { name: "QuantBot 首页" }).locator(".brand-icon");
+  await expect(brand).toHaveCSS("mask-image", /\/ui\/favicon\.svg/);
+  const favicon = await page.request.get("/ui/favicon.svg");
+  expect(favicon.ok()).toBe(true);
+  expect(await favicon.text()).toContain('viewBox="0 0 174 223"');
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(16, 15, 15)");
+
+  await page.getByLabel("用户名").fill("admin");
+  await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
+  await page.getByRole("button", { name: "登录", exact: true }).click();
+  await page.getByRole("link", { name: "系统设置", exact: true }).click();
+  const theme = page.getByLabel("主题");
+  await theme.selectOption("light");
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(255, 252, 240)");
+  await page.reload();
+  await expect(theme).toHaveValue("light");
+  await theme.selectOption("system");
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(16, 15, 15)");
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveCSS("background-color", "rgb(255, 252, 240)");
+});
+
 test("registered controls render safely and retain the last reported state", async ({ page }) => {
   await page.goto("/ui/");
   const admin = page.request;

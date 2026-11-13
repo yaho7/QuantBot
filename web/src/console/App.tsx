@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Activity, Bell, ChevronRight, CircleHelp, ClipboardList, LayoutDashboard, LogOut, Menu, Radio, Settings, Braces, X } from "lucide-react";
+import { Bell, Braces, CircleHelp, ClipboardList, LayoutDashboard, LayoutGrid, LogOut, Menu, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "./api";
 import { ApiPage, CreateStrategy } from "./onboarding";
@@ -7,11 +7,12 @@ import { OperationsPage } from "./operations";
 import { OverviewPage, StrategiesPage } from "./overview";
 import { SystemPage, TelegramPage } from "./settings";
 import { StrategyPage } from "./strategy";
+import { DarkMode, useTheme } from "./theme";
 import { Brand, ErrorNotice, Field, Loading, useData } from "./ui";
 
 const nav = [
   { key: "overview", title: "运行总览", icon: LayoutDashboard },
-  { key: "strategies", title: "策略", icon: Activity },
+  { key: "strategies", title: "策略", icon: LayoutGrid },
   { key: "api", title: "API 接入", icon: Braces },
   { key: "operations", title: "操作记录", icon: ClipboardList },
   { key: "telegram", title: "通知与 Telegram", icon: Bell },
@@ -75,20 +76,16 @@ function Login({ hash }: { hash: string }) {
       if (creating && error instanceof ApiError && error.status === 409) void setup.refetch();
     },
   });
-  return <main className="login">
-    <section className="login-story">
-      <Brand /><div className="login-copy"><span className="login-eyebrow"><Radio size={17} /> 策略监控与远程控制</span>
-        <h1>交易程序独立运行，<br />状态集中查看。</h1></div>
-      <div className="login-decoration" aria-hidden="true"><Activity /></div>
-    </section>
-    <section className="login-form"><div className="login-content">
+  return <>
+    <header className="topbar"><a href={import.meta.env.BASE_URL} aria-label="QuantBot 首页"><Brand /></a></header>
+    <main className="login">
       {setup.isPending ? <Loading /> : setupElsewhere ? <>
-        <h2>初始化 QuantBot</h2>
+        <h1>初始化 QuantBot</h1>
         <p>请通过部署主机的本机地址或 SSH 端口转发访问控制台，然后创建管理员。</p>
       </> : <>
-        <h2>{creating ? "初始化 QuantBot" : "登录 QuantBot"}</h2>
+        <h1>{creating ? "初始化 QuantBot" : "登录 QuantBot"}</h1>
         <p>{creating ? "创建管理员账号，完成后进入控制台。" : "使用管理员账号进入控制台。"}</p>
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
+        <form className="panel stack" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
           <Field label="用户名"><input required maxLength={100} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
           <Field label="密码" hint={creating ? "至少 12 个字符" : undefined}><input required type="password"
             minLength={creating ? 12 : undefined} maxLength={1024}
@@ -96,11 +93,11 @@ function Login({ hash }: { hash: string }) {
           {creating && <Field label="确认密码"><input required type="password" autoComplete="new-password"
             maxLength={1024} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} /></Field>}
           <ErrorNotice error={login.error ?? linkError ?? setup.error} />
-          <button className="button primary" disabled={login.isPending}>{creating ? "创建管理员" : "登录"} <ChevronRight size={17} /></button>
+          <button className="button primary" disabled={login.isPending}>{creating ? "创建管理员" : "登录"}</button>
         </form>
       </>}
-    </div></section>
-  </main>;
+    </main>
+  </>;
 }
 
 export function App() {
@@ -109,6 +106,8 @@ export function App() {
   const session = useData<{ actor: string }>("session");
   const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const { theme, setTheme, dark } = useTheme();
   const actor = session.data?.actor;
   const expired = session.error instanceof ApiError && session.error.status === 401;
   useLive(!!actor && !expired);
@@ -123,37 +122,37 @@ export function App() {
   if (expired || !actor) return <Login hash={hash} />;
   const [section, id, tab] = hash.slice(1).split("/");
   const page = section === "strategy" ? "strategies" : nav.some((item) => item.key === section) ? section : "overview";
-  const title = nav.find((item) => item.key === page)?.title;
   const add = () => setAdding(true);
-  return <div className="shell">
-    {menu && <button className="nav-scrim" aria-label="关闭导航" onClick={() => setMenu(false)} />}
-    <aside className={`sidebar ${menu ? "open" : ""}`}>
+  return <DarkMode value={dark}>
+    <header className="topbar" onKeyDown={(event) => {
+      if (event.key === "Escape" && menu) {
+        setMenu(false);
+        menuButton.current?.focus();
+      }
+    }}>
       <a href="#overview" onClick={() => setMenu(false)} aria-label="QuantBot 总览"><Brand /></a>
-      <button className="icon-button sidebar-close" aria-label="关闭导航" onClick={() => setMenu(false)}><X size={20} /></button>
-      <nav aria-label="主导航">{nav.map(({ key, title: label, icon: Icon }) => <a href={`#${key}`}
-        onClick={() => setMenu(false)} key={key} aria-current={page === key ? "page" : undefined}><Icon size={19} />
-        <span>{label}</span>{page === key && <ChevronRight className="nav-caret" size={14} />}</a>)}</nav>
-      <div className="sidebar-footer"><a href="/docs"><CircleHelp size={18} /> API 文档</a>
-        <button onClick={() => logout.mutate()}><LogOut size={18} /> 退出登录</button></div>
-    </aside>
-    <div className="main-frame">
-      <header className="topbar">
-        <div><button className="icon-button hamburger" aria-label="打开导航" onClick={() => setMenu(!menu)}><Menu size={22} /></button>
-          <span className="top-label">控制台</span><ChevronRight className="breadcrumb-divider" size={15} /><strong>{title}</strong></div>
-        <div><span className="avatar" aria-label={actor}>{(actor.split(":").at(-1)?.[0] ?? "A").toUpperCase()}</span>
-        </div>
-      </header>
-      <main id="main" className="page">
-        <ErrorNotice error={logout.error} />
-        {page === "overview" && <OverviewPage add={add} />}
-        {page === "strategies" && (section === "strategy" && id ?
-          <StrategyPage key={id} strategyId={decodeURIComponent(id)} tab={tab} /> : <StrategiesPage add={add} />)}
-        {page === "api" && <ApiPage strategyId={id ? decodeURIComponent(id) : undefined} />}
-        {page === "operations" && <OperationsPage commandId={id} />}
-        {page === "telegram" && <TelegramPage />}
-        {page === "system" && <SystemPage />}
-      </main>
-    </div>
+      <button className="icon-button hamburger" ref={menuButton} aria-label={menu ? "关闭导航" : "打开导航"}
+        aria-controls="main-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)}><Menu size={20} /></button>
+      <nav id="main-navigation" className={`top-nav${menu ? " open" : ""}`} aria-label="主导航">
+        {nav.map(({ key, title: label, icon: Icon }) => <a href={`#${key}`}
+          onClick={() => setMenu(false)} key={key} aria-current={page === key ? "page" : undefined}>
+          <Icon size={16} /><span>{label}</span></a>)}
+      </nav>
+      <div className="top-actions">
+        <a className="icon-button" href="/docs" aria-label="API 文档" title="API 文档"><CircleHelp size={18} /></a>
+        <button className="icon-button" onClick={() => logout.mutate()} aria-label="退出登录" title="退出登录"><LogOut size={18} /></button>
+      </div>
+    </header>
+    <main id="main" className="page">
+      <ErrorNotice error={logout.error} />
+      {page === "overview" && <OverviewPage add={add} />}
+      {page === "strategies" && (section === "strategy" && id ?
+        <StrategyPage key={id} strategyId={decodeURIComponent(id)} tab={tab} /> : <StrategiesPage add={add} />)}
+      {page === "api" && <ApiPage strategyId={id ? decodeURIComponent(id) : undefined} />}
+      {page === "operations" && <OperationsPage commandId={id} />}
+      {page === "telegram" && <TelegramPage />}
+      {page === "system" && <SystemPage theme={theme} onTheme={setTheme} />}
+    </main>
     {adding && <CreateStrategy close={() => setAdding(false)} />}
-  </div>;
+  </DarkMode>;
 }
