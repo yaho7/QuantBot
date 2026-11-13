@@ -35,12 +35,22 @@ function useLive(enabled: boolean) {
     if (!enabled) return;
     const stream = new EventSource("/api/stream");
     let timer: number | undefined;
-    const update = () => {
+    const topics = new Set<string>();
+    const update = (event: MessageEvent<string>) => {
+      for (const topic of JSON.parse(event.data) as string[]) topics.add(topic);
       if (timer !== undefined) return;
       timer = window.setTimeout(() => {
         timer = undefined;
-        void client.invalidateQueries({ queryKey: ["live"] });
-      }, 1200);
+        const pending = new Set(topics);
+        topics.clear();
+        void client.invalidateQueries({ queryKey: ["live"], predicate: (query) => {
+          const path = String(query.queryKey[1]);
+          if (/^strategies\/[^/]+\/components$/.test(path)) return pending.has("metrics") || pending.has("telemetry");
+          const overview = path === "overview" || path === "strategies" || /^strategies\/[^/?]+(?:\?.*)?$/.test(path);
+          const activity = /^(commands|audit|alerts)(?:[/?]|$)|^strategies\/[^/]+\/(?:controls|events|dashboard)(?:[/?]|$)/.test(path);
+          return (pending.has("operations") || pending.has("telemetry")) && (overview || activity);
+        } });
+      }, 2000);
     };
     stream.addEventListener("update", update);
     return () => { stream.close(); window.clearTimeout(timer); };

@@ -868,17 +868,25 @@ def make_app(
     async def stream(request: Request, actor=ADMIN):
         async def updates():
             service = runtime(request)
+            seen = service.versions.copy()
             while not await request.is_disconnected():
                 try:
                     service.auth.administrator(request.cookies.get(COOKIE))
                 except Problem:
                     return
                 changed = service.change
-                yield f"event: update\ndata: {service.version}\n\n"
+                topics = [
+                    topic for topic, version in service.versions.items() if seen[topic] != version
+                ]
+                if topics:
+                    seen = service.versions.copy()
+                    yield f"event: update\ndata: {json.dumps(topics)}\n\n"
+                else:
+                    yield ": connected\n\n"
                 try:
                     await asyncio.wait_for(changed.wait(), 15)
-                except asyncio.TimeoutError:
-                    yield ": keepalive\n\n"
+                except TimeoutError:
+                    pass
 
         return StreamingResponse(
             updates(), media_type="text/event-stream", headers={"X-Accel-Buffering": "no"}

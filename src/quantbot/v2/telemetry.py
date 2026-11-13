@@ -54,7 +54,7 @@ class Telemetry:
             self.registry.performance_samples(sid, instance, snapshot.performance, observed)
             self.registry.from_snapshot(sid, instance, snapshot, observed)
             self.registry.clear_failures(sid, ("snapshot",))
-        self.wake()
+        self.wake("telemetry")
         return {"current": current, "observed_at": snapshot.observed_at}
 
     def sample(self, sid, instance, metric, observed):
@@ -97,7 +97,7 @@ class Telemetry:
                 if observed >= cutoff:
                     inserted += self.sample(sid, instance, point, observed)
             self.registry.clear_failures(sid, ("metric",))
-        self.wake()
+        self.wake("metrics")
         return {"inserted": inserted, "ignored": len(points.metrics) - inserted}
 
     def events(self, agent, batch):
@@ -115,7 +115,7 @@ class Telemetry:
                 else:
                     duplicate.append(event.id)
             self.registry.clear_failures(sid, ("event",))
-        self.wake()
+        self.wake("telemetry")
         return {"accepted": accepted, "duplicates": duplicate, "ignored": ignored}
 
     def insert_event(self, sid, instance, event, observed):

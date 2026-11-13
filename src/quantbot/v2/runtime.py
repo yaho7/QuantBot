@@ -37,7 +37,7 @@ class Runtime:
         self.db = Database(path)
         self.clock = clock
         self.change = asyncio.Event()
-        self.version = 0
+        self.versions = {"operations": 0, "telemetry": 0, "metrics": 0}
         self.auth = Auth(self.db, clock)
         self.strategies = Strategies(self.db, self.auth, clock, self.wake)
         self.commands = Commands(self.db, self.strategies, clock, self.wake)
@@ -51,8 +51,8 @@ class Runtime:
         self.rate_limit_swept = 0
         self.polling = set()
 
-    def wake(self):
-        self.version += 1
+    def wake(self, topic="operations"):
+        self.versions[topic] += 1
         self.change.set()
         self.change = asyncio.Event()
 

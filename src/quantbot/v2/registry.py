@@ -106,7 +106,7 @@ class Registry:
                    count=count+1, active=1""",
                 (sid, kind, self.clock()),
             )
-        self.service.wake()
+        self.service.wake("telemetry")
 
     def clear_failures(self, sid, kinds):
         for kind in set(kinds):
@@ -134,7 +134,7 @@ class Registry:
                         encode(item.model_dump(mode="json")),
                     ),
                 )
-        self.service.wake()
+        self.service.wake("metrics")
         return {"registered": len(definitions.metrics)}
 
     def reports(self, agent, batch):
@@ -150,7 +150,8 @@ class Registry:
                 inserted = self.store(sid, instance, item, observed)
                 counts["inserted" if inserted else "duplicates"] += 1
             self.clear_failures(sid, [item.type for item in batch.records])
-        self.service.wake()
+        kinds = {item.type for item in batch.records}
+        self.service.wake("metrics" if kinds <= {"metric", "equity", "ohlcv"} else "telemetry")
         return counts
 
     def store(self, sid, instance, item, observed):
