@@ -2,11 +2,12 @@
 
 import json
 import secrets
+from datetime import datetime
 from uuid import uuid4
 
 from .db import encode, record, timestamp
 from .errors import Problem
-from .models import SessionOpen
+from .models import SessionOpen, TokenSettings
 
 HEARTBEAT_INTERVAL = 15
 OFFLINE_AFTER = 50
@@ -150,6 +151,24 @@ class Strategies:
             )
             self.db.execute("INSERT INTO settings VALUES (?, ?)", (key, token["id"]))
             self.audit(actor, "token.rotate", sid, token_id=token["id"], replaced=old_id)
+        self.wake()
+        return token
+
+    def regenerate_token(self, sid, actor, old_id):
+        with self.db.transaction():
+            self.active(sid)
+            old = self.auth.token_metadata(sid, old_id)
+            if old["revoked_at"] is not None:
+                raise Problem(409, "This Token has already been revoked")
+            expiry = datetime.fromisoformat(old["expires_at"]) if old["expires_at"] else None
+            options = TokenSettings(scopes=old["scopes"], expires_at=expiry)
+            token = self.auth.issue(sid, options)
+            self.db.execute(
+                "UPDATE strategy_tokens SET revoked_at=? WHERE strategy_id=? AND id=?",
+                (self.clock(), sid, old_id),
+            )
+            self.audit(actor, "token.regenerate", sid, token_id=token["id"], replaced=old_id)
+            self.refresh_presence(sid)
         self.wake()
         return token
 
@@ -350,8 +369,6 @@ class Strategies:
         for instance, runtime in zip(active, health, strict=True):
             raw = runtime.get("authorization_expires_at")
             if raw:
-                from datetime import datetime
-
                 when = datetime.fromisoformat(raw.replace("Z", "+00:00")).timestamp()
                 if when <= now + 3 * 86400:
                     self.alert(

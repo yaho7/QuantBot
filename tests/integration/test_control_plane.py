@@ -201,6 +201,28 @@ def test_token_rotation_allows_handoff_without_two_active_sessions(server):
     )
 
 
+def test_regenerate_token_revokes_old_credential_and_keeps_scope_and_expiry(server):
+    http, _, _ = server
+    sid, old = create(http, scopes=["session", "telemetry"], expires=stamp(NOW + 100))
+    old_headers, _ = connect(http, old, executor=False)
+    other_sid, other = create(http)
+    path = f"{ADMIN}/strategies/{sid}/tokens/{old['id']}/regenerate"
+    assert (
+        http.post(f"{ADMIN}/strategies/{other_sid}/tokens/{old['id']}/regenerate").status_code
+        == 404
+    )
+    response = http.post(path)
+    assert response.status_code == 201, response.text
+    new = response.json()
+    assert new["id"] != old["id"] and new["token"] != old["token"]
+    assert new["scopes"] == old["scopes"] and new["expires_at"] == old["expires_at"]
+    assert http.post(path).status_code == 409
+    assert http.put(AGENT + "/heartbeat", headers=old_headers, json={}).status_code == 401
+    new_headers, _ = connect(http, new, executor=False)
+    assert http.put(AGENT + "/heartbeat", headers=new_headers, json={}).status_code == 200
+    connect(http, other, executor=False)
+
+
 def test_command_history_filters_and_prioritizes_unknown_across_pages(server):
     http, _, path = server
     sid, _ = create(http)

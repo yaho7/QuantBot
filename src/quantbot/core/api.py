@@ -412,6 +412,16 @@ async def rotate_token(
     return runtime(request).strategies.rotate_token(strategy_id, actor, token_id, body)
 
 
+@admin.post(
+    "/strategies/{strategy_id}/tokens/{token_id}/regenerate",
+    status_code=201,
+    response_model=CredentialIssued,
+)
+async def regenerate_token(request: Request, strategy_id: Key, token_id: Key, actor=ADMIN):
+    """Keep permissions and expiry, issue a replacement, and immediately revoke the old Token."""
+    return runtime(request).strategies.regenerate_token(strategy_id, actor, token_id)
+
+
 @admin.delete("/strategies/{strategy_id}/tokens/{token_id}", status_code=204)
 async def revoke_token(request: Request, strategy_id: Key, token_id: Key, actor=ADMIN):
     runtime(request).strategies.change_token(strategy_id, actor, revoke=token_id)

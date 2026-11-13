@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, ChevronRight, KeyRound, Plus } from "lucide-react";
+import { BookOpen, ChevronRight, KeyRound, Plus, RefreshCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api, strategyApi, strategyPath, type Catalog, type Credential, type DataType, type Detail, type Scope, type System, type StrategySettings, type Token, type TokenOptions } from "./api";
 import { Code, CopyButton, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
@@ -198,14 +198,31 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
   const tokens = useData<Token[]>(strategyApi(id, "tokens"));
   const catalog = useData<Catalog>(strategyApi(id, "components"));
   const [editing, setEditing] = useState<Token | "new" | null>(null);
+  const [replacing, setReplacing] = useState<Token | null>(null);
   const [revealed, reveal] = useState<Credential | null>(null);
+  const current = tokens.data?.find((token) => !token.revoked_at && (!token.expires_at || Date.parse(token.expires_at) > Date.now()));
+  const regenerate = useMutation({
+    mutationFn: (token: Token) => api<Credential>(strategyApi(id, `tokens/${token.id}/regenerate`), "POST"),
+    onSuccess: (credential, token) => {
+      const { token: _secret, ...metadata } = credential;
+      query.setQueryData<Token[]>(["live", strategyApi(id, "tokens")], (previous) => [metadata,
+        ...(previous ?? []).map((item) => item.id === token.id ? { ...item, revoked_at: credential.created_at } : item),
+      ]);
+      setReplacing(null);
+      reveal(credential);
+      void query.invalidateQueries({ queryKey: ["live"] });
+    },
+  });
   const revoke = useMutation({
     mutationFn: (token: Token) => api(strategyApi(id, `tokens/${token.id}`), "DELETE"),
     onSuccess: () => void query.invalidateQueries({ queryKey: ["live"] }),
   });
   return <div className="stack">
-    <Panel title="接入凭据" hint="轮换后在连接诊断确认实例已使用新 Token，再撤销旧 Token。"
-      action={!strategy.archived_at && <button className="button primary" onClick={() => setEditing("new")}><Plus size={16} /> 新建 Token</button>}>
+    <Panel title="接入凭据" hint="重新生成会立即作废当前 Token，并沿用它的权限和到期时间。"
+      action={!strategy.archived_at && <div className="toolbar">
+        {current && <button className="button primary" onClick={() => { regenerate.reset(); setReplacing(current); }}><RefreshCw size={16} /> 重新生成 Token</button>}
+        <button className={`button ${current ? "secondary" : "primary"}`} onClick={() => setEditing("new")}><Plus size={16} /> 新建 Token</button>
+      </div>}>
       <KeyValue label="策略 ID" value={id} /><KeyValue label="API 地址" value={`${origin}/api/agent`} />
       <ErrorNotice error={tokens.error ?? revoke.error} />
       {tokens.isPending ? <Loading /> : <Table columns={["Token ID", "权限", "最近使用", "有效期", "状态", "操作"]} empty={!tokens.data?.length}>
@@ -238,6 +255,18 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
       close={() => setEditing(null)} done={(credential) => {
         setEditing(null); reveal(credential); void query.invalidateQueries({ queryKey: ["live"] });
       }} />}
+    {replacing && <Dialog title="重新生成 Token" close={() => { if (!regenerate.isPending) setReplacing(null); }}>
+      <div className="stack">
+        <p>旧 Token <code>{replacing.id}</code> 会立即失效。请将新 Token 填入量化程序的配置文件，让程序恢复连接。</p>
+        <ErrorNotice error={regenerate.error} />
+        <div className="dialog-actions">
+          <button className="button secondary" disabled={regenerate.isPending} onClick={() => setReplacing(null)}>取消</button>
+          <button className="button danger" disabled={regenerate.isPending} onClick={() => regenerate.mutate(replacing)}>
+            {regenerate.isPending ? "正在生成…" : "确认重新生成"}
+          </button>
+        </div>
+      </div>
+    </Dialog>}
     {revealed && <CredentialDialog credential={revealed} close={() => reveal(null)} />}
   </div>;
 }

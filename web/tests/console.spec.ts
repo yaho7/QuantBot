@@ -24,6 +24,15 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await dialog.getByRole("button", { name: "完成" }).click();
   await expect(page.getByRole("heading", { name: "Web 回归策略" })).toBeVisible();
   const strategyId = decodeURIComponent(new URL(page.url()).hash.split("/")[1]!);
+  await page.getByRole("button", { name: "重新生成 Token", exact: true }).click();
+  await page.getByRole("button", { name: "确认重新生成" }).click();
+  const replacement = page.getByRole("dialog", { name: "接入 Token 已生成" });
+  await expect(replacement.locator("code").filter({ hasText: /^qb_/ })).not.toHaveText(basicToken!);
+  await replacement.getByRole("button", { name: "完成" }).click();
+  const old = await request.post("/api/agent/session", {
+    headers: { Authorization: `Bearer ${basicToken}` }, data: { instance_id: "old-token" },
+  });
+  expect(old.status()).toBe(401);
   const issued = await page.request.post(`/api/admin/strategies/${strategyId}/tokens`, {
     data: { scopes: ["session", "telemetry", "control", "commands"] },
   });
