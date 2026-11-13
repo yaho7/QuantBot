@@ -51,7 +51,8 @@ def test_sandbox_protocol_lifecycle_and_isolation(server):
         == 200
     )
     control = {"id": "entry", "label": "Entry", "type": "toggle", "command": "set_trading_enabled"}
-    registry = {"schema_version": 1, "revision": 1, "controls": [control]}
+    refresh = {"id": "refresh_button", "label": "Refresh", "type": "button", "command": "refresh"}
+    registry = {"schema_version": 1, "revision": 1, "controls": [control, refresh]}
     assert http.put(SANDBOX + "/controls", headers=headers, json=registry).status_code == 200
     queue = http.get(SANDBOX + "/commands", headers=headers).json()
     assert queue["control"]["desired"]["entry_enabled"] is False
@@ -62,6 +63,7 @@ def test_sandbox_protocol_lifecycle_and_isolation(server):
         "disconnect_policy_applied": "continue",
     }
     assert http.put(SANDBOX + "/control/reported", headers=headers, json=sync).status_code == 200
+    assert queue["commands"][0]["control_id"] == "refresh_button"
     cid = queue["commands"][0]["id"]
     command = SANDBOX + f"/commands/{cid}"
     permit = http.post(command + "/claim", headers=headers).json()["permit"]

@@ -1,8 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
-import { api, strategyApi, type EventRecord, type Fill, type Runtime, type Snapshot } from "./api";
+import { api, strategyApi, type Detail, type EventRecord, type Fill, type Runtime, type Snapshot } from "./api";
 
 import { marketComponent, seriesComponent, seriesKey, timeRange, type Market, type Point, type SeriesHistory, type Widget } from "./dashboard-types";
+import { type ControlRegistryView } from "./dynamic-controls";
+import { CommandDialog } from "./operations";
+import { useState } from "react";
 import { Accounts, Fills, Orders, Performance, Positions } from "./telemetry-views";
 import { Empty, ErrorNotice, Loading, Table, categoryText, money, severityText, when } from "./ui";
 
@@ -19,13 +22,13 @@ function dataKey({ placement: _placement, width: _width, height: _height, title:
   return data;
 }
 
-export default function WidgetData({ widget, strategyId, names, compact, chartHeight }: {
-  widget: Widget; strategyId: string; names: Record<string, string>; compact: boolean; chartHeight: number;
+export default function WidgetData({ widget, strategy, registry, names, compact, chartHeight, editing }: {
+  widget: Widget; strategy: Detail; registry?: ControlRegistryView; editing: boolean; names: Record<string, string>; compact: boolean; chartHeight: number;
 }) {
   widget = { ...widget, height: chartHeight };
   return <Suspense fallback={<Loading />}>{marketComponent(widget.component) ? <MarketData widget={widget} /> :
     seriesComponent(widget.component) ? <HistoryData {...{ widget, names, compact }} /> :
-      <StandardData {...{ widget, strategyId, compact }} />}</Suspense>;
+      <StandardData {...{ widget, strategy, registry, compact, editing }} />}</Suspense>;
 }
 
 function MarketData({ widget }: { widget: Widget }) {
@@ -85,7 +88,10 @@ function HistoryData({ widget, names, compact }: { widget: Widget; names: Record
   return <TimeSeries {...{ series }} chart={widget.chart} unit={series[0]?.unit ?? ""} height={widget.height} />;
 }
 
-function StandardData({ widget, strategyId, compact }: { widget: Widget; strategyId: string; compact: boolean }) {
+function StandardData({ widget, strategy, registry, compact, editing }: {
+  widget: Widget; strategy: Detail; registry?: ControlRegistryView; compact: boolean; editing: boolean;
+}) {
+  const strategyId = strategy.id;
   const query = useQuery({
     queryKey: ["live", "component", strategyId, dataKey(widget)],
     refetchInterval: 10_000,
@@ -134,7 +140,7 @@ function StandardData({ widget, strategyId, compact }: { widget: Widget; strateg
     }
     case "orders":
       if (compact) return <strong>{data.open_orders?.length ?? 0} 笔未完成</strong>;
-      return <div className="stack"><h3>未完成订单</h3><Orders rows={data.open_orders ?? []} />
+      return <div className="stack"><h3>未完成订单</h3><OpenOrders rows={data.open_orders ?? []} {...{ strategy, registry, editing }} />
         <h3>已完成订单</h3><Orders rows={data.completed_orders ?? []} /></div>;
     case "order_status": {
       const counts = new Map<string, number>();
@@ -152,6 +158,24 @@ function StandardData({ widget, strategyId, compact }: { widget: Widget; strateg
     default:
       return <Empty />;
   }
+}
+
+function OpenOrders({ rows, strategy, registry, editing }: {
+  rows: NonNullable<Snapshot["open_orders"]>; strategy: Detail; registry?: ControlRegistryView; editing: boolean;
+}) {
+  const [selected, setSelected] = useState<(typeof rows)[number]>();
+  const capability = strategy.capabilities.find((item) => item.id === "cancel_order" &&
+    item.parameters.order_id && !registry?.controls.some((control) => control.command === item.id));
+  const actionable = !editing && !!registry && !!capability && !strategy.archived_at && strategy.executor_online &&
+    (strategy.mode !== "live" || strategy.live_trading_enabled);
+  return <>
+    <Orders rows={rows} action={actionable ? (row) => <button type="button" className="button quiet"
+      onClick={() => setSelected(row)}>撤单</button> : undefined} />
+    {selected && capability && actionable && <CommandDialog capability={capability} strategy={strategy}
+      initial={{ order_id: selected.order_id, ...(capability.parameters.account_id ? { account_id: selected.account_id } : {}) }}
+      context={`${selected.symbol} · 账户 ${selected.account_id} · 委托 ${selected.quantity} · 已成交 ${selected.filled_quantity ?? "—"}`}
+      close={() => setSelected(undefined)} />}
+  </>;
 }
 
 function health(value?: string) {

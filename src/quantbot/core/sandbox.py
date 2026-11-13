@@ -283,6 +283,8 @@ class Sandboxes:
             for action in ("pause_entry", "refresh"):
                 if action in session.seeded or action not in caps:
                     continue
+                if action == "refresh" and not service.controls.row(sid):
+                    continue
                 try:
                     self.simulate(session, action, f"auto-{action}")
                 except Problem:

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import type { Account, Fill, Order, Position } from "./api";
 import { Empty, Table, money, when } from "./ui";
 
@@ -26,11 +27,11 @@ export function Positions({ rows }: { rows: Position[] }) {
       <td className="mono">{money(row.market_price, row.currency)}</td><td className="mono">{money(row.unrealized_pnl, row.currency)}</td></tr>)}
   </Table>;
 }
-export function Orders({ rows }: { rows: Order[] }) {
-  return <Table columns={["订单 ID", "标的", "方向", "委托 / 已成交", "价格", "手续费", "状态"]} empty={!rows.length}>
+export function Orders({ rows, action }: { rows: Order[]; action?: (row: Order) => ReactNode }) {
+  return <Table columns={["订单 ID", "标的", "方向", "委托 / 已成交", "价格", "手续费", "状态", ...(action ? ["操作"] : [])]} empty={!rows.length}>
     {rows.map((row, index) => <tr key={`${row.account_id}/${row.order_id}/${index}`}><td className="mono">{row.order_id}</td><td>{row.symbol}</td>
       <td>{row.side === "buy" ? "买入" : "卖出"}</td><td className="mono">{row.quantity} / {row.filled_quantity ?? "—"}</td>
-      <td className="mono">{money(row.price, row.currency)}</td><td className="mono">{money(row.fee, row.fee_currency ?? row.currency)}</td><td>{row.status}</td></tr>)}
+      <td className="mono">{money(row.price, row.currency)}</td><td className="mono">{money(row.fee, row.fee_currency ?? row.currency)}</td><td>{row.status}</td>{action && <td>{action(row)}</td>}</tr>)}
   </Table>;
 }
 export function Fills({ rows }: { rows: Fill[] }) {

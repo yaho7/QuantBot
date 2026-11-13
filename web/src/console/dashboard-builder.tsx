@@ -220,7 +220,7 @@ export default function DashboardBuilder({ strategy, workbench = false, focus }:
             {"kind" in widget ? (draft ? null : <WorkbenchControl key={widget.id} {...{ widget, strategy, expanded }}
               registry={registry.data} ready={registry.isSuccess} />) : <div inert={!!draft}>
               {!item ? <Empty title="暂无可展示的数据" /> : <Suspense fallback={<Loading />}><WidgetData
-                widget={widget} names={names} strategyId={sid} compact={compact}
+                widget={widget} names={names} strategy={strategy} registry={registry.data} compact={compact} editing={!!draft}
                 chartHeight={Math.max(100, position.h * (ROW_HEIGHT + GAP) - 105)} /></Suspense>}
             </div>}
             </div>

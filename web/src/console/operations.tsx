@@ -12,7 +12,7 @@ const actions: Record<string, string> = {
   flatten: "关闭全部归属持仓", buy: "手动买入", sell: "手动卖出",
 };
 const shadow = new Set(["pause_entry", "resume_entry"]);
-const safe = new Set(["pause_entry", "resume_entry", "refresh"]);
+const safe = new Set(["refresh"]);
 
 export function ControlPanel({ strategy }: { strategy: Detail }) {
   const [selected, setSelected] = useState<Capability | null>(null);
@@ -29,10 +29,10 @@ export function ControlPanel({ strategy }: { strategy: Detail }) {
         <div className="control-grid">{available.map((cap) => {
           const risky = cap.high_risk || !safe.has(cap.id);
           const blocked = strategy.mode === "live" && risky && !strategy.live_trading_enabled;
-          const unavailable = !shadow.has(cap.id) && !strategy.executor_online;
+          const unavailable = !strategy.executor_online;
           return <button key={cap.id} disabled={blocked || unavailable} onClick={() => setSelected(cap)} className="control-button">
             <strong>{cap.label}</strong><small>{blocked ? "实盘高风险操作未启用" : unavailable ? "执行实例离线"
-              : risky ? "需二次确认" : shadow.has(cap.id) ? "持续状态" : "一次性操作"}</small>
+              : risky ? "需二次确认" : "一次性操作"}</small>
           </button>;
         })}</div>}
     </Panel>
@@ -76,6 +76,7 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
   });
   const toggle = registry?.controls.find((item) => item.command === "set_trading_enabled");
   const blocked = !ready || !!strategy.archived_at || pending || issue.isPending;
+  const awaitingApply = !control.in_sync || issue.isPending || record?.state === "pending";
   function action(enabled: boolean) {
     const id = enabled ? "resume_entry" : "pause_entry";
     const capability = strategy.capabilities.find((item) => item.id === id);
@@ -88,7 +89,7 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
   const resume = action(true);
   return <div className="stack entry-control">
     <div className="value-grid">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-    <div role="status">{control.in_sync ? "已同步" : "等待策略确认"}</div>
+    <div role="status">{awaitingApply ? "等待策略确认" : "已同步"}</div>
     <div className="toolbar">
       {pause.capability && <button type="button" className="button secondary" disabled={pause.disabled}
         onClick={() => issue.mutate({ enabled: false, binding: pause.binding })}>暂停新开仓</button>}
@@ -108,11 +109,13 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
   </div>;
 }
 
-export function CommandDialog({ capability, strategy, close }: { capability: Capability; strategy: Detail; close: () => void }) {
+export function CommandDialog({ capability, strategy, close, initial, context }: {
+  capability: Capability; strategy: Detail; close: () => void; initial?: Record<string, Scalar>; context?: string;
+}) {
   const client = useQueryClient();
   const [requestId] = useState(() => crypto.randomUUID());
   const [parameters, setParameters] = useState<Record<string, Scalar | undefined>>(() =>
-    Object.fromEntries(Object.entries(capability.parameters).map(([key, value]) => [key, value.default ?? undefined])));
+    Object.fromEntries(Object.entries(capability.parameters).map(([key, value]) => [key, initial?.[key] ?? value.default ?? undefined])));
   const [command, setCommand] = useState<Command>();
   const operation = useData<Command>(`commands/${command?.id ?? ""}`, !!command?.id, 3_000);
   const record = operation.data ?? command;
@@ -125,9 +128,10 @@ export function CommandDialog({ capability, strategy, close }: { capability: Cap
     {record ? <OperationView command={record} strategy={strategy.name} close={close} /> :
       <form className="stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
         <p>目标策略 <strong>{strategy.name}</strong></p>
+        {context && <p>{context}</p>}
+        {(capability.high_risk || !safe.has(capability.id)) && <p className="notice warn">提交后请核对账户、标的和数量，再确认执行。交易操作仍由策略风控判断。</p>}
         {Object.entries(capability.parameters).map(([name, parameter]) => <ParameterInput key={name}
           {...{ name, parameter }} value={parameters[name]} set={(value) => setParameters({ ...parameters, [name]: value })} />)}
-        {shadow.has(capability.id) && <div className="notice">服务会保存期望权限。收到策略实际应用的回报后，指令才会显示成功。</div>}
         <ErrorNotice error={create.error} />
         <div className="dialog-actions"><button type="button" className="button secondary" onClick={close}>取消</button>
           <button className="button primary" disabled={create.isPending}>提交请求</button></div>
