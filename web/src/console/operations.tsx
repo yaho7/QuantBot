@@ -90,7 +90,8 @@ export function EntryControl({ strategy, registry, ready, preview = false, compa
   }
   const pause = action(false);
   const resume = action(true);
-  const sync = awaitingApply ? t("operations.waitingForStrategyConfirmation") : t("operations.inSync");
+  const sync = control.in_sync && !awaitingApply ? t("operations.inSync") :
+    !reported && !pending && !issue.isPending ? t("operations.awaitingReport") : t("operations.waitingForStrategyConfirmation");
   const facts = <dl className="entry-facts">{values.slice(0, 3).map(([label, value]) =>
     <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
   return <div className="entry-control">
@@ -98,20 +99,21 @@ export function EntryControl({ strategy, registry, ready, preview = false, compa
       <div><span>{values[3][0]}</span><strong>{values[3][1]}</strong></div>
       <span className={`badge ${awaitingApply ? "waiting" : "online"}`} role="status">{sync}</span>
     </div>
-    {!compact && (widget ? <details className="entry-details" open={preview || undefined}>
-      <summary>{t("operations.details")}</summary>{facts}
-    </details> : facts)}
-    {!preview && <div className="widget-action toolbar">
-      {pause.capability && <button type="button" className="button secondary" disabled={pause.disabled}
+    {(!compact || !widget) && facts}
+    {!preview && <div className="entry-actions">
+      {pause.capability && <button type="button" className={`button ${control.effective_entry_enabled === true ? "primary" : "secondary"}`} disabled={pause.disabled}
         onClick={() => issue.mutate({ enabled: false, binding: pause.binding })}>{t("operations.pauseNewEntries")}</button>}
-      {resume.capability && <button type="button" className="button secondary" disabled={resume.disabled}
+      {resume.capability && <button type="button" className={`button ${control.effective_entry_enabled === false ? "primary" : "secondary"}`} disabled={resume.disabled}
         onClick={() => setConfirm(true)}>{t("operations.resumeNewEntries")}</button>}
     </div>}
     {!preview && record && <div className="toolbar entry-receipt"><CommandBadge state={record.state} /><a href={`#operations/${record.id}`}>{t("commandFeedback.viewCommand")}</a></div>}
     {!preview && <ErrorNotice error={issue.error} />}
     {!preview && confirm && <Dialog title={t("operations.resumeNewEntries")} close={() => setConfirm(false)}>
-      <p>{strategy.name} {t("operations.actualPermission")}{" "}{values[1][1]} {t("operations.localRiskLockText")}{" "}{values[2][1]}</p>
-      <p>{t("operations.theLocalRiskLockRemainsActiveWhen")}</p>
+      <div className="stack">
+        <strong dir="auto">{strategy.name}</strong>
+        {facts}
+        <p>{t("operations.theLocalRiskLockRemainsActiveWhen")}</p>
+      </div>
       <ErrorNotice error={issue.error} />
       <div className="dialog-actions"><button type="button" className="button secondary" onClick={() => setConfirm(false)}>{t("dashboardBuilder.cancel")}</button>
         <button type="button" className="button primary" disabled={resume.disabled}

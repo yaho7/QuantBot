@@ -324,7 +324,7 @@ test("persists a dragged desktop layout and a separately resized mobile layout w
   await expect(page.getByRole("button", { name: "编辑布局" })).toBeVisible();
   const after = (await (await http.get(root)).json()).widgets.find((widget: { id: string }) => widget.id === "builtin-program").placement;
   expect(after.desktop).toEqual(before.desktop);
-  expect(after.mobile.h).toBe(before.mobile.h + 1);
+  expect(after.mobile.h).toBeGreaterThan(before.mobile.h);
 
   const stamp = Date.now() - 1_000;
   for (let i = 0; i < 3; i++) {

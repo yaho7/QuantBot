@@ -22,8 +22,9 @@ export default function Workbench({ strategyId, focus, add }: { strategyId?: str
     try { localStorage.setItem(selectionKey, strategyId); } catch { /* Storage may be disabled. */ }
   }, [active, remembered, strategyId]);
   return <div className="workbench-page">
-    <PageTitle title={t("app.workbench")} />
-    <div className="workbench-tools">
+    <div className="workbench-heading">
+      <PageTitle title={t("app.workbench")} />
+      <div className="workbench-tools">
       <Field label={t("workbench.currentStrategy")}>
         <select value={selected ?? ""} onChange={(event) => { location.hash = workbenchPath(event.target.value || "all"); }}>
           <option value="">{t("workbench.allStrategies")}</option>
@@ -32,6 +33,7 @@ export default function Workbench({ strategyId, focus, add }: { strategyId?: str
         </select>
       </Field>
       <button type="button" className="button secondary" onClick={add}><Plus size={16} /> {t("onboarding.addStrategy")}</button>
+      </div>
     </div>
     <ErrorNotice error={overview.error} />
     {selected ? <StrategyWorkbench key={selected} strategyId={selected} focus={focus} /> : overview.isPending ? <Loading /> :
@@ -54,7 +56,7 @@ function StrategyWorkbench({ strategyId, focus }: { strategyId: string; focus?: 
     {detail.isPending && <Loading />}
     {detail.data && <>
       <div className="workbench-status">
-        <div className="workbench-identity"><strong title={detail.data.name}>{detail.data.name}</strong><StatusBadge status={detail.data.status} /></div>
+        <div className="workbench-identity"><strong dir="auto" title={detail.data.name}>{detail.data.name}</strong><StatusBadge status={detail.data.status} /></div>
         <a className="text-link" href={strategyPath(strategyId)}>{t("strategy.strategyDetails")} <ArrowUpRight size={15} /></a>
       </div>
       <DashboardBuilder strategy={detail.data} workbench focus={focus} />

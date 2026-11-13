@@ -13,7 +13,7 @@ test("aligns workbench controls and keeps the grid inside each supported viewpor
   const entry = grid.locator('[data-widget="builtin-entry"]');
   const program = grid.locator('[data-widget="builtin-program"]');
   const risk = grid.locator('[data-widget="builtin-risk"]');
-  for (const [width, height] of [[1280, 800], [768, 1024], [390, 844], [430, 932]] as const) {
+  for (const [width, height] of [[1280, 800], [768, 1024], [390, 844], [430, 932], [640, 900], [1024, 800], [1440, 900]] as const) {
     await page.setViewportSize({ width, height });
     await expect(entry).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
@@ -25,7 +25,7 @@ test("aligns workbench controls and keeps the grid inside each supported viewpor
     await expect.poll(async () => {
       const panel = (await grid.boundingBox())!;
       const control = (await entry.boundingBox())!;
-      return Math.abs(control.width / panel.width - (width > 640 ? 0.5 : 1));
+      return Math.abs(control.width / panel.width - (width >= 768 ? 0.5 : 1));
     }).toBeLessThan(0.03);
     await expect.poll(async () => Math.abs((await program.boundingBox())!.y - (await risk.boundingBox())!.y)).toBeLessThan(1);
   }

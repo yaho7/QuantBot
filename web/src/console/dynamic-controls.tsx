@@ -85,11 +85,11 @@ export function DynamicControl({ strategy, registry, definition, operation, expa
     {!widget && <div><span className="control-icon">{definition.type === "form" ? <ListChecks size={17} /> : <CircleDot size={17} />}</span>
       <h4>{definition.label}</h4></div>}
     {!compact && definition.description && <p>{definition.description}</p>}
-    {preview && definition.type === "button" && <p>{definition.label}</p>}
+    {preview && definition.type === "button" && !widget && <p>{definition.label}</p>}
     {definition.type !== "button" && <p className="actual-value">
       {report?.value_stale ? t("dynamicControls.lastReported") : t("dynamicControls.actualValue")} <strong>{actual(definition, report?.value)}</strong>
     </p>}
-    {!compact && report?.unavailable_reason && <p role="status">{controlReason(report.unavailable_reason)}</p>}
+    {report?.unavailable_reason && <p role="status">{controlReason(report.unavailable_reason)}</p>}
     {!preview && (inline && selected === undefined ? <Invocation key={registry.revision} {...{ strategy, definition, report, operation, close }}
       revision={registry.revision} inline /> : definition.type !== "readonly" && <button type="button" className="button secondary"
       aria-label={`${definition.type === "button" ? t("dynamicControls.run") : t("dynamicControls.edit")} ${definition.label}`}
