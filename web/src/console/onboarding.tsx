@@ -267,7 +267,6 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
   const catalog = useData<Catalog>(strategyApi(id, "components"));
   const [editing, setEditing] = useState<Token | "new" | null>(null);
   const [replacing, setReplacing] = useState<Token | null>(null);
-  const [inspecting, setInspecting] = useState<Token | null>(null);
   const [revealed, reveal] = useState<Credential | null>(null);
   const current = tokens.data?.find((token) => !token.revoked_at && (!token.expires_at || Date.parse(token.expires_at) > Date.now()));
   const regenerate = useMutation({
@@ -304,11 +303,11 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
             <td>{token.revoked_at ? "已撤销" : expired ? "已过期" : "有效"}</td>
             <td className="row-actions">{!strategy.archived_at && <>
               <button className="button quiet" onClick={() => setEditing(token)}>轮换</button>
-              {!token.revoked_at && !expired && token.id !== current?.id && <button className="icon-button" aria-label={`查看 Secret ${token.id}`} onClick={() => setInspecting(token)}><Eye size={16} /></button>}
               {!token.revoked_at && <button className="button quiet danger-text" onClick={() => {
                 if (confirm("撤销该 Token 后，使用它的实例将失去连接。继续撤销？")) revoke.mutate(token);
               }}>撤销</button>}
-            </>}</td></tr>;
+            </>}{!strategy.archived_at && !token.revoked_at && !expired && token.id !== current?.id &&
+              <SecretValue load={async () => (await api<Credential>(strategyApi(id, `tokens/${token.id}/reveal`), "POST")).token} />}</td></tr>;
         })}
       </Table>}
     </Panel>
@@ -340,11 +339,6 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
       </div>
     </Dialog>}
     {revealed && <CredentialDialog credential={revealed} close={() => reveal(null)} />}
-    {inspecting && <Dialog title="查看接入凭据" close={() => setInspecting(null)}>
-      <div className="stack"><KeyValue label="Key" value={inspecting.id} />
-        <SecretValue load={async () => (await api<Credential>(strategyApi(id, `tokens/${inspecting.id}/reveal`), "POST")).token} />
-      </div>
-    </Dialog>}
   </div>;
 }
 
