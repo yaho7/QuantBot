@@ -1,6 +1,6 @@
 [project]
 name = "quantbot"
-version = "2.0.3"
+version = "2.0.4"
 description = "HTTP monitoring and remote controls for independently operated trading programs"
 readme = "README.md"
 license = "MIT"

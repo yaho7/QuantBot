@@ -1,3 +1,3 @@
 """QuantBot API monitoring and control service."""
 
-__version__ = "2.0.3"
+__version__ = "2.0.4"
