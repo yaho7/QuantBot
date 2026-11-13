@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS frontend
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS frontend
 WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -8,6 +8,9 @@ RUN npm run build
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv
 
 FROM python:3.12-slim-bookworm AS service
+LABEL org.opencontainers.image.source="https://github.com/yaho7/QuantBot" \
+      org.opencontainers.image.description="QuantBot HTTP monitoring and control console" \
+      org.opencontainers.image.licenses="MIT"
 WORKDIR /app
 COPY --from=uv /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock README.md LICENSE ./
