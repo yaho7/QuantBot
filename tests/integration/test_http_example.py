@@ -164,6 +164,23 @@ def test_plain_http_program_reconnects_and_replays_its_outbox(tmp_path):
             assert actual["desired"]["entry_enabled"] is False
             assert actual["reported"]["entry_enabled"] is False
             assert local("SELECT count(*) FROM execution WHERE phase='done'") == 1
+
+            key = data["credential"]["id"]
+            permissions = strategy + f"/tokens/{key}/permissions"
+            limited = http.put(permissions, json={"scopes": ["session", "telemetry"]})
+            assert limited.is_success
+            eventually(
+                lambda: not http.get(strategy).json()["instances"][0]["declarations"]["executor"]
+            )
+            assert agent.poll() is None
+            assert local("SELECT value FROM local_state WHERE name='entry_enabled'") == "false"
+            assert not http.get(strategy).json()["control"]["reported_current"]
+            restored = http.put(
+                permissions, json={"scopes": ["session", "telemetry", "control", "commands"]}
+            )
+            assert restored.is_success
+            eventually(lambda: http.get(strategy).json()["control"]["in_sync"], seconds=22)
+            assert http.get(strategy).json()["control"]["reported"]["entry_enabled"] is False
         finally:
             stop(agent)
             stop(process)

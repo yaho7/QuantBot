@@ -302,7 +302,10 @@ class Demo:
         self.control = control
         self.started = time.monotonic()
         self.last_contact = None
+        self.last_control = None
         self.offline_after = 50
+        self.executor = False
+        self.scopes = set()
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS local_state (name TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY, report TEXT NOT NULL);
@@ -346,38 +349,63 @@ class Demo:
         self.last_contact = time.monotonic()
         return data
 
-    def connect(self):
-        session = self.http(
-            "POST",
-            "/session",
-            {
-                "instance_id": self.instance,
-                "executor": self.control,
-                "capabilities": CONTROL_CAPABILITIES if self.control else [],
-                "language": "Python",
-                "version": "http-example-1",
-            },
-            validate=lambda data: (
-                isinstance(data["session_id"], str)
-                and data["mode"] in {"paper", "backtest", "live"}
-                and type(data["executor"]) is bool
-                and type(data["heartbeat_interval_seconds"]) is int
-                and 0 < data["heartbeat_interval_seconds"] <= 60
-                and type(data["offline_after_seconds"]) is int
-                and data["offline_after_seconds"] > data["heartbeat_interval_seconds"]
-                and valid_control(data["control"])
-            ),
-        )
+    def connect(self, requested_scopes=None):
+        scopes = {"control", "commands"} if requested_scopes is None else requested_scopes
+        capabilities = [
+            item
+            for item in CONTROL_CAPABILITIES
+            if "commands" in scopes or item["id"] in {"pause_entry", "resume_entry"}
+        ]
+        executor = "control" in scopes
+        try:
+            session = self.http(
+                "POST",
+                "/session",
+                {
+                    "instance_id": self.instance,
+                    "executor": executor,
+                    "capabilities": capabilities if executor else [],
+                    "language": "Python",
+                    "version": "http-example-1",
+                },
+                validate=lambda data: (
+                    isinstance(data["session_id"], str)
+                    and isinstance(data["strategy_id"], str)
+                    and data["mode"] in {"paper", "backtest", "live"}
+                    and type(data["executor"]) is bool
+                    and type(data["heartbeat_interval_seconds"]) is int
+                    and 0 < data["heartbeat_interval_seconds"] <= 60
+                    and type(data["offline_after_seconds"]) is int
+                    and data["offline_after_seconds"] > data["heartbeat_interval_seconds"]
+                    and valid_control(data["control"])
+                    and valid_scopes(data["scopes"])
+                ),
+            )
+        except RequestFailure as exc:
+            if requested_scopes is None and exc.category == "permission_denied":
+                # Discover restricted scopes via a monitoring session using the same instance ID.
+                self.connect(set())
+                return
+            raise
         if session["mode"] == "live":
-            raise SystemExit("The simulated example requires a paper or backtest strategy")
-        if self.control and not session["executor"]:
-            raise SystemExit("This example instance is not the authorized executor")
+            raise SystemExit("The simulated control example requires a paper or backtest strategy")
+        bound = self.value("strategy_id", None)
+        if bound is not None and bound != session["strategy_id"]:
+            raise SystemExit("Use a separate --state file for each strategy")
+        with self.db:
+            self.save("strategy_id", session["strategy_id"])
         self.headers["X-Agent-Session"] = session["session_id"]
         self.heartbeat_interval = session["heartbeat_interval_seconds"]
         self.offline_after = session["offline_after_seconds"]
-        if self.control:
-            self.http("PUT", "/controls", REGISTRY)
+        self.scopes = set(session["scopes"])
+        if not executor and "control" in self.scopes:
+            self.connect(self.scopes)
+            return
+        self.executor = session["executor"]
+        if self.executor:
             self.sync(session["control"]["desired"])
+            if "commands" in self.scopes:
+                self.http("PUT", "/controls", REGISTRY)
 
     def value(self, name, default):
         row = self.db.execute("SELECT value FROM local_state WHERE name=?", (name,)).fetchone()
@@ -394,6 +422,7 @@ class Demo:
             if "entry_enabled" in desired:
                 self.save("entry_enabled", desired["entry_enabled"])
             self.save("disconnect_policy", desired["disconnect_policy"])
+            self.save("applied_revision", desired["revision"])
         self.http(
             "PUT",
             "/control/reported",
@@ -403,13 +432,14 @@ class Demo:
                 "risk_locked": self.value("risk_locked", False),
                 "disconnect_policy_applied": self.value("disconnect_policy", "continue"),
             },
+            validate=valid_control,
         )
+        self.last_control = time.monotonic()
 
     def local_entry_allowed(self):
         policy = self.value("disconnect_policy", "block_entry")
-        offline = (
-            self.last_contact is None or time.monotonic() - self.last_contact >= self.offline_after
-        )
+        last_seen = self.last_control if self.control else self.last_contact
+        offline = last_seen is None or time.monotonic() - last_seen >= self.offline_after
         return (
             self.value("entry_enabled", True)
             and not self.value("risk_locked", False)
@@ -454,9 +484,8 @@ class Demo:
             )
 
     def flush(self):
-        while rows := self.db.execute(
-            "SELECT id, report FROM outbox ORDER BY id LIMIT 200"
-        ).fetchall():
+        rows = self.db.execute("SELECT id, report FROM outbox ORDER BY id LIMIT 200").fetchall()
+        if rows:
             records = [json.loads(row[1]) for row in rows]
             size = len(records)
             path = "/reports" if self.control else f"/monitor/{self.instance}"
@@ -484,9 +513,16 @@ class Demo:
         for cid, permit, receipt in self.db.execute(
             "SELECT id, permit, receipt FROM execution WHERE phase='result'"
         ).fetchall():
+            result = json.loads(receipt)
+            expected_state = result["status"]
             try:
                 self.http(
-                    "POST", f"/commands/{cid}/result", {**json.loads(receipt), "permit": permit}
+                    "POST",
+                    f"/commands/{cid}/result",
+                    {**result, "permit": permit},
+                    validate=lambda data, cid=cid, state=expected_state: (
+                        data["id"] == cid and data["state"] == state
+                    ),
                 )
             except RequestFailure as exc:
                 if exc.category != "state_conflict" or exc.session_ended:
@@ -507,15 +543,23 @@ class Demo:
         if not added:
             return
         start = time.monotonic()
-        permit = self.http(
-            "POST",
-            f"/commands/{cid}/claim",
-            validate=lambda data: (
-                isinstance(data["permit"], str)
-                and valid_timestamp(data["start_before"])
-                and valid_timestamp(data["server_time"])
-            ),
-        )
+        try:
+            permit = self.http(
+                "POST",
+                f"/commands/{cid}/claim",
+                validate=lambda data: (
+                    isinstance(data["permit"], str)
+                    and valid_timestamp(data["start_before"])
+                    and valid_timestamp(data["server_time"])
+                ),
+            )
+        except RequestFailure as exc:
+            if exc.category == "state_conflict" and not exc.session_ended:
+                # A refused or ambiguous claim never authorizes execution.
+                with self.db:
+                    self.db.execute("UPDATE execution SET phase='reconcile' WHERE id=?", (cid,))
+                return
+            raise
         deadline = datetime.fromisoformat(permit["start_before"].replace("Z", "+00:00"))
         server = datetime.fromisoformat(permit["server_time"].replace("Z", "+00:00"))
         with self.db:
@@ -548,59 +592,84 @@ class Demo:
     def tick(self, follow):
         if not self.control:
             self.flush()
-            return
+            return 15
         if "X-Agent-Session" not in self.headers:
             self.connect()
         heartbeat = self.http(
             "PUT",
             "/heartbeat",
             {"health": "healthy"},
-            validate=lambda data: valid_control(data["control"]),
+            validate=lambda data: valid_control(data["control"]) and valid_scopes(data["scopes"]),
         )
-        self.flush()
-        if self.control:
-            desired = heartbeat["control"]["desired"]
-            self.sync(desired)
-            self.send_receipts()
-            self.http(
-                "PUT",
-                "/controls/state",
-                {
-                    "revision": REGISTRY["revision"],
-                    "observed_at": utc_now(),
-                    "values": {
-                        "rsi_period": self.value("rsi_period", 14),
-                        "trading_mode": self.value("trading_mode", "conservative"),
-                        "max_risk": self.value("max_risk", "2.0"),
-                    },
-                    "disabled": {"close_positions": {"disabled": True, "reason": "模拟账户无持仓"}},
+        scopes = set(heartbeat["scopes"])
+        if (scopes ^ self.scopes) & {"control", "commands"}:
+            self.connect(scopes)
+            return 0
+        self.scopes = scopes
+        if self.executor:
+            self.sync(heartbeat["control"]["desired"])
+        else:
+            self.last_control = None
+        if "telemetry" in scopes:
+            self.flush()
+        if not self.executor or "commands" not in scopes:
+            return self.heartbeat_interval
+        self.send_receipts()
+        self.http(
+            "PUT",
+            "/controls/state",
+            {
+                "revision": REGISTRY["revision"],
+                "observed_at": utc_now(),
+                "values": {
+                    "rsi_period": self.value("rsi_period", 14),
+                    "trading_mode": self.value("trading_mode", "conservative"),
+                    "max_risk": self.value("max_risk", "2.0"),
                 },
-            )
-            poll = urlencode(
-                {
-                    "wait": max(0, min(self.heartbeat_interval - 2, 25)) if follow else 0,
-                    "revision": desired["revision"],
-                }
-            )
-            batch = self.http(
-                "GET",
-                "/commands?" + poll,
-                timeout=35,
-                validate=lambda data: (
-                    valid_control(data["control"])
-                    and isinstance(data["commands"], list)
-                    and all(
-                        isinstance(item, dict)
-                        and re.fullmatch(r"[0-9a-f-]{36}", item["id"])
-                        and isinstance(item["action"], str)
-                        and isinstance(item["arguments"], dict)
-                        for item in data["commands"]
-                    )
-                ),
-            )
-            for item in batch["commands"]:
-                self.execute(item)
-            self.send_receipts()
+                "disabled": {"close_positions": {"disabled": True, "reason": "模拟账户无持仓"}},
+            },
+        )
+        poll = urlencode(
+            {
+                "wait": max(0, min(self.heartbeat_interval - 2, 25)) if follow else 0,
+                "revision": heartbeat["control"]["desired"]["revision"],
+            }
+        )
+        batch = self.http(
+            "GET",
+            "/commands?" + poll,
+            timeout=35,
+            validate=lambda data: (
+                valid_control(data["control"])
+                and isinstance(data["commands"], list)
+                and all(
+                    isinstance(item, dict)
+                    and re.fullmatch(r"[0-9a-f-]{36}", item["id"])
+                    and isinstance(item["action"], str)
+                    and isinstance(item["arguments"], dict)
+                    for item in data["commands"]
+                )
+            ),
+        )
+        self.sync(batch["control"]["desired"])
+        for item in batch["commands"]:
+            self.execute(item)
+        self.send_receipts()
+        return 0
+
+
+def valid_scopes(scopes):
+    return (
+        isinstance(scopes, list)
+        and set(scopes)
+        <= {
+            "session",
+            "telemetry",
+            "control",
+            "commands",
+        }
+        and "session" in scopes
+    )
 
 
 def valid_timestamp(value):
@@ -648,9 +717,19 @@ def run():
             while True:
                 demo.collect()
                 try:
-                    demo.tick(args.follow)
+                    delay = demo.tick(args.follow)
                 except RequestFailure as exc:
-                    if not args.follow or not (exc.retryable or exc.session_ended):
+                    changed_scope = (
+                        demo.control
+                        and "X-Agent-Session" in demo.headers
+                        and exc.detail
+                        in {
+                            "Token lacks the required scope",
+                            "Executor declarations require the control scope",
+                            "One-time capabilities require the commands scope",
+                        }
+                    )
+                    if not args.follow or not (exc.retryable or exc.session_ended or changed_scope):
                         raise SystemExit(str(exc)) from None
                     if exc.session_ended or exc.status is None:
                         demo.headers.pop("X-Agent-Session", None)
@@ -661,8 +740,8 @@ def run():
                     if not args.follow:
                         return
                     failures = 0
-                    if not args.control:
-                        time.sleep(15)
+                    if delay:
+                        time.sleep(delay)
 
 
 if __name__ == "__main__":
