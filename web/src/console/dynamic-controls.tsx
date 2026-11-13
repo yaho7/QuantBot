@@ -85,7 +85,7 @@ export function DynamicControl({ strategy, registry, definition, operation, expa
     {!widget && <div><span className="control-icon">{definition.type === "form" ? <ListChecks size={17} /> : <CircleDot size={17} />}</span>
       <h4>{definition.label}</h4></div>}
     {!compact && definition.description && <p>{definition.description}</p>}
-    {preview && definition.type === "button" && !widget && <p>{definition.label}</p>}
+    {preview && definition.type === "button" && <p>{t("dashboardBuilder.previewMode")}</p>}
     {definition.type !== "button" && <p className="actual-value">
       {report?.value_stale ? t("dynamicControls.lastReported") : t("dynamicControls.actualValue")} <strong>{actual(definition, report?.value)}</strong>
     </p>}

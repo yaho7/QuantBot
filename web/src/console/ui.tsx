@@ -51,7 +51,7 @@ export function money(value?: string | null, unit?: string | null) {
 }
 
 export function Brand() {
-  return <span className="brand"><span className="brand-icon" aria-hidden="true" />
+  return <span className="brand" translate="no"><span className="brand-icon" aria-hidden="true" />
     <span className="brand-name">QuantBot</span></span>;
 }
 export function PageTitle({ title, sub, action }: { title: string; sub?: string; action?: ReactNode }) {
@@ -81,7 +81,7 @@ export function ErrorNotice({ error }: { error: unknown }) {
     <span>{error instanceof Error ? error.message : String(error)}</span></div> : null;
 }
 export function Loading() {
-  return <div className="loading"><LoaderCircle size={20} className="spin" /> {t("ui.loading")}</div>;
+  return <div className="loading" role="status"><LoaderCircle size={20} className="spin" aria-hidden="true" /> {t("ui.loading")}</div>;
 }
 export function TextLink({ href, children }: { href: string; children: ReactNode }) {
   return <a className="text-link" href={href}>{children}<ArrowUpRight size={14} /></a>;
@@ -115,9 +115,9 @@ export function Dialog({ title, children, close }: { title: string; children: Re
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
   return <label className="field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
 }
-export function Table({ columns, children, empty = false }: { columns: string[]; children: ReactNode; empty?: boolean }) {
+export function Table({ columns, children, empty = false, className }: { columns: string[]; children: ReactNode; empty?: boolean; className?: string }) {
   if (empty) return <Empty />;
-  return <div className="table-wrap"><table><thead><tr>{columns.map((label, i) =>
+  return <div className="table-wrap"><table className={className}><thead><tr>{columns.map((label, i) =>
     <th scope="col" key={`${label}-${i}`}>{label}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
 }
 

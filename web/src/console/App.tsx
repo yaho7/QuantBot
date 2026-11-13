@@ -110,7 +110,7 @@ function Login({ hash }: { hash: string }) {
         <h1>{creating ? t("app.setUpQuantbot") : t("app.signInToQuantbot")}</h1>
         <p>{creating ? t("app.createAnAdministratorAccountToOpenThe") : t("app.signInWithYourAdministratorAccount")}</p>
         <form className="panel stack" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
-          <Field label={t("app.username")}><input required maxLength={100} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+          <Field label={t("app.username")}><input required name="username" spellCheck={false} maxLength={100} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
           <Field label={t("app.password")} hint={creating ? t("app.atLeastCharacters", { minimum: MIN_PASSWORD_LENGTH }) : undefined}><input required type="password"
             minLength={creating ? MIN_PASSWORD_LENGTH : undefined} maxLength={1024}
             autoComplete={creating ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
@@ -160,6 +160,10 @@ export function App() {
   const page = section === "strategy" ? "strategies" : ["overview", "api"].includes(section ?? "") || nav.some((item) => item.key === section) ? section : "workbench";
   const add = () => setAdding(true);
   return <DarkMode value={dark}>
+    <a className="skip-link" href="#main" onClick={(event) => {
+      event.preventDefault();
+      document.getElementById("main")?.focus();
+    }}>{t("app.skipToContent")}</a>
     <header className="topbar console-topbar">
       <a href="#workbench" aria-label={t("app.quantbotWorkbench")}><Brand /></a>
       <nav className="top-nav" aria-label={t("app.mainNavigation")}>
@@ -178,7 +182,7 @@ export function App() {
       {nav.map(({ key, title, icon: Icon }) => <a key={key} href={`#${key}`}
         aria-current={page === key ? "page" : undefined}><Icon size={19} /><span>{t(title)}</span></a>)}
     </nav>
-    <main id="main" className="page">
+    <main id="main" className="page" tabIndex={-1}>
       <ErrorNotice error={logout.error} />
       {page === "workbench" && <Suspense fallback={<Loading />}><Workbench add={add} focus={tab ? decodeURIComponent(tab) : undefined} strategyId={id ? decodeURIComponent(id) : undefined} /></Suspense>}
       {page === "overview" && <OverviewPage add={add} />}

@@ -31,7 +31,8 @@ const sizes = [
 function defaultSize(widget: BoardWidget, cols: number, pairedCharts: boolean): [number, number] {
   if ("kind" in widget) {
     if (widget.kind === "entry") return [4, 2];
-    if (widget.kind === "control" || widget.kind === "capability") return [4, 2];
+    if (widget.kind === "control") return [4, 2];
+    if (widget.kind === "capability") return [4, 1];
     return [2, 1];
   }
   if (compactComponents.has(widget.component)) return [2, 1];
@@ -224,8 +225,9 @@ export default function DashboardBuilder({ strategy, workbench = false, focus }:
         {sorted.map((position, index) => {
           const widget = widgets.find((item) => item.id === position.i)!;
           const item = "kind" in widget ? undefined : components.find((candidate) => candidate.id === widget.component);
-          const title = widgetTitle(widget, item);
           const compact = position.h === 1;
+          const title = compact && !("kind" in widget) && widget.component === "performance" && widget.title === item?.label
+            ? t("telemetryViews.cumulativeReturn") : widgetTitle(widget, item);
           const expanded = position.h >= 3 && position.w >= 4;
           return <article className={`widget ${compact ? "widget-compact" : ""}${"kind" in widget && widget.kind === "entry" ? " widget-entry" : ""}`} data-widget={widget.id}
             id={`widget-${widget.id}`} tabIndex={-1} key={widget.id}>

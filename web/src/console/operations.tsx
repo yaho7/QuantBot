@@ -232,13 +232,21 @@ export function OperationTable({ strategyId, compact = false, selected, close }:
     {!compact && <div className="toolbar"><select aria-label={t("operations.filterCommandStatus")} value={state} onChange={(e) => { setState(e.target.value); setCursor([]); }}>
       <option value="">{t("operations.allStatuses")}</option>{Object.entries(stateText).map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}</select></div>}
     <ErrorNotice error={commands.error} />
-    {commands.isPending ? <Loading /> : <Table columns={[t("operations.command"), ...(compact ? [] : [t("app.strategies")]), t("onboarding.status"), t("operations.requestedBy"), t("operations.createdAt"), ""]} empty={!rows.length}>
-      {rows.map((item) => <tr key={item.id}><td>{label(actions[item.action], item.action)}</td>
-        {!compact && <td><a href={strategyPath(item.strategy_id, "control")}>{names[item.strategy_id] ?? item.strategy_id}</a></td>}
-        <td><CommandBadge state={item.state} /></td><td className="mono subtle">{item.actor}</td><td>{when(item.created_at)}</td>
-        <td><button className="button quiet" onClick={() => setInspect(item.id)}>{t("operations.details")}</button></td></tr>)}
+    {commands.isPending ? <Loading /> : <Table className={compact ? "operations-table compact" : "operations-table"} columns={[t("operations.command"), ...(compact ? [] : [t("app.strategies")]), t("onboarding.status"), t("operations.requestedBy"), t("operations.createdAt"), t("onboarding.actions")]} empty={!rows.length}>
+      {rows.map((item) => {
+        const name = names[item.strategy_id] ?? item.strategy_id;
+        const title = label(actions[item.action], item.action);
+        const strategyLink = <a href={strategyPath(item.strategy_id, "control")} title={name}>{name}</a>;
+        return <tr key={item.id}>
+          <td className="operation-name"><strong>{title}</strong>{!compact && <span className="operation-mobile-strategy">{strategyLink}</span>}</td>
+          {!compact && <td className="operation-strategy">{strategyLink}</td>}
+          <td className="operation-status"><CommandBadge state={item.state} /></td>
+          <td className="operation-actor mono subtle">{item.actor}</td><td className="operation-time">{when(item.created_at)}</td>
+          <td><button className="button quiet" onClick={() => setInspect(item.id)}>{t("operations.details")}</button></td>
+        </tr>;
+      })}
     </Table>}
-    {!compact && <div className="toolbar"><button className="button secondary" disabled={!before} onClick={() => setCursor(cursor.slice(0, -1))}>{t("operations.previousPage")}</button>
+    {!compact && <div className="toolbar operation-pagination"><button className="button secondary" disabled={!before} onClick={() => setCursor(cursor.slice(0, -1))}>{t("operations.previousPage")}</button>
       <button className="button secondary" disabled={commands.data?.length !== 30} onClick={() => {
         const last = commands.data?.at(-1);
         if (last) setCursor([...cursor, last.id]);

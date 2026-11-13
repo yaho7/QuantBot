@@ -109,37 +109,41 @@ export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: 
     <PageTitle title={t("settings.systemSettings")} sub={t("settings.administratorSecurityServiceVersionAndDataStorage")}
       action={<a className="button secondary" href="#api">{t("app.apiIntegration")}</a>} />
     <div className="settings-grid">
-      <Panel title={t("settings.appearance")} action={<SunMoon size={21} />}>
-        <Field label={t("settings.theme")}><select value={theme} onChange={(e) => onTheme(e.target.value as Theme)}>
-          <option value="system">{t("settings.systemDefault")}</option><option value="light">{t("settings.light")}</option><option value="dark">{t("settings.dark")}</option>
-        </select></Field>
-      </Panel>
-      <Panel title={t("settings.administratorPassword")} action={<KeyRound size={21} />}>
-        <form className="stack" onSubmit={(e) => { e.preventDefault(); password.mutate(); }}>
-          <div className="form-grid"><Field label={t("settings.currentPassword")}><input type="password" required autoComplete="current-password" value={current}
-            onChange={(e) => setCurrent(e.target.value)} /></Field>
-            <Field label={t("settings.newPassword")} hint={t("app.atLeastCharacters", { minimum: MIN_PASSWORD_LENGTH })}><input type="password" required minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" value={next}
-              onChange={(e) => setNext(e.target.value)} /></Field></div>
-          <ErrorNotice error={password.error} />
-          {password.isSuccess && <div role="status" className="notice">{t("settings.passwordUpdatedPreviousWebSessionsHaveBeen")}</div>}
-          <div className="dialog-actions"><button className="button primary" disabled={password.isPending}>{t("settings.updatePassword")}</button></div>
-        </form>
-      </Panel>
-      <Panel title={t("settings.dataManagement")} action={<Database size={21} />}>
-        <ErrorNotice error={system.error} />
-        {system.data ? <>
-          <p className="subtle">{system.data.storage} · Schema {system.data.schema_version}</p>
-          <div className="value-grid">{Object.entries(system.data.counts).map(([key, count]) =>
-            <div key={key}><span>{label(countLabels[key], key)}</span><strong>{count.toLocaleString()}</strong></div>)}</div>
-        </> : system.isPending ? <Loading /> : null}
-      </Panel>
-      <Panel title={t("settings.serviceAndUpdates")} action={<Server size={21} />}>
-        <dl className="detail-list"><dt>{t("settings.currentVersion")}</dt><dd>{system.data?.version ?? "—"}</dd>
-          <dt>{t("settings.publicUrl")}</dt><dd>{system.data?.public_url ?? location.origin}</dd>
-          <dt>{t("settings.serviceHealth")}</dt><dd><a href="/healthz">/healthz</a></dd></dl>
-        <div className="toolbar"><a className="button secondary" href="https://github.com/yaho7/QuantBot/releases"
-          target="_blank" rel="noreferrer">{t("settings.viewQuantbotReleases")}{" "}<ExternalLink size={15} /></a></div>
-      </Panel>
+      <div className="stack">
+        <Panel title={t("settings.appearance")} action={<SunMoon size={21} aria-hidden="true" />}>
+          <Field label={t("settings.theme")}><select value={theme} onChange={(e) => onTheme(e.target.value as Theme)}>
+            <option value="system">{t("settings.systemDefault")}</option><option value="light">{t("settings.light")}</option><option value="dark">{t("settings.dark")}</option>
+          </select></Field>
+        </Panel>
+        <Panel title={t("settings.administratorPassword")} action={<KeyRound size={21} />}>
+          <form className="stack" onSubmit={(e) => { e.preventDefault(); password.mutate(); }}>
+            <div className="form-grid"><Field label={t("settings.currentPassword")}><input type="password" name="current-password" required autoComplete="current-password" value={current}
+              onChange={(e) => setCurrent(e.target.value)} /></Field>
+              <Field label={t("settings.newPassword")} hint={t("app.atLeastCharacters", { minimum: MIN_PASSWORD_LENGTH })}><input type="password" name="new-password" required minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" value={next}
+                onChange={(e) => setNext(e.target.value)} /></Field></div>
+            <ErrorNotice error={password.error} />
+            {password.isSuccess && <div role="status" className="notice">{t("settings.passwordUpdatedPreviousWebSessionsHaveBeen")}</div>}
+            <div className="dialog-actions"><button className="button primary" disabled={password.isPending}>{t("settings.updatePassword")}</button></div>
+          </form>
+        </Panel>
+      </div>
+      <div className="stack">
+        <Panel title={t("settings.serviceAndUpdates")} action={<Server size={21} />}>
+          <dl className="detail-list"><dt>{t("settings.currentVersion")}</dt><dd>{system.data?.version ?? "—"}</dd>
+            <dt>{t("settings.publicUrl")}</dt><dd>{system.data?.public_url ?? location.origin}</dd>
+            <dt>{t("settings.serviceHealth")}</dt><dd><a href="/healthz">/healthz</a></dd></dl>
+          <div className="toolbar"><a className="button secondary" href="https://github.com/yaho7/QuantBot/releases"
+            target="_blank" rel="noreferrer">{t("settings.viewQuantbotReleases")}{" "}<ExternalLink size={15} /></a></div>
+        </Panel>
+        <Panel title={t("settings.dataManagement")} action={<Database size={21} />}>
+          <ErrorNotice error={system.error} />
+          {system.data ? <>
+            <p className="subtle">{system.data.storage} · Schema {system.data.schema_version}</p>
+            <div className="value-grid">{Object.entries(system.data.counts).map(([key, count]) =>
+              <div key={key}><span>{label(countLabels[key], key)}</span><strong>{count.toLocaleString()}</strong></div>)}</div>
+          </> : system.isPending ? <Loading /> : null}
+        </Panel>
+      </div>
     </div>
   </>;
 }

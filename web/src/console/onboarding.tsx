@@ -185,10 +185,10 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
   });
   return <div className="stack">
     <AgentPrompt endpoint={endpoint} strategyId={strategy.id} disabled={!!strategy.archived_at} />
-    <Panel title={t("onboarding.accessCredentials")} hint={t("onboarding.regeneratingRevokesTheCurrentTokenImmediatelyAnd")}
+    <Panel className="credentials-panel" title={t("onboarding.accessCredentials")}
       action={!strategy.archived_at && <div className="toolbar">
-        {current && <button className="button primary" onClick={() => { regenerate.reset(); setReplacing(current); }}><RefreshCw size={16} /> {t("onboarding.regenerateToken")}</button>}
-        <button className={`button ${current ? "secondary" : "primary"}`} onClick={() => setEditing("new")}><Plus size={16} /> {t("onboarding.newToken")}</button>
+        {current && <button className="button quiet" onClick={() => { regenerate.reset(); setReplacing(current); }}><RefreshCw size={16} /> {t("onboarding.regenerateToken")}</button>}
+        <button className="button secondary" onClick={() => setEditing("new")}><Plus size={16} /> {t("onboarding.newToken")}</button>
       </div>}>
       <div className="credential-grid">
         <KeyValue label={t("onboarding.strategyId")} value={id} /><KeyValue label="Endpoint" value={endpoint} />

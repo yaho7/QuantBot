@@ -25,14 +25,14 @@ export default function Workbench({ strategyId, focus, add }: { strategyId?: str
     <div className="workbench-heading">
       <PageTitle title={t("app.workbench")} />
       <div className="workbench-tools">
-      <Field label={t("workbench.currentStrategy")}>
-        <select value={selected ?? ""} onChange={(event) => { location.hash = workbenchPath(event.target.value || "all"); }}>
-          <option value="">{t("workbench.allStrategies")}</option>
-          {active.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-          {selected && !active.some((item) => item.id === selected) && <option value={selected}>{t("workbench.currentStrategy")}</option>}
-        </select>
-      </Field>
-      <button type="button" className="button secondary" onClick={add}><Plus size={16} /> {t("onboarding.addStrategy")}</button>
+        <Field label={t("workbench.currentStrategy")}>
+          <select value={selected ?? ""} onChange={(event) => { location.hash = workbenchPath(event.target.value || "all"); }}>
+            <option value="">{t("workbench.allStrategies")}</option>
+            {active.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            {selected && !active.some((item) => item.id === selected) && <option value={selected}>{t("workbench.currentStrategy")}</option>}
+          </select>
+        </Field>
+        <button type="button" className="button secondary" onClick={add}><Plus size={16} /> {t("onboarding.addStrategy")}</button>
       </div>
     </div>
     <ErrorNotice error={overview.error} />

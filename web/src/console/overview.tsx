@@ -90,10 +90,10 @@ export function StrategiesPage({ add }: { add: () => void }) {
   return <>
     <PageTitle title={t("app.strategies")} sub={t("overview.manageStrategyIdentityGroupsAndApiIntegration")} action={<button className="button primary" onClick={add}><Plus size={18} /> {t("onboarding.addStrategy")}</button>} />
     <Panel>
-      <div className="toolbar"><div className="search"><Search size={16} /><input aria-label={t("overview.searchStrategies")} placeholder={t("overview.searchNamesTagsOrStrategyIds")} value={term} onChange={(e) => setTerm(e.target.value)} /></div>
+      <div className="toolbar strategy-filters"><div className="search"><Search size={16} /><input type="search" name="strategy-search" aria-label={t("overview.searchStrategies")} placeholder={t("overview.searchNamesTagsOrStrategyIds")} value={term} onChange={(e) => setTerm(e.target.value)} /></div>
         <select aria-label={t("overview.filterGroups")} value={group} onChange={(e) => setGroup(e.target.value)}><option value="">{t("overview.allGroups")}</option>
           {groups.map((item) => <option key={item}>{item}</option>)}</select>
-        <label className="checkbox"><input type="checkbox" checked={archived} onChange={(e) => { setGroup(""); setArchived(e.target.checked); }} /> {t("overview.archived")}</label>
+        <label className="checkbox"><input type="checkbox" name="archived" checked={archived} onChange={(e) => { setGroup(""); setArchived(e.target.checked); }} /> {t("overview.archived")}</label>
       </div>
       <ErrorNotice error={query.error} />{query.isPending ? <Loading /> :
         !result?.length ? <Empty title={term || group ? t("overview.noMatchingStrategies") : archived ? t("overview.noArchivedStrategies") : t("overview.noStrategies")} /> :

@@ -156,8 +156,7 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
         chart={widget.chart} height={widget.height} label={t("widgetData.ordersByStatus")} />;
     }
     case "performance":
-      if (compact) return <div className="widget-stat"><strong>{money(data.performance?.cumulative_return, "%")}</strong>
-        <span>{t("telemetryViews.cumulativeReturn")}</span></div>;
+      if (compact) return <div className="widget-stat"><strong>{money(data.performance?.cumulative_return, "%")}</strong></div>;
       if (widget.chart === "table") return <Table columns={[t("widgetData.metric"), t("widgetData.value")]} empty={!Object.values(data.performance ?? {}).some((value) => value != null)}>
         {Object.entries(data.performance ?? {}).filter(([, value]) => value != null).map(([name, value]) =>
           <tr key={name}><td>{name}</td><td>{money(value)}</td></tr>)}</Table>;
