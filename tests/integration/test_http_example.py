@@ -91,24 +91,29 @@ def test_plain_http_program_reconnects_and_replays_its_outbox(tmp_path):
             assert response.status_code == 201, response.text
             data = response.json()
             sid = data["strategy"]["id"]
-            agent = subprocess.Popen(  # noqa: S603
-                [
+
+            def start_agent():
+                args = [
                     sys.executable,
                     str(ROOT / "examples/http_agent.py"),
                     "--control",
                     "--follow",
                     "--state",
                     str(state_file),
-                ],
-                cwd=ROOT,
-                env={
-                    **env,
-                    "QB_ENDPOINT": origin + "/api/agent",
-                    "QB_TOKEN": data["credential"]["token"],
-                },
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+                ]
+                return subprocess.Popen(  # noqa: S603
+                    args,
+                    cwd=ROOT,
+                    env={
+                        **env,
+                        "QB_ENDPOINT": origin + "/api/agent",
+                        "QB_TOKEN": data["credential"]["token"],
+                    },
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            agent = start_agent()
             strategy = f"{ADMIN}/strategies/{sid}"
             eventually(
                 lambda: (
@@ -153,6 +158,10 @@ def test_plain_http_program_reconnects_and_replays_its_outbox(tmp_path):
             stop(process)
             eventually(lambda: local("SELECT count(*) FROM outbox") or 0)
             assert agent.poll() is None
+            assert local("SELECT value FROM local_state WHERE name='entry_enabled'") == "false"
+            stop(agent)
+            agent = start_agent()
+            eventually(lambda: local("SELECT count(*) FROM outbox") >= 6)
             assert local("SELECT value FROM local_state WHERE name='entry_enabled'") == "false"
 
             process = server()
