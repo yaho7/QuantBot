@@ -36,17 +36,24 @@ def register(app, administrator, session_cookie):
             status: sum(item["status"] == status for item in strategies)
             for status in ("online", "offline", "abnormal")
         }
-        account = None
-        if len(strategies) == 1 and strategies[0]["status"] != "offline":
-            detail = service.strategies.detail(strategies[0]["id"])
-            snapshot = detail["snapshot"] or {}
-            accounts = snapshot.get("accounts", [])
-            if len(accounts) == 1:
-                account = {
-                    **accounts[0],
-                    "observed_at": snapshot.get("observed_at"),
-                    "strategy_id": detail["id"],
-                }
+        accounts = []
+        for strategy in strategies:
+            sid = strategy["id"]
+            report = service.db.one(
+                """SELECT payload FROM typed_reports WHERE strategy_id=? AND type='portfolio'
+                   ORDER BY observed_at DESC, instance_id LIMIT 1""",
+                (sid,),
+            )
+            if report:
+                portfolio = json.loads(report["payload"])
+                accounts.extend(
+                    {
+                        **account,
+                        "observed_at": portfolio["observed_at"],
+                        "strategy_id": sid,
+                    }
+                    for account in portfolio["accounts"]
+                )
         events = service.db.all(
             """SELECT strategy_id, payload FROM strategy_events
                WHERE json_type(payload, '$.fill')='object'
@@ -55,7 +62,7 @@ def register(app, administrator, session_cookie):
         return {
             "counts": counts,
             "strategies": strategies,
-            "account": account,
+            "accounts": accounts,
             "recent_fills": [
                 {"strategy_id": e["strategy_id"], **json.loads(e["payload"])} for e in events
             ],

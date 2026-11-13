@@ -341,6 +341,7 @@ class Registry:
         if not instance:
             return snapshot
         output = dict(snapshot or {})
+        section_times = {}
         snapshot_time = (
             self.telemetry.timestamp_value(output["observed_at"]) if snapshot else float("-inf")
         )
@@ -351,10 +352,14 @@ class Registry:
                    ORDER BY observed_at DESC LIMIT 1""",
                 (sid, instance, kind),
             )
-            if row and row["observed_at"] >= snapshot_time:
+            if row:
                 data = json.loads(row["payload"])
+                section_times[kind] = data["observed_at"]
                 output.update({key: data[key] for key in keys})
                 self.newest(output, data["observed_at"])
+            else:
+                for key in keys:
+                    output.pop(key, None)
         fills = self.db.all(
             """SELECT occurred_at, json_extract(payload, '$.fill') AS fill FROM strategy_events
                WHERE strategy_id=? AND instance_id=? AND json_type(payload, '$.fill')='object'
@@ -363,7 +368,12 @@ class Registry:
         )
         if fills:
             output["fills"] = [json.loads(item["fill"]) for item in fills]
-            self.newest(output, timestamp(fills[0]["occurred_at"]))
+            section_times["fill"] = timestamp(fills[0]["occurred_at"])
+            self.newest(output, section_times["fill"])
+        if snapshot and snapshot.get("metrics"):
+            section_times["metric"] = timestamp(snapshot_time)
+        if output:
+            output["section_observed_at"] = section_times
         return output or None
 
     def newest(self, output, observed):

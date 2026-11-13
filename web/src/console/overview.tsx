@@ -1,7 +1,7 @@
 import { Activity, ArrowDownLeft, ArrowUpRight, CircleAlert, CircleOff, Plus, Radio, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { strategyPath, type Overview, type Strategy } from "./api";
-import { CommandBadge, Empty, ErrorNotice, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, relative, useData, when } from "./ui";
+import { CommandBadge, Empty, ErrorNotice, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, observed, relative, useData, when } from "./ui";
 
 export function StrategyTable({ rows }: { rows: Strategy[] }) {
   return <div className="strategy-table"><Table columns={["策略名称", "交易模式", "分组", "连接", "最近心跳", ""]} empty={!rows.length}>
@@ -18,12 +18,13 @@ export function OverviewPage({ add }: { add: () => void }) {
   const query = useData<Overview>("overview");
   const data = query.data;
   const counts = data?.counts;
+  const strategies = new Map(data?.strategies.map((strategy) => [strategy.id, strategy]));
   return <>
     <PageTitle title="运行总览" sub="集中查看策略连接、交易动态与控制回执。"
       action={<button className="button primary" onClick={add}><Plus size={18} /> 添加策略</button>} />
     <ErrorNotice error={query.error} />
     {!data ? <Loading /> : <>
-      <div className={`summary-grid${data.account ? "" : " no-account-total"}`}>
+      <div className="summary-grid no-account-total">
         {([
           ["在线策略", counts?.online, Radio, "green"],
           ["离线策略", counts?.offline, CircleOff, "neutral"],
@@ -31,11 +32,18 @@ export function OverviewPage({ add }: { add: () => void }) {
         ] as const).map(([label, count, Icon, tone]) =>
           <section className="panel stat" key={label}><div><span>{label}</span><span className={`stat-icon ${tone}`}><Icon size={19} /></span></div>
             <strong>{count}</strong></section>)}
-        {data.account && <section className="panel stat equity-stat"><div><span>账户净值</span><span className="stat-icon teal"><Activity size={19} /></span></div>
-          <strong>{money(data.account.equity, data.account.currency)}</strong>
-          <small>当日盈亏 {money(data.account.daily_pnl, data.account.currency)} · {when(data.account.observed_at)}</small>
-        </section>}
       </div>
+      {!!data.accounts.length && <div className="summary-grid">
+        {data.accounts.map((account) => {
+          const strategy = strategies.get(account.strategy_id);
+          return <section className="panel stat equity-stat" key={`${account.strategy_id}/${account.account_id}/${account.currency}`}>
+            <div><a href={strategyPath(account.strategy_id, "funds")}>{strategy?.name ?? account.strategy_id}</a><span>{account.account_id}</span></div>
+            <strong>{money(account.equity, account.currency)}</strong>
+            <small>当日盈亏 {money(account.daily_pnl, account.currency)}</small>
+            <small>{observed(account.observed_at, strategy?.status === "offline")}</small>
+          </section>;
+        })}
+      </div>}
       <Panel title="策略运行状态" hint={`共 ${data.strategies.length} 个策略`} action={<TextLink href="#strategies">管理策略</TextLink>}>
         {data.strategies.length ? <StrategyTable rows={data.strategies.slice(0, 10)} /> :
           <Empty title="还没有接入策略" text="创建策略并生成 Token，程序发起 HTTP 连接后会自动显示在线。"

@@ -5,7 +5,7 @@ import { api, strategyApi, strategyPath, type Detail, type EventRecord, type Str
 import { StrategyFields, TokenPanel } from "./onboarding";
 import { ControlPanel } from "./operations";
 import { Accounts, Fills, Orders, Performance, Positions } from "./telemetry-views";
-import { Empty, ErrorNotice, Field, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, relative, severityText, useData, when } from "./ui";
+import { Empty, ErrorNotice, Field, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, observed, relative, severityText, useData, when } from "./ui";
 
 const DashboardBuilder = lazy(() => import("./dashboard-builder"));
 
@@ -21,6 +21,8 @@ export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab
   if (!strategy) return <><a className="text-link" href="#strategies"><ArrowLeft size={16} /> 策略</a>
     <ErrorNotice error={query.error} />{query.isPending && <Loading />}</>;
   const snapshot = strategy.snapshot;
+  const times = snapshot?.section_observed_at;
+  const offline = strategy.status === "offline";
   return <>
     <a className="back-link" href="#strategies"><ArrowLeft size={15} /> 策略列表</a>
     <PageTitle title={strategy.name} sub={[modeText[strategy.mode], strategy.group, strategy.description].filter(Boolean).join(" · ")}
@@ -32,15 +34,15 @@ export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab
     <ErrorNotice error={query.error} />
     {!tab && <StrategyOverview strategy={strategy} />}
     {tab === "charts" && <Suspense fallback={<Loading />}><DashboardBuilder strategy={strategy} /></Suspense>}
-    {tab === "funds" && <div className="stack"><Panel title="账户资金" action={<InstanceFilter {...{ strategy, instance, setInstance }} />}>
-      <Accounts rows={snapshot?.accounts ?? []} /></Panel><Panel title="绩效指标"><Performance values={snapshot?.performance} /></Panel></div>}
-    {tab === "positions" && <div className="stack"><Panel title="策略归属持仓" action={<InstanceFilter {...{ strategy, instance, setInstance }} />}>
+    {tab === "funds" && <div className="stack"><Panel title="账户资金" hint={observed(times?.portfolio, offline)} action={<InstanceFilter {...{ strategy, instance, setInstance }} />}>
+      <Accounts rows={snapshot?.accounts ?? []} /></Panel><Panel title="绩效指标" hint={observed(times?.performance, offline)}><Performance values={snapshot?.performance} /></Panel></div>}
+    {tab === "positions" && <div className="stack"><Panel title="策略归属持仓" hint={observed(times?.position, offline)} action={<InstanceFilter {...{ strategy, instance, setInstance }} />}>
       <Positions rows={snapshot?.strategy_positions ?? []} /></Panel>
-      <Panel title="券商账户持仓"><Positions rows={snapshot?.broker_positions ?? []} /></Panel></div>}
-    {tab === "orders" && <div className="stack"><Panel title="未完成订单" action={<InstanceFilter {...{ strategy, instance, setInstance }} />}>
+      <Panel title="券商账户持仓" hint={observed(times?.position, offline)}><Positions rows={snapshot?.broker_positions ?? []} /></Panel></div>}
+    {tab === "orders" && <div className="stack"><Panel title="未完成订单" hint={observed(times?.order, offline)} action={<InstanceFilter {...{ strategy, instance, setInstance }} />}>
       <Orders rows={snapshot?.open_orders ?? []} /></Panel>
-      <Panel title="已完成订单"><Orders rows={snapshot?.completed_orders ?? []} /></Panel>
-      <Panel title="成交记录"><Fills rows={snapshot?.fills ?? []} /></Panel></div>}
+      <Panel title="已完成订单" hint={observed(times?.order, offline)}><Orders rows={snapshot?.completed_orders ?? []} /></Panel>
+      <Panel title="成交记录" hint={observed(times?.fill, offline)}><Fills rows={snapshot?.fills ?? []} /></Panel></div>}
     {tab === "events" && <Events strategyId={strategyId} />}
     {tab === "control" && <ControlPanel strategy={strategy} />}
     {tab === "api" && <TokenPanel strategy={strategy} />}
@@ -64,7 +66,7 @@ function StrategyOverview({ strategy }: { strategy: Detail }) {
         strategy.control.reported.risk_locked ? "已锁定" : "未锁定" : "未知"}</strong></div></Panel>
       <Panel><div className="small-stat"><CloudOff size={20} /><span>最近心跳</span><strong>{relative(strategy.last_seen)}</strong></div></Panel>
     </div>
-    <Panel title="最新运行数据" hint={strategy.snapshot ? `观测于 ${when(strategy.snapshot.observed_at)}` : undefined}
+    <Panel title="最新运行数据" hint={observed(strategy.snapshot?.section_observed_at?.status, strategy.status === "offline")}
       action={<TextLink href={strategyPath(strategy.id, "api")}>连接诊断</TextLink>}>
       {!latest ? <Empty title="等待程序连接" text="使用策略 Token 建立 HTTP 会话并上报第一条数据。"
         action={<a className="button secondary" href={strategyPath(strategy.id, "api")}>查看接入信息</a>} /> :
@@ -76,7 +78,7 @@ function StrategyOverview({ strategy }: { strategy: Detail }) {
           <dt>授权到期</dt><dd>{when(latest.runtime.authorization_expires_at)}</dd>
         </dl>}
     </Panel>
-    <Panel title="自定义指标" action={<TextLink href={strategyPath(strategy.id, "charts")}>仪表盘</TextLink>}>
+    <Panel title="自定义指标" hint={observed(strategy.snapshot?.section_observed_at?.metric, strategy.status === "offline")} action={<TextLink href={strategyPath(strategy.id, "charts")}>仪表盘</TextLink>}>
       {strategy.snapshot?.metrics?.length ? <div className="value-grid">{strategy.snapshot.metrics.map((item, i) => <div key={`${item.name}-${i}`}>
         <span>{item.label ?? item.name}</span><strong>{money(item.value, item.unit)}</strong></div>)}</div> :
         <Empty title="暂无快照指标" text="标准指标的历史数据可在仪表盘查看。" />}

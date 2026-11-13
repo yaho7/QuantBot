@@ -28,6 +28,36 @@ def discover(http, sid):
     return {item["id"]: item for item in response.json()["components"]}
 
 
+def test_overview_preserves_accounts_and_independent_report_times(tmp_path):
+    clock = Clock()
+    with client(tmp_path / "accounts.db", clock) as http:
+        log_in(http)
+        first, first_token = create(http)
+        second, second_token = create(http)
+        for token in (first_token, second_token):
+            headers, _ = connect(http, token)
+            portfolio = packet(
+                "portfolio",
+                accounts=[{"account_id": "shared", "currency": "USD", "equity": "10.01"}],
+            )
+            assert batch(http, headers, portfolio).status_code == 200
+        headers, _ = connect(http, first_token)
+        clock.value += 10
+        assert (
+            batch(
+                http, headers, packet("position", 10, strategy_positions=[], broker_positions=[])
+            ).status_code
+            == 200
+        )
+        detail = http.get(f"{ADMIN}/strategies/{first}").json()["snapshot"]
+        assert detail["section_observed_at"]["portfolio"] == stamp().replace("+00:00", "Z")
+        assert detail["section_observed_at"]["position"] == stamp(NOW + 10).replace("+00:00", "Z")
+        accounts = http.get(ADMIN + "/overview").json()["accounts"]
+        assert {row["strategy_id"] for row in accounts} == {first, second}
+        assert all(row["equity"] == "10.01" for row in accounts)
+        assert len({row["observed_at"] for row in accounts}) == 1
+
+
 def test_token_only_monitor_survives_outage_and_server_restart(tmp_path):
     path = tmp_path / "monitor.db"
     clock = Clock()

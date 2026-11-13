@@ -80,6 +80,7 @@ export interface Runtime {
 }
 export interface Snapshot {
   observed_at: string;
+  section_observed_at?: Partial<Record<"status" | "portfolio" | "position" | "order" | "performance" | "fill" | "metric", string>>;
   runtime?: Runtime;
   accounts?: Account[];
   strategy_positions?: Position[];
@@ -188,7 +189,7 @@ export interface Command {
 export interface Overview {
   counts: Record<Status, number>;
   strategies: Strategy[];
-  account: (Account & { observed_at: string | null; strategy_id: string }) | null;
+  accounts: (Account & { observed_at: string; strategy_id: string })[];
   recent_fills: EventRecord[];
   alerts: Alert[];
   commands: Command[];

@@ -28,6 +28,11 @@ const date = new Intl.DateTimeFormat("zh-CN", {
 export function when(value?: string | null) {
   return value ? date.format(new Date(value)) : "—";
 }
+export function observed(value?: string, offline = false) {
+  if (!value) return undefined;
+  const stale = offline || Date.now() - Date.parse(value) > 300_000;
+  return `观测于 ${when(value)}${stale ? " · 已过期" : ""}`;
+}
 export function relative(value?: string | null) {
   if (!value) return "尚未连接";
   const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
