@@ -10,6 +10,7 @@ from .models import SessionOpen
 
 HEARTBEAT_INTERVAL = 15
 OFFLINE_AFTER = 50
+TOKEN_OVERLAP = 3600
 SEVERITIES = ("debug", "info", "warning", "error", "critical")
 
 
@@ -134,6 +135,28 @@ class Strategies:
         self.wake()
         return token
 
+    def rotate_token(self, sid, actor, old_id, options):
+        with self.db.transaction():
+            self.active(sid)
+            self.auth.token_metadata(sid, old_id)
+            key = f"token.rotation:{old_id}"
+            if self.db.one("SELECT 1 FROM settings WHERE name=?", (key,)):
+                raise Problem(409, "This Token already has a replacement")
+            token = self.auth.issue(sid, options)
+            expires = self.clock() + TOKEN_OVERLAP
+            self.db.execute(
+                "UPDATE strategy_tokens SET expires_at=min(coalesce(expires_at, ?), ?) WHERE id=?",
+                (expires, expires, old_id),
+            )
+            self.db.execute("INSERT INTO settings VALUES (?, ?)", (key, token["id"]))
+            self.audit(actor, "token.rotate", sid, token_id=token["id"], replaced=old_id)
+        self.wake()
+        return token
+
+    def replaces(self, new_id, old_id):
+        row = self.db.one("SELECT value FROM settings WHERE name=?", (f"token.rotation:{old_id}",))
+        return bool(row and row["value"] == new_id)
+
     def eligible(self, agent, now=None):
         if not agent:
             return False
@@ -193,8 +216,19 @@ class Strategies:
             prior = next(
                 (a for a in self.instances(sid) if a["instance_id"] == body.instance_id), None
             )
-            if prior and prior["token_id"] != credential.id and self.eligible(prior, now):
-                raise Problem(409, "Instance is already attached to another active credential")
+            if prior and prior["token_id"] != credential.id:
+                old_id = prior["token_id"]
+                replacement = self.replaces(credential.id, old_id)
+                if self.replaces(old_id, credential.id) or (
+                    not replacement and self.eligible(prior, now)
+                ):
+                    raise Problem(409, "Instance is already attached to another credential")
+                for command in self.db.all(
+                    """SELECT * FROM commands WHERE session_id=? AND revision IS NULL
+                       AND state IN ('confirmation_required','pending','accepted')""",
+                    (prior["session_id"],),
+                ):
+                    self.commands.transition(command, "expired", "Agent credential changed")
             executor_id = strategy["executor_id"]
             if executor_id is None and body.executor:
                 executor_id = body.instance_id

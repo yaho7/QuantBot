@@ -409,7 +409,7 @@ async def new_token(request: Request, strategy_id: Key, body: TokenSettings, act
 async def rotate_token(
     request: Request, strategy_id: Key, token_id: Key, body: TokenSettings, actor=ADMIN
 ):
-    return runtime(request).strategies.change_token(strategy_id, actor, body, revoke=token_id)
+    return runtime(request).strategies.rotate_token(strategy_id, actor, token_id, body)
 
 
 @admin.delete("/strategies/{strategy_id}/tokens/{token_id}", status_code=204)

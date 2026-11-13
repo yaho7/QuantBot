@@ -177,7 +177,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
     onSuccess: () => void query.invalidateQueries({ queryKey: ["live"] }),
   });
   return <div className="stack">
-    <Panel title="接入凭据" hint="每个 Token 的权限、有效期和最近使用时间独立管理。"
+    <Panel title="接入凭据" hint="轮换后在连接诊断确认实例已使用新 Token，再撤销旧 Token。"
       action={!strategy.archived_at && <button className="button primary" onClick={() => setEditing("new")}><Plus size={16} /> 新建 Token</button>}>
       <KeyValue label="策略 ID" value={id} /><KeyValue label="API 地址" value={`${origin}/api/agent`} />
       <ErrorNotice error={tokens.error ?? revoke.error} />
@@ -228,7 +228,7 @@ function EditToken({ strategyId, previous, close, done }: { strategyId: string; 
   }
   return <Dialog title={previous ? "轮换 Token" : "新建 Token"} close={close}>
     <form className="stack" onSubmit={submit}>
-      {previous && <div className="notice warn">生成新 Token 时会同时撤销旧 Token。</div>}
+      {previous && <div className="notice">旧 Token 最多保留一小时，原有到期时间更早时仍按原时间到期。程序使用新 Token 接入后，可手动撤销旧 Token。</div>}
       <TokenFields {...{ scopes, setScopes, expiry, setExpiry }} />
       <ErrorNotice error={mutation.error} />
       <div className="dialog-actions"><button className="button primary" disabled={mutation.isPending}>{previous ? "确认轮换" : "生成 Token"}</button></div>

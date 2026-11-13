@@ -175,6 +175,32 @@ def test_credentials_and_scope(server):
     assert http.put(AGENT + "/heartbeat", headers=new_headers, json={}).status_code == 401
 
 
+def test_token_rotation_allows_handoff_without_two_active_sessions(server):
+    http, clock, _ = server
+    sid, old = create(http)
+    old_headers, _ = connect(http, old)
+    rotated = http.post(f"{ADMIN}/strategies/{sid}/tokens/{old['id']}/rotate", json={"scopes": ALL})
+    assert rotated.status_code == 201
+    new = rotated.json()
+    assert http.put(AGENT + "/heartbeat", headers=old_headers, json={}).status_code == 200
+    new_headers, _ = connect(http, new)
+    assert http.put(AGENT + "/heartbeat", headers=new_headers, json={}).status_code == 200
+    assert http.put(AGENT + "/heartbeat", headers=old_headers, json={}).status_code == 409
+    assert (
+        http.post(
+            AGENT + "/session", headers=token_headers(old), json={"instance_id": "primary"}
+        ).status_code
+        == 409
+    )
+    clock.value += 3601
+    assert (
+        http.post(
+            AGENT + "/session", headers=token_headers(old), json={"instance_id": "another"}
+        ).status_code
+        == 401
+    )
+
+
 def test_command_history_filters_and_prioritizes_unknown_across_pages(server):
     http, _, path = server
     sid, _ = create(http)
