@@ -2,7 +2,18 @@
 
 ## 认证与会话
 
-程序请求带 `Authorization: Bearer <策略 Token>`。Token 绑定单个 Strategy ID，服务端从凭据确定归属。Web 使用单独的管理员会话 Cookie。远程连接使用 HTTPS。
+Endpoint 使用控制台提供的完整地址，例如 `https://quantbot.example.com/api/agent`。只追加接口的相对路径（例如 `/session`），保留显式端口并去除末尾斜杠。Endpoint 不接受其他路径、查询字符串、片段或 URL 用户名和密码。远程连接使用 HTTPS，本地 HTTP 限 `localhost`、`127.0.0.1` 或 `[::1]`。保留证书校验，拒绝自动重定向。
+
+程序请求使用以下 HTTP 请求头。Key 用于识别和管理凭据，Secret 是 Bearer Token。Token 绑定单个 Strategy ID，Web 使用单独的管理员会话 Cookie。
+
+```http
+Authorization: Bearer <Secret>
+Content-Type: application/json
+Accept: application/json
+User-Agent: QuantBot-Integration/1.0
+```
+
+客户端可以追加语言或运行时标识。使用可识别的应用程序标识。
 
 每个运行实例指定稳定的 `instance_id`。同一个策略的多个程序使用不同 ID。策略需要控制时由一个实例声明 `executor: true`，其他实例仍可上报。服务端将控制资格固定在第一个授权执行实例，管理员可在原实例离线并处理未决交易命令后切换。
 
@@ -35,7 +46,7 @@
 | POST | `/commands/{id}/claim` | commands + 执行实例 | 原子领取一次性许可 |
 | POST | `/commands/{id}/result` | commands + 执行实例 | 回报实际成功、失败或未知结果 |
 
-JSON 体积上限为 1 MiB。校验错误会返回字段位置和错误类型。401 对应无效、过期或撤销的凭据，403 对应权限不足，409 对应会话、修订、重复请求或状态冲突，413 对应请求过大，422 对应 Schema 或业务参数校验失败，429 对应频率限制。按照 429 的 `Retry-After` 重试。
+JSON 体积上限为 1 MiB。校验错误会返回字段位置和错误类型。401 对应无效、过期或撤销的凭据，403 对应权限不足，409 对应会话、修订、重复请求或状态冲突，413 对应请求过大，422 对应 Schema 或业务参数校验失败，429 对应频率限制。按 `Retry-After`（秒数或 HTTP 日期）重试 429。Agent 响应带 `X-QuantBot-Request-ID`，诊断可同时记录代理提供的 `CF-Ray`。 [连接与错误排查](docs/TROUBLESHOOTING.md)
 
 ## 标准数据与图表
 
@@ -71,16 +82,16 @@ JSON 体积上限为 1 MiB。校验错误会返回字段位置和错误类型。
 需要 `curl` 和 `jq`。从 Web 复制模拟策略 Token，在本机演示时用以下地址。
 
 ```bash
-export QB_URL=http://127.0.0.1:23456
+export QB_ENDPOINT=http://127.0.0.1:23456/api/agent
 read -rs QB_TOKEN
 export QB_TOKEN
 
-SESSION=$(curl -fsS "$QB_URL/api/agent/session" \
+SESSION=$(curl -fsS --connect-timeout 5 --max-time 10 -A 'QuantBot-Integration/1.0' -H 'Accept: application/json' "$QB_ENDPOINT/session" \
   -H "Authorization: Bearer $QB_TOKEN" -H 'Content-Type: application/json' \
   -d '{"instance_id":"curl-example","language":"HTTP","version":"1.0"}')
-QB_SESSION=$(jq -r .session_id <<<"$SESSION")
+QB_SESSION=$(jq -er '.session_id | select(type == "string" and length > 0)' <<<"$SESSION")
 
-curl -fsS -X PUT "$QB_URL/api/agent/heartbeat" \
+curl -fsS --connect-timeout 5 --max-time 10 -A 'QuantBot-Integration/1.0' -H 'Accept: application/json' -X PUT "$QB_ENDPOINT/heartbeat" \
   -H "Authorization: Bearer $QB_TOKEN" -H "X-Agent-Session: $QB_SESSION" \
   -H 'Content-Type: application/json' -d '{"health":"healthy"}'
 
@@ -91,7 +102,7 @@ jq -n --arg now "$STAMP" '{records:[
   ]},
   {type:"metric",schema_version:1,observed_at:$now,name:"rsi_14",value:"52.15",unit:"index"},
   {type:"log",schema_version:1,observed_at:$now,id:("started-"+$now),severity:"info",message:"HTTP example connected"}
-]}' | curl -fsS "$QB_URL/api/agent/reports" \
+]}' | curl -fsS --connect-timeout 5 --max-time 10 -A 'QuantBot-Integration/1.0' -H 'Accept: application/json' "$QB_ENDPOINT/reports" \
   -H "Authorization: Bearer $QB_TOKEN" -H "X-Agent-Session: $QB_SESSION" \
   -H 'Content-Type: application/json' --data-binary @-
 ```
@@ -169,7 +180,7 @@ jq -n --arg now "$STAMP" '{records:[
 ```
 
 ```bash
-curl -fsS -X PUT "$QB_URL/api/agent/controls" \
+curl -fsS --connect-timeout 5 --max-time 10 -A 'QuantBot-Integration/1.0' -H 'Accept: application/json' -X PUT "$QB_ENDPOINT/controls" \
   -H "Authorization: Bearer $QB_TOKEN" -H "X-Agent-Session: $QB_SESSION" \
   -H 'Content-Type: application/json' --data-binary @controls.json
 ```

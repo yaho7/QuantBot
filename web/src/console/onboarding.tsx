@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, ChevronRight, Eye, EyeOff, KeyRound, Plus, RefreshCw } from "lucide-react";
+import httpExample from "../../../examples/http_agent.py?url&no-inline";
 import { useState, type FormEvent } from "react";
 import { api, strategyApi, strategyPath, type Catalog, type Credential, type DataType, type Detail, type Scope, type System, type StrategySettings, type Token, type TokenOptions } from "./api";
 import { Code, CopyButton, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
@@ -89,66 +90,50 @@ export function CreateStrategy({ close }: { close: () => void }) {
   </form></Dialog>;
 }
 
-function useAgentOrigin() {
+function useAgentEndpoint() {
   const system = useData<System>("system", true, 0);
-  return system.data?.public_url ?? window.location.origin;
+  return `${system.data?.public_url ?? window.location.origin}/api/agent`;
 }
 
-function shell(origin: string) {
-  return `export QB_URL=${JSON.stringify(origin)}
+function shell(endpoint: string) {
+  return `export QB_ENDPOINT=${JSON.stringify(endpoint)}
+read -rs QB_TOKEN
+curl -fsS --connect-timeout 5 --max-time 10 \\
+  --proto '=https${endpoint.startsWith("http:") ? ",http" : ""}' \\
+  "$QB_ENDPOINT/monitor/my-program" \\
+  -H "Authorization: Bearer $QB_TOKEN" -H 'Content-Type: application/json' \\
+  -H 'Accept: application/json' -A 'QuantBot-Integration/1.0' \\
+  -d "{\\"records\\":[{\\"type\\":\\"status\\",\\"schema_version\\":1,\\"observed_at\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"runtime\\":{\\"health\\":\\"healthy\\"}}]}"`;
+}
+
+function HttpExamples({ endpoint }: { endpoint: string }) {
+  return <div className="stack">
+    <a className="text-link" href={httpExample} download="http_agent.py">下载 Python 标准库示例 <ChevronRight size={14} /></a>
+    <Code label="Python · 持续监控">{`export QB_ENDPOINT=${JSON.stringify(endpoint)}
 read -rs QB_TOKEN
 export QB_TOKEN
-while true; do
-  curl -fsS --max-time 10 "$QB_URL/api/agent/monitor/my-program" \\
-    -H "Authorization: Bearer $QB_TOKEN" -H 'Content-Type: application/json' \\
-    -d "{\"records\":[{\"type\":\"status\",\"schema_version\":1,\"observed_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"runtime\":{\"health\":\"healthy\"}}]}"
-  sleep 15
-done`;
+python3 http_agent.py --follow`}</Code>
+    <Code label="curl · 单次验证">{shell(endpoint)}</Code>
+  </div>;
 }
 
-function python(origin: string) {
-  return `import json, os, time, urllib.error, urllib.request
-from datetime import datetime, timezone
-
-root = os.getenv("QB_URL", ${JSON.stringify(origin)}).rstrip("/") + "/api/agent"
-headers = {"Authorization": "Bearer " + os.environ["QB_TOKEN"],
-           "Content-Type": "application/json"}
-
-def request(path, method, data):
-    req = urllib.request.Request(root + path, json.dumps(data).encode(),
-                                 headers=headers, method=method)
-    with urllib.request.urlopen(req, timeout=10) as res:
-        return json.load(res)
-
-if __name__ == "__main__":
-    while True:
-        try:
-            request("/monitor/my-program", "POST", {"records": [{
-                "type": "status", "schema_version": 1,
-                "observed_at": datetime.now(timezone.utc).isoformat(),
-                "runtime": {"health": "healthy"},
-            }]})
-        except urllib.error.HTTPError as exc:
-            if exc.code in (401, 403, 422, 426):
-                raise SystemExit(f"接入失败（HTTP {exc.code}），请检查 Token、地址和数据")
-            print(f"HTTP {exc.code}，15 秒后重试", flush=True)
-        except (OSError, urllib.error.URLError) as exc:
-            print(f"连接失败：{exc}，15 秒后重试", flush=True)
-        time.sleep(15)`;
-}
-
-function aiInstructions(origin: string, strategyId?: string) {
+function aiInstructions(endpoint: string, strategyId?: string) {
+  const origin = new URL(endpoint).origin;
   return `请帮我将当前量化交易程序**完整接入 QuantBot 监控与远程控制平台**，直接修改项目代码完成接入。
 
 **QuantBot GitHub 仓库：** [https://github.com/yaho7/QuantBot](https://github.com/yaho7/QuantBot)
 
-**服务器地址：** [${origin}](${origin})
+**Endpoint：** [${endpoint}](${endpoint})
 
 **策略 ID：** \`${strategyId ?? "请填写策略 ID"}\`
 
+**稳定实例名称建议：** \`${strategyId ? `strategy-${strategyId.slice(0, 8)}` : "my-strategy"}\`
+
+**协议：** Agent HTTP API，报告和控件 \`schema_version: 1\`。参考 [OpenAPI](${origin}/openapi.json)、[标准数据类型](${origin}/api/data-types)、[批量上报 Schema](${origin}/api/schemas/batch) 和 [控件 Schema](${origin}/api/schemas/controls)。
+
 ### 一、接入目标
 
-**不要只实现心跳和数据上报。** 先检查当前项目的完整结构，阅读 QuantBot 最新的 README.md、PROTOCOL.md、API 文档和示例代码。根据程序已有能力完成监控、数据分析和高级控制。优先复用官方协议及当前程序的接口，避免重复开发。
+**不要只实现心跳和数据上报。** 先检查当前项目的完整结构，阅读 QuantBot 最新的 README.md、PROTOCOL.md、API 文档和示例代码。根据程序已有能力完成监控、数据分析和高级控制。先识别当前语言、现有 HTTP 客户端、主程序生命周期、数据缓存、开仓判断和原有风控入口，再选择实现方式。Python 可用 urllib.request，JavaScript/TypeScript 用 fetch，Go 用 net/http，C# 和 Java 用标准 HttpClient。C++ 或特殊运行环境优先复用现有 HTTP 库。避免重复开发。
 
 ### 二、主程序集成
 
@@ -160,7 +145,7 @@ function aiInstructions(origin: string, strategyId?: string) {
 
 - 创建 \`quantbot.json\` 保存 Endpoint、Secret、稳定实例名称和必要配置。仅在文件不存在时创建，Secret 预留为空。启动时自动读取，无需设置环境变量。用 Secret 作为 Bearer Token，Key 仅用于识别凭据。
 - 创建 \`quantbot.example.json\`，并将真实配置文件加入 \`.gitignore\`。不要提交或记录明文 Token。
-- 配置缺失、Token 未填写或服务器不可用时，原量化程序应继续正常运行。
+- 配置使用 \`endpoint\`、\`secret\` 和 \`instance_name\` 字段。Endpoint 已包含 \`/api/agent\`，仅追加 \`/session\` 等相对路径。缺少配置或 Secret 时保留原有程序行为。失联时遵循最后实际应用并持久化的开仓权限和断线策略。
 
 ### 四、完整数据监控
 
@@ -169,7 +154,7 @@ function aiInstructions(origin: string, strategyId?: string) {
 - **策略绩效**：累计收益、当日收益、净值曲线、最大回撤和已有绩效指标。
 - **行情、日志和自定义指标**：已有 K 线和行情、重要日志、错误、风控事件、交易提醒及有意义的内部指标。
 
-运行状态约每 3 秒上报一次，并遵守服务端限流及重试提示。其他数据按事件或合理的间隔上报。复用内存、缓存和已有数据，避免额外频繁请求券商 API。使用官方 Schema，没有的数据不要编造，成交重传沿用相同事件 ID。接口规范见 [OpenAPI](${origin}/openapi.json) 和 [数据类型](${origin}/api/data-types)。
+按会话返回的间隔发送心跳，运行状态变化时更新。其他数据按事件或合理的间隔上报。复用内存、缓存和已有数据，避免额外频繁请求券商 API。使用官方 Schema，没有的数据不要编造，成交重传沿用相同事件 ID。接口规范见 [OpenAPI](${origin}/openapi.json) 和 [数据类型](${origin}/api/data-types)。
 
 ### 五、高级控制功能
 
@@ -192,7 +177,10 @@ function aiInstructions(origin: string, strategyId?: string) {
 
 ### 七、可靠性
 
-通过异步任务或独立工作线程处理请求，自动重连并限制重试和积压。将最后应用的开仓权限保存到本地，重连和重启后对账，避免意外恢复开仓。高风险命令按命令 ID 去重，结果未知时核对实际交易结果。避免无关重构和额外依赖。
+- 统一发送 \`User-Agent: QuantBot-Integration/1.0\`、\`Accept: application/json\`、\`Content-Type: application/json\` 和 Bearer Secret。保持 TLS 校验，禁止自动跟随重定向。
+- 用独立线程或异步任务执行 HTTP，设置连接和请求超时。按有上限的指数退避和随机抖动自动重连。429 遵守 Retry-After，401 提示更换 Secret，403 区分 QuantBot 权限与 Cloudflare 1010 等上游拦截。脱敏诊断仅包含请求路径、状态、错误类型和追踪 ID。
+- 用有界队列批量上报，快照可合并，重要事件和待发回执应持久化。重传沿用事件 ID 和时间戳。最后应用的开仓权限保存到本地，重连和重启后先对账。命令执行前持久化命令 ID，按一次性许可执行并保存真实回执，结果未知时核对原交易记录。
+- 文件尽量精简，优先保留一个通信模块和本地配置。不引入无关依赖或重构。
 
 ### 八、测试与交付
 
@@ -211,24 +199,22 @@ function aiInstructions(origin: string, strategyId?: string) {
 整体原则：**充分发挥 QuantBot 的高级能力，监控全面、控制灵活、操作安全、实现简洁，且不干扰原有量化交易程序。**`;
 }
 
-function AgentPrompt({ origin, strategyId }: { origin: string; strategyId?: string }) {
-  const prompt = aiInstructions(origin, strategyId);
+function AgentPrompt({ endpoint, strategyId }: { endpoint: string; strategyId?: string }) {
+  const prompt = aiInstructions(endpoint, strategyId);
   return <Panel title="AI 接入提示词" action={<CopyButton value={prompt} label="复制 AI 提示词" />}>
     <pre className="agent-prompt">{prompt}</pre>
   </Panel>;
 }
 
 function CredentialDialog({ credential, close }: { credential: Credential; close: () => void }) {
-  const origin = useAgentOrigin();
+  const endpoint = useAgentEndpoint();
   return <Dialog title="接入凭据已生成" close={close}><div className="stack">
-    <KeyValue label="Endpoint" value={`${origin}/api/agent`} />
+    <KeyValue label="Endpoint" value={endpoint} />
     <KeyValue label="策略 ID" value={credential.strategy_id} />
     <KeyValue label="Key" value={credential.id} />
     <SecretValue load={async () => credential.token} />
-    <AgentPrompt origin={origin} strategyId={credential.strategy_id} />
-    <details className="form-detail"><summary>curl 和 Python 示例</summary><div className="stack">
-      <Code label="curl">{shell(origin)}</Code><Code label="Python">{python(origin)}</Code>
-    </div></details>
+    <AgentPrompt endpoint={endpoint} strategyId={credential.strategy_id} />
+    <details className="form-detail"><summary>标准 HTTP 示例</summary><HttpExamples endpoint={endpoint} /></details>
     <div className="dialog-actions"><button className="button primary" onClick={close}>完成</button></div>
   </div></Dialog>;
 }
@@ -261,7 +247,7 @@ function SecretValue({ load }: { load: () => Promise<string> }) {
 
 export function TokenPanel({ strategy }: { strategy: Detail }) {
   const id = strategy.id;
-  const origin = useAgentOrigin();
+  const endpoint = useAgentEndpoint();
   const query = useQueryClient();
   const tokens = useData<Token[]>(strategyApi(id, "tokens"));
   const catalog = useData<Catalog>(strategyApi(id, "components"));
@@ -291,7 +277,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
         {current && <button className="button primary" onClick={() => { regenerate.reset(); setReplacing(current); }}><RefreshCw size={16} /> 重新生成 Token</button>}
         <button className={`button ${current ? "secondary" : "primary"}`} onClick={() => setEditing("new")}><Plus size={16} /> 新建 Token</button>
       </div>}>
-      <KeyValue label="策略 ID" value={id} /><KeyValue label="Endpoint" value={`${origin}/api/agent`} />
+      <KeyValue label="策略 ID" value={id} /><KeyValue label="Endpoint" value={endpoint} />
       {current && <><KeyValue label="Key" value={current.id} />
         <SecretValue key={current.id} load={async () => (await api<Credential>(strategyApi(id, `tokens/${current.id}/reveal`), "POST")).token} /></>}
       <ErrorNotice error={tokens.error ?? revoke.error} />
@@ -366,13 +352,15 @@ function EditToken({ strategyId, previous, close, done }: { strategyId: string; 
 type OpenApi = { paths: Record<string, Record<string, { summary?: string; description?: string }>> };
 
 export function ApiPage({ strategyId }: { strategyId?: string }) {
-  const defaultOrigin = useAgentOrigin();
-  const [customOrigin, setCustomOrigin] = useState("");
+  const defaultEndpoint = useAgentEndpoint();
+  const [customEndpoint, setCustomEndpoint] = useState("");
+  const entered = customEndpoint.trim();
   let parsed: URL | undefined;
-  try { parsed = customOrigin.trim() ? new URL(customOrigin.trim()) : undefined; } catch { /* Show validation below. */ }
-  const valid = parsed && ["http:", "https:"].includes(parsed.protocol) && !parsed.username && !parsed.password &&
-    parsed.pathname === "/" && !parsed.search && !parsed.hash;
-  const origin = (valid ? parsed?.origin : undefined) ?? defaultOrigin;
+  try { parsed = entered ? new URL(entered) : undefined; } catch { /* Show validation below. */ }
+  const valid = parsed && /^(https?:)\/\/[a-z0-9.:[\]-]+\/api\/agent\/?$/i.test(entered) &&
+    (parsed.protocol === "https:" ||
+      (parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname)));
+  const endpoint = valid ? `${parsed!.origin}/api/agent` : defaultEndpoint;
   const spec = useQuery({ queryKey: ["spec"], queryFn: () => api<OpenApi>("/openapi.json"), staleTime: Infinity });
   const types = useQuery({ queryKey: ["types"], queryFn: () => api<DataType[]>("/api/data-types"), staleTime: Infinity });
   const [schema, setSchema] = useState("status");
@@ -381,13 +369,13 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
   return <>
     <PageTitle title="API 接入" sub="使用标准 HTTP 注册、上报和接收控制指令。" action={<a href="/docs" className="button secondary"><BookOpen size={16} /> 交互文档</a>} />
     <div className="stack">
-      <AgentPrompt origin={origin} strategyId={strategyId} />
+      <AgentPrompt endpoint={endpoint} strategyId={strategyId} />
       <Panel title="连接信息">
-        <Field label="策略接入地址" hint="从其他机器接入时，使用策略所在机器可以访问的地址。">
-          <input type="url" placeholder={defaultOrigin} value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} />
+        <Field label="自定义 Endpoint" hint="填写策略所在机器可以访问的完整 Endpoint。">
+          <input type="url" placeholder={defaultEndpoint} value={customEndpoint} onChange={(event) => setCustomEndpoint(event.target.value)} />
         </Field>
-        {customOrigin.trim() && !valid && <p role="alert" className="notice error">请输入不带路径的 HTTP 或 HTTPS 地址。</p>}
-        <KeyValue label="Endpoint" value={`${origin}/api/agent`} />
+        {entered && !valid && <p role="alert" className="notice error">请输入 https://域名/api/agent。HTTP 仅可用于回环地址。</p>}
+        <KeyValue label="Endpoint" value={endpoint} />
         {strategyId && <KeyValue label="策略 ID" value={strategyId} />}
         {strategyId ? <a className="text-link" href={strategyPath(strategyId, "api")}>管理 Token 和连接诊断 <ChevronRight size={14} /></a>
           : <a className="text-link" href="#strategies">选择策略并管理 Token <ChevronRight size={14} /></a>}
@@ -429,28 +417,19 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
           <Code label="PUT /api/agent/controls/state">{JSON.stringify({
             revision: 1, observed_at: "2026-01-01T12:00:00Z", values: { rsi_period: 14 },
           }, null, 2)}</Code>
-          <Code label="curl · 注册组件">{`curl -fsS -X PUT "$QB_URL/api/agent/controls" \\
+          <Code label="curl · 注册组件">{`curl -fsS -X PUT "$QB_ENDPOINT/controls" \\
   -H "Authorization: Bearer $QB_TOKEN" \\
   -H "X-Agent-Session: $QB_SESSION" \\
-  -H 'Content-Type: application/json' --data-binary @controls.json`}</Code>
-          <Code label="Python · 更新及移除">{`# 复用下方示例的标准库 request() 与 headers
-request("/controls", "PUT", registry)
-# 保留其余定义，移除 rsi_period
-registry["revision"] += 1
-registry["controls"] = [c for c in registry["controls"] if c["id"] != "rsi_period"]
-request("/controls", "PUT", registry)`}</Code>
-          <Code label="命令领取和结果回报">{`# 先 GET /commands?wait=25，再 POST /commands/{id}/claim
-request(f"/commands/{command_id}/result", "POST", {
-    "permit": permit, "status": "succeeded", "result": {"period": 14},
-})
-# 已实际生效的值再用 PUT /controls/state 上报。`}</Code>
+  -H 'Content-Type: application/json' -H 'Accept: application/json' \\
+  -A 'QuantBot-Integration/1.0' --data-binary @controls.json`}</Code>
+          <p className="subtle">更新或移除控件时，提高 revision，并提交修改后的完整控件列表。</p>
+          <p className="subtle">下载下方 Python 示例并在模拟盘使用 --control，可查看完整的长轮询、领取许可、回执及控件实际状态上报流程。</p>
           <p className="subtle">401 表示凭据无效，403 表示缺少作用域或实例授权，409 表示版本、状态或许可冲突，422 表示 Schema 或参数验证失败。</p>
           <a className="text-link" href="/api/schemas/controls">查看完整 Control Schema <ChevronRight size={14} /></a>
         </div>
       </Panel>
       <Panel title="HTTP 示例" hint="使用环境变量传入策略 Token。">
-        <div className="stack"><Code label="curl">{shell(origin)}</Code><Code label="Python 标准库">{python(origin)}</Code>
-        </div>
+        <HttpExamples endpoint={endpoint} />
       </Panel>
     </div>
   </>;

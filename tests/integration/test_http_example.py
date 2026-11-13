@@ -101,7 +101,11 @@ def test_plain_http_program_reconnects_and_replays_its_outbox(tmp_path):
                     str(state_file),
                 ],
                 cwd=ROOT,
-                env={**env, "QB_URL": origin, "QB_TOKEN": data["credential"]["token"]},
+                env={
+                    **env,
+                    "QB_ENDPOINT": origin + "/api/agent",
+                    "QB_TOKEN": data["credential"]["token"],
+                },
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )

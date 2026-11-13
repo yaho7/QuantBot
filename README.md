@@ -1,6 +1,6 @@
 # QuantBot
 
-QuantBot 是面向独立量化交易程序的 HTTP 监控与远程控制平台。程序主动连接、上报标准数据并领取远程指令。Web 和 Telegram 共用策略身份、交易权限、指令状态和回执。
+QuantBot 是面向独立量化交易程序的 HTTP 监控与远程控制平台。程序通过已有 HTTP 客户端主动连接、上报标准数据并领取远程指令。接入代码随策略启动，无需安装 QuantBot SDK 或另起服务。Web 和 Telegram 共用策略身份、交易权限、指令状态和回执。
 
 - 策略身份、独立 Token、权限范围、轮换、撤销和连接诊断。
 - 14 种标准数据类型和持久化历史。仪表盘按实际收到的数据提供 ECharts 图表、交易 K 线、成交与风控标记。
@@ -43,7 +43,7 @@ uv run quantbot serve
 需要试用远程控制时，在模拟盘策略的 **Token 与诊断** 页面签发带开仓权限和命令权限的 Token，再运行下面的完整示例。
 
 ```bash
-export QB_URL=http://127.0.0.1:23456
+export QB_ENDPOINT=http://127.0.0.1:23456/api/agent
 read -rs QB_TOKEN
 export QB_TOKEN
 python3 examples/http_agent.py --control --follow
@@ -54,6 +54,7 @@ Web 将显示实例上线、模拟指标及已声明的控件。尝试修改 RSI
 ## 文档
 
 - [HTTP 协议、curl、标准报告、动态控制及命令示例](PROTOCOL.md)
+- [连接与错误排查](docs/TROUBLESHOOTING.md)
 - [OpenAPI 3.1](docs/openapi.json) · [JSON Schema](docs/schemas)
 - [Telegram 配置、命令和推送](docs/TELEGRAM.md)
 - [Docker、Linux 服务、HTTPS、备份和更新](docs/DEPLOYMENT.md)

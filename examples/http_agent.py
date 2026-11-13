@@ -3,15 +3,197 @@
 import argparse
 import fcntl
 import json
+import math
 import os
+import random
+import re
+import socket
 import sqlite3
+import ssl
+import sys
 import time
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from http.client import HTTPException
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+USER_AGENT = "QuantBot-Integration/1.0"
+RESPONSE_LIMIT = 2 * 1024 * 1024
+ERROR_TYPES = {
+    400: "invalid_json",
+    401: "authentication_failed",
+    403: "permission_denied",
+    404: "resource_not_found",
+    409: "state_conflict",
+    413: "batch_too_large",
+    415: "unsupported_content_type",
+    421: "public_host_mismatch",
+    422: "schema_mismatch",
+    426: "https_required",
+    429: "rate_limited",
+}
+SAFE_DETAILS = {
+    "Invalid strategy credential",
+    "Token lacks the required scope",
+    "Executor declarations require the control scope",
+    "One-time capabilities require the commands scope",
+    "This instance is not the authorized executor",
+    "The command is assigned to a different session",
+    "Establish an agent session first",
+    "Agent session ended; reconnect",
+    "Instance is already attached to another credential",
+    "Synchronize desired and reported controls before claiming",
+    "An execution permit is no longer available",
+    "Invalid execution permit",
+    "A final result has already been recorded",
+}
+
+
+def normalize_endpoint(value):
+    value = value.strip()
+    try:
+        if not value.isascii() or any(c.isspace() or ord(c) < 32 for c in value):
+            raise ValueError
+        parsed = urlsplit(value)
+        _port = parsed.port  # Also validates invalid or out-of-range ports.
+        loopback = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        if (
+            (parsed.scheme != "https" and not (parsed.scheme == "http" and loopback))
+            or not parsed.hostname
+            or not re.fullmatch(r"(?:[a-zA-Z0-9.-]+|\[[0-9a-fA-F:]+\])(?::[0-9]+)?", parsed.netloc)
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"/api/agent", "/api/agent/"}
+            or any(char in value for char in "?#\\")
+        ):
+            raise ValueError
+    except ValueError:
+        raise ValueError(
+            "Endpoint must be https://host[:port]/api/agent; HTTP is allowed only on loopback"
+        ) from None
+    return f"{parsed.scheme}://{parsed.netloc}/api/agent"
+
+
+def retry_after(value):
+    if not value:
+        return None
+    try:
+        if value.isascii() and value.isdigit():
+            delay = float(value)
+        else:
+            delay = (parsedate_to_datetime(value) - datetime.now(timezone.utc)).total_seconds()
+        return max(0, delay) if math.isfinite(delay) else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+class RequestFailure(Exception):
+    def __init__(self, category, method, path, *, headers=None, status=None, detail=None):
+        self.category = category
+        self.status = status
+        self.detail = detail
+        headers = headers or {}
+        self.retry_after = retry_after(headers.get("Retry-After"))
+        content_type = headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        request_id = headers.get("X-QuantBot-Request-ID", "")
+        cf_ray = headers.get("CF-Ray", "")
+        diagnostic = {
+            "runtime": f"Python {sys.version_info.major}.{sys.version_info.minor}",
+            "method": method,
+            "path": path.split("?", 1)[0],
+            "http": status,
+            "response_type": content_type
+            if re.fullmatch(r"[a-z0-9.+/-]{1,64}", content_type)
+            else None,
+            "error_class": category,
+            "request_id": request_id if re.fullmatch(r"[0-9a-f]{32}", request_id) else None,
+            "cf_ray": cf_ray if re.fullmatch(r"[0-9a-f]{16}(?:-[A-Z]{3})?", cf_ray) else None,
+            "upstream_code": 1010 if category == "cloudflare_1010" else None,
+            "detail": detail,
+        }
+        super().__init__(json.dumps({k: v for k, v in diagnostic.items() if v is not None}))
+
+    @property
+    def retryable(self):
+        return self.category in {"network", "timeout", "dns", "gateway_unavailable", "rate_limited"}
+
+    @property
+    def session_ended(self):
+        return self.detail in {"Establish an agent session first", "Agent session ended; reconnect"}
+
+
+def http_failure(exc, method, path, secret):
+    with exc:
+        try:
+            body = exc.read(16384)
+        except (OSError, HTTPException):
+            body = b""
+    content_type = exc.headers.get_content_type()
+    request_id = exc.headers.get("X-QuantBot-Request-ID", "")
+    detail = None
+    if 300 <= exc.code < 400:
+        category = "redirect_rejected"
+    elif exc.code == 429:
+        category = "rate_limited"
+    elif exc.code >= 500:
+        category = "gateway_unavailable"
+    elif content_type == "application/json" and re.fullmatch(r"[0-9a-f]{32}", request_id):
+        category = ERROR_TYPES.get(exc.code, "quantbot_error")
+        try:
+            data = json.loads(body)
+        except (ValueError, RecursionError):
+            data = None
+        if isinstance(data, dict):
+            raw = data.get("detail")
+            if isinstance(raw, str) and raw in SAFE_DETAILS:
+                detail = raw
+            errors = data.get("errors")
+            if exc.code == 422 and isinstance(errors, list):
+                fields = []
+                for error in errors[:3]:
+                    loc = error.get("location") if isinstance(error, dict) else None
+                    if isinstance(loc, list) and all(
+                        type(part) is int
+                        or (
+                            isinstance(part, str)
+                            and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_-]{0,39}", part)
+                        )
+                        for part in loc[:12]
+                    ):
+                        fields.append(".".join(map(str, loc[:12])))
+                if fields:
+                    detail = "Invalid fields: " + ", ".join(fields)
+    elif exc.code == 403 and (
+        exc.headers.get("CF-Error-Code") == "1010"
+        or (exc.headers.get("CF-Ray") and re.search(rb"\b1010\b", body))
+        or re.search(rb"(?:error(?:\s+code)?:?\s*1010)\b", body, re.IGNORECASE)
+    ):
+        category = "cloudflare_1010"
+        detail = "Check the API path in the upstream security policy"
+    else:
+        category = "upstream_http_error"
+    if detail and secret in detail:
+        detail = None
+    return RequestFailure(
+        category, method, path, headers=exc.headers, status=exc.code, detail=detail
+    )
+
+
+def network_failure(exc, method, path):
+    reason = exc.reason if isinstance(exc, URLError) else exc
+    if isinstance(reason, ssl.SSLError):
+        category = "tls"
+    elif isinstance(reason, socket.gaierror):
+        category = "dns"
+    elif isinstance(reason, TimeoutError):
+        category = "timeout"
+    else:
+        category = "network"
+    return RequestFailure(category, method, path)
+
 
 CONTROL_CAPABILITIES = [
     {"id": "pause_entry", "label": "暂停新开仓"},
@@ -101,27 +283,26 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 class Demo:
-    def __init__(self, url, token, instance, db, control):
-        parsed = urlsplit(url)
-        if parsed.scheme != "https" and not (
-            parsed.scheme == "http" and parsed.hostname in {"localhost", "127.0.0.1", "::1"}
-        ):
-            raise SystemExit("Use HTTPS outside localhost")
-        if (
-            parsed.username
-            or parsed.password
-            or parsed.path not in {"", "/"}
-            or (parsed.query or parsed.fragment or not parsed.hostname)
-        ):
-            raise SystemExit("QB_URL must be the HTTP or HTTPS origin")
-        self.url = url.rstrip("/") + "/api/agent"
+    def __init__(self, endpoint, secret, instance, db, control):
+        self.url = normalize_endpoint(endpoint)
+        if not re.fullmatch(r"[!-~]{1,256}", secret):
+            raise ValueError("Set QB_TOKEN to the strategy Secret")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,55}", instance):
+            raise ValueError("Choose a stable instance name of up to 56 letters, digits or ._-")
+        self.secret = secret
         self.opener = build_opener(NoRedirect)
-        self.headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+        self.headers = {
+            "Authorization": f"Bearer {secret}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "User-Agent": USER_AGENT,
+        }
         self.instance = instance
         self.db = db
         self.control = control
         self.started = time.monotonic()
         self.last_contact = None
+        self.offline_after = 50
         self.db.executescript("""
             CREATE TABLE IF NOT EXISTS local_state (name TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS outbox (id INTEGER PRIMARY KEY, report TEXT NOT NULL);
@@ -137,13 +318,31 @@ class Demo:
                 (json.dumps({"status": "unknown", "error": "Interrupted after claim"}),),
             )
 
-    def http(self, method, path, payload=None, timeout=12):
+    def http(self, method, path, payload=None, timeout=10, validate=None):
         body = None if payload is None else json.dumps(payload).encode()
         request = Request(  # noqa: S310 - constructor restricts the origin and redirects
             self.url + path, data=body, headers=self.headers, method=method
         )
-        with self.opener.open(request, timeout=timeout) as response:
-            data = json.load(response)
+        try:
+            with self.opener.open(request, timeout=timeout) as response:
+                headers = response.headers
+                try:
+                    if headers.get_content_type() != "application/json":
+                        raise ValueError
+                    raw = response.read(RESPONSE_LIMIT + 1)
+                    if len(raw) > RESPONSE_LIMIT:
+                        raise ValueError
+                    data = json.loads(raw)
+                    if not isinstance(data, dict) or (validate and not validate(data)):
+                        raise ValueError
+                except (ValueError, KeyError, TypeError, RecursionError):
+                    raise RequestFailure(
+                        "invalid_response", method, path, status=response.status, headers=headers
+                    ) from None
+        except HTTPError as exc:
+            raise http_failure(exc, method, path, self.secret) from None
+        except (OSError, HTTPException) as exc:
+            raise network_failure(exc, method, path) from None
         self.last_contact = time.monotonic()
         return data
 
@@ -158,12 +357,24 @@ class Demo:
                 "language": "Python",
                 "version": "http-example-1",
             },
+            validate=lambda data: (
+                isinstance(data["session_id"], str)
+                and data["mode"] in {"paper", "backtest", "live"}
+                and type(data["executor"]) is bool
+                and type(data["heartbeat_interval_seconds"]) is int
+                and 0 < data["heartbeat_interval_seconds"] <= 60
+                and type(data["offline_after_seconds"]) is int
+                and data["offline_after_seconds"] > data["heartbeat_interval_seconds"]
+                and valid_control(data["control"])
+            ),
         )
         if session["mode"] == "live":
             raise SystemExit("The simulated example requires a paper or backtest strategy")
         if self.control and not session["executor"]:
             raise SystemExit("This example instance is not the authorized executor")
         self.headers["X-Agent-Session"] = session["session_id"]
+        self.heartbeat_interval = session["heartbeat_interval_seconds"]
+        self.offline_after = session["offline_after_seconds"]
         if self.control:
             self.http("PUT", "/controls", REGISTRY)
             self.sync(session["control"]["desired"])
@@ -196,7 +407,9 @@ class Demo:
 
     def local_entry_allowed(self):
         policy = self.value("disconnect_policy", "block_entry")
-        offline = self.last_contact is None or time.monotonic() - self.last_contact >= 50
+        offline = (
+            self.last_contact is None or time.monotonic() - self.last_contact >= self.offline_after
+        )
         return (
             self.value("entry_enabled", True)
             and not self.value("risk_locked", False)
@@ -244,7 +457,21 @@ class Demo:
         while rows := self.db.execute(
             "SELECT id, report FROM outbox ORDER BY id LIMIT 200"
         ).fetchall():
-            self.http("POST", "/reports", {"records": [json.loads(row[1]) for row in rows]})
+            records = [json.loads(row[1]) for row in rows]
+            size = len(records)
+            path = "/reports" if self.control else f"/monitor/{self.instance}"
+            self.http(
+                "POST",
+                path,
+                {"records": records},
+                validate=lambda data, size=size: (
+                    all(
+                        type(data[key]) is int and data[key] >= 0
+                        for key in ("inserted", "ignored", "duplicates")
+                    )
+                    and data["inserted"] + data["ignored"] + data["duplicates"] == size
+                ),
+            )
             with self.db:
                 self.db.execute("DELETE FROM outbox WHERE id<=?", (rows[-1][0],))
 
@@ -261,8 +488,8 @@ class Demo:
                 self.http(
                     "POST", f"/commands/{cid}/result", {**json.loads(receipt), "permit": permit}
                 )
-            except HTTPError as exc:
-                if exc.code != 409:
+            except RequestFailure as exc:
+                if exc.category != "state_conflict" or exc.session_ended:
                     raise
                 # The administrator may already have reconciled it. Keep a local record.
                 with self.db:
@@ -280,7 +507,15 @@ class Demo:
         if not added:
             return
         start = time.monotonic()
-        permit = self.http("POST", f"/commands/{cid}/claim")
+        permit = self.http(
+            "POST",
+            f"/commands/{cid}/claim",
+            validate=lambda data: (
+                isinstance(data["permit"], str)
+                and valid_timestamp(data["start_before"])
+                and valid_timestamp(data["server_time"])
+            ),
+        )
         deadline = datetime.fromisoformat(permit["start_before"].replace("Z", "+00:00"))
         server = datetime.fromisoformat(permit["server_time"].replace("Z", "+00:00"))
         with self.db:
@@ -311,9 +546,17 @@ class Demo:
                 self.receipt(cid, {"status": "failed", "error": "The sample has no open positions"})
 
     def tick(self, follow):
+        if not self.control:
+            self.flush()
+            return
         if "X-Agent-Session" not in self.headers:
             self.connect()
-        heartbeat = self.http("PUT", "/heartbeat", {"health": "healthy"})
+        heartbeat = self.http(
+            "PUT",
+            "/heartbeat",
+            {"health": "healthy"},
+            validate=lambda data: valid_control(data["control"]),
+        )
         self.flush()
         if self.control:
             desired = heartbeat["control"]["desired"]
@@ -333,11 +576,49 @@ class Demo:
                     "disabled": {"close_positions": {"disabled": True, "reason": "模拟账户无持仓"}},
                 },
             )
-            poll = urlencode({"wait": 8 if follow else 0, "revision": desired["revision"]})
-            batch = self.http("GET", "/commands?" + poll, timeout=20)
+            poll = urlencode(
+                {
+                    "wait": max(0, min(self.heartbeat_interval - 2, 25)) if follow else 0,
+                    "revision": desired["revision"],
+                }
+            )
+            batch = self.http(
+                "GET",
+                "/commands?" + poll,
+                timeout=35,
+                validate=lambda data: (
+                    valid_control(data["control"])
+                    and isinstance(data["commands"], list)
+                    and all(
+                        isinstance(item, dict)
+                        and re.fullmatch(r"[0-9a-f-]{36}", item["id"])
+                        and isinstance(item["action"], str)
+                        and isinstance(item["arguments"], dict)
+                        for item in data["commands"]
+                    )
+                ),
+            )
             for item in batch["commands"]:
                 self.execute(item)
             self.send_receipts()
+
+
+def valid_timestamp(value):
+    return isinstance(value, str) and datetime.fromisoformat(value).utcoffset() is not None
+
+
+def valid_control(data):
+    desired = data["desired"]
+    return (
+        type(desired["revision"]) is int
+        and desired["revision"] >= 0
+        and ("entry_enabled" not in desired or type(desired["entry_enabled"]) is bool)
+        and desired["disconnect_policy"] in {"continue", "block_entry"}
+    )
+
+
+def wait_after_failure(exc, attempt):
+    return max(exc.retry_after or 0, min(15, 2 ** min(attempt, 4)) * random.uniform(0.5, 1))  # noqa: S311
 
 
 def run():
@@ -353,39 +634,35 @@ def run():
     with lock_path.open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with sqlite3.connect(args.state) as db:
-            demo = Demo(
-                os.environ["QB_URL"],
-                os.environ["QB_TOKEN"],
-                os.environ.get("QB_INSTANCE_ID", "python-http-example"),
-                db,
-                args.control,
-            )
-            delay = 1
+            try:
+                demo = Demo(
+                    os.environ.get("QB_ENDPOINT", ""),
+                    os.environ.get("QB_TOKEN", ""),
+                    os.environ.get("QB_INSTANCE_ID", "python-http-example"),
+                    db,
+                    args.control,
+                )
+            except ValueError as exc:
+                raise SystemExit(str(exc)) from None
+            failures = 0
             while True:
                 demo.collect()
                 try:
                     demo.tick(args.follow)
-                except HTTPError as exc:
-                    if exc.code == 401 or not args.follow:
-                        raise SystemExit(f"QuantBot returned HTTP {exc.code}") from None
-                    if exc.code == 409:
+                except RequestFailure as exc:
+                    if not args.follow or not (exc.retryable or exc.session_ended):
+                        raise SystemExit(str(exc)) from None
+                    if exc.session_ended or exc.status is None:
                         demo.headers.pop("X-Agent-Session", None)
-                    time.sleep(delay)
-                    delay = min(delay * 2, 15)
-                except (OSError, HTTPException, json.JSONDecodeError):
-                    if not args.follow:
-                        raise SystemExit(
-                            "QuantBot connection failed; local reports were retained"
-                        ) from None
-                    demo.headers.pop("X-Agent-Session", None)
-                    time.sleep(delay)
-                    delay = min(delay * 2, 15)
+                    print(exc, file=sys.stderr, flush=True)
+                    time.sleep(wait_after_failure(exc, failures))
+                    failures += 1
                 else:
                     if not args.follow:
                         return
-                    delay = 1
+                    failures = 0
                     if not args.control:
-                        time.sleep(10)
+                        time.sleep(15)
 
 
 if __name__ == "__main__":

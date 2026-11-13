@@ -9,6 +9,7 @@ from ipaddress import IPv4Address, ip_address
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlsplit
+from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
@@ -681,6 +682,7 @@ class Transport:
             return
         request = Request(scope)
         path = request.url.path
+        request_id = uuid4().hex.encode() if path.startswith("/api/agent/") else None
         peer = request.client.host if request.client else ""
         host = request.url.netloc
         origin = f"{request.url.scheme}://{host}"
@@ -707,13 +709,12 @@ class Transport:
                 error = (403, "Cross-origin administrator request rejected")
             elif request.headers.get("sec-fetch-site") == "cross-site":
                 error = (403, "Cross-site administrator request rejected")
-        if error:
-            await JSONResponse({"detail": error[1]}, status_code=error[0])(scope, receive, send)
-            return
 
         async def protected_send(message):
             if message["type"] == "http.response.start":
                 headers = message["headers"]
+                if request_id:
+                    headers.append((b"x-quantbot-request-id", request_id))
                 headers.extend(
                     [
                         (b"x-content-type-options", b"nosniff"),
@@ -735,6 +736,12 @@ class Transport:
                         )
                     )
             await send(message)
+
+        if error:
+            await JSONResponse({"detail": error[1]}, status_code=error[0])(
+                scope, receive, protected_send
+            )
+            return
 
         if request.method in {"POST", "PUT", "PATCH"}:
             chunks = bytearray()
