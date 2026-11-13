@@ -451,12 +451,14 @@ class Registry:
                 (sid,),
             )
         }
-        reported_types = sorted(reports)
         rejected = {
             row["type"]: record(row, times=("observed_at",), omit=("strategy_id",))
             for row in self.db.all("SELECT * FROM schema_failures WHERE strategy_id=?", (sid,))
         }
         samples = self.metric_sources(sid)
+        reported_types = set(reports)
+        if any(component_series("metrics", item["name"]) for item in samples):
+            reported_types.add("metric")
         candles = self.candle_sources(sid)
         self.discover_events(sid, reports)
         sections = strategy["snapshot"] or {}
@@ -536,7 +538,7 @@ class Registry:
             )
         return {
             "components": available,
-            "reported_types": reported_types,
+            "reported_types": sorted(reported_types),
             "schema_failures": list(rejected.values()),
         }
 

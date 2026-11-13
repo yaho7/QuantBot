@@ -584,6 +584,31 @@ def test_security_transport_and_limits(server):
     )
 
 
+def test_agent_rate_limit_recovers_after_retry_after(server, monkeypatch):
+    from types import SimpleNamespace
+
+    import quantbot.core.runtime as runtime
+
+    http, _, _ = server
+    _, credential = create(http)
+    headers, _ = connect(http, credential, executor=False)
+    clock = SimpleNamespace(value=100.0)
+    monkeypatch.setattr(runtime, "time", SimpleNamespace(monotonic=lambda: clock.value))
+    service = http.app.state.runtime
+    service.requests.clear()
+    service.rate_limit_swept = 0
+    for _ in range(240):
+        assert http.put(AGENT + "/heartbeat", headers=headers, json={}).status_code == 200
+    limited = http.put(AGENT + "/heartbeat", headers=headers, json={})
+    assert limited.status_code == 429
+    delay = int(limited.headers["retry-after"])
+    assert delay == 60 and limited.headers["x-quantbot-request-id"]
+    clock.value += delay - 0.1
+    assert http.put(AGENT + "/heartbeat", headers=headers, json={}).status_code == 429
+    clock.value += 0.1
+    assert http.put(AGENT + "/heartbeat", headers=headers, json={}).status_code == 200
+
+
 def test_resume_preserves_local_risk_lock(server):
     http, _, _ = server
     sid, credential = create(http)

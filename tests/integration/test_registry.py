@@ -154,6 +154,98 @@ def test_registry_schema_discovery_and_stale_data(tmp_path):
         assert discover(http, sid)["metrics"]["state"] == "stale"
 
 
+def test_all_standard_report_types_ingest_and_replay(tmp_path):
+    with client(tmp_path / "all-reports.db", Clock()) as http:
+        log_in(http)
+        sid, credential = create(http)
+        headers, _ = connect(http, credential)
+        instrument = {"account_id": "paper", "symbol": "TEST", "currency": "USD"}
+        records = [
+            packet("status", runtime={"health": "healthy"}),
+            packet(
+                "portfolio",
+                accounts=[
+                    {
+                        "account_id": "paper",
+                        "currency": "USD",
+                        "equity": "1000.01",
+                    }
+                ],
+            ),
+            packet(
+                "position",
+                strategy_positions=[
+                    {
+                        **instrument,
+                        "position_id": "position-1",
+                        "quantity": "1",
+                    }
+                ],
+                broker_positions=[],
+            ),
+            packet(
+                "order",
+                open_orders=[],
+                completed_orders=[
+                    {
+                        **instrument,
+                        "order_id": "order-1",
+                        "quantity": "1",
+                        "side": "buy",
+                        "status": "filled",
+                    }
+                ],
+            ),
+            packet(
+                "fill",
+                id="event-fill",
+                fill={
+                    **instrument,
+                    "fill_id": "fill-1",
+                    "order_id": "order-1",
+                    "side": "buy",
+                    "quantity": "1",
+                    "price": "10.01",
+                    "occurred_at": stamp(),
+                },
+            ),
+            packet("equity", account_id="paper", currency="USD", value="1000.01"),
+            packet("performance", performance={"daily_return": "0.01"}),
+            packet("metric", name="sample.rsi", value="50"),
+            packet(
+                "ohlcv",
+                symbol="TEST",
+                interval_seconds=60,
+                open="10",
+                high="11",
+                low="9",
+                close="10.01",
+                volume="100",
+            ),
+            packet("signal", id="event-signal", symbol="TEST", name="sample", direction="hold"),
+            packet("risk", id="event-risk", code="lock", message="Simulated risk lock"),
+            packet("log", id="event-log", severity="info", message="Simulated log"),
+            packet("connection", broker_connected=True),
+            packet(
+                "alert",
+                id="event-alert",
+                code="test",
+                severity="warning",
+                message="Simulated alert",
+            ),
+        ]
+        first = batch(http, headers, *records)
+        assert first.status_code == 200, first.text
+        assert first.json() == {"inserted": 14, "ignored": 0, "duplicates": 0}
+        assert batch(http, headers, *records).json() == {
+            "inserted": 0,
+            "ignored": 0,
+            "duplicates": 14,
+        }
+        observed = http.get(f"{ADMIN}/strategies/{sid}/components").json()
+        assert observed["reported_types"] == sorted(record["type"] for record in records)
+
+
 def test_strict_batches_comparison_dashboard_and_persistence(tmp_path):
     clock = Clock()
     path = tmp_path / "history.db"
