@@ -3,7 +3,6 @@ WORKDIR /app/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY web/ ./
-COPY examples/http_agent.py ../examples/
 RUN npm run build
 
 FROM ghcr.io/astral-sh/uv:0.13.6 AS uv

@@ -38,7 +38,7 @@ uv sync --frozen
 uv run quantbot serve
 ```
 
-打开控制台，按网页引导创建管理员。在 **添加策略** 中输入名称和交易模式，系统会生成默认启用完整接入权限的凭据。复制 **AI 接入提示词** 给你的编程工具，或展开 curl 和 Python 示例直接试跑。点击眼睛查看 Secret，将它填入程序的 QuantBot 配置，或用于示例中的 `QB_TOKEN`。 [本地控制台](http://127.0.0.1:23456/ui/)
+打开控制台，按网页引导创建管理员。在 **添加策略** 中输入名称和交易模式，系统会生成默认启用完整接入权限的凭据。复制 **AI 接入提示词** 给你的编程工具。AI 会先阅读 GitHub 上的协议和示例，再修改策略代码。点击眼睛查看 Secret，将它填入程序的 QuantBot 配置，或用于示例中的 `QB_TOKEN`。 [本地控制台](http://127.0.0.1:23456/ui/)
 
 试用远程控制时，复制模拟盘策略的 Secret，再运行下面的完整示例。
 
@@ -54,13 +54,13 @@ Web 将显示实例上线、模拟指标及已声明的控件。尝试修改 RSI
 ## 文档
 
 - [HTTP 协议、curl、标准报告、动态控制及命令示例](PROTOCOL.md)
-- [连接与错误排查](docs/TROUBLESHOOTING.md)
+- [跨语言接入指南](docs/INTEGRATION.md) · [连接与错误排查](docs/TROUBLESHOOTING.md)
 - [OpenAPI 3.1](docs/openapi.json) · [JSON Schema](docs/schemas)
 - [Telegram 配置、命令和推送](docs/TELEGRAM.md)
 - [Docker、Linux 服务、HTTPS、备份和更新](docs/DEPLOYMENT.md)
 - [目录结构、数据模型和安全边界](DESIGN.md)
 
-运行中的服务还提供 `/docs`、`/openapi.json`、`/api/data-types` 和 `/api/schemas/{type}`。Web **API 接入** 页面可复制完整规范、接入示例和 AI 提示词。
+运行中的服务还提供 `/docs`、`/openapi.json`、`/api/data-types` 和 `/api/schemas/{type}`。Web **API 接入** 页面可复制 AI 提示词，并链接到 GitHub 的协议和示例。
 
 ## 开发验证
 

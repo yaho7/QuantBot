@@ -27,13 +27,9 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await expect(dialog.locator(".agent-prompt")).toContainText("QuantBot-Integration/1.0");
   await expect(dialog.locator(".agent-prompt")).toContainText("经我同意后再修改相关代码");
   await expect(dialog.locator(".agent-prompt")).not.toContainText(basicToken!);
-  const python = dialog.getByRole("link", { name: "下载 Python 标准库示例" });
-  await expect(python).toBeHidden();
-  await dialog.getByText("标准 HTTP 示例", { exact: true }).click();
-  const script = await request.get((await python.getAttribute("href"))!);
-  expect(script.ok()).toBe(true);
-  expect(await script.text()).toContain('USER_AGENT = "QuantBot-Integration/1.0"');
-  await expect(dialog.getByText(/export QB_ENDPOINT=/).first()).toContainText("/api/agent");
+  await expect(dialog.locator(".agent-prompt")).toContainText("github.com/yaho7/QuantBot/blob/main/docs/INTEGRATION.md");
+  await expect(dialog.locator(".agent-prompt")).not.toContainText(new URL(page.url()).origin + "/openapi.json");
+  await expect(dialog.getByRole("link", { name: /下载 Python/ })).toHaveCount(0);
   await dialog.getByRole("button", { name: "完成" }).click();
   await expect(page.getByRole("heading", { name: "Web 回归策略" })).toBeVisible();
   const strategyId = decodeURIComponent(new URL(page.url()).hash.split("/")[1]!);
@@ -124,8 +120,9 @@ test("mobile navigation and API schema are accessible", async ({ page }) => {
   await page.getByRole("button", { name: "打开导航" }).click();
   await page.getByRole("link", { name: "API 接入", exact: true }).click();
   await expect(page.getByRole("heading", { name: "API 接入", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "数据类型与 JSON Schema" })).toBeVisible();
-  await expect(page.getByText("/api/agent/reports", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "GitHub 接入文档" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "JSON Schema" })).toHaveAttribute("href", /github.com\/yaho7\/QuantBot\/tree\/main\/docs\/schemas/);
+  await expect(page.getByRole("link", { name: "HTTP 示例" })).toHaveAttribute("href", /github.com\/yaho7\/QuantBot\/tree\/main\/examples/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(390);
 });
 

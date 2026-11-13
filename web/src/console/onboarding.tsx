@@ -1,9 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, ChevronRight, Eye, EyeOff, KeyRound, Plus, RefreshCw } from "lucide-react";
-import httpExample from "../../../examples/http_agent.py?url&no-inline";
 import { useState, type FormEvent } from "react";
-import { api, strategyApi, strategyPath, type Catalog, type Credential, type DataType, type Detail, type Scope, type System, type StrategySettings, type Token, type TokenOptions } from "./api";
-import { Code, CopyButton, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
+import { api, strategyApi, strategyPath, type Catalog, type Credential, type Detail, type Scope, type System, type StrategySettings, type Token, type TokenOptions } from "./api";
+import { CopyButton, Dialog, ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
 
 export const defaultStrategy: StrategySettings = {
   name: "", mode: "paper", description: "", group: "", tags: [], disconnect_policy: "continue",
@@ -100,33 +99,13 @@ function useAgentEndpoint() {
   return `${system.data?.public_url ?? window.location.origin}/api/agent`;
 }
 
-function shell(endpoint: string) {
-  return `export QB_ENDPOINT=${JSON.stringify(endpoint)}
-read -rs QB_TOKEN
-curl -fsS --connect-timeout 5 --max-time 10 \\
-  --proto '=https${endpoint.startsWith("http:") ? ",http" : ""}' \\
-  "$QB_ENDPOINT/monitor/my-program" \\
-  -H "Authorization: Bearer $QB_TOKEN" -H 'Content-Type: application/json' \\
-  -H 'Accept: application/json' -A 'QuantBot-Integration/1.0' \\
-  -d "{\\"records\\":[{\\"type\\":\\"status\\",\\"schema_version\\":1,\\"observed_at\\":\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\",\\"runtime\\":{\\"health\\":\\"healthy\\"}}]}"`;
-}
-
-function HttpExamples({ endpoint }: { endpoint: string }) {
-  return <div className="stack">
-    <a className="text-link" href={httpExample} download="http_agent.py">下载 Python 标准库示例 <ChevronRight size={14} /></a>
-    <Code label="Python · 持续监控">{`export QB_ENDPOINT=${JSON.stringify(endpoint)}
-read -rs QB_TOKEN
-export QB_TOKEN
-python3 http_agent.py --follow`}</Code>
-    <Code label="curl · 单次验证">{shell(endpoint)}</Code>
-  </div>;
-}
+const repository = "https://github.com/yaho7/QuantBot";
+const docs = `${repository}/blob/main`;
 
 function aiInstructions(endpoint: string, strategyId?: string) {
-  const origin = new URL(endpoint).origin;
   return `请帮我将当前量化交易程序**完整接入 QuantBot 监控与远程控制平台**，直接修改项目代码完成接入。
 
-**QuantBot GitHub 仓库：** [https://github.com/yaho7/QuantBot](https://github.com/yaho7/QuantBot)
+**QuantBot GitHub 仓库：** [${repository}](${repository})
 
 **Endpoint：** [${endpoint}](${endpoint})
 
@@ -134,11 +113,11 @@ function aiInstructions(endpoint: string, strategyId?: string) {
 
 **稳定实例名称建议：** \`${strategyId ? `strategy-${strategyId.slice(0, 8)}` : "my-strategy"}\`
 
-**协议：** Agent HTTP API，报告和控件 \`schema_version: 1\`。参考 [OpenAPI](${origin}/openapi.json)、[标准数据类型](${origin}/api/data-types)、[批量上报 Schema](${origin}/api/schemas/batch) 和 [控件 Schema](${origin}/api/schemas/controls)。
+**协议：** Agent HTTP API，报告和控件 \`schema_version: 1\`。规范和示例由 GitHub 仓库维护。
 
 ### 一、接入目标
 
-**不要只实现心跳和数据上报。** 先检查当前项目的完整结构，阅读 QuantBot 最新的 README.md、PROTOCOL.md、API 文档和示例代码。根据程序已有能力完成监控、数据分析和高级控制。先识别当前语言、现有 HTTP 客户端、主程序生命周期、数据缓存、开仓判断和原有风控入口，再选择实现方式。Python 可用 urllib.request，JavaScript/TypeScript 用 fetch，Go 用 net/http，C# 和 Java 用标准 HttpClient。C++ 或特殊运行环境优先复用现有 HTTP 库。避免重复开发。
+先主动读取 GitHub 上的 [README](${docs}/README.md)、[PROTOCOL.md](${docs}/PROTOCOL.md)、[跨语言接入指南](${docs}/docs/INTEGRATION.md)、[OpenAPI](${docs}/docs/openapi.json)、[JSON Schema](${repository}/tree/main/docs/schemas)、[接入示例](${repository}/tree/main/examples) 和 [连接排查](${docs}/docs/TROUBLESHOOTING.md)。阅读当前项目后，直接修改代码，按实际能力完成监控和安全的高级控制。先识别当前语言、现有 HTTP 客户端、主程序生命周期、数据缓存、开仓判断和原有风控入口，再选择实现方式。Python 可用 urllib.request，JavaScript/TypeScript 用 fetch，Go 用 net/http，C# 和 Java 用标准 HttpClient。C++ 或特殊运行环境优先复用现有 HTTP 库。避免重复开发。
 
 ### 二、主程序集成
 
@@ -159,7 +138,7 @@ function aiInstructions(endpoint: string, strategyId?: string) {
 - **策略绩效**：累计收益、当日收益、净值曲线、最大回撤和已有绩效指标。
 - **行情、日志和自定义指标**：已有 K 线和行情、重要日志、错误、风控事件、交易提醒及有意义的内部指标。
 
-按会话返回的间隔发送心跳，运行状态变化时更新。其他数据按事件或合理的间隔上报。复用内存、缓存和已有数据，避免额外频繁请求券商 API。使用官方 Schema，没有的数据不要编造，成交重传沿用相同事件 ID。接口规范见 [OpenAPI](${origin}/openapi.json) 和 [数据类型](${origin}/api/data-types)。
+按会话返回的间隔发送心跳，运行状态变化时更新。其他数据按事件或合理的间隔上报。复用内存、缓存和已有数据，避免额外频繁请求券商 API。使用官方 Schema，没有的数据不要编造，成交重传沿用相同事件 ID。
 
 ### 五、高级控制功能
 
@@ -220,7 +199,6 @@ function CredentialDialog({ credential, close }: { credential: Credential; close
     <small className="subtle">{scopeSummary(credential.scopes)}</small>
     <SecretValue load={async () => credential.token} />
     <AgentPrompt endpoint={endpoint} strategyId={credential.strategy_id} />
-    <details className="form-detail"><summary>标准 HTTP 示例</summary><HttpExamples endpoint={endpoint} /></details>
     <div className="dialog-actions"><button className="button primary" onClick={close}>完成</button></div>
   </div></Dialog>;
 }
@@ -314,7 +292,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
       {catalog.data?.schema_failures.map((item) => <div key={item.type} className={`notice ${item.active ? "warn" : ""}`}>
         {item.type} · {item.active ? "协议不兼容" : "已收到兼容数据"} · {item.count} 次 · {when(item.observed_at)}
       </div>)}
-      <a className="button secondary" href={`#api/${encodeURIComponent(id)}`}><BookOpen size={16} /> 接口规则与接入示例</a>
+      <a className="button secondary" href={`#api/${encodeURIComponent(id)}`}><BookOpen size={16} /> AI 接入指引</a>
     </Panel>
     {editing && <EditToken strategyId={id} previous={editing === "new" ? undefined : editing}
       close={() => setEditing(null)} done={(credential) => {
@@ -379,8 +357,6 @@ function EditPermissions({ token, close, saved }: { token: Token; close: () => v
   </Dialog>;
 }
 
-type OpenApi = { paths: Record<string, Record<string, { summary?: string; description?: string }>> };
-
 export function ApiPage({ strategyId }: { strategyId?: string }) {
   const defaultEndpoint = useAgentEndpoint();
   const [customEndpoint, setCustomEndpoint] = useState("");
@@ -391,13 +367,8 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
     (parsed.protocol === "https:" ||
       (parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname)));
   const endpoint = valid ? `${parsed!.origin}/api/agent` : defaultEndpoint;
-  const spec = useQuery({ queryKey: ["spec"], queryFn: () => api<OpenApi>("/openapi.json"), staleTime: Infinity });
-  const types = useQuery({ queryKey: ["types"], queryFn: () => api<DataType[]>("/api/data-types"), staleTime: Infinity });
-  const [schema, setSchema] = useState("status");
-  const schemaUrl = `/api/schemas/${schema}`;
-  const definition = useQuery({ queryKey: ["schema", schema], queryFn: () => api<unknown>(schemaUrl), staleTime: Infinity });
   return <>
-    <PageTitle title="API 接入" sub="使用标准 HTTP 注册、上报和接收控制指令。" action={<a href="/docs" className="button secondary"><BookOpen size={16} /> 交互文档</a>} />
+    <PageTitle title="API 接入" sub="使用标准 HTTP 注册、上报和接收控制指令。" action={<a href={`${docs}/PROTOCOL.md`} target="_blank" rel="noreferrer" className="button secondary"><BookOpen size={16} /> GitHub 文档</a>} />
     <div className="stack">
       <AgentPrompt endpoint={endpoint} strategyId={strategyId} />
       <Panel title="连接信息">
@@ -410,56 +381,13 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
         {strategyId ? <a className="text-link" href={strategyPath(strategyId, "api")}>管理 Token 和连接诊断 <ChevronRight size={14} /></a>
           : <a className="text-link" href="#strategies">选择策略并管理 Token <ChevronRight size={14} /></a>}
       </Panel>
-      <Panel title="接入规则"><ol className="steps">
-        <li>基础监控：用 Bearer Token 每 15 秒 POST <code>/monitor/实例名</code> 上报数据。</li>
-        <li>需要远程控制时，以 Bearer Token 请求 <code>POST /session</code>，记录服务返回的会话 ID。</li>
-        <li>后续请求设置 <code>X-Agent-Session</code>，并按会话返回的间隔发送心跳。会话过期时重新连接。</li>
-        <li>遥测记录包含 <code>type</code>、<code>schema_version</code> 和带时区时间戳。金额和数量使用十进制字符串，重传沿用原有 ID 和时间戳。</li>
-        <li>从 <code>/control</code> 对账开仓权限。实际应用并本地持久化后，回报修订版本与风控锁。交易和本地风控由程序独立处理。</li>
-        <li>一次性指令用 <code>/commands?wait=25</code> 长轮询，领取许可后才可执行。执行前保存命令 ID，按期回报实际结果。</li>
-      </ol>
-        <ErrorNotice error={spec.error} />
-        {spec.data && <><Table columns={["方法", "路径", "说明"]}>
-          {Object.entries(spec.data.paths).filter(([path]) => path.startsWith("/api/agent/")).flatMap(([path, methods]) =>
-            Object.entries(methods).map(([method, info]) => <tr key={`${method} ${path}`}><td className="mono">{method.toUpperCase()}</td>
-              <td className="mono">{path}</td><td>{info.description ?? info.summary}</td></tr>))}
-        </Table><div className="toolbar"><CopyButton value={JSON.stringify(spec.data, null, 2)} label="复制完整 OpenAPI" />
-          <a href="/openapi.json" download="quantbot-openapi.json" className="button quiet">下载 OpenAPI</a></div></>}
-      </Panel>
-      <Panel title="数据类型与 JSON Schema">
-        <ErrorNotice error={types.error ?? definition.error} />
-        {types.data ? <div className="stack">
-          <Field label="数据类型"><select value={schema} onChange={(e) => setSchema(e.target.value)}>
-            {types.data.map((type) => <option key={type.type} value={type.type}>{type.type} · {type.storage}</option>)}
-            {["batch", "snapshot", "event", "metric-definitions", "controls", "control-state", "control-invocation"].map((type) => <option key={type}>{type}</option>)}
-          </select></Field>
-          {definition.data ? <Code label={schemaUrl}>{JSON.stringify(definition.data, null, 2)}</Code> : <Loading />}
-        </div> : types.isPending ? <Loading /> : <Empty />}
-      </Panel>
-      <Panel title="自定义控制组件" hint="Web 和 Telegram 使用同一份声明与执行回执。">
-        <div className="stack">
-          <p className="subtle">支持 button、toggle、select、number、slider、text、form 和 readonly。声明引用当前会话已注册的 command。重复发送同一版本和内容是幂等操作。更新和移除时发送完整列表并递增 revision。</p>
-          <Code label="PUT /api/agent/controls">{JSON.stringify({
-            schema_version: 1, revision: 1, groups: [{ id: "parameters", label: "参数" }],
-            controls: [{ id: "rsi_period", type: "number", label: "RSI 周期", command: "set_rsi",
-              group: "parameters", parameter: "period", integer: true, min: 5, max: 30, step: 1 }],
-          }, null, 2)}</Code>
-          <Code label="PUT /api/agent/controls/state">{JSON.stringify({
-            revision: 1, observed_at: "2026-01-01T12:00:00Z", values: { rsi_period: 14 },
-          }, null, 2)}</Code>
-          <Code label="curl · 注册组件">{`curl -fsS -X PUT "$QB_ENDPOINT/controls" \\
-  -H "Authorization: Bearer $QB_TOKEN" \\
-  -H "X-Agent-Session: $QB_SESSION" \\
-  -H 'Content-Type: application/json' -H 'Accept: application/json' \\
-  -A 'QuantBot-Integration/1.0' --data-binary @controls.json`}</Code>
-          <p className="subtle">更新或移除控件时，提高 revision，并提交修改后的完整控件列表。</p>
-          <p className="subtle">下载下方 Python 示例并在模拟盘使用 --control，可查看完整的长轮询、领取许可、回执及控件实际状态上报流程。</p>
-          <p className="subtle">401 表示凭据无效，403 表示缺少作用域或实例授权，409 表示版本、状态或许可冲突，422 表示 Schema 或参数验证失败。</p>
-          <a className="text-link" href="/api/schemas/controls">查看完整 Control Schema <ChevronRight size={14} /></a>
+      <Panel title="GitHub 接入文档">
+        <div className="toolbar">
+          <a className="text-link" href={`${docs}/docs/INTEGRATION.md`} target="_blank" rel="noreferrer">接入指南 <ChevronRight size={14} /></a>
+          <a className="text-link" href={`${docs}/docs/openapi.json`} target="_blank" rel="noreferrer">OpenAPI <ChevronRight size={14} /></a>
+          <a className="text-link" href={`${repository}/tree/main/docs/schemas`} target="_blank" rel="noreferrer">JSON Schema <ChevronRight size={14} /></a>
+          <a className="text-link" href={`${repository}/tree/main/examples`} target="_blank" rel="noreferrer">HTTP 示例 <ChevronRight size={14} /></a>
         </div>
-      </Panel>
-      <Panel title="HTTP 示例" hint="使用环境变量传入策略 Token。">
-        <HttpExamples endpoint={endpoint} />
       </Panel>
     </div>
   </>;

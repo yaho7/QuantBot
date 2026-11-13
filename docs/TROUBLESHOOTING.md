@@ -2,7 +2,7 @@
 
 从控制台复制完整 Endpoint，例如 `https://quantbot.example.com/api/agent`。将 Secret 填入策略配置，或通过 `QB_TOKEN` 传给示例脚本。Key 用于在控制台识别凭据。
 
-下载 Web **API 接入** 页面提供的 Python 示例，或使用仓库中的 [Python 示例](../examples/http_agent.py)。仅对模拟盘策略运行 `--control`。
+从 GitHub 获取仓库中的 [Python 示例](../examples/http_agent.py)。仅对模拟盘策略运行 `--control`。
 
 ```bash
 export QB_ENDPOINT=https://quantbot.example.com/api/agent

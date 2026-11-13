@@ -169,7 +169,7 @@ export function App() {
           <Icon size={16} /><span>{label}</span></a>)}
       </nav>
       <div className="top-actions">
-        <a className="icon-button" href="/docs" aria-label="API 文档" title="API 文档"><CircleHelp size={18} /></a>
+        <a className="icon-button" href="https://github.com/yaho7/QuantBot/blob/main/PROTOCOL.md" target="_blank" rel="noreferrer" aria-label="API 文档" title="API 文档"><CircleHelp size={18} /></a>
         <button className="icon-button" onClick={() => logout.mutate()} aria-label="退出登录" title="退出登录"><LogOut size={18} /></button>
       </div>
     </header>

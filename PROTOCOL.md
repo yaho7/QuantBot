@@ -185,7 +185,7 @@ curl -fsS --connect-timeout 5 --max-time 10 -A 'QuantBot-Integration/1.0' -H 'Ac
   -H 'Content-Type: application/json' --data-binary @controls.json
 ```
 
-在 Web **API 接入** 中可复制完整规范及 AI 接入指令。 Python 标准库示例包含全部会话、长轮询、版本注册、断线补传和回执流程。 [控制注册 Schema](docs/schemas/controls.schema.json) · [控件状态 Schema](docs/schemas/control-state.schema.json) · [Python HTTP 示例](examples/http_agent.py)
+在 Web **API 接入** 中可复制 AI 接入指令，指令会引导 AI 阅读 GitHub 上的协议和示例。 Python 标准库示例包含全部会话、长轮询、版本注册、断线补传和回执流程。 [控制注册 Schema](docs/schemas/controls.schema.json) · [控件状态 Schema](docs/schemas/control-state.schema.json) · [Python HTTP 示例](examples/http_agent.py)
 
 ## 管理 API 与事件流
 
