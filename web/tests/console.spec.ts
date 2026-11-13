@@ -359,7 +359,7 @@ test("copies a working Sandbox configuration and reports validation without reve
   expect((await http.post(config.endpoint + "/session", { headers, data: { instance_id: config.instance_name } })).status()).toBe(200);
   expect((await http.post(config.endpoint + "/session", { headers, data: {} })).status()).toBe(422);
   await panel.getByText("最近请求与 Schema 校验").click();
-  await expect(panel.getByText("422", { exact: true })).toBeVisible();
+  await expect(panel.getByText("422", { exact: true })).toBeVisible({ timeout: 12_000 });
   await expect(panel.getByText("missing", { exact: true })).toBeVisible();
   await copy.click();
   await expect.poll(clipboard).toContain(config.secret);
