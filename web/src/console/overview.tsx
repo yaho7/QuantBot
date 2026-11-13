@@ -33,17 +33,20 @@ export function OverviewPage({ add }: { add: () => void }) {
           <section className="panel stat" key={label}><div><span>{label}</span><span className={`stat-icon ${tone}`}><Icon size={19} /></span></div>
             <strong>{count}</strong></section>)}
       </div>
-      {!!data.accounts.length && <div className="summary-grid">
+      {!!data.accounts.length && <section className="account-overview" aria-label="账户资金">
+        <h2>账户资金</h2>
+        <div className="account-grid">
         {data.accounts.map((account) => {
           const strategy = strategies.get(account.strategy_id);
           return <section className="panel stat equity-stat" key={`${account.strategy_id}/${account.account_id}/${account.currency}`}>
             <div><a href={strategyPath(account.strategy_id, "funds")}>{strategy?.name ?? account.strategy_id}</a><span>{account.account_id}</span></div>
             <strong>{money(account.equity, account.currency)}</strong>
-            <small>当日盈亏 {money(account.daily_pnl, account.currency)}</small>
+            <small>当日盈亏 <span className={account.daily_pnl == null || Number(account.daily_pnl) === 0 ? undefined : account.daily_pnl.startsWith("-") ? "pnl-loss" : "pnl-gain"}>{money(account.daily_pnl, account.currency)}</span></small>
             <small>{observed(account.observed_at, strategy?.status === "offline")}</small>
           </section>;
         })}
-      </div>}
+        </div>
+      </section>}
       <Panel title="策略运行状态" hint={`共 ${data.strategies.length} 个策略`} action={<TextLink href="#strategies">管理策略</TextLink>}>
         {data.strategies.length ? <StrategyTable rows={data.strategies.slice(0, 10)} /> :
           <Empty title="还没有接入策略" text="创建策略并生成 Token，程序发起 HTTP 连接后会自动显示在线。"
