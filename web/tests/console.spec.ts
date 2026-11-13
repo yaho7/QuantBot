@@ -197,12 +197,9 @@ test("builds a dashboard using real metrics, OHLCV, and chart markers", async ({
     { type: "signal", schema_version: 1, observed_at: observed(-90000), id: "signal-1", symbol: "SPY", name: "entry", direction: "buy" },
   ] } });
   expect(result.ok()).toBeTruthy();
+  await expect(page.getByRole("img", { name: "历史时间序列" })).toBeVisible();
   await page.getByRole("button", { name: "添加组件" }).click();
   await expect(page.getByRole("button", { name: "添加 持仓", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: "添加 账户净值" }).click();
-  await page.getByLabel("图表类型").selectOption("area");
-  await page.getByRole("button", { name: "应用组件配置" }).click();
-  await page.getByRole("button", { name: "添加组件" }).click();
   await page.getByRole("button", { name: "添加 交易 K 线" }).click();
   await page.getByRole("button", { name: "应用组件配置" }).click();
   await page.getByRole("button", { name: "上移 交易 K 线" }).click();

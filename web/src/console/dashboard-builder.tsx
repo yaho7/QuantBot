@@ -9,6 +9,7 @@ const WidgetData = lazy(() => import("./widget-data"));
 
 const eligible = (item: Candidate) => item.state === "ready" || item.state === "stale";
 const EMPTY: Dashboard = { revision: 0, widgets: [] };
+const DEFAULT_COMPONENTS = ["accounts", "positions", "equity", "metric_cards"];
 
 function newWidget(item: Candidate): Widget {
   const first = item.sources.find((source) => source.samples > 1) ?? item.sources[0];
@@ -33,9 +34,13 @@ export default function DashboardBuilder({ strategy }: { strategy: Detail }) {
   const [config, setConfig] = useState<Widget>();
   const [dragged, setDragged] = useState<string>();
   const target = useRef<string | null>(null);
-  const current = draft ?? board.data ?? EMPTY;
-  const widgets = current.widgets;
   const components = catalog.data?.components ?? [];
+  const defaults = board.data?.revision === 0 ? DEFAULT_COMPONENTS.flatMap((id) => {
+    const item = components.find((candidate) => candidate.id === id && eligible(candidate));
+    return item ? [{ ...newWidget(item), id: `default-${id}` }] : [];
+  }) : [];
+  const current = draft ?? (board.data?.revision === 0 ? { revision: 0, widgets: defaults } : board.data) ?? EMPTY;
+  const widgets = current.widgets;
   const newCount = components.filter((item) => eligible(item) && !widgets.some((widget) => widget.component === item.id)).length;
   const names = Object.fromEntries([...(strategies.data ?? []), strategy].map((item) => [item.id, item.name]));
   const save = useMutation({
