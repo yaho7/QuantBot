@@ -236,13 +236,14 @@ def record(row: sqlite3.Row, *, documents=(), times=(), omit=()) -> dict:
 
 
 class Database:
-    def __init__(self, path: Path):
-        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        try:
-            path.touch(mode=0o600, exist_ok=False)
-        except FileExistsError:
-            pass
-        self.conn = sqlite3.connect(path, isolation_level=None)
+    def __init__(self, path: Path | None):
+        if path is not None:
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            try:
+                path.touch(mode=0o600, exist_ok=False)
+            except FileExistsError:
+                pass
+        self.conn = sqlite3.connect(path if path is not None else ":memory:", isolation_level=None)
         self.conn.row_factory = sqlite3.Row
         try:
             version = self.conn.execute("PRAGMA user_version").fetchone()[0]

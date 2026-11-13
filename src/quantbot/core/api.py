@@ -3,11 +3,12 @@
 import asyncio
 import json
 import logging
+import sqlite3
 import time
 from contextlib import asynccontextmanager, suppress
 from ipaddress import IPv4Address, ip_address
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -76,6 +77,9 @@ from .responses import (
     StrategyView,
 )
 from .runtime import Runtime, exclusive_database
+from .sandbox import BODY_LIMIT as SANDBOX_BODY_LIMIT
+from .sandbox import PREFIX as SANDBOX_PREFIX
+from .sandbox import Sandboxes, SandboxRoutes, storage_full
 from .schemas import schema_document
 from .telegram_service import supervise
 from .telegram_settings import TelegramConfig, TelegramUpdate
@@ -90,12 +94,14 @@ COMMON_ERRORS = {
     409: {"model": Error, "description": "Session, revision, idempotency or state conflict"},
     422: {"model": Error, "description": "Invalid schema or parameters"},
 }
-agent = APIRouter(prefix="/api/agent", tags=["Agent"], responses=COMMON_ERRORS)
+agent = APIRouter(tags=["Agent"], responses=COMMON_ERRORS)
 admin = APIRouter(prefix="/api/admin", tags=["Administration"], responses=COMMON_ERRORS)
 log = logging.getLogger(__name__)
 
 
 def runtime(request: Request) -> Runtime:
+    if hasattr(request.state, "sandbox_runtime"):
+        return request.state.sandbox_runtime
     return request.app.state.runtime
 
 
@@ -230,7 +236,9 @@ async def commands(
 ):
     """Wait for queued work or a newer desired revision. A response is not an execution permit."""
     service = runtime(request)
-    deadline = time.monotonic() + wait
+    deadline = time.monotonic() + (
+        min(wait, 3) if getattr(request.state, "sandbox_runtime", None) else wait
+    )
     secret = token.credentials if token else None
     credential = service.auth.authenticate(secret, "commands")
     service.limit("agent", credential.id, 240, 60)
@@ -681,11 +689,44 @@ def docker_bridge_peer(peer: str) -> bool:
     return first == 10 or (first == 172 and 16 <= second <= 31) or (first, second) == (192, 168)
 
 
+def sandbox_pool(request):
+    return request.app.state.sandboxes
+
+
+@admin.get("/strategies/{strategy_id}/sandbox")
+async def sandbox_status(request: Request, strategy_id: Key, actor=ADMIN):
+    runtime(request).strategies.row(strategy_id)
+    return await sandbox_pool(request).call(sandbox_pool(request).manage(strategy_id, "status"))
+
+
+@admin.post("/strategies/{strategy_id}/sandbox")
+async def sandbox_copy(request: Request, strategy_id: Key, actor=ADMIN):
+    runtime(request).strategies.active(strategy_id)
+    pool = sandbox_pool(request)
+    session = await pool.call(pool.manage(strategy_id, "copy"))
+    origin = request.app.state.public_url or f"{request.url.scheme}://{request.url.netloc}"
+    return {**session, "endpoint": origin.rstrip("/") + SANDBOX_PREFIX}
+
+
+@admin.post("/strategies/{strategy_id}/sandbox/{key}/{action}")
+async def sandbox_action(
+    request: Request,
+    strategy_id: Key,
+    key: Key,
+    action: Literal["renew", "close", "pause_entry", "resume_entry", "refresh"],
+    actor=ADMIN,
+):
+    runtime(request).strategies.row(strategy_id)
+    pool = sandbox_pool(request)
+    return await pool.call(pool.manage(strategy_id, action, key))
+
+
 class Transport:
-    def __init__(self, app, public_url, docker_local_http):
+    def __init__(self, app, public_url=None, docker_local_http=False, sandbox_inner=False):
         self.app = app
         self.origin = public_url
         self.docker_local_http = docker_local_http
+        self.sandbox_inner = sandbox_inner
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -693,7 +734,10 @@ class Transport:
             return
         request = Request(scope)
         path = request.url.path
-        request_id = uuid4().hex.encode() if path.startswith("/api/agent/") else None
+        sandbox = path.startswith(SANDBOX_PREFIX + "/")
+        request_id = uuid4().hex if path.startswith("/api/agent/") or sandbox else None
+        if not self.sandbox_inner:
+            request.state.request_id = request_id
         peer = request.client.host if request.client else ""
         host = request.url.netloc
         origin = f"{request.url.scheme}://{host}"
@@ -725,7 +769,7 @@ class Transport:
             if message["type"] == "http.response.start":
                 headers = message["headers"]
                 if request_id:
-                    headers.append((b"x-quantbot-request-id", request_id))
+                    headers.append((b"x-quantbot-request-id", request_id.encode()))
                 headers.extend(
                     [
                         (b"x-content-type-options", b"nosniff"),
@@ -748,20 +792,36 @@ class Transport:
                     )
             await send(message)
 
-        if error:
+        if error and not self.sandbox_inner:
             await JSONResponse({"detail": error[1]}, status_code=error[0])(
                 scope, receive, protected_send
             )
             return
 
+        if sandbox and not self.sandbox_inner:
+            await self.app(scope, receive, protected_send)
+            return
+        if self.sandbox_inner:
+            protected_send = send
         if request.method in {"POST", "PUT", "PATCH"}:
             chunks = bytearray()
+            body_deadline = time.monotonic() + 5
             while True:
-                item = await receive()
+                try:
+                    item = (
+                        await asyncio.wait_for(receive(), max(0, body_deadline - time.monotonic()))
+                        if self.sandbox_inner
+                        else await receive()
+                    )
+                except TimeoutError:
+                    await JSONResponse({"detail": "Sandbox request body timed out"}, 408)(
+                        scope, receive, protected_send
+                    )
+                    return
                 if item["type"] == "http.disconnect":
                     return
                 chunks.extend(item.get("body", b""))
-                if len(chunks) > BODY_LIMIT:
+                if len(chunks) > (SANDBOX_BODY_LIMIT if self.sandbox_inner else BODY_LIMIT):
                     await JSONResponse({"detail": "Request body is too large"}, status_code=413)(
                         scope, receive, protected_send
                     )
@@ -828,11 +888,19 @@ def make_app(
             app.state.public_url = public_url
             workers = []
             service.telegram = TelegramConfig(service, telegram_token)
+            app.state.sandboxes = Sandboxes(clock)
             try:
                 if bootstrap:
                     bootstrap(service)
                 service.commands.sweep(restart=True)
                 workers.append(asyncio.create_task(service.upkeep()))
+
+                async def clean_sandboxes():
+                    while True:
+                        await asyncio.sleep(15)
+                        await app.state.sandboxes.call(app.state.sandboxes.clean())
+
+                workers.append(asyncio.create_task(clean_sandboxes()))
                 if telegram_network:
                     workers.append(
                         asyncio.create_task(
@@ -844,14 +912,27 @@ def make_app(
                 for worker in workers:
                     worker.cancel()
                 await asyncio.gather(*workers, return_exceptions=True)
+                await app.state.sandboxes.shutdown()
                 service.db.close()
 
     app = FastAPI(title="QuantBot API", version=__version__, lifespan=lifespan)
     app.add_middleware(Transport, public_url=public_url, docker_local_http=docker_local_http)
-    app.include_router(agent)
+    app.include_router(agent, prefix="/api/agent")
+    sandbox_app = FastAPI(
+        title="QuantBot Sandbox API",
+        version=__version__,
+        docs_url=None,
+        redoc_url=None,
+        openapi_url=None,
+    )
+    sandbox_app.add_middleware(Transport, sandbox_inner=True)
+    sandbox_app.include_router(agent, prefix="/agent")
+    sandbox_app.add_exception_handler(sqlite3.OperationalError, storage_full)
+    app.mount("/api/sandbox", SandboxRoutes(sandbox_app), name="sandbox")
     register_management(app, administrator, set_cookie)
     app.include_router(admin)
 
+    @sandbox_app.exception_handler(Problem)
     @app.exception_handler(Problem)
     async def problem(request, exc):
         headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
@@ -865,6 +946,7 @@ def make_app(
     async def schema(kind: str):
         return schema_document(kind)
 
+    @sandbox_app.exception_handler(RequestValidationError)
     @app.exception_handler(RequestValidationError)
     async def validation(request, exc):
         sid = getattr(request.state, "telemetry_source", None)
@@ -891,11 +973,11 @@ def make_app(
                             rejected.add(value if value in DATA_TYPES else "unrecognized")
                     rejected = rejected or {"unrecognized"}
             runtime(request).registry.reject(sid, rejected)
+        errors = [{"location": err["loc"], "type": err["type"]} for err in exc.errors()]
+        if hasattr(request.state, "sandbox_runtime"):
+            request.state.sandbox_validation = [error["type"] for error in errors[:5]]
         return JSONResponse(
-            {
-                "detail": "Request does not match the API schema",
-                "errors": [{"location": err["loc"], "type": err["type"]} for err in exc.errors()],
-            },
+            {"detail": "Request does not match the API schema", "errors": errors},
             status_code=422,
         )
 

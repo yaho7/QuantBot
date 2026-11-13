@@ -50,12 +50,14 @@ class Credential:
 
 
 class Auth:
-    def __init__(self, db: Database, clock, key_path: Path):
+    def __init__(self, db: Database, clock, key_path: Path | None):
         self.db = db
         self.clock = clock
         self.key_path = key_path
 
     def cipher(self, *, create=False):
+        if self.key_path is None:
+            raise Problem(503, "Persistent credentials are unavailable in this runtime")
         try:
             fd = os.open(self.key_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         except FileNotFoundError:

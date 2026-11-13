@@ -1332,6 +1332,61 @@
         "title": "ControlView",
         "type": "object"
       },
+      "ControlWidget": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "entry",
+              "program",
+              "control",
+              "capability"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "placement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WidgetPlacement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ref": {
+            "anyOf": [
+              {
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ref"
+          },
+          "title": {
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind"
+        ],
+        "title": "ControlWidget",
+        "type": "object"
+      },
       "CredentialIssued": {
         "properties": {
           "created_at": {
@@ -1501,7 +1556,14 @@
           },
           "widgets": {
             "items": {
-              "$ref": "#/components/schemas/Widget"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Widget"
+                },
+                {
+                  "$ref": "#/components/schemas/ControlWidget"
+                }
+              ]
             },
             "maxItems": 24,
             "title": "Widgets",
@@ -2131,6 +2193,43 @@
           "fields"
         ],
         "title": "Form",
+        "type": "object"
+      },
+      "GridPosition": {
+        "additionalProperties": false,
+        "properties": {
+          "h": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "H",
+            "type": "integer"
+          },
+          "w": {
+            "maximum": 8.0,
+            "minimum": 1.0,
+            "title": "W",
+            "type": "integer"
+          },
+          "x": {
+            "exclusiveMaximum": 8.0,
+            "minimum": 0.0,
+            "title": "X",
+            "type": "integer"
+          },
+          "y": {
+            "maximum": 512.0,
+            "minimum": 0.0,
+            "title": "Y",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "title": "GridPosition",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -5674,6 +5773,16 @@
             "title": "Markers",
             "type": "boolean"
           },
+          "placement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WidgetPlacement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sources": {
             "items": {
               "$ref": "#/components/schemas/Series"
@@ -5712,11 +5821,38 @@
         },
         "required": [
           "id",
-          "component",
           "title",
+          "component",
           "chart"
         ],
         "title": "Widget",
+        "type": "object"
+      },
+      "WidgetPlacement": {
+        "additionalProperties": false,
+        "properties": {
+          "desktop": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GridPosition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mobile": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GridPosition"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "title": "WidgetPlacement",
         "type": "object"
       }
     },
@@ -8569,6 +8705,258 @@
           }
         ],
         "summary": "Restore",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
+    "/api/admin/strategies/{strategy_id}/sandbox": {
+      "get": {
+        "operationId": "sandbox_status_api_admin_strategies__strategy_id__sandbox_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Credential missing, invalid, revoked or expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient permission"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Session, revision, idempotency or state conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid schema or parameters"
+          }
+        },
+        "security": [
+          {
+            "AdministratorSession": []
+          }
+        ],
+        "summary": "Sandbox Status",
+        "tags": [
+          "Administration"
+        ]
+      },
+      "post": {
+        "operationId": "sandbox_copy_api_admin_strategies__strategy_id__sandbox_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Credential missing, invalid, revoked or expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient permission"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Session, revision, idempotency or state conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid schema or parameters"
+          }
+        },
+        "security": [
+          {
+            "AdministratorSession": []
+          }
+        ],
+        "summary": "Sandbox Copy",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
+    "/api/admin/strategies/{strategy_id}/sandbox/{key}/{action}": {
+      "post": {
+        "operationId": "sandbox_action_api_admin_strategies__strategy_id__sandbox__key___action__post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "key",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "title": "Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "action",
+            "required": true,
+            "schema": {
+              "enum": [
+                "renew",
+                "close",
+                "pause_entry",
+                "resume_entry",
+                "refresh"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Credential missing, invalid, revoked or expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient permission"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Session, revision, idempotency or state conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid schema or parameters"
+          }
+        },
+        "security": [
+          {
+            "AdministratorSession": []
+          }
+        ],
+        "summary": "Sandbox Action",
         "tags": [
           "Administration"
         ]
