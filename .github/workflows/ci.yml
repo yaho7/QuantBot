@@ -62,9 +62,11 @@ jobs:
           curl --fail --silent --show-error "$setup" | jq -e '.required and .available'
           curl --fail --silent --show-error "$setup" \
             -H 'Host: quantbot.example.com' -H 'X-Forwarded-Proto: https' \
-            -H 'X-Forwarded-For: 203.0.113.10' | jq -e '.required and (.available | not)'
+            -H 'X-Forwarded-For: 203.0.113.10' | jq -e '.required and .available'
           curl --fail --silent --show-error "$setup" \
-            -H 'Origin: http://localhost:8888' -H 'Content-Type: application/json' \
+            -H 'Host: quantbot.example.com' -H 'X-Forwarded-Proto: https' \
+            -H 'X-Forwarded-For: 203.0.113.10' -H 'Origin: https://quantbot.example.com' \
+            -H 'Content-Type: application/json' \
             --data '{"username":"compose-admin","password":"compose-smoke-test"}' \
             | jq -e '.authenticated'
           test "$(docker compose exec -T quantbot awk '/^Uid:/ {print $2}' /proc/1/status)" = 10001

@@ -48,7 +48,9 @@ docker compose -f compose.yml -f compose.override.yaml up -d
 curl -fsS https://quantbot.example.com/healthz
 ```
 
-如果 `cloudflared` 也是容器，且与 QuantBot 直连同一个 Docker 网络，回源使用 `http://quantbot:8888`，`QB_TRUST_PROXY` 填 `cloudflared` 在该网络上的固定容器 IP。显式设置会覆盖默认代理地址。只信任实际代理的地址，并保留 QuantBot 的回环端口绑定。首次创建管理员仍需通过本机或 SSH 转发访问 `http://localhost:8888`。
+如果 `cloudflared` 也是容器，且与 QuantBot 直连同一个 Docker 网络，回源使用 `http://quantbot:8888`，`QB_TRUST_PROXY` 填 `cloudflared` 在该网络上的固定容器 IP。显式设置会覆盖默认代理地址。只信任实际代理的地址，并保留 QuantBot 的回环端口绑定。
+
+打开 HTTPS 域名即可创建管理员。第一个成功提交的人将成为管理员，创建后初始化入口关闭。需要在公开域名前创建账号时，可先在本机初始化，或用上文的方式预置账号。
 
 ## Linux 用户服务
 

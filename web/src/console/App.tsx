@@ -81,7 +81,7 @@ function Login({ hash }: { hash: string }) {
     <main className="login">
       {setup.isPending ? <Loading /> : setupElsewhere ? <>
         <h1>初始化 QuantBot</h1>
-        <p>请通过部署主机的本机地址或 SSH 端口转发访问控制台，然后创建管理员。</p>
+        <p>请使用 HTTPS 地址打开控制台。</p>
       </> : <>
         <h1>{creating ? "初始化 QuantBot" : "登录 QuantBot"}</h1>
         <p>{creating ? "创建管理员账号，完成后进入控制台。" : "使用管理员账号进入控制台。"}</p>

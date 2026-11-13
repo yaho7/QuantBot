@@ -27,7 +27,7 @@ services:
 docker compose up -d
 ```
 
-打开 [http://localhost:8888](http://localhost:8888)，按网页引导创建管理员。服务器部署时，可通过 SSH 转发本机的 8888 端口完成初始化。 [部署与更新](docs/DEPLOYMENT.md)
+打开 [http://localhost:8888](http://localhost:8888) 或部署好的 HTTPS 域名，按网页引导创建管理员。首次创建成功后，控制台会关闭初始化入口。 [部署与更新](docs/DEPLOYMENT.md)
 
 ## 本地启动
 

@@ -48,15 +48,19 @@ def test_first_run_creates_administrator_once(tmp_path):
         assert client.post("/api/v2/admin/login", json=ACCOUNT).status_code == 200
 
 
-def test_remote_setup_is_disabled(tmp_path):
+def test_remote_plain_http_is_rejected(tmp_path):
     app = make_app(tmp_path / "quantbot.sqlite3", docker_local_http=True, telegram_network=False)
     with TestClient(
         app, base_url="https://console.example.test", client=("172.20.0.1", 1234)
     ) as client:
-        assert client.get(SETUP).json() == {"required": True, "available": False}
+        assert client.get(SETUP).json() == {"required": True, "available": True}
         assert (
-            client.post(SETUP, json=ACCOUNT, headers={"Origin": str(client.base_url)}).status_code
-            == 403
+            client.post(
+                "http://console.example.test:8888" + SETUP,
+                json=ACCOUNT,
+                headers={"Origin": "http://console.example.test:8888"},
+            ).status_code
+            == 426
         )
         assert client.get("http://console.example.test:8888/healthz").status_code == 426
         assert (
@@ -67,7 +71,7 @@ def test_remote_setup_is_disabled(tmp_path):
         assert client.get("/healthz").status_code == 426
 
 
-def test_docker_host_proxy_preserves_https_without_opening_remote_setup(tmp_path, monkeypatch):
+def test_docker_host_proxy_supports_first_run_setup_over_https(tmp_path, monkeypatch):
     routes = tmp_path / "route"
     routes.write_text("Iface Destination Gateway Flags\neth0 00000000 010012AC 0003\n")
     link = tmp_path / "eth0"
@@ -88,21 +92,19 @@ def test_docker_host_proxy_preserves_https_without_opening_remote_setup(tmp_path
         assert client.get(SETUP).json() == {"required": True, "available": True}
         assert client.get(domain + SETUP, headers=forwarded).json() == {
             "required": True,
-            "available": False,
+            "available": True,
         }
         assert client.get(domain + SETUP).status_code == 426
-        assert client.get(SETUP, headers={"X-Forwarded-Proto": "https"}).json() == {
-            "required": True,
+        headers = {**forwarded, "Origin": "https://quantbot.example.test"}
+        assert client.post(domain + SETUP, json=ACCOUNT, headers=forwarded).status_code == 403
+        setup = client.post(domain + SETUP, json=ACCOUNT, headers=headers)
+        assert setup.status_code == 201
+        assert "Secure" in setup.headers["set-cookie"]
+        assert client.get(domain + SETUP, headers=forwarded).json() == {
+            "required": False,
             "available": False,
         }
-        assert client.post(SETUP, json=ACCOUNT, headers={"Origin": ORIGIN}).status_code == 201
-        login = client.post(
-            domain + "/api/v2/admin/login",
-            json=ACCOUNT,
-            headers={**forwarded, "Origin": "https://quantbot.example.test"},
-        )
-        assert login.status_code == 200
-        assert "Secure" in login.headers["set-cookie"]
+        assert client.post(domain + SETUP, json=ACCOUNT, headers=headers).status_code == 409
     with TestClient(app, base_url=domain, client=("172.18.0.2", 1234)) as client:
         assert client.get(SETUP, headers=forwarded).status_code == 426
     monkeypatch.setenv("QB_TRUST_PROXY", "172.18.0.3")

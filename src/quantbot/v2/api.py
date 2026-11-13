@@ -268,7 +268,7 @@ def set_cookie(request, value):
 
 
 def setup_allowed(request: Request) -> bool:
-    return request.state.local_access
+    return request.state.local_access or request.url.scheme == "https"
 
 
 @admin.get("/setup")
@@ -280,7 +280,7 @@ async def setup_status(request: Request) -> dict[str, bool]:
 @admin.post("/setup", status_code=201)
 async def setup_admin(request: Request, body: SetupAdmin):
     if not setup_allowed(request):
-        raise Problem(403, "Open the console on localhost to set up the administrator")
+        raise Problem(403, "Use HTTPS or localhost to set up the administrator")
     origin = f"{request.url.scheme}://{request.url.netloc}"
     if request.headers.get("origin") != origin:
         raise Problem(403, "Setup requires a same-origin browser request")
