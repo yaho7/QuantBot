@@ -15,16 +15,23 @@ type StatusRecord = { observed_at: string; runtime: Runtime };
 type FillCount = Point & { side: "buy" | "sell" };
 type ComponentData = Snapshot | Array<EventRecord | StatusRecord | Connection | FillCount>;
 
-export default function WidgetData({ widget, strategyId, names }: { widget: Widget; strategyId: string; names: Record<string, string> }) {
+function dataKey({ placement: _placement, width: _width, height: _height, title: _title, id: _id, ...data }: Widget) {
+  return data;
+}
+
+export default function WidgetData({ widget, strategyId, names, compact, chartHeight }: {
+  widget: Widget; strategyId: string; names: Record<string, string>; compact: boolean; chartHeight: number;
+}) {
+  widget = { ...widget, height: chartHeight };
   return <Suspense fallback={<Loading />}>{marketComponent(widget.component) ? <MarketData widget={widget} /> :
-    seriesComponent(widget.component) ? <HistoryData widget={widget} names={names} /> :
-      <StandardData widget={widget} strategyId={strategyId} />}</Suspense>;
+    seriesComponent(widget.component) ? <HistoryData {...{ widget, names, compact }} /> :
+      <StandardData {...{ widget, strategyId, compact }} />}</Suspense>;
 }
 
 function MarketData({ widget }: { widget: Widget }) {
   const source = widget.candle;
   const query = useQuery({
-    queryKey: ["live", "market", widget],
+    queryKey: ["live", "market", dataKey(widget)],
     enabled: !!source,
     refetchInterval: 10_000,
     queryFn: () => {
@@ -44,9 +51,9 @@ function MarketData({ widget }: { widget: Widget }) {
   return <TimeSeries series={[{ name: source.symbol, points }]} chart="bar" unit="成交量" height={widget.height} minimum={1} />;
 }
 
-function HistoryData({ widget, names }: { widget: Widget; names: Record<string, string> }) {
+function HistoryData({ widget, names, compact }: { widget: Widget; names: Record<string, string>; compact: boolean }) {
   const query = useQuery({
-    queryKey: ["live", "metric-history", widget],
+    queryKey: ["live", "metric-history", dataKey(widget)],
     enabled: !!widget.sources.length,
     refetchInterval: 10_000,
     queryFn: () => api<SeriesHistory[]>("history/metrics", "POST", {
@@ -61,6 +68,8 @@ function HistoryData({ widget, names }: { widget: Widget; names: Record<string, 
     name: [names[item.source.strategy_id], item.source.name, item.source.account_id, item.source.instance_id].filter(Boolean).join(" · "),
     points: item.points, unit: item.source.unit, key: seriesKey(item.source),
   }));
+  if (compact) return <div className="widget-metrics">{series.map((item) =>
+    <strong key={item.key} title={item.name}>{money(item.points.at(-1)?.value, item.unit)}</strong>)}</div>;
   if (widget.component === "metric_cards") {
     const cards = series.flatMap((item) => {
       const last = item.points.at(-1);
@@ -76,9 +85,9 @@ function HistoryData({ widget, names }: { widget: Widget; names: Record<string, 
   return <TimeSeries {...{ series }} chart={widget.chart} unit={series[0]?.unit ?? ""} height={widget.height} />;
 }
 
-function StandardData({ widget, strategyId }: { widget: Widget; strategyId: string }) {
+function StandardData({ widget, strategyId, compact }: { widget: Widget; strategyId: string; compact: boolean }) {
   const query = useQuery({
-    queryKey: ["live", "component", strategyId, widget],
+    queryKey: ["live", "component", strategyId, dataKey(widget)],
     refetchInterval: 10_000,
     queryFn: () => {
       const query = new URLSearchParams(timeRange(widget));
@@ -98,6 +107,8 @@ function StandardData({ widget, strategyId }: { widget: Widget; strategyId: stri
         <div><span>观测时间</span><strong>{when(data.observed_at)}</strong></div>
       </div> : <Empty />;
     case "accounts":
+      if (compact) return <div className="widget-metrics">{data.accounts?.map((item) =>
+        <strong key={`${item.account_id}/${item.currency}`} title={item.account_id}>{money(item.equity, item.currency)}</strong>)}</div>;
       if (widget.chart === "table") return <Accounts rows={data.accounts ?? []} />;
       return data.accounts?.length ? <div className="value-grid">{data.accounts.map((item) =>
         <div key={`${item.account_id}/${item.currency}`}><span>{item.account_id} · {item.currency}</span>
@@ -122,6 +133,7 @@ function StandardData({ widget, strategyId }: { widget: Widget; strategyId: stri
             height={widget.height} label={`持仓市值 ${currency}`} /></section>)}</div>;
     }
     case "orders":
+      if (compact) return <strong>{data.open_orders?.length ?? 0} 笔未完成</strong>;
       return <div className="stack"><h3>未完成订单</h3><Orders rows={data.open_orders ?? []} />
         <h3>已完成订单</h3><Orders rows={data.completed_orders ?? []} /></div>;
     case "order_status": {

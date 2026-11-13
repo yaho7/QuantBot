@@ -78,7 +78,7 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
   function action(enabled: boolean) {
     const id = enabled ? "resume_entry" : "pause_entry";
     const capability = strategy.capabilities.find((item) => item.id === id);
-    const binding = toggle ?? registry?.controls.find((item) => item.command === id);
+    const binding = toggle ?? registry?.controls.find((item) => item.command === id && item.type === "button");
     const disabled = blocked || !capability || (binding ? !registry?.states[binding.id]?.available :
       strategy.mode === "live" && capability.high_risk && !strategy.live_trading_enabled);
     return { capability, binding, disabled };
@@ -107,7 +107,7 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
   </div>;
 }
 
-function CommandDialog({ capability, strategy, close }: { capability: Capability; strategy: Detail; close: () => void }) {
+export function CommandDialog({ capability, strategy, close }: { capability: Capability; strategy: Detail; close: () => void }) {
   const client = useQueryClient();
   const [requestId] = useState(() => crypto.randomUUID());
   const [parameters, setParameters] = useState<Record<string, Scalar | undefined>>(() =>
@@ -134,7 +134,7 @@ function CommandDialog({ capability, strategy, close }: { capability: Capability
   </Dialog>;
 }
 
-function OperationView({ command, strategy, close }: { command: Command; strategy?: string; close: () => void }) {
+export function OperationView({ command, strategy, close }: { command: Command; strategy?: string; close: () => void }) {
   const client = useQueryClient();
   const [evidence, setEvidence] = useState("");
   const [resolution, setResolution] = useState<"succeeded" | "failed">("failed");

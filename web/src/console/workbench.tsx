@@ -1,5 +1,5 @@
 import { strategyApi, strategyPath, workbenchPath, type Detail, type Strategy } from "./api";
-import { ControlPanel } from "./operations";
+import DashboardBuilder from "./dashboard-builder";
 import { Empty, ErrorNotice, Field, Loading, PageTitle, Panel, StatusBadge, useData } from "./ui";
 
 export default function Workbench({ strategyId }: { strategyId?: string }) {
@@ -30,7 +30,7 @@ function StrategyWorkbench({ strategyId }: { strategyId: string }) {
     {detail.data && <>
       <div className="toolbar"><strong>{detail.data.name}</strong><StatusBadge status={detail.data.status} />
         <a href={strategyPath(strategyId)}>策略详情</a></div>
-      <ControlPanel strategy={detail.data} />
+      <DashboardBuilder strategy={detail.data} workbench />
     </>}
   </>;
 }

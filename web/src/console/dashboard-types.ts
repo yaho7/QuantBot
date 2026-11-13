@@ -43,10 +43,20 @@ export interface ChartCatalog {
   components: Candidate[];
   schema_failures: Array<{ type: string; active: number; count: number; observed_at: string }>;
 }
-export interface Widget {
+export type Breakpoint = "desktop" | "mobile";
+export interface GridPosition { x: number; y: number; w: number; h: number }
+interface WorkbenchWidget {
   id: string;
-  component: Component;
   title: string;
+  placement?: Partial<Record<Breakpoint, GridPosition | null>> | null;
+}
+export interface ControlWidget extends WorkbenchWidget {
+  kind: "entry" | "program" | "control" | "capability";
+  ref?: string;
+}
+export type BoardWidget = Widget | ControlWidget;
+export interface Widget extends WorkbenchWidget {
+  component: Component;
   chart: Chart;
   width: 1 | 2;
   height: number;
@@ -61,7 +71,7 @@ export interface Widget {
 }
 export interface Dashboard {
   revision: number;
-  widgets: Widget[];
+  widgets: BoardWidget[];
 }
 export interface Point { observed_at: string; value: string }
 export interface SeriesHistory { source: Series; points: Point[] }

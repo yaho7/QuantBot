@@ -267,3 +267,21 @@ dialog::backdrop { background: #100f0f80; }
   .widget-grid { grid-template-columns: minmax(0, 1fr); }
   .widget.width-2 { grid-column: span 1; }
 }
+
+.workbench-grid .widget { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.workbench-grid .widget-content { overflow: auto; min-height: 0; }
+.workbench-grid.editing .widget { overflow: auto; }
+.workbench-grid .widget-header h2 { overflow-wrap: anywhere; }
+.workbench-grid .widget-header { margin-bottom: .45rem; }
+.workbench-grid .widget-actions { flex-wrap: wrap; }
+.workbench-grid .drag-handle, .workbench-grid .react-resizable-handle { touch-action: none; }
+.workbench-grid.editing .widget { padding-bottom: 30px; }
+.workbench-grid .widget > .react-resizable-handle { position: absolute; opacity: 1; width: 32px; height: 32px; }
+.workbench-grid .widget > .react-resizable-handle::after { border-color: var(--ink); right: 6px; bottom: 6px; width: 10px; height: 10px; }
+.workbench-grid .react-grid-placeholder { background: var(--muted); border-radius: var(--radius); }
+.widget-metrics { display: flex; flex-wrap: wrap; gap: .5rem 1rem; }
+.entry-control .value-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); }
+@media (max-width: 760px) {
+  .workbench-grid .widget-actions .icon-button { width: 44px; height: 44px; }
+  .workbench-grid .widget > .react-resizable-handle { width: 44px; height: 44px; }
+}

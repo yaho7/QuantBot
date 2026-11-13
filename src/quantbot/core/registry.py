@@ -5,6 +5,7 @@ from collections import defaultdict
 from decimal import Decimal, localcontext
 
 from .auth import digest
+from .dashboard_models import ControlWidget
 from .db import encode, record, timestamp
 from .errors import Problem
 from .models import Event, EventMarker, MetricPoint
@@ -641,6 +642,8 @@ class Registry:
                 if item["state"] in {"ready", "stale"}
             }
             for widget in body.widgets:
+                if isinstance(widget, ControlWidget):
+                    continue
                 if widget.chart not in COMPONENTS[widget.component][2]:
                     raise Problem(422, "Chart renderer is not compatible with this component")
                 if widget.component not in available and (

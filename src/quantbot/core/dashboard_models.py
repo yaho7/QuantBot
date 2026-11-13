@@ -65,10 +65,44 @@ class HistoryQuery(Payload):
         return self
 
 
-class Widget(Payload):
+class GridPosition(Payload):
+    x: int = Field(ge=0, lt=8)
+    y: int = Field(ge=0, le=512)
+    w: int = Field(ge=1, le=8)
+    h: int = Field(ge=1, le=10)
+
+
+class WidgetPlacement(Payload):
+    desktop: GridPosition | None = None
+    mobile: GridPosition | None = None
+
+    @model_validator(mode="after")
+    def within_grid(self):
+        for position, columns in ((self.desktop, 8), (self.mobile, 4)):
+            if position and position.x + position.w > columns:
+                raise ValueError("widget extends beyond the grid")
+        return self
+
+
+class WorkbenchWidget(Payload):
     id: Key
-    component: Component
     title: Name
+    placement: WidgetPlacement | None = None
+
+
+class ControlWidget(WorkbenchWidget):
+    kind: Literal["entry", "program", "control", "capability"]
+    ref: Key | None = None
+
+    @model_validator(mode="after")
+    def valid_reference(self):
+        if (self.kind in {"control", "capability"}) != (self.ref is not None):
+            raise ValueError("widget reference does not match its kind")
+        return self
+
+
+class Widget(WorkbenchWidget):
+    component: Component
     chart: Chart
     width: Literal[1, 2] = 1
     height: int = Field(320, ge=220, le=720)
@@ -95,7 +129,7 @@ class Widget(Payload):
 
 class Dashboard(Payload):
     revision: int = Field(ge=0)
-    widgets: list[Widget] = Field(default_factory=list, max_length=24)
+    widgets: list[Widget | ControlWidget] = Field(default_factory=list, max_length=24)
 
     @model_validator(mode="after")
     def widget_ids(self):
