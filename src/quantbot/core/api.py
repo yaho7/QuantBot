@@ -428,6 +428,17 @@ async def revoke_token(request: Request, strategy_id: Key, token_id: Key, actor=
     return Response(status_code=204)
 
 
+@admin.post("/strategies/{strategy_id}/tokens/{token_id}/reveal", response_model=CredentialIssued)
+async def reveal_token(request: Request, strategy_id: Key, token_id: Key, actor=ADMIN):
+    """Reveal an active access key to an authenticated administrator and record the access."""
+    service = runtime(request)
+    service.limit("token-reveal", actor, 20, 60)
+    service.strategies.active(strategy_id)
+    secret = service.auth.reveal(strategy_id, token_id)
+    service.strategies.audit(actor, "token.reveal", strategy_id, token_id=token_id)
+    return {"token": secret, **service.auth.token_metadata(strategy_id, token_id)}
+
+
 def bounds(start, end):
     if start and end and start > end:
         raise Problem(422, "Start must precede end")

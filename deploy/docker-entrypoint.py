@@ -7,6 +7,7 @@ import sys
 SERVICE_ID = 10001
 DATA = "/data"
 DATA_FILES = (
+    "quantbot.key",
     "quantbot.lock",
     "quantbot.sqlite3",
     "quantbot.sqlite3-wal",

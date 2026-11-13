@@ -8828,6 +8828,95 @@
         ]
       }
     },
+    "/api/admin/strategies/{strategy_id}/tokens/{token_id}/reveal": {
+      "post": {
+        "description": "Reveal an active access key to an authenticated administrator and record the access.",
+        "operationId": "reveal_token_api_admin_strategies__strategy_id__tokens__token_id__reveal_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "title": "Token Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialIssued"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Credential missing, invalid, revoked or expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient permission"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Session, revision, idempotency or state conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid schema or parameters"
+          }
+        },
+        "security": [
+          {
+            "AdministratorSession": []
+          }
+        ],
+        "summary": "Reveal Token",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
     "/api/admin/strategies/{strategy_id}/tokens/{token_id}/rotate": {
       "post": {
         "operationId": "rotate_token_api_admin_strategies__strategy_id__tokens__token_id__rotate_post",

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, ChevronRight, KeyRound, Plus, RefreshCw } from "lucide-react";
+import { BookOpen, ChevronRight, Eye, EyeOff, KeyRound, Plus, RefreshCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api, strategyApi, strategyPath, type Catalog, type Credential, type DataType, type Detail, type Scope, type System, type StrategySettings, type Token, type TokenOptions } from "./api";
 import { Code, CopyButton, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
@@ -158,7 +158,7 @@ function aiInstructions(origin: string, strategyId?: string) {
 
 ### 三、配置与密钥
 
-- 创建 \`quantbot.json\` 保存服务器地址、Token、稳定实例名称和必要配置。仅在文件不存在时创建，Token 预留为空。启动时自动读取，无需设置环境变量。
+- 创建 \`quantbot.json\` 保存 Endpoint、Secret、稳定实例名称和必要配置。仅在文件不存在时创建，Secret 预留为空。启动时自动读取，无需设置环境变量。用 Secret 作为 Bearer Token，Key 仅用于识别凭据。
 - 创建 \`quantbot.example.json\`，并将真实配置文件加入 \`.gitignore\`。不要提交或记录明文 Token。
 - 配置缺失、Token 未填写或服务器不可用时，原量化程序应继续正常运行。
 
@@ -220,11 +220,11 @@ function AgentPrompt({ origin, strategyId }: { origin: string; strategyId?: stri
 
 function CredentialDialog({ credential, close }: { credential: Credential; close: () => void }) {
   const origin = useAgentOrigin();
-  return <Dialog title="接入 Token 已生成" close={close}><div className="stack">
-    <div className="notice warn">Token 明文仅显示一次。请复制并保存到程序的密钥配置。</div>
-    <KeyValue label="API 地址" value={`${origin}/api/agent`} />
+  return <Dialog title="接入凭据已生成" close={close}><div className="stack">
+    <KeyValue label="Endpoint" value={`${origin}/api/agent`} />
     <KeyValue label="策略 ID" value={credential.strategy_id} />
-    <KeyValue label="API Token" value={credential.token} />
+    <KeyValue label="Key" value={credential.id} />
+    <SecretValue load={async () => credential.token} />
     <AgentPrompt origin={origin} strategyId={credential.strategy_id} />
     <details className="form-detail"><summary>curl 和 Python 示例</summary><div className="stack">
       <Code label="curl">{shell(origin)}</Code><Code label="Python">{python(origin)}</Code>
@@ -237,6 +237,28 @@ function KeyValue({ label, value }: { label: string; value: string }) {
   return <div className="key-value"><div><small>{label}</small><code>{value}</code></div><CopyButton value={value} /></div>;
 }
 
+function SecretValue({ load }: { load: () => Promise<string> }) {
+  const [secret, setSecret] = useState<string>();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<unknown>();
+  async function toggle() {
+    if (secret) { setSecret(undefined); return; }
+    setPending(true);
+    setError(undefined);
+    try { setSecret(await load()); }
+    catch (error) { setError(error); }
+    finally { setPending(false); }
+  }
+  return <>
+    <div className="key-value"><div><small>Secret</small><code>{secret ?? "••••••••••••"}</code></div>
+      <button type="button" className="icon-button" aria-label={secret ? "隐藏 Secret" : "查看 Secret"}
+        disabled={pending} onClick={() => void toggle()}>{secret ? <EyeOff size={18} /> : <Eye size={18} />}</button>
+      {secret && <CopyButton value={secret} label="复制 Secret" />}
+    </div>
+    <ErrorNotice error={error} />
+  </>;
+}
+
 export function TokenPanel({ strategy }: { strategy: Detail }) {
   const id = strategy.id;
   const origin = useAgentOrigin();
@@ -245,6 +267,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
   const catalog = useData<Catalog>(strategyApi(id, "components"));
   const [editing, setEditing] = useState<Token | "new" | null>(null);
   const [replacing, setReplacing] = useState<Token | null>(null);
+  const [inspecting, setInspecting] = useState<Token | null>(null);
   const [revealed, reveal] = useState<Credential | null>(null);
   const current = tokens.data?.find((token) => !token.revoked_at && (!token.expires_at || Date.parse(token.expires_at) > Date.now()));
   const regenerate = useMutation({
@@ -269,9 +292,11 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
         {current && <button className="button primary" onClick={() => { regenerate.reset(); setReplacing(current); }}><RefreshCw size={16} /> 重新生成 Token</button>}
         <button className={`button ${current ? "secondary" : "primary"}`} onClick={() => setEditing("new")}><Plus size={16} /> 新建 Token</button>
       </div>}>
-      <KeyValue label="策略 ID" value={id} /><KeyValue label="API 地址" value={`${origin}/api/agent`} />
+      <KeyValue label="策略 ID" value={id} /><KeyValue label="Endpoint" value={`${origin}/api/agent`} />
+      {current && <><KeyValue label="Key" value={current.id} />
+        <SecretValue key={current.id} load={async () => (await api<Credential>(strategyApi(id, `tokens/${current.id}/reveal`), "POST")).token} /></>}
       <ErrorNotice error={tokens.error ?? revoke.error} />
-      {tokens.isPending ? <Loading /> : <Table columns={["Token ID", "权限", "最近使用", "有效期", "状态", "操作"]} empty={!tokens.data?.length}>
+      {tokens.isPending ? <Loading /> : <Table columns={["Key", "权限", "最近使用", "有效期", "状态", "操作"]} empty={!tokens.data?.length}>
         {tokens.data?.map((token) => {
           const expired = token.expires_at && Date.parse(token.expires_at) <= Date.now();
           return <tr key={token.id}><td className="mono">{token.id}</td><td>{token.scopes.join(" · ")}</td>
@@ -279,6 +304,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
             <td>{token.revoked_at ? "已撤销" : expired ? "已过期" : "有效"}</td>
             <td className="row-actions">{!strategy.archived_at && <>
               <button className="button quiet" onClick={() => setEditing(token)}>轮换</button>
+              {!token.revoked_at && !expired && token.id !== current?.id && <button className="icon-button" aria-label={`查看 Secret ${token.id}`} onClick={() => setInspecting(token)}><Eye size={16} /></button>}
               {!token.revoked_at && <button className="button quiet danger-text" onClick={() => {
                 if (confirm("撤销该 Token 后，使用它的实例将失去连接。继续撤销？")) revoke.mutate(token);
               }}>撤销</button>}
@@ -287,7 +313,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
       </Table>}
     </Panel>
     <Panel title="连接诊断" hint="实例最近心跳、声明能力和协议校验情况。">
-      <Table columns={["实例", "连接", "最后心跳", "程序", "Token ID"]} empty={!strategy.instances.length}>
+      <Table columns={["实例", "连接", "最后心跳", "程序", "Key"]} empty={!strategy.instances.length}>
         {strategy.instances.map((item) => <tr key={item.instance_id}><td className="mono">{item.instance_id}</td><td>{item.online ? "在线" : "离线"}</td>
           <td>{when(item.last_seen)}</td><td>{[item.declarations.language, item.declarations.framework, item.declarations.version, item.declarations.broker].filter(Boolean).join(" · ") || "—"}</td>
           <td className="mono">{item.token_id}</td></tr>)}
@@ -314,6 +340,11 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
       </div>
     </Dialog>}
     {revealed && <CredentialDialog credential={revealed} close={() => reveal(null)} />}
+    {inspecting && <Dialog title="查看接入凭据" close={() => setInspecting(null)}>
+      <div className="stack"><KeyValue label="Key" value={inspecting.id} />
+        <SecretValue load={async () => (await api<Credential>(strategyApi(id, `tokens/${inspecting.id}/reveal`), "POST")).token} />
+      </div>
+    </Dialog>}
   </div>;
 }
 
@@ -362,7 +393,7 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
           <input type="url" placeholder={defaultOrigin} value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} />
         </Field>
         {customOrigin.trim() && !valid && <p role="alert" className="notice error">请输入不带路径的 HTTP 或 HTTPS 地址。</p>}
-        <KeyValue label="API 地址" value={`${origin}/api/agent`} />
+        <KeyValue label="Endpoint" value={`${origin}/api/agent`} />
         {strategyId && <KeyValue label="策略 ID" value={strategyId} />}
         {strategyId ? <a className="text-link" href={strategyPath(strategyId, "api")}>管理 Token 和连接诊断 <ChevronRight size={14} /></a>
           : <a className="text-link" href="#strategies">选择策略并管理 Token <ChevronRight size={14} /></a>}

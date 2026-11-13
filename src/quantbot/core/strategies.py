@@ -114,7 +114,9 @@ class Strategies:
         return [
             self.auth.public_token(row)
             for row in self.db.all(
-                "SELECT * FROM strategy_tokens WHERE strategy_id=? ORDER BY created_at DESC", (sid,)
+                "SELECT * FROM strategy_tokens WHERE strategy_id=? "
+                "ORDER BY created_at DESC, rowid DESC",
+                (sid,),
             )
         ]
 
@@ -129,6 +131,7 @@ class Strategies:
                     (self.clock(), revoke, sid),
                 )
                 self.audit(actor, "token.revoke", sid, token_id=revoke)
+                self.auth.forget(revoke)
             token = self.auth.issue(sid, options) if options else None
             if token:
                 self.audit(actor, "token.issue", sid, token_id=token["id"], replaced=revoke)
@@ -168,6 +171,7 @@ class Strategies:
                 (self.clock(), sid, old_id),
             )
             self.audit(actor, "token.regenerate", sid, token_id=token["id"], replaced=old_id)
+            self.auth.forget(old_id)
             self.refresh_presence(sid)
         self.wake()
         return token

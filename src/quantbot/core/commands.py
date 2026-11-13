@@ -492,6 +492,8 @@ class Commands:
                     "WHERE strategy_id=? AND revoked_at IS NULL",
                     (now, sid),
                 )
+                for token in self.strategies.tokens(sid):
+                    self.strategies.auth.forget(token["id"])
                 self.strategies.audit(actor, "strategy.archive", sid)
         self.wake()
         return self.strategies.detail(sid)

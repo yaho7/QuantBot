@@ -2,13 +2,19 @@
 
 import hashlib
 import hmac
+import os
 import secrets
+import stat
 from dataclasses import dataclass
+from pathlib import Path
+
+from cryptography.fernet import Fernet, InvalidToken
 
 from .db import Database, encode, record
 from .errors import Problem
 
 TOKEN_PREFIX = "qb_"  # noqa: S105 - Public prefix, not a credential.
+CREDENTIAL_RECORD_PREFIX = "credential.secret:"
 
 
 def digest(secret: str) -> str:
@@ -44,9 +50,44 @@ class Credential:
 
 
 class Auth:
-    def __init__(self, db: Database, clock):
+    def __init__(self, db: Database, clock, key_path: Path):
         self.db = db
         self.clock = clock
+        self.key_path = key_path
+
+    def cipher(self, *, create=False):
+        try:
+            fd = os.open(self.key_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        except FileNotFoundError:
+            stored = self.db.one(
+                "SELECT 1 FROM settings WHERE name GLOB ? LIMIT 1",
+                (CREDENTIAL_RECORD_PREFIX + "*",),
+            )
+            if not create or stored:
+                raise Problem(503, "The access key encryption file is unavailable") from None
+            key = Fernet.generate_key()
+            try:
+                fd = os.open(self.key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                with os.fdopen(fd, "wb") as key_file:
+                    key_file.write(key)
+                    key_file.flush()
+                    os.fsync(key_file.fileno())
+            except OSError:
+                raise Problem(503, "The access key encryption file cannot be created") from None
+            return Fernet(key)
+        except OSError:
+            raise Problem(503, "The access key encryption file cannot be opened") from None
+        with os.fdopen(fd, "rb") as key_file:
+            mode = os.fstat(key_file.fileno()).st_mode
+            if not stat.S_ISREG(mode) or stat.S_IMODE(mode) & 0o077:
+                raise Problem(503, "The access key encryption file must be private")
+            key = key_file.read(45)
+        if len(key) != 44:
+            raise Problem(503, "The access key encryption file is invalid")
+        try:
+            return Fernet(key)
+        except ValueError:
+            raise Problem(503, "The access key encryption file is invalid") from None
 
     def has_administrator(self) -> bool:
         return self.db.one("SELECT 1 FROM settings WHERE name='administrator'") is not None
@@ -65,11 +106,41 @@ class Auth:
             raise Problem(422, "Token expiry must be in the future")
         token_id = secrets.token_hex(12)
         secret = TOKEN_PREFIX + secrets.token_urlsafe(32)
+        encrypted = self.cipher(create=True).encrypt(secret.encode()).decode()
         self.db.execute(
             "INSERT INTO strategy_tokens VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)",
             (token_id, strategy_id, digest(secret), encode(options.scopes), now, expiry),
         )
+        self.db.execute(
+            "INSERT INTO settings VALUES (?, ?)", (CREDENTIAL_RECORD_PREFIX + token_id, encrypted)
+        )
         return {"token": secret, **self.token_metadata(strategy_id, token_id)}
+
+    def reveal(self, strategy_id, token_id):
+        row = self.db.one(
+            """SELECT digest FROM strategy_tokens WHERE strategy_id=? AND id=?
+               AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?)""",
+            (strategy_id, token_id, self.clock()),
+        )
+        if row is None:
+            raise Problem(404, "Active access key not found")
+        stored = self.db.one(
+            "SELECT value FROM settings WHERE name=?", (CREDENTIAL_RECORD_PREFIX + token_id,)
+        )
+        if stored is None:
+            raise Problem(
+                409, "This access key was issued before reveal was available; regenerate it"
+            )
+        try:
+            secret = self.cipher().decrypt(stored["value"].encode()).decode()
+        except (InvalidToken, UnicodeError):
+            raise Problem(503, "The access key cannot be decrypted") from None
+        if not hmac.compare_digest(digest(secret), row["digest"]):
+            raise Problem(503, "The stored access key does not match this credential")
+        return secret
+
+    def forget(self, token_id):
+        self.db.execute("DELETE FROM settings WHERE name=?", (CREDENTIAL_RECORD_PREFIX + token_id,))
 
     def token_metadata(self, strategy_id, token_id):
         row = self.db.one(

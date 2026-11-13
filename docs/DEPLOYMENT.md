@@ -82,7 +82,7 @@ QB_TRUST_PROXY=127.0.0.1,::1
 
 ## 更新与备份
 
-使用 SQLite 在线备份获取包含已提交 WAL 的一致副本。备份文件必须是新的路径，包含管理员密码哈希和运行所需的凭据配置。将其保存到只有运维人员可访问的位置。
+使用 SQLite 在线备份获取包含已提交 WAL 的一致副本。备份文件必须是新的路径，包含管理员密码哈希和加密后的接入凭据。需要在恢复后继续查看 Secret 时，请同时备份数据目录中的 `quantbot.key`，并单独存放在只有运维人员可访问的位置。
 
 ```bash
 quantbot backup ~/quantbot-backup-$(date -u +%Y%m%dT%H%M%SZ).sqlite3

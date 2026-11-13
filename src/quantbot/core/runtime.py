@@ -38,7 +38,7 @@ class Runtime:
         self.clock = clock
         self.change = asyncio.Event()
         self.versions = {"operations": 0, "telemetry": 0, "metrics": 0}
-        self.auth = Auth(self.db, clock)
+        self.auth = Auth(self.db, clock, path.with_suffix(".key"))
         self.strategies = Strategies(self.db, self.auth, clock, self.wake)
         self.commands = Commands(self.db, self.strategies, clock, self.wake)
         self.strategies.commands = self.commands

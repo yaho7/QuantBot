@@ -223,6 +223,37 @@ def test_regenerate_token_revokes_old_credential_and_keeps_scope_and_expiry(serv
     connect(http, other, executor=False)
 
 
+def test_access_secret_is_encrypted_and_reveal_requires_admin_across_restart(tmp_path):
+    path = tmp_path / "access.db"
+    clock = Clock()
+    with client(path, clock) as http:
+        log_in(http)
+        sid, issued = create(http)
+        other_sid, _ = create(http)
+        secret = issued["token"]
+        key = issued["id"]
+        token_url = f"{ADMIN}/strategies/{sid}/tokens/{key}"
+        assert secret not in http.get(f"{ADMIN}/strategies/{sid}/tokens").text
+        assert http.post(f"{ADMIN}/strategies/{other_sid}/tokens/{key}/reveal").status_code == 404
+    with sqlite3.connect(path) as db:
+        encrypted = db.execute(
+            "SELECT value FROM settings WHERE name=?", (f"credential.secret:{key}",)
+        ).fetchone()[0]
+        assert secret not in encrypted
+    assert path.with_suffix(".key").stat().st_mode & 0o777 == 0o600
+    with client(path, clock) as http:
+        assert http.post(token_url + "/reveal", headers=token_headers(issued)).status_code == 401
+        log_in(http)
+        revealed = http.post(token_url + "/reveal")
+        assert revealed.json()["token"] == secret
+        assert revealed.headers["cache-control"] == "no-store"
+        audit = http.get(ADMIN + "/audit").json()
+        assert any(item["action"] == "token.reveal" for item in audit)
+        assert secret not in str(audit)
+        assert http.delete(token_url).status_code == 204
+        assert http.post(token_url + "/reveal").status_code == 404
+
+
 def test_command_history_filters_and_prioritizes_unknown_across_pages(server):
     http, _, path = server
     sid, _ = create(http)

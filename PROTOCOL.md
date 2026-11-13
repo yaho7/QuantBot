@@ -180,6 +180,8 @@ curl -fsS -X PUT "$QB_URL/api/agent/controls" \
 
 `/api/admin` 使用管理员会话，供 Web 管理策略、Token、命令、Telegram 和系统设置。历史接口支持按范围查询标准数据与精确十进制聚合。 `POST /api/admin/history/metrics` 可按策略、实例、指标、账户和单位选择最多十个数据源。布局保存使用仪表盘修订号。实时更新使用经管理员认证的 `GET /api/stream`，浏览器同时定期刷新。
 
-`POST /api/admin/strategies/{strategy_id}/tokens/{token_id}/regenerate` 沿用原 Token 的权限和到期时间，签发成功时立即撤销该 Token。新明文只随签发响应返回一次。需要保留切换时间时，可使用「轮换」操作。
+Endpoint 是程序访问的 API 地址。Key 是凭据 ID，Secret 是程序作为 Bearer Token 发送的值。Secret 默认隐藏，仅在签发响应和管理员主动调用 `POST /api/admin/strategies/{strategy_id}/tokens/{token_id}/reveal` 时返回。查看操作会记录到审计日志。
+
+`POST /api/admin/strategies/{strategy_id}/tokens/{token_id}/regenerate` 沿用原凭据的权限和到期时间，签发成功时立即撤销该凭据。需要保留切换时间时，可使用「轮换」操作。
 
 运行中的交互文档位于 `/docs`。查看 [完整 OpenAPI 3.1 规范](docs/openapi.json)。
