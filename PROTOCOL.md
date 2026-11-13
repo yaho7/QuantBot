@@ -1,5 +1,8 @@
 # QuantBot HTTP 协议
 
+
+Sandbox 使用同一套 Agent 请求、响应及 JSON Schema。测试时将 Agent 前缀从 `/api/agent` 替换为 `/api/sandbox/agent`，并使用管理员复制的临时 Bearer Secret。接口保留原有字段和错误语义。Sandbox 命令长轮询最多等待 3 秒。接入步骤及资源限制见 [AI 一键接入测试](docs/INTEGRATION.md#ai-一键接入测试)。
+
 ## 认证与会话
 
 Endpoint 使用控制台提供的完整地址，例如 `https://quantbot.example.com/api/agent`。只追加接口的相对路径（例如 `/session`），保留显式端口并去除末尾斜杠。Endpoint 不接受其他路径、查询字符串、片段或 URL 用户名和密码。远程连接使用 HTTPS，本地 HTTP 限 `localhost`、`127.0.0.1` 或 `[::1]`。保留证书校验，拒绝自动重定向。

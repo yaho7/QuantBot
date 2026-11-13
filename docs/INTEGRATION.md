@@ -1,8 +1,17 @@
 # QuantBot 跨语言接入
 
-在 QuantBot 控制台创建策略，复制 Endpoint 与 AI 接入提示词。点击眼睛查看 Secret，只把它填进策略机器上的配置。Key 用于在控制台识别凭据。
+在 QuantBot 控制台创建策略，在「Token 与诊断」点击「复制 AI 接入提示词」，再将提示词交给 Codex 或 Cursor。提示词带有可直接使用的 Sandbox 配置。
 
 AI 应先读 [README](../README.md)、[HTTP 协议](../PROTOCOL.md)、[OpenAPI](openapi.json)、[JSON Schema](schemas) 和 [参考示例](../examples)，再检查目标项目的语言、HTTP 能力、启动流程、现有数据源和风控入口。通信代码随主程序启动，可运行在独立线程或异步任务中。策略无需部署额外服务或开放端口。
+
+## AI 一键接入测试
+
+1. 登录管理员账号，在策略的「Token 与诊断」点击「复制 AI 接入提示词」。QuantBot 会为该策略创建或复用一个 Sandbox，复制测试 Endpoint、临时 Secret、Key ID、策略 ID 和到期时间。
+2. 让 AI 在量化项目中创建自动读取的 `quantbot.json`，将它加入 `.gitignore`。测试 Endpoint 以 `/api/sandbox/agent` 结尾。把 `secret` 用作 Bearer Token，再按正式 Agent API 拼接路径。用模拟行情、订单、账户和本地控制状态测试。程序必须按 Endpoint 将 Sandbox 指令路由到模拟处理，并隔离本地状态和命令回执。
+3. 在「AI 一键接入测试」查看请求记录、Schema 校验、注册控件和模拟指令回执。接入通过需要会话、心跳、遥测、控件注册、开仓状态同步和一次成功的模拟命令回执。Sandbox 会为声明对应能力的执行实例排入模拟暂停和刷新，也可在页面重复发起模拟操作。
+4. 测试通过后，复制「正式配置说明」。在策略本机的 `quantbot.json` 替换 `endpoint` 和 `secret`，保留 `instance_name`，再重启并查看正式工作台。正式 Secret 由管理员从策略凭据面板获取。
+
+测试会话默认 60 分钟有效，可提前关闭或从当前时间续期 60 分钟。到期前 5 分钟出现提醒。临时凭据与正式 Token 不能混用。测试请求在专用工作线程执行，每个会话使用独立的内存数据库，服务重启后需要重新复制。到期或关闭后清理测试数据，短时保留诊断摘要。单请求上限 64 KiB，单 Key 每分钟最多 120 个请求，全局每分钟最多 600 个请求。最多同时运行 8 个 Sandbox，每个 Key 最多 2 个并发请求，全局最多 6 个。单会话数据库上限约 4 MiB。收到 429 时遵循 `Retry-After`。
 
 ## 配置
 
@@ -29,7 +38,7 @@ AI 应先读 [README](../README.md)、[HTTP 协议](../PROTOCOL.md)、[OpenAPI](
 | Java | `java.net.http.HttpClient` |
 | C++ | 项目已有 HTTP 客户端或系统网络 API |
 
-按照 [HTTP 协议](../PROTOCOL.md) 设置 Bearer Secret、JSON 请求头和 `User-Agent: QuantBot-Integration/1.0`。复制的 Endpoint 已含 `/api/agent`。附加接口相对路径时保持 HTTPS、端口和证书验证，拒绝重定向。按接口检查响应字段。可参考 [连接与错误排查](TROUBLESHOOTING.md)。
+按照 [HTTP 协议](../PROTOCOL.md) 设置 Bearer Secret、JSON 请求头和 `User-Agent: QuantBot-Integration/1.0`。复制的 Endpoint 已含 `/api/agent` 或 `/api/sandbox/agent`。附加接口相对路径时保持 HTTPS、端口和证书验证，拒绝重定向。按接口检查响应字段。可参考 [连接与错误排查](TROUBLESHOOTING.md)。
 
 ## 监控与控制
 

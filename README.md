@@ -8,6 +8,9 @@ QuantBot 是面向独立量化交易程序的 HTTP 监控与远程控制平台�
 - 开仓权限对账、单一授权执行实例、高风险二次确认、一次性执行许可、未知结果核对与审计。
 - 策略自行部署，持续处理行情、持仓和本地风控。QuantBot 通过期望状态请求暂停或恢复新开仓。
 
+
+登录后从「工作台」查看策略状态和操作组件。在「策略 → Token 与诊断」复制 [AI 一键接入测试](docs/INTEGRATION.md#ai-一键接入测试) 提示词，交给 Codex 或 Cursor 即可使用临时 Sandbox 配置接入。验收后替换正式 Endpoint 和 Secret。
+
 ## Docker Compose（推荐）
 
 将以下内容保存为 `compose.yml`。Compose 会从 GitHub Packages 拉取镜像，数据存放在配置文件旁边的 `./data` 目录。

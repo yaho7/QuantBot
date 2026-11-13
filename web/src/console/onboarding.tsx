@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, ChevronRight, Eye, EyeOff, KeyRound, Plus, RefreshCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api, strategyApi, strategyPath, type Catalog, type Credential, type Detail, type Scope, type System, type StrategySettings, type Token, type TokenOptions } from "./api";
+import { SandboxPanel, type SandboxCredentials } from "./sandbox";
 import type { ControlRegistryView } from "./dynamic-controls";
 import { CopyButton, Dialog, ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
 
@@ -103,16 +104,21 @@ function useAgentEndpoint() {
 const repository = "https://github.com/yaho7/QuantBot";
 const docs = `${repository}/blob/main`;
 
-function aiInstructions(endpoint: string, strategyId?: string) {
+function aiInstructions(endpoint: string, strategyId: string, sandbox?: SandboxCredentials) {
+  const testEndpoint = sandbox?.endpoint ?? "复制时自动填入";
+  const instanceName = `strategy-${strategyId.slice(0, 8)}`;
+  const config = JSON.stringify({ endpoint: testEndpoint, secret: sandbox?.secret ?? "复制时自动填入", instance_name: instanceName }, null, 2);
   return `请帮我将当前量化交易程序**完整接入 QuantBot 监控与远程控制平台**，直接修改项目代码完成接入。
 
 **QuantBot GitHub 仓库：** [${repository}](${repository})
 
-**Endpoint：** [${endpoint}](${endpoint})
+**Sandbox Endpoint：** \`${testEndpoint}\`
 
-**策略 ID：** \`${strategyId ?? "请填写策略 ID"}\`
+**临时 Key ID：** \`${sandbox?.key ?? "复制时自动填入"}\` · **有效期至：** ${sandbox?.expires_at ?? "复制时自动填入"}
 
-**稳定实例名称建议：** \`${strategyId ? `strategy-${strategyId.slice(0, 8)}` : "my-strategy"}\`
+**策略 ID：** \`${strategyId}\`
+
+**正式 Endpoint：** \`${endpoint}\`
 
 **协议：** Agent HTTP API，报告和控件 \`schema_version: 1\`。规范和示例由 GitHub 仓库维护。
 
@@ -128,9 +134,15 @@ function aiInstructions(endpoint: string, strategyId?: string) {
 
 ### 三、配置与密钥
 
-- 创建 \`quantbot.json\` 保存 Endpoint、Secret、稳定实例名称和必要配置。仅在文件不存在时创建，Secret 预留为空。启动时自动读取，无需设置环境变量。用 Secret 作为 Bearer Token，Key 仅用于识别凭据。
-- 创建 \`quantbot.example.json\`，并将真实配置文件加入 \`.gitignore\`。不要提交或记录明文 Token。
-- 配置使用 \`endpoint\`、\`secret\` 和 \`instance_name\` 字段。Endpoint 已包含 \`/api/agent\`，仅追加 \`/session\` 等相对路径。缺少配置或 Secret 时保留原有程序行为。失联时遵循最后实际应用并持久化的开仓权限和断线策略。
+- 创建主程序启动时自动读取的 \`quantbot.json\`，直接使用下方测试配置。将 \`quantbot.json\` 加入 \`.gitignore\`，创建 Secret 为空的 \`quantbot.example.json\`。若已有正式配置，先保留原文件，在隔离的测试副本里写入测试配置。禁止输出、提交或记录 Secret。
+
+\`\`\`json
+${config}
+\`\`\`
+
+- Endpoint 已含 Agent API 前缀，直接追加 \`/session\` 等相对路径。允许正式 \`/api/agent\` 和测试 \`/api/sandbox/agent\`。使用 \`secret\` 作为 Bearer Token。
+- 通过测试 Endpoint 识别 Sandbox，在连接任何真实券商前进入模拟模式。使用模拟数据、独立的本地开仓状态、命令去重和回执存储。Sandbox 指令只进入模拟处理逻辑，禁止触发真实下单、平仓或撤单。
+- 验收后，用户只需把 \`endpoint\` 换成上方正式 Endpoint、把 \`secret\` 换成该策略的正式 Secret，再重启。无需索取正式 Token。缺少配置或 Secret 时保留原有程序行为。
 
 ### 四、完整数据监控
 
@@ -169,7 +181,7 @@ function aiInstructions(endpoint: string, strategyId?: string) {
 
 ### 八、测试与交付
 
-直接完成监控和可安全实施的控制功能。使用模拟数据验证上报、动态控件、参数读取、暂停和恢复开仓、命令回执及异常重连，禁止触发真实交易。
+直接用已填好的配置完成 Sandbox 测试。建立会话并发送心跳，上报至少一类模拟遥测，注册至少一个控件。声明 \`pause_entry\`、\`resume_entry\`、\`refresh\` 并使用执行实例。服务会自动发出模拟暂停和刷新；读取期望开仓修订、回报应用结果，领取刷新 Permit 并回报成功。验证恢复开仓、参数读取和异常重连。测试命令及遥测只能使用 Sandbox Endpoint。
 
 完成后列出修改的文件，并用新手能理解的方式说明：
 
@@ -179,16 +191,15 @@ function aiInstructions(endpoint: string, strategyId?: string) {
 4. 已实现哪些高级功能，如何使用。
 5. 哪些功能需要我批准，以及实现难度和风险。
 
-**除填写 Token 和审批高风险操作外，尽量不要让我手动修改代码。**
+**先自动完成 Sandbox 验收。正式启用时由我替换 Endpoint 和 Secret，高风险操作仍由我批准。**
 
 整体原则：**充分发挥 QuantBot 的高级能力，监控全面、控制灵活、操作安全、实现简洁，且不干扰原有量化交易程序。**`;
 }
 
-function AgentPrompt({ endpoint, strategyId }: { endpoint: string; strategyId?: string }) {
-  const prompt = aiInstructions(endpoint, strategyId);
-  return <Panel title="AI 接入提示词" action={<CopyButton value={prompt} label="复制 AI 提示词" />}>
-    <pre className="agent-prompt">{prompt}</pre>
-  </Panel>;
+function AgentPrompt({ endpoint, strategyId, disabled }: { endpoint: string; strategyId?: string; disabled?: boolean }) {
+  if (!strategyId) return <Panel title="AI 一键接入测试"><a className="button secondary" href="#strategies">选择策略开始测试</a></Panel>;
+  return <SandboxPanel {...{ endpoint, strategyId, disabled }} preview={aiInstructions(endpoint, strategyId)}
+    prompt={(credentials) => aiInstructions(endpoint, strategyId, credentials)} />;
 }
 
 function CredentialDialog({ credential, close }: { credential: Credential; close: () => void }) {
@@ -283,6 +294,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
         })}
       </Table>}
     </Panel>
+    <AgentPrompt endpoint={endpoint} strategyId={strategy.id} disabled={!!strategy.archived_at} />
     <ConnectionDiagnostics strategy={strategy} endpoint={endpoint} token={current}
       loadingToken={tokens.isPending} />
     {editing && <EditToken strategyId={id} previous={editing === "new" ? undefined : editing}
