@@ -227,6 +227,17 @@ export interface Catalog {
   schema_failures: Array<{ type: string; observed_at: string; count: number; active: number }>;
 }
 
+export const MIN_PASSWORD_LENGTH = 8;
+export const sessionKey = ["live", "session"] as const;
+
+export async function readSession() {
+  try { return await api<{ actor: string }>("session"); }
+  catch (error) {
+    if (error instanceof ApiError && error.status === 401) return null;
+    throw error;
+  }
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number, detail: string) { super(detail); }
 }

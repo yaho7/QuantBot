@@ -1,14 +1,14 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Braces, CircleHelp, ClipboardList, LayoutDashboard, LayoutGrid, LogOut, Menu, Settings } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { api, ApiError } from "./api";
+import { api, ApiError, MIN_PASSWORD_LENGTH, readSession, sessionKey } from "./api";
 import { ApiPage, CreateStrategy } from "./onboarding";
 import { OperationsPage } from "./operations";
 import { OverviewPage, StrategiesPage } from "./overview";
 import { SystemPage, TelegramPage } from "./settings";
 import { StrategyPage } from "./strategy";
 import { DarkMode, useTheme } from "./theme";
-import { Brand, ErrorNotice, Field, Loading, useData } from "./ui";
+import { Brand, ErrorNotice, Field, Loading } from "./ui";
 
 const nav = [
   { key: "overview", title: "运行总览", icon: LayoutDashboard },
@@ -51,7 +51,10 @@ function Login({ hash }: { hash: string }) {
   const client = useQueryClient();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const setup = useData<{ required: boolean; available: boolean }>("setup");
+  const setup = useQuery({
+    queryKey: ["setup"], queryFn: () => api<{ required: boolean; available: boolean }>("setup"),
+    staleTime: Infinity, refetchOnWindowFocus: false, refetchOnReconnect: false,
+  });
   const [confirmation, setConfirmation] = useState("");
   const creating = setup.data?.required === true && setup.data.available;
   const setupElsewhere = setup.data?.required === true && !setup.data.available;
@@ -63,15 +66,19 @@ function Login({ hash }: { hash: string }) {
     usedLink.current = true;
     history.replaceState(null, "", "#overview");
     void api("login/link", "POST", { ticket })
-      .then(() => client.invalidateQueries({ queryKey: ["live", "session"] }))
+      .then(() => client.invalidateQueries({ queryKey: sessionKey }))
       .catch(setLinkError);
   }, [client, setup.data?.required, ticket]);
   const login = useMutation({
     mutationFn: () => {
+      if (creating && [...password].length < MIN_PASSWORD_LENGTH) throw new Error(`密码至少 ${MIN_PASSWORD_LENGTH} 个字符`);
       if (creating && password !== confirmation) throw new Error("两次输入的密码不一致");
       return api(creating ? "setup" : "login", "POST", { username, password });
     },
-    onSuccess: () => void client.invalidateQueries({ queryKey: ["live"] }),
+    onSuccess: async () => {
+      if (creating) client.setQueryData(["setup"], { required: false, available: false });
+      await client.invalidateQueries({ queryKey: sessionKey });
+    },
     onError: (error) => {
       if (creating && error instanceof ApiError && error.status === 409) void setup.refetch();
     },
@@ -79,7 +86,7 @@ function Login({ hash }: { hash: string }) {
   return <>
     <header className="topbar"><a href={import.meta.env.BASE_URL} aria-label="QuantBot 首页"><Brand /></a></header>
     <main className="login">
-      {setup.isPending ? <Loading /> : setupElsewhere ? <>
+      {setup.isPending ? <Loading /> : !setup.data ? <ConnectionError error={setup.error} retry={() => void setup.refetch()} /> : setupElsewhere ? <>
         <h1>初始化 QuantBot</h1>
         <p>请使用 HTTPS 地址打开控制台。</p>
       </> : <>
@@ -87,8 +94,8 @@ function Login({ hash }: { hash: string }) {
         <p>{creating ? "创建管理员账号，完成后进入控制台。" : "使用管理员账号进入控制台。"}</p>
         <form className="panel stack" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
           <Field label="用户名"><input required maxLength={100} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
-          <Field label="密码" hint={creating ? "至少 12 个字符" : undefined}><input required type="password"
-            minLength={creating ? 12 : undefined} maxLength={1024}
+          <Field label="密码" hint={creating ? `至少 ${MIN_PASSWORD_LENGTH} 个字符` : undefined}><input required type="password"
+            minLength={creating ? MIN_PASSWORD_LENGTH : undefined} maxLength={1024}
             autoComplete={creating ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
           {creating && <Field label="确认密码"><input required type="password" autoComplete="new-password"
             maxLength={1024} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} /></Field>}
@@ -100,17 +107,29 @@ function Login({ hash }: { hash: string }) {
   </>;
 }
 
+function ConnectionError({ error, retry }: { error: unknown; retry: () => void }) {
+  return <div className="stack">
+    <h1>{error instanceof ApiError ? "QuantBot 服务暂不可用" : "无法连接 QuantBot"}</h1>
+    <ErrorNotice error={error} />
+    <div><button type="button" className="button secondary" onClick={retry}>重试</button></div>
+  </div>;
+}
+
 export function App() {
   const hash = useHash();
   const client = useQueryClient();
-  const session = useData<{ actor: string }>("session");
+  const session = useQuery({
+    queryKey: sessionKey, queryFn: readSession,
+    refetchInterval: (query) => query.state.data ? 12_000 : false,
+    refetchOnWindowFocus: (query) => !!query.state.data,
+    refetchOnReconnect: (query) => !!query.state.data,
+  });
   const [adding, setAdding] = useState(false);
   const [menu, setMenu] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const { theme, setTheme, dark } = useTheme();
   const actor = session.data?.actor;
-  const expired = session.error instanceof ApiError && session.error.status === 401;
-  useLive(!!actor && !expired);
+  useLive(!!actor);
   const logout = useMutation({
     mutationFn: () => api("logout", "POST"),
     onSuccess: () => {
@@ -119,7 +138,8 @@ export function App() {
     },
   });
   if (session.isPending) return <main className="loading-screen"><Brand /><Loading /></main>;
-  if (expired || !actor) return <Login hash={hash} />;
+  if (session.data === null) return <Login hash={hash} />;
+  if (!actor) return <main className="login"><ConnectionError error={session.error} retry={() => void session.refetch()} /></main>;
   const [section, id, tab] = hash.slice(1).split("/");
   const page = section === "strategy" ? "strategies" : nav.some((item) => item.key === section) ? section : "overview";
   const add = () => setAdding(true);

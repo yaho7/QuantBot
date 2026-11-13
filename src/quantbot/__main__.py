@@ -16,6 +16,7 @@ from quantbot.v2.api import make_app
 from quantbot.v2.auth import password_hash
 from quantbot.v2.db import backup_sqlite, encode
 from quantbot.v2.errors import Problem
+from quantbot.v2.models import MIN_PASSWORD_LENGTH
 from quantbot.v2.runtime import Runtime, exclusive_database
 
 DEFAULT_DATA = Path.home() / ".local/share/quantbot"
@@ -49,9 +50,9 @@ def public_origin(url):
 
 def configure_admin(service, username, password, *, replace=False):
     username = username.strip()
-    if not (1 <= len(username) <= 100 and 12 <= len(password) <= 1024):
+    if not (1 <= len(username) <= 100 and MIN_PASSWORD_LENGTH <= len(password) <= 1024):
         raise ValueError(
-            "Administrator username is required and password must have 12–1024 characters"
+            f"Provide a username and a password of {MIN_PASSWORD_LENGTH}–1024 characters"
         )
     with service.db.transaction():
         if replace:

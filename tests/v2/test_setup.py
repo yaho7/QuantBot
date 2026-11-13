@@ -10,7 +10,7 @@ from quantbot.v2.api import make_app
 
 SETUP = "/api/v2/admin/setup"
 ORIGIN = "http://localhost:8888"
-ACCOUNT = {"username": "operator", "password": "setup-test-password"}
+ACCOUNT = {"username": "operator", "password": "qb-pass8"}
 
 
 def test_first_run_creates_administrator_once(tmp_path):
@@ -25,7 +25,7 @@ def test_first_run_creates_administrator_once(tmp_path):
         )
         headers = {"Origin": ORIGIN}
         assert (
-            client.post(SETUP, json={**ACCOUNT, "password": "short"}, headers=headers).status_code
+            client.post(SETUP, json={**ACCOUNT, "password": "7-chars"}, headers=headers).status_code
             == 422
         )
         with ThreadPoolExecutor(max_workers=2) as pool:

@@ -447,5 +447,9 @@ class Login(Payload):
     password: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
 
 
+MIN_PASSWORD_LENGTH = 8
+NewPassword = Annotated[str, StringConstraints(min_length=MIN_PASSWORD_LENGTH, max_length=1024)]
+
+
 class SetupAdmin(Login):
-    password: Annotated[str, StringConstraints(min_length=12, max_length=1024)]
+    password: NewPassword

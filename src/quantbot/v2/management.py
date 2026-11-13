@@ -12,12 +12,12 @@ from quantbot import __version__
 from .auth import password_hash, password_matches
 from .db import encode
 from .errors import Problem
-from .models import Key, Payload
+from .models import Key, NewPassword, Payload
 
 
 class PasswordChange(Payload):
     current_password: Annotated[str, StringConstraints(min_length=1, max_length=1024)]
-    new_password: Annotated[str, StringConstraints(min_length=12, max_length=1024)]
+    new_password: NewPassword
 
 
 class ExecutorAssignment(Payload):

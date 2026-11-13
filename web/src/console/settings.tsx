@@ -2,7 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Bot, Database, ExternalLink, KeyRound, Server, SunMoon } from "lucide-react";
 import type { Theme } from "./theme";
 import { useState } from "react";
-import { api, type Alert, type System, type TelegramSettings } from "./api";
+import { api, MIN_PASSWORD_LENGTH, type Alert, type System, type TelegramSettings } from "./api";
 import { CategoryPicker } from "./onboarding";
 import { ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
 
@@ -116,7 +116,7 @@ export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: 
         <form className="stack" onSubmit={(e) => { e.preventDefault(); password.mutate(); }}>
           <div className="form-grid"><Field label="当前密码"><input type="password" required autoComplete="current-password" value={current}
             onChange={(e) => setCurrent(e.target.value)} /></Field>
-            <Field label="新密码" hint="至少 12 个字符"><input type="password" required minLength={12} autoComplete="new-password" value={next}
+            <Field label="新密码" hint={`至少 ${MIN_PASSWORD_LENGTH} 个字符`}><input type="password" required minLength={MIN_PASSWORD_LENGTH} autoComplete="new-password" value={next}
               onChange={(e) => setNext(e.target.value)} /></Field></div>
           <ErrorNotice error={password.error} />
           {password.isSuccess && <div role="status" className="notice">密码已更新，之前的网页登录会话已撤销。</div>}

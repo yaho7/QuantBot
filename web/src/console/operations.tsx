@@ -1,8 +1,8 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { DynamicControls, type ControlRegistryView } from "./dynamic-controls";
-import { api, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
+import { api, readSession, sessionKey, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
 import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, ParameterInput, Table, useData, when } from "./ui";
 
 const actions: Record<string, string> = {
@@ -83,7 +83,7 @@ function OperationView({ command, strategy, close }: { command: Command; strateg
   const client = useQueryClient();
   const [evidence, setEvidence] = useState("");
   const [resolution, setResolution] = useState<"succeeded" | "failed">("failed");
-  const session = useData<{ actor: string }>("session");
+  const session = useQuery({ queryKey: sessionKey, queryFn: readSession, enabled: false });
   const audit = useData<Array<{ id: number; actor: string; action: string; created_at: string }>>(
     `audit?command_id=${encodeURIComponent(command.id)}`,
   );
