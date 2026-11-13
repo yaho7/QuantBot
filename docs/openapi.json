@@ -5835,7 +5835,7 @@
     },
     "/api/admin/audit": {
       "get": {
-        "description": "Read the audit trail, optionally restricted to a strategy or command.",
+        "description": "Read the audit trail, optionally restricted to a strategy, command, or action.",
         "operationId": "audit_api_admin_audit_get",
         "parameters": [
           {
@@ -5870,6 +5870,23 @@
                 }
               ],
               "title": "Command Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Action"
             }
           },
           {

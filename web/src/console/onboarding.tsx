@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, ChevronRight, Eye, EyeOff, KeyRound, Plus, RefreshCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { api, strategyApi, strategyPath, type Catalog, type Credential, type Detail, type Scope, type System, type StrategySettings, type Token, type TokenOptions } from "./api";
+import type { ControlRegistryView } from "./dynamic-controls";
 import { CopyButton, Dialog, ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
 
 export const defaultStrategy: StrategySettings = {
@@ -234,7 +235,6 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
   const endpoint = useAgentEndpoint();
   const query = useQueryClient();
   const tokens = useData<Token[]>(strategyApi(id, "tokens"));
-  const catalog = useData<Catalog>(strategyApi(id, "components"));
   const [editing, setEditing] = useState<Token | "new" | null>(null);
   const [permissions, setPermissions] = useState<Token | null>(null);
   const [replacing, setReplacing] = useState<Token | null>(null);
@@ -283,17 +283,8 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
         })}
       </Table>}
     </Panel>
-    <Panel title="连接诊断" hint="实例最近心跳、声明能力和协议校验情况。">
-      <Table columns={["实例", "连接", "最后心跳", "程序", "Key"]} empty={!strategy.instances.length}>
-        {strategy.instances.map((item) => <tr key={item.instance_id}><td className="mono">{item.instance_id}</td><td>{item.online ? "在线" : "离线"}</td>
-          <td>{when(item.last_seen)}</td><td>{[item.declarations.language, item.declarations.framework, item.declarations.version, item.declarations.broker].filter(Boolean).join(" · ") || "—"}</td>
-          <td className="mono">{item.token_id}</td></tr>)}
-      </Table>
-      {catalog.data?.schema_failures.map((item) => <div key={item.type} className={`notice ${item.active ? "warn" : ""}`}>
-        {item.type} · {item.active ? "协议不兼容" : "已收到兼容数据"} · {item.count} 次 · {when(item.observed_at)}
-      </div>)}
-      <a className="button secondary" href={`#api/${encodeURIComponent(id)}`}><BookOpen size={16} /> AI 接入指引</a>
-    </Panel>
+    <ConnectionDiagnostics strategy={strategy} endpoint={endpoint} token={current}
+      loadingToken={tokens.isPending} />
     {editing && <EditToken strategyId={id} previous={editing === "new" ? undefined : editing}
       close={() => setEditing(null)} done={(credential) => {
         setEditing(null); reveal(credential); void query.invalidateQueries({ queryKey: ["live"] });
@@ -318,6 +309,57 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
     </Dialog>}
     {revealed && <CredentialDialog credential={revealed} close={() => reveal(null)} />}
   </div>;
+}
+
+function ConnectionDiagnostics({ strategy, endpoint, token, loadingToken }: {
+  strategy: Detail; endpoint: string; token?: Token; loadingToken: boolean;
+}) {
+  const id = strategy.id;
+  const catalog = useData<Catalog>(strategyApi(id, "components"));
+  const controls = useData<ControlRegistryView>(strategyApi(id, "controls"));
+  const delivery = useData<Array<{ created_at: string }>>(
+    `audit?strategy_id=${encodeURIComponent(id)}&action=command.accepted&limit=1`);
+  const instance = strategy.instances[0];
+  const executor = strategy.instances.find((item) => item.instance_id === strategy.executor_id);
+  const types = catalog.data?.reported_types ?? [];
+  const failures = catalog.data?.schema_failures.filter((item) => item.active) ?? [];
+  const lastDelivery = delivery.data?.[0]?.created_at;
+  const diagnostics = {
+    endpoint,
+    strategy_id: id,
+    key_used: token ? Boolean(token.last_used_at) : null,
+    last_authenticated_at: token?.last_used_at ?? null,
+    latest_instance: instance ? { id: instance.instance_id, online: instance.online, last_seen: instance.last_seen } : null,
+    reports: types,
+    executor: executor?.instance_id ?? null,
+    executor_authorized: Boolean(executor?.declarations.executor && executor.scopes.includes("control")),
+    executor_online: strategy.executor_online,
+    control_in_sync: strategy.control.in_sync,
+    controls: controls.data?.controls.map((item) => item.type) ?? [],
+    last_command_delivery_at: lastDelivery ?? null,
+    schema_errors: failures.map(({ type, observed_at, count }) => ({ type, observed_at, count })),
+  };
+  return <Panel title="连接诊断" action={<CopyButton value={JSON.stringify(diagnostics, null, 2)} label="复制诊断" />}>
+    <ErrorNotice error={catalog.error ?? controls.error ?? delivery.error} />
+    <p className="subtle">{instance ? "下方信息来自 QuantBot 收到的请求。" : "等待程序连接。启动后，这里会自动更新。"} 代理拦截请查看策略端的脱敏诊断。</p>
+    <dl className="form-grid detail-list">
+      <div><dt>当前 Key</dt><dd>{loadingToken ? "加载中" : !token ? "无有效凭据" : token.last_used_at ? `已使用 · ${when(token.last_used_at)}` : "未使用"}</dd></div>
+      <div><dt>最近实例</dt><dd>{instance ? `${instance.instance_id} · ${instance.online ? "在线" : "离线"}` : "尚未连接"}</dd></div>
+      <div><dt>收到的标准报告</dt><dd>{types.length ? types.join(" · ") : catalog.data ? "尚无报告" : "—"}</dd></div>
+      <div><dt>控制执行资格</dt><dd>{diagnostics.executor_authorized ? `已授权 · ${executor?.instance_id}` : "未授权"}</dd></div>
+      <div><dt>动态控件</dt><dd>{controls.data ? `${controls.data.controls.length} 个` : "—"}</dd></div>
+      <div><dt>命令接收</dt><dd>{lastDelivery ? `已验证 · ${when(lastDelivery)}` : "未验证"}</dd></div>
+    </dl>
+    <Table columns={["实例", "连接", "最后心跳", "程序", "Key"]} empty={!strategy.instances.length}>
+      {strategy.instances.map((item) => <tr key={item.instance_id}><td className="mono">{item.instance_id}</td><td>{item.online ? "在线" : "离线"}</td>
+        <td>{when(item.last_seen)}</td><td>{[item.declarations.language, item.declarations.framework, item.declarations.version, item.declarations.broker].filter(Boolean).join(" · ") || "—"}</td>
+        <td className="mono">{item.token_id}</td></tr>)}
+    </Table>
+    {failures.map((item) => <div key={item.type} className="notice warn">
+      {item.type} · 协议不兼容 · {item.count} 次 · {when(item.observed_at)}
+    </div>)}
+    <a className="button secondary" href={`#api/${encodeURIComponent(id)}`}><BookOpen size={16} /> AI 接入指引</a>
+  </Panel>;
 }
 
 function EditToken({ strategyId, previous, close, done }: { strategyId: string; previous?: Token; close: () => void; done: (credential: Credential) => void }) {

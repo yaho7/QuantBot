@@ -451,6 +451,7 @@ class Registry:
                 (sid,),
             )
         }
+        reported_types = sorted(reports)
         rejected = {
             row["type"]: record(row, times=("observed_at",), omit=("strategy_id",))
             for row in self.db.all("SELECT * FROM schema_failures WHERE strategy_id=?", (sid,))
@@ -533,7 +534,11 @@ class Registry:
                     "sources": bases,
                 },
             )
-        return {"components": available, "schema_failures": list(rejected.values())}
+        return {
+            "components": available,
+            "reported_types": reported_types,
+            "schema_failures": list(rejected.values()),
+        }
 
     def discover_events(self, sid, reports):
         for kind, path, values in (

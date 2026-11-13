@@ -98,6 +98,7 @@ export interface Instance {
   last_seen: string;
   runtime: Runtime;
   token_id: string;
+  scopes: Scope[];
   declarations: {
     executor: boolean;
     version: string | null;
@@ -225,6 +226,7 @@ export interface DataType {
 }
 export interface Catalog {
   components: Array<{ id: string; label: string; state: string }>;
+  reported_types: string[];
   schema_failures: Array<{ type: string; observed_at: string; count: number; active: number }>;
 }
 

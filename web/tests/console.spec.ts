@@ -82,6 +82,14 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   }] } });
   expect(reported.ok()).toBeTruthy();
   await expect(page.getByText("browser-agent", { exact: true })).toBeVisible();
+  await expect(page.locator("dd").filter({ hasText: "browser-agent · 在线" })).toBeVisible();
+  await expect(page.locator("dd").filter({ hasText: /^portfolio$/ })).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "复制诊断" }).click();
+  const diagnostic = await page.evaluate(() => navigator.clipboard.readText());
+  expect(JSON.parse(diagnostic)).toMatchObject({ strategy_id: strategyId, executor_authorized: true, reports: ["portfolio"] });
+  expect(diagnostic).not.toContain(token);
+  expect(diagnostic).not.toContain(regenerated!);
   await expect(page.locator("main")).not.toContainText(token!);
   await page.getByRole("link", { name: "远程控制" }).click();
   await page.getByRole("button", { name: /暂停新开仓/ }).click();
