@@ -1,3 +1,6 @@
+import { useTranslation } from "react-i18next";
+import { LanguagePicker } from "./language-picker";
+import { t } from "../i18n";
 import { Toaster } from "sonner";
 import { CommandFeedback } from "./command-feedback";
 import { QuickSearch } from "./quick-search";
@@ -16,12 +19,12 @@ import { Brand, ErrorNotice, Field, Loading } from "./ui";
 const Workbench = lazy(() => import("./workbench"));
 
 const nav = [
-  { key: "workbench", title: "工作台", icon: LayoutDashboard },
-  { key: "strategies", title: "策略", icon: LayoutGrid },
-  { key: "operations", title: "操作记录", icon: ClipboardList },
-  { key: "telegram", title: "通知", icon: Bell },
-  { key: "system", title: "设置", icon: Settings },
-];
+  { key: "workbench", title: "app.workbench", icon: LayoutDashboard },
+  { key: "strategies", title: "app.strategies", icon: LayoutGrid },
+  { key: "operations", title: "app.operations", icon: ClipboardList },
+  { key: "telegram", title: "app.notifications", icon: Bell },
+  { key: "system", title: "app.settings", icon: Settings },
+] as const;
 
 function useHash() {
   const [hash, setHash] = useState(location.hash);
@@ -85,8 +88,8 @@ function Login({ hash }: { hash: string }) {
   }, [client, setup.data?.required, ticket]);
   const login = useMutation({
     mutationFn: () => {
-      if (creating && [...password].length < MIN_PASSWORD_LENGTH) throw new Error(`密码至少 ${MIN_PASSWORD_LENGTH} 个字符`);
-      if (creating && password !== confirmation) throw new Error("两次输入的密码不一致");
+      if (creating && [...password].length < MIN_PASSWORD_LENGTH) throw new Error(t("app.passwordMustBeAtLeastCharacters", { minimum: MIN_PASSWORD_LENGTH }));
+      if (creating && password !== confirmation) throw new Error(t("app.passwordsDoNotMatch"));
       return api(creating ? "setup" : "login", "POST", { username, password });
     },
     onSuccess: async () => {
@@ -98,23 +101,23 @@ function Login({ hash }: { hash: string }) {
     },
   });
   return <>
-    <header className="topbar"><a href={import.meta.env.BASE_URL} aria-label="QuantBot 首页"><Brand /></a></header>
+    <header className="topbar"><a href={import.meta.env.BASE_URL} aria-label={t("app.quantbotHome")}><Brand /></a><div className="top-actions"><LanguagePicker /></div></header>
     <main className="login">
       {setup.isPending ? <Loading /> : !setup.data ? <ConnectionError error={setup.error} retry={() => void setup.refetch()} /> : setupElsewhere ? <>
-        <h1>初始化 QuantBot</h1>
-        <p>请使用 HTTPS 地址打开控制台。</p>
+        <h1>{t("app.setUpQuantbot")}</h1>
+        <p>{t("app.openTheConsoleOverHttps")}</p>
       </> : <>
-        <h1>{creating ? "初始化 QuantBot" : "登录 QuantBot"}</h1>
-        <p>{creating ? "创建管理员账号，完成后进入控制台。" : "使用管理员账号进入控制台。"}</p>
+        <h1>{creating ? t("app.setUpQuantbot") : t("app.signInToQuantbot")}</h1>
+        <p>{creating ? t("app.createAnAdministratorAccountToOpenThe") : t("app.signInWithYourAdministratorAccount")}</p>
         <form className="panel stack" onSubmit={(e) => { e.preventDefault(); login.mutate(); }}>
-          <Field label="用户名"><input required maxLength={100} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
-          <Field label="密码" hint={creating ? `至少 ${MIN_PASSWORD_LENGTH} 个字符` : undefined}><input required type="password"
+          <Field label={t("app.username")}><input required maxLength={100} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} /></Field>
+          <Field label={t("app.password")} hint={creating ? t("app.atLeastCharacters", { minimum: MIN_PASSWORD_LENGTH }) : undefined}><input required type="password"
             minLength={creating ? MIN_PASSWORD_LENGTH : undefined} maxLength={1024}
             autoComplete={creating ? "new-password" : "current-password"} value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
-          {creating && <Field label="确认密码"><input required type="password" autoComplete="new-password"
+          {creating && <Field label={t("app.confirmPassword")}><input required type="password" autoComplete="new-password"
             maxLength={1024} value={confirmation} onChange={(e) => setConfirmation(e.target.value)} /></Field>}
           <ErrorNotice error={login.error ?? linkError ?? setup.error} />
-          <button className="button primary" disabled={login.isPending}>{creating ? "创建管理员" : "登录"}</button>
+          <button className="button primary" disabled={login.isPending}>{creating ? t("app.createAdministrator") : t("app.signIn")}</button>
         </form>
       </>}
     </main>
@@ -123,13 +126,14 @@ function Login({ hash }: { hash: string }) {
 
 function ConnectionError({ error, retry }: { error: unknown; retry: () => void }) {
   return <div className="stack">
-    <h1>{error instanceof ApiError ? "QuantBot 服务暂不可用" : "无法连接 QuantBot"}</h1>
+    <h1>{error instanceof ApiError ? t("app.quantbotIsTemporarilyUnavailable") : t("app.cannotConnectToQuantbot")}</h1>
     <ErrorNotice error={error} />
-    <div><button type="button" className="button secondary" onClick={retry}>重试</button></div>
+    <div><button type="button" className="button secondary" onClick={retry}>{t("app.retry")}</button></div>
   </div>;
 }
 
 export function App() {
+  useTranslation();
   const hash = useHash();
   const client = useQueryClient();
   const session = useQuery({
@@ -157,21 +161,22 @@ export function App() {
   const add = () => setAdding(true);
   return <DarkMode value={dark}>
     <header className="topbar console-topbar">
-      <a href="#workbench" aria-label="QuantBot 工作台"><Brand /></a>
-      <nav className="top-nav" aria-label="主导航">
+      <a href="#workbench" aria-label={t("app.quantbotWorkbench")}><Brand /></a>
+      <nav className="top-nav" aria-label={t("app.mainNavigation")}>
         {nav.map(({ key, title: label, icon: Icon }) => <a href={`#${key}`}
           key={key} aria-current={page === key ? "page" : undefined}>
-          <Icon size={16} /><span>{label}</span></a>)}
+          <Icon size={16} /><span>{t(label)}</span></a>)}
       </nav>
       <div className="top-actions">
+        <LanguagePicker />
         <QuickSearch strategyId={id && (section === "strategy" || section === "workbench") ? decodeURIComponent(id) : undefined} />
-        <a className="icon-button" href="https://github.com/yaho7/QuantBot/blob/main/PROTOCOL.md" target="_blank" rel="noreferrer" aria-label="API 文档" title="API 文档"><CircleHelp size={18} /></a>
-        <button className="icon-button" onClick={() => logout.mutate()} aria-label="退出登录" title="退出登录"><LogOut size={18} /></button>
+        <a className="icon-button" href="https://github.com/yaho7/QuantBot/blob/main/PROTOCOL.md" target="_blank" rel="noreferrer" aria-label={t("app.apiDocumentation")} title={t("app.apiDocumentation")}><CircleHelp size={18} /></a>
+        <button className="icon-button" onClick={() => logout.mutate()} aria-label={t("app.signOut")} title={t("app.signOut")}><LogOut size={18} /></button>
       </div>
     </header>
-    <nav className="bottom-nav" aria-label="移动导航">
+    <nav className="bottom-nav" aria-label={t("app.mobileNavigation")}>
       {nav.map(({ key, title, icon: Icon }) => <a key={key} href={`#${key}`}
-        aria-current={page === key ? "page" : undefined}><Icon size={19} /><span>{title}</span></a>)}
+        aria-current={page === key ? "page" : undefined}><Icon size={19} /><span>{t(title)}</span></a>)}
     </nav>
     <main id="main" className="page">
       <ErrorNotice error={logout.error} />
@@ -182,7 +187,7 @@ export function App() {
       {page === "api" && <ApiPage strategyId={id ? decodeURIComponent(id) : undefined} />}
       {page === "operations" && <OperationsPage commandId={id} />}
       {page === "telegram" && <TelegramPage />}
-      {page === "system" && <><div className="toolbar"><a className="button secondary" href="#api"><Braces size={16} /> API 接入</a></div><SystemPage theme={theme} onTheme={setTheme} /></>}
+      {page === "system" && <><div className="toolbar"><a className="button secondary" href="#api"><Braces size={16} /> {t("app.apiIntegration")}</a></div><SystemPage theme={theme} onTheme={setTheme} /></>}
     </main>
     <CommandFeedback />
     <Toaster theme={dark ? "dark" : "light"} position="top-right" />

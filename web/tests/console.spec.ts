@@ -371,3 +371,26 @@ test("copies a working Sandbox configuration and reports validation without reve
   await expect(panel.getByText("Sandbox 已关闭")).toBeVisible();
   expect((await http.post(config.endpoint + "/session", { headers, data: { instance_id: config.instance_name } })).status()).toBe(401);
 });
+
+test("switches the interface and copied integration prompt between Chinese and English", async ({ page }) => {
+  await page.goto("/ui/");
+  await page.getByLabel("语言").selectOption("en");
+  await expect(page.getByRole("heading", { name: "Sign in to QuantBot" })).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await page.getByLabel("Username").fill("admin");
+  await page.getByLabel("Password", { exact: true }).fill("browser-test-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Workbench" })).toBeVisible();
+  const created = await page.request.post("/api/admin/strategies", { data: { name: "原样保留的策略名称", mode: "paper" } });
+  const { strategy } = await created.json();
+  await page.goto(`/ui/#strategy/${strategy.id}/api`);
+  await expect(page.getByRole("heading", { name: "原样保留的策略名称" })).toBeVisible();
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.getByRole("button", { name: "Copy AI integration prompt" }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("Integrate my trading program");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "One-click AI integration test" })).toBeVisible();
+  await page.getByLabel("Language").selectOption("zh-CN");
+  await expect(page.getByRole("heading", { name: "AI 一键接入测试" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "工作台" })).toBeVisible();
+});

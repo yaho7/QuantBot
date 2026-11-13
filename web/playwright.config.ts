@@ -5,7 +5,7 @@ const baseURL = `http://127.0.0.1:${port}`;
 
 export default defineConfig({
   testDir: "./tests",
-  use: { channel: process.env.QB_BROWSER_CHANNEL || undefined },
+  use: { locale: "zh-CN", channel: process.env.QB_BROWSER_CHANNEL || undefined },
   projects: [
     { name: "console", testMatch: "console.spec.ts", use: { baseURL } },
     { name: "setup", testMatch: "setup.spec.ts", use: { baseURL: `http://127.0.0.1:${Number(port) + 1}` } },

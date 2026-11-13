@@ -1,3 +1,4 @@
+import { t, type Message } from "../i18n";
 export type Component = "status" | "status_history" | "accounts" | "positions" | "position_mix" |
   "orders" | "order_status" | "fills" | "fill_count" | "equity" | "drawdown" | "returns" |
   "performance" | "metric_cards" | "metrics" | "candles" | "volume" | "signals" | "risk" |
@@ -92,19 +93,19 @@ export interface Marker {
   message: string;
 }
 export interface Market { candles: Candle[]; markers: Marker[] }
-export const chartName: Record<Chart, string> = {
-  table: "表格", cards: "数据卡片", line: "折线", area: "面积", bar: "柱状", scatter: "散点",
-  pie: "饼图", candlestick: "K 线", timeline: "时间轴",
+export const chartName: Record<Chart, Message> = {
+  table: "dashboardTypes.table", cards: "dashboardTypes.cards", line: "dashboardTypes.line", area: "dashboardTypes.area", bar: "dashboardTypes.bar", scatter: "dashboardTypes.scatter",
+  pie: "dashboardTypes.pie", candlestick: "dashboardTypes.candlestick", timeline: "dashboardTypes.timeline",
 };
-export const availabilityLabel: Record<Availability, string> = {
-  ready: "可用", insufficient: "数据不足", stale: "停止上报", incompatible: "协议不兼容",
+export const availabilityLabel: Record<Availability, Message> = {
+  ready: "dashboardTypes.available", insufficient: "dashboardTypes.insufficientData", stale: "dashboardTypes.reportingStopped", incompatible: "dashboardTypes.incompatibleProtocol",
 };
-export const timeOptions: [Widget["hours"], string][] = [
-  [1, "最近 1 小时"], [6, "最近 6 小时"], [24, "最近 24 小时"], [168, "最近 7 天"],
-  [720, "最近 30 天"], [2160, "最近 90 天"], [8760, "最近 1 年"],
+export const timeOptions: [Widget["hours"], Message][] = [
+  [1, "dashboardTypes.lastHour"], [6, "dashboardTypes.last6Hours"], [24, "dashboardTypes.last24Hours"], [168, "dashboardTypes.last7Days"],
+  [720, "dashboardTypes.last30Days"], [2160, "dashboardTypes.last90Days"], [8760, "dashboardTypes.lastYear"],
 ];
-export const bucketOptions: [Widget["bucket_seconds"], string][] = [
-  [0, "原始观测"], [60, "1 分钟"], [300, "5 分钟"], [3600, "1 小时"], [86400, "1 天"], [604800, "7 天"],
+export const bucketOptions: [Widget["bucket_seconds"], Message][] = [
+  [0, "dashboardTypes.rawObservations"], [60, "dashboardTypes.1Minute"], [300, "dashboardTypes.5Minutes"], [3600, "dashboardTypes.1Hour"], [86400, "dashboardTypes.1Day"], [604800, "dashboardTypes.7Days"],
 ];
 export const marketComponent = (component: Component) => component === "candles" || component === "volume";
 export const seriesComponent = (component: Component) => ["equity", "drawdown", "returns", "metrics", "metric_cards"].includes(component);
@@ -124,4 +125,33 @@ export function timeRange(widget: Widget) {
     start: widget.start_at ?? new Date(now - widget.hours * 3_600_000).toISOString(),
     end: widget.end_at ?? new Date(now).toISOString(),
   };
+}
+
+const componentNames: Record<Component, Message> = {
+  status: "components.status",
+  status_history: "components.status_history",
+  accounts: "components.accounts",
+  positions: "components.positions",
+  position_mix: "components.position_mix",
+  orders: "components.orders",
+  order_status: "components.order_status",
+  fills: "components.fills",
+  fill_count: "components.fill_count",
+  equity: "components.equity",
+  drawdown: "components.drawdown",
+  returns: "components.returns",
+  performance: "components.performance",
+  metric_cards: "components.metric_cards",
+  metrics: "components.metrics",
+  candles: "components.candles",
+  volume: "components.volume",
+  signals: "components.signals",
+  risk: "components.risk",
+  logs: "components.logs",
+  connections: "components.connections",
+  alerts: "components.alerts",
+};
+
+export function componentName(component: Component) {
+  return t(componentNames[component]);
 }

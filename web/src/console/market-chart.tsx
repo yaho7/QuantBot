@@ -1,10 +1,11 @@
+import { i18n, label, t } from "../i18n";
 import { CandlestickSeries, ColorType, createChart, createSeriesMarkers, type IChartApi, type ISeriesApi, type ISeriesMarkersPluginApi, type SeriesMarker, type UTCTimestamp } from "lightweight-charts";
 import { useEffect, useRef } from "react";
 import type { Market } from "./dashboard-types";
 import { useChartPalette } from "./theme";
 import { Empty, Table, when } from "./ui";
 
-const markerLabels = { order: "订单", fill: "成交", signal: "信号", risk: "风控" };
+const markerLabels = { order: "marketChart.orders", fill: "marketChart.fills", signal: "marketChart.signals", risk: "marketChart.riskControls" } as const;
 
 export default function MarketChart({ market, interval, height, showMarkers }: {
   market: Market; interval: number; height: number; showMarkers: boolean;
@@ -16,6 +17,7 @@ export default function MarketChart({ market, interval, height, showMarkers }: {
   const fitted = useRef(false);
   const hasData = market.candles.length > 0;
   const palette = useChartPalette();
+  const locale = i18n.language;
   useEffect(() => {
     if (!container.current) return;
     const view = createChart(container.current, {
@@ -33,6 +35,7 @@ export default function MarketChart({ market, interval, height, showMarkers }: {
   useEffect(() => {
     const line = { color: palette.border };
     chart.current?.applyOptions({
+      localization: { locale },
       layout: { background: { type: ColorType.Solid, color: palette.surface }, textColor: palette.muted },
       grid: { vertLines: line, horzLines: line },
       timeScale: { borderColor: palette.border }, rightPriceScale: { borderColor: palette.border },
@@ -40,7 +43,7 @@ export default function MarketChart({ market, interval, height, showMarkers }: {
     candles.current?.applyOptions({
       upColor: palette.gain, downColor: palette.loss, wickUpColor: palette.gain, wickDownColor: palette.loss,
     });
-  }, [palette, interval, hasData]);
+  }, [palette, interval, hasData, locale]);
   useEffect(() => {
     const series = market.candles.map((item) => ({
       time: Math.floor(Date.parse(item.observed_at) / 1000) as UTCTimestamp,
@@ -62,19 +65,19 @@ export default function MarketChart({ market, interval, height, showMarkers }: {
         time: candle.time, position: sell || event.kind === "risk" ? "aboveBar" : "belowBar",
         color: event.kind === "risk" ? palette.warning : event.kind === "signal" ? palette.signal : sell ? palette.loss : palette.gain,
         shape: event.side ? sell ? "arrowDown" : "arrowUp" : event.kind === "risk" ? "square" : "circle",
-        text: markerLabels[event.kind],
+        text: label(markerLabels[event.kind]),
       });
     }
     marks.current?.setMarkers(labels);
     if (!fitted.current && series.length) { chart.current?.timeScale().fitContent(); fitted.current = true; }
-  }, [market, showMarkers, interval, palette]);
-  if (!hasData) return <Empty title="所选范围没有 K 线" text="等待策略上报该标的和周期的 OHLCV。" />;
-  return <><div ref={container} style={{ height }} className="chart-canvas" role="img" aria-label="交易 K 线" />
+  }, [market, showMarkers, interval, palette, locale]);
+  if (!hasData) return <Empty title={t("marketChart.noCandlesInThisRange")} text={t("marketChart.waitingForOhlcvReportsForThisSymbol")} />;
+  return <><div ref={container} style={{ height }} className="chart-canvas" role="img" aria-label={t("marketChart.tradingCandlesticks")} />
     {showMarkers && market.markers.length > 0 && <details className="form-detail market-markers">
-      <summary>订单、成交、信号与风控标记（{market.markers.length}）</summary>
-      <Table columns={["时间", "类型", "方向", "价格", "内容"]}>
+      <summary>{t("marketChart.markerCount", { total: market.markers.length })}</summary>
+      <Table columns={[t("marketChart.time"), t("marketChart.type"), t("marketChart.side"), t("marketChart.price"), t("marketChart.content")]}>
         {[...market.markers].reverse().slice(0, 30).map((marker, index) => <tr key={`${marker.id}/${index}`}>
-          <td>{when(marker.occurred_at)}</td><td>{markerLabels[marker.kind]}</td><td>{marker.side ?? "—"}</td>
+          <td>{when(marker.occurred_at)}</td><td>{label(markerLabels[marker.kind])}</td><td>{marker.side ?? "—"}</td>
           <td className="mono">{marker.price ?? "—"}</td><td className="wrap">{marker.message}</td>
         </tr>)}
       </Table>

@@ -1,3 +1,4 @@
+import { t, type Message } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Copy } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -25,11 +26,11 @@ export interface SandboxCredentials extends SandboxStatus {
 type Action = "renew" | "close" | "pause_entry" | "resume_entry" | "refresh";
 
 const steps = {
-  session: "建立会话", heartbeat: "发送心跳", telemetry: "上报遥测", controls: "注册控件",
-  control_sync: "同步开仓状态", command: "领取模拟指令并回执",
-};
-const actions: [Action, string][] = [
-  ["pause_entry", "模拟暂停开仓"], ["resume_entry", "模拟恢复开仓"], ["refresh", "模拟刷新"],
+  session: "sandbox.openASession", heartbeat: "sandbox.sendHeartbeat", telemetry: "sandbox.reportTelemetry", controls: "sandbox.registerControls",
+  control_sync: "sandbox.syncEntryState", command: "sandbox.claimAndAcknowledgeASimulatedCommand",
+} as const;
+const actions: [Action, Message][] = [
+  ["pause_entry", "sandbox.simulatePause"], ["resume_entry", "sandbox.simulateResume"], ["refresh", "sandbox.simulateRefresh"],
 ];
 
 export function SandboxPanel({ strategyId, endpoint, prompt, preview, disabled }: {
@@ -50,7 +51,7 @@ export function SandboxPanel({ strategyId, endpoint, prompt, preview, disabled }
       const text = prompt({ ...diagnostics, secret, endpoint, strategy_id });
       try {
         await navigator.clipboard.writeText(text);
-        toast.success("已复制 AI 接入提示词");
+        toast.success(t("sandbox.aiIntegrationPromptCopied"));
       } catch {
         setManual(text);
       }
@@ -71,59 +72,59 @@ export function SandboxPanel({ strategyId, endpoint, prompt, preview, disabled }
   }, [data, active]);
   useEffect(() => {
     if (data?.passed && data.key !== passedNotice) {
-      toast.success("Sandbox 接入测试通过，可以切换正式配置");
+      toast.success(t("sandbox.sandboxPassedYouCanSwitchToProduction"));
       setPassedNotice(data.key);
     }
   }, [data, passedNotice]);
 
-  const production = `在原量化程序的 quantbot.json 中，将 endpoint 改为 ${endpoint}，将 secret 改为策略 ${strategyId} 的正式 Secret。通过 QuantBot 的「Token 与诊断」查看正式 Secret。保留 instance_name，重启程序后在工作台检查真实策略状态。正式配置文件继续保留在 .gitignore 中。`;
-  return <Panel title="AI 一键接入测试"
+  const production = t("sandbox.inQuantbotJsonOnTheStrategyHost", { endpoint: endpoint, strategyId: strategyId });
+  return <Panel title={t("onboarding.oneClickAiIntegrationTest")}
     action={<button className="button primary" type="button" disabled={disabled || copy.isPending}
       onClick={() => { setNow(Date.now()); copy.mutate(); }}>
-      <Copy size={16} /> {copy.isPending ? "正在生成测试提示词…" : "复制 AI 接入提示词"}
+      <Copy size={16} /> {copy.isPending ? t("sandbox.generatingTestPrompt") : t("sandbox.copyAiIntegrationPrompt")}
     </button>}>
-    <p>把复制的提示词交给 Codex 或 Cursor。提示词包含临时测试配置，默认 60 分钟有效。</p>
+    <p>{t("sandbox.giveTheCopiedPromptToCodexOr")}</p>
     <ErrorNotice error={copy.error ?? change.error ?? status.error} />
     {data && <div className="stack">
       <div className={active && remaining > 5 ? "notice" : "notice warn"} role="status">
-        {data.status === "closed" ? "Sandbox 已关闭" : !active ? "Sandbox 已到期。重新复制提示词可创建新会话。" :
-          remaining <= 5 ? `Sandbox 将在 ${remaining} 分钟内到期，可以续期。` : `Sandbox 有效至 ${when(data.expires_at)}`}
+        {data.status === "closed" ? t("sandbox.sandboxClosed") : !active ? t("sandbox.sandboxExpiredCopyThePromptAgainTo") :
+          remaining <= 5 ? t("sandbox.sandboxExpiresInMinYouCanExtend", { minutes: remaining }) : t("sandbox.sandboxExpiresAt", { date: when(data.expires_at) })}
       </div>
-      {data.passed && <div className="notice" role="status">接入测试通过。可复制下方说明，替换正式 Endpoint 和 Secret。</div>}
+      {data.passed && <div className="notice" role="status">{t("sandbox.integrationTestPassedCopyTheInstructionsBelow")}</div>}
       <div className="toolbar">
         {active && <>
-          <button className="button secondary" type="button" disabled={change.isPending} onClick={() => change.mutate("renew")}>续期 60 分钟</button>
-          <button className="button secondary" type="button" disabled={change.isPending} onClick={() => change.mutate("close")}>关闭 Sandbox</button>
+          <button className="button secondary" type="button" disabled={change.isPending} onClick={() => change.mutate("renew")}>{t("sandbox.extendBy60Minutes")}</button>
+          <button className="button secondary" type="button" disabled={change.isPending} onClick={() => change.mutate("close")}>{t("sandbox.closeSandbox")}</button>
         </>}
-        <CopyButton value={production} label="复制正式配置说明" />
+        <CopyButton value={production} label={t("sandbox.copyProductionSetupInstructions")} />
       </div>
       <div className="chips">{Object.entries(steps).map(([key, label]) =>
-        <span className="chip" key={key}>{label} · {data.steps.includes(key) ? "已验证" : "待验证"}</span>)}</div>
-      <details className="form-detail"><summary>控件注册与模拟控制</summary>
+        <span className="chip" key={key}>{t(label)} · {data.steps.includes(key) ? t("sandbox.verified") : t("sandbox.pendingVerification")}</span>)}</div>
+      <details className="form-detail"><summary>{t("sandbox.controlRegistrationAndSimulatedOperations")}</summary>
         <div className="stack">
-          <p>注册版本 {data.registry_revision} · {data.controls.length} 个控件 · {data.control?.in_sync ? "控制状态已同步" : "等待控制回报"}</p>
+          <p>{t("sandbox.registryRevision")}{" "}{data.registry_revision} · {data.controls.length} {t("sandbox.controls")}{" "}{data.control?.in_sync ? t("sandbox.controlStateSynchronized") : t("sandbox.waitingForControlReport")}</p>
           <div className="chips">{data.controls.map((item) => <span className="chip" key={item.id}>{item.label} · {item.type}</span>)}</div>
           {active && <div className="toolbar">{actions.map(([action, label]) =>
             <button type="button" className="button secondary" key={action} disabled={change.isPending || !data.steps.includes("session")}
-              onClick={() => change.mutate(action)}>{label}</button>)}</div>}
-          <Table columns={["模拟指令", "状态"]} empty={!data.commands.length}>{data.commands.map((command) =>
+              onClick={() => change.mutate(action)}>{t(label)}</button>)}</div>}
+          <Table columns={[t("sandbox.simulatedCommand"), t("onboarding.status")]} empty={!data.commands.length}>{data.commands.map((command) =>
             <tr key={command.id}><td>{command.action}</td><td><CommandBadge state={command.state} /></td></tr>)}</Table>
         </div>
       </details>
-      <details className="form-detail"><summary>最近请求与 Schema 校验</summary>
-        <Table columns={["时间", "请求", "状态", "校验", "请求 ID"]} empty={!data.requests.length}>
+      <details className="form-detail"><summary>{t("sandbox.recentRequestsAndSchemaValidation")}</summary>
+        <Table columns={[t("marketChart.time"), t("sandbox.request"), t("onboarding.status"), t("sandbox.validation"), t("sandbox.requestId")]} empty={!data.requests.length}>
           {data.requests.map((item) => <tr key={item.request_id}><td>{when(item.at)}</td>
             <td>{item.method} {item.path}</td><td>{item.status}</td>
-            <td>{item.errors.length ? item.errors.join(" · ") : item.status < 300 ? "通过" : "请求被拒绝"}</td>
+            <td>{item.errors.length ? item.errors.join(" · ") : item.status < 300 ? t("sandbox.passed") : t("sandbox.requestRejected")}</td>
             <td className="mono">{item.request_id}</td></tr>)}
         </Table>
       </details>
     </div>}
-    {!data && <CopyButton value={production} label="复制正式配置说明" />}
-    <details className="form-detail" open={!data || undefined}><summary>预览提示词</summary>
+    {!data && <CopyButton value={production} label={t("sandbox.copyProductionSetupInstructions")} />}
+    <details className="form-detail" open={!data || undefined}><summary>{t("sandbox.previewPrompt")}</summary>
       <pre className="agent-prompt">{preview}</pre></details>
-    {manual && active && <Dialog title="手动复制 AI 接入提示词" close={() => setManual("")}>
-      <textarea aria-label="完整 AI 接入提示词" readOnly autoFocus value={manual} rows={12}
+    {manual && active && <Dialog title={t("sandbox.copyAiIntegrationPromptManually")} close={() => setManual("")}>
+      <textarea aria-label={t("sandbox.fullAiIntegrationPrompt")} readOnly autoFocus value={manual} rows={12}
         onFocus={(event) => event.target.select()} />
     </Dialog>}
   </Panel>;

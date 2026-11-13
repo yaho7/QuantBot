@@ -1,3 +1,4 @@
+import { label, t } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense } from "react";
 import { api, strategyApi, type Detail, type EventRecord, type Fill, type Runtime, type Snapshot } from "./api";
@@ -45,13 +46,13 @@ function MarketData({ widget }: { widget: Widget }) {
       return api<Market>(strategyApi(source!.strategy_id, `market?${params}`));
     },
   });
-  if (!source) return <Empty title="请选择标的和 K 线周期" />;
+  if (!source) return <Empty title={t("widgetData.selectASymbolAndCandlestickInterval")} />;
   if (query.error) return <ErrorNotice error={query.error} />;
   if (!query.data) return <Loading />;
   if (widget.component === "candles") return <MarketChart market={query.data}
     interval={source.interval_seconds} height={widget.height} showMarkers={widget.markers} />;
   const points = query.data.candles.map((item) => ({ observed_at: item.observed_at, value: item.volume }));
-  return <TimeSeries series={[{ name: source.symbol, points }]} chart="bar" unit="成交量" height={widget.height} minimum={1} />;
+  return <TimeSeries series={[{ name: source.symbol, points }]} chart="bar" unit={t("widgetData.volume")} height={widget.height} minimum={1} />;
 }
 
 function HistoryData({ widget, names, compact }: { widget: Widget; names: Record<string, string>; compact: boolean }) {
@@ -64,7 +65,7 @@ function HistoryData({ widget, names, compact }: { widget: Widget; names: Record
       bucket_seconds: widget.bucket_seconds, aggregation: widget.aggregation,
     }),
   });
-  if (!widget.sources.length) return <Empty title="请选择至少一个已上报的指标" />;
+  if (!widget.sources.length) return <Empty title={t("widgetData.selectAtLeastOneReportedMetric")} />;
   if (query.error) return <ErrorNotice error={query.error} />;
   if (!query.data) return <Loading />;
   const series = query.data.map((item) => ({
@@ -78,8 +79,8 @@ function HistoryData({ widget, names, compact }: { widget: Widget; names: Record
       const last = item.points.at(-1);
       return last ? [{ ...item, last }] : [];
     });
-    if (!cards.length) return <Empty title="所选范围没有观测值" />;
-    if (widget.chart === "table") return <Table columns={["指标", "最新值", "观测时间"]}>
+    if (!cards.length) return <Empty title={t("widgetData.noObservationsInThisRange")} />;
+    if (widget.chart === "table") return <Table columns={[t("widgetData.metric"), t("widgetData.latestValue"), t("widgetData.observationTime")]}>
       {cards.map((item) => <tr key={item.key}><td>{item.name}</td><td>{money(item.last.value, item.unit)}</td><td>{when(item.last.observed_at)}</td></tr>)}
     </Table>;
     return <div className="value-grid">{cards.map((item) => <div key={item.key}><span>{item.name}</span>
@@ -108,9 +109,9 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
   switch (widget.component) {
     case "status":
       return data.runtime ? <div className="value-grid">
-        <div><span>运行状态</span><strong>{health(data.runtime.health)}</strong></div>
-        <div><span>运行时长</span><strong>{data.runtime.uptime_seconds == null ? "—" : `${data.runtime.uptime_seconds} 秒`}</strong></div>
-        <div><span>观测时间</span><strong>{when(data.observed_at)}</strong></div>
+        <div><span>{t("widgetData.runtimeStatus")}</span><strong>{health(data.runtime.health)}</strong></div>
+        <div><span>{t("strategy.uptime")}</span><strong>{data.runtime.uptime_seconds == null ? "—" : t("strategy.sec", { seconds: data.runtime.uptime_seconds })}</strong></div>
+        <div><span>{t("widgetData.observationTime")}</span><strong>{when(data.observed_at)}</strong></div>
       </div> : <Empty />;
     case "accounts":
       if (compact) return <div className="widget-metrics">{data.accounts?.map((item) =>
@@ -118,10 +119,10 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
       if (widget.chart === "table") return <Accounts rows={data.accounts ?? []} />;
       return data.accounts?.length ? <div className="value-grid">{data.accounts.map((item) =>
         <div key={`${item.account_id}/${item.currency}`}><span>{item.account_id} · {item.currency}</span>
-          <strong>{money(item.equity, item.currency)}</strong><span>可用现金 {money(item.cash, item.currency)}</span></div>)}</div> : <Empty />;
+          <strong>{money(item.equity, item.currency)}</strong><span>{t("telemetryViews.availableCash")}{" "}{money(item.cash, item.currency)}</span></div>)}</div> : <Empty />;
     case "positions":
-      return <div className="stack"><h3>策略归属持仓</h3><Positions rows={data.strategy_positions ?? []} />
-        <h3>券商账户持仓</h3><Positions rows={data.broker_positions ?? []} /></div>;
+      return <div className="stack"><h3>{t("strategy.strategyPositions")}</h3><Positions rows={data.strategy_positions ?? []} />
+        <h3>{t("strategy.brokerAccountPositions")}</h3><Positions rows={data.broker_positions ?? []} /></div>;
     case "position_mix": {
       const groups = new Map<string, Map<string, number>>();
       for (const position of data.strategy_positions ?? []) {
@@ -132,26 +133,26 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
         group.set(position.symbol, (group.get(position.symbol) ?? 0) + value);
         groups.set(position.currency, group);
       }
-      if (!groups.size) return <Empty title="等待非零持仓与市价" />;
+      if (!groups.size) return <Empty title={t("widgetData.waitingForNonzeroPositionsAndMarketPrices")} />;
       return <div className="stack">{[...groups].map(([currency, symbols]) =>
-        <section key={currency}><h3>策略持仓市值敞口 · {currency}</h3>
+        <section key={currency}><h3>{t("widgetData.strategyMarketExposure")}{" "}{currency}</h3>
           <Distribution data={[...symbols].map(([name, value]) => ({ name, value }))} chart={widget.chart}
-            height={widget.height} label={`持仓市值 ${currency}`} /></section>)}</div>;
+            height={widget.height} label={t("widgetData.marketValue", { currency: currency })} /></section>)}</div>;
     }
     case "orders":
-      if (compact) return <strong>{data.open_orders?.length ?? 0} 笔未完成</strong>;
-      return <div className="stack"><h3>未完成订单</h3><OpenOrders rows={data.open_orders ?? []} {...{ strategy, registry, editing }} />
-        <h3>已完成订单</h3><Orders rows={data.completed_orders ?? []} /></div>;
+      if (compact) return <strong>{data.open_orders?.length ?? 0} {t("widgetData.openOrders")}</strong>;
+      return <div className="stack"><h3>{t("strategy.openOrders")}</h3><OpenOrders rows={data.open_orders ?? []} {...{ strategy, registry, editing }} />
+        <h3>{t("strategy.completedOrders")}</h3><Orders rows={data.completed_orders ?? []} /></div>;
     case "order_status": {
       const counts = new Map<string, number>();
       for (const order of [...(data.open_orders ?? []), ...(data.completed_orders ?? [])]) {
         counts.set(order.status, (counts.get(order.status) ?? 0) + 1);
       }
       return <Distribution data={[...counts].map(([name, value]) => ({ name, value }))}
-        chart={widget.chart} height={widget.height} label="订单状态数量" />;
+        chart={widget.chart} height={widget.height} label={t("widgetData.ordersByStatus")} />;
     }
     case "performance":
-      if (widget.chart === "table") return <Table columns={["指标", "值"]} empty={!Object.values(data.performance ?? {}).some((value) => value != null)}>
+      if (widget.chart === "table") return <Table columns={[t("widgetData.metric"), t("widgetData.value")]} empty={!Object.values(data.performance ?? {}).some((value) => value != null)}>
         {Object.entries(data.performance ?? {}).filter(([, value]) => value != null).map(([name, value]) =>
           <tr key={name}><td>{name}</td><td>{money(value)}</td></tr>)}</Table>;
       return <Performance values={data.performance} />;
@@ -170,53 +171,53 @@ function OpenOrders({ rows, strategy, registry, editing }: {
     (strategy.mode !== "live" || strategy.live_trading_enabled);
   return <>
     <Orders rows={rows} action={actionable ? (row) => <button type="button" className="button quiet"
-      onClick={() => setSelected(row)}>撤单</button> : undefined} />
+      onClick={() => setSelected(row)}>{t("widgetData.cancelOrder")}</button> : undefined} />
     {selected && capability && actionable && <CommandDialog capability={capability} strategy={strategy}
       initial={{ order_id: selected.order_id, ...(capability.parameters.account_id ? { account_id: selected.account_id } : {}) }}
-      context={`${selected.symbol} · 账户 ${selected.account_id} · 委托 ${selected.quantity} · 已成交 ${selected.filled_quantity ?? "—"}`}
+      context={t("widgetData.accountOrderedFilled", { symbol: selected.symbol, account: selected.account_id, quantity: selected.quantity, filled: selected.filled_quantity ?? "—" })}
       close={() => setSelected(undefined)} />}
   </>;
 }
 
 function health(value?: string) {
-  return { healthy: "正常", degraded: "降级", error: "异常" }[value ?? ""] ?? "未上报";
+  return { healthy: t("widgetData.healthy"), degraded: t("widgetData.degraded"), error: t("ui.unhealthy") }[value ?? ""] ?? t("dynamicControls.notReported");
 }
 
 function HistoryComponent({ widget, rows }: { widget: Widget; rows: Array<EventRecord | StatusRecord | Connection | FillCount> }) {
-  if (!rows.length) return <Empty title="所选时间范围暂无数据" />;
+  if (!rows.length) return <Empty title={t("widgetData.noDataInThisTimeRange")} />;
   if (widget.component === "connections") {
     const records = rows.filter((item): item is Connection => "broker_connected" in item);
     if (widget.chart === "cards") {
       const latest = records[0];
-      return latest ? <div className="value-grid"><div><span>券商连接</span><strong>{latest.broker_connected ? "已连接" : "已断开"}</strong></div>
-        <div><span>授权到期</span><strong>{when(latest.authorization_expires_at)}</strong></div></div> : <Empty />;
+      return latest ? <div className="value-grid"><div><span>{t("strategy.brokerConnection")}</span><strong>{latest.broker_connected ? t("settings.connected") : t("widgetData.disconnected")}</strong></div>
+        <div><span>{t("strategy.authorizationExpires")}</span><strong>{when(latest.authorization_expires_at)}</strong></div></div> : <Empty />;
     }
     return <ul className="activity-list">{records.map((item, i) => <li key={i}><time>{when(item.observed_at)}</time>
-      <div><strong>{item.broker_connected ? "券商已连接" : "券商已断开"}</strong><small>{item.message}</small></div></li>)}</ul>;
+      <div><strong>{item.broker_connected ? t("widgetData.brokerConnected") : t("widgetData.brokerDisconnected")}</strong><small>{item.message}</small></div></li>)}</ul>;
   }
   if (widget.component === "status_history") {
     const records = rows.filter((item): item is StatusRecord => "runtime" in item);
     return <ul className="activity-list">{records.map((item, i) => <li key={i}><time>{when(item.observed_at)}</time>
-      <div><strong>{health(item.runtime.health)}</strong><small>运行时长 {item.runtime.uptime_seconds ?? "—"} 秒</small></div></li>)}</ul>;
+      <div><strong>{health(item.runtime.health)}</strong><small>{t("strategy.uptime")}{" "}{item.runtime.uptime_seconds ?? "—"} {t("widgetData.sec")}</small></div></li>)}</ul>;
   }
   if (widget.component === "fill_count") {
     const counts = rows.filter((item): item is FillCount => "side" in item);
     const series = (["buy", "sell"] as const).map((side) => ({
-      name: side === "buy" ? "买入成交" : "卖出成交",
+      name: side === "buy" ? t("widgetData.buyFills") : t("widgetData.sellFills"),
       points: counts.filter((item) => item.side === side),
     }));
-    return <TimeSeries {...{ series }} chart={widget.chart} height={widget.height} unit="笔" minimum={widget.chart === "line" ? 2 : 1} />;
+    return <TimeSeries {...{ series }} chart={widget.chart} height={widget.height} unit={t("widgetData.fills")} minimum={widget.chart === "line" ? 2 : 1} />;
   }
   const events = rows.filter((item): item is EventRecord => "category" in item);
   if (widget.component === "fills") {
     const fills: Fill[] = events.flatMap((item) => item.fill ? [item.fill] : []);
     return <Fills rows={fills} />;
   }
-  if (widget.chart === "table") return <Table columns={["时间", "类别", "等级", "内容"]} empty={!events.length}>
-    {events.map((event, i) => <tr key={`${event.id}/${i}`}><td>{when(event.occurred_at)}</td><td>{categoryText[event.category] ?? event.category}</td>
-      <td>{severityText[event.severity]}</td><td className="wrap">{event.message}</td></tr>)}
+  if (widget.chart === "table") return <Table columns={[t("marketChart.time"), t("settings.category"), t("settings.severity"), t("marketChart.content")]} empty={!events.length}>
+    {events.map((event, i) => <tr key={`${event.id}/${i}`}><td>{when(event.occurred_at)}</td><td>{label(categoryText[event.category], event.category)}</td>
+      <td>{label(severityText[event.severity])}</td><td className="wrap">{event.message}</td></tr>)}
   </Table>;
   return <ul className="activity-list">{events.map((event, i) => <li key={`${event.id}/${i}`}>
-    <time>{when(event.occurred_at)}</time><div><strong>{severityText[event.severity]} · {categoryText[event.category] ?? event.category}</strong>
+    <time>{when(event.occurred_at)}</time><div><strong>{label(severityText[event.severity])} · {label(categoryText[event.category], event.category)}</strong>
       <small>{event.message}</small></div></li>)}</ul>;
 }

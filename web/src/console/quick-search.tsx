@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { useEffect, useState } from "react";
 import { Command } from "cmdk";
 import { Search } from "lucide-react";
@@ -23,23 +24,23 @@ export function QuickSearch({ strategyId }: { strategyId?: string }) {
   }, []);
   const go = (hash: string) => { location.hash = hash; setOpen(false); };
   return <>
-    <button type="button" className="icon-button" aria-label="快捷搜索" title="快捷搜索 (Ctrl/⌘ K)" onClick={() => setOpen(true)}><Search size={18} /></button>
-    {open && <Dialog title="快捷搜索" close={() => setOpen(false)}>
-      <Command label="搜索策略、控件与页面">
-        <Command.Input autoFocus placeholder="搜索策略、控件与页面" aria-label="搜索策略、控件与页面" />
+    <button type="button" className="icon-button" aria-label={t("quickSearch.quickSearch")} title={t("quickSearch.quickSearchCtrlK")} onClick={() => setOpen(true)}><Search size={18} /></button>
+    {open && <Dialog title={t("quickSearch.quickSearch")} close={() => setOpen(false)}>
+      <Command label={t("quickSearch.searchStrategiesControlsAndPages")}>
+        <Command.Input autoFocus placeholder={t("quickSearch.searchStrategiesControlsAndPages")} aria-label={t("quickSearch.searchStrategiesControlsAndPages")} />
         <Command.List>
-          <Command.Empty>没有匹配结果</Command.Empty>
-          <Command.Group heading="页面">
-            {[["工作台", "#workbench"], ["策略", "#strategies"], ["操作记录", "#operations"], ["通知", "#telegram"], ["设置", "#system"]].map(([label, path]) =>
+          <Command.Empty>{t("quickSearch.noMatchingResults")}</Command.Empty>
+          <Command.Group heading={t("quickSearch.pages")}>
+            {[[t("app.workbench"), "#workbench"], [t("app.strategies"), "#strategies"], [t("app.operations"), "#operations"], [t("app.notifications"), "#telegram"], [t("app.settings"), "#system"]].map(([label, path]) =>
               <Command.Item key={path} onSelect={() => go(path!)}>{label}</Command.Item>)}
           </Command.Group>
-          <Command.Group heading="策略">
+          <Command.Group heading={t("app.strategies")}>
             {strategies.data?.filter((item) => !item.archived_at).map((item) =>
               <Command.Item key={item.id} value={item.id} keywords={[item.name]} onSelect={() => go(workbenchPath(item.id))}>{item.name}</Command.Item>)}
           </Command.Group>
-          {detail.data && <Command.Group heading="当前策略控件">
+          {detail.data && <Command.Group heading={t("quickSearch.currentStrategyControls")}>
             {controlWidgets(detail.data, controls.data).map((item) =>
-              <Command.Item key={item.id} value={item.id} keywords={[item.title, ...(item.kind === "entry" ? ["暂停新开仓", "恢复新开仓"] : [])]}
+              <Command.Item key={item.id} value={item.id} keywords={[item.title, ...(item.kind === "entry" ? [t("operations.pauseNewEntries"), t("operations.resumeNewEntries")] : [])]}
                 onSelect={() => go(`${workbenchPath(detail.data!.id)}/${encodeURIComponent(item.ref ?? item.kind)}`)}>{item.title}</Command.Item>)}
           </Command.Group>}
         </Command.List>

@@ -1,3 +1,4 @@
+import { label, t, type Message } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleAlert } from "lucide-react";
 import { useState } from "react";
@@ -6,10 +7,10 @@ import { submitted } from "./command-feedback";
 import { api, readSession, sessionKey, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
 import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, ParameterInput, Table, stateText, useData, when } from "./ui";
 
-const actions: Record<string, string> = {
-  pause_entry: "暂停新开仓", resume_entry: "恢复新开仓", refresh: "刷新监控",
-  set_parameters: "修改参数", cancel_order: "撤销订单", close_position: "关闭持仓",
-  flatten: "关闭全部归属持仓", buy: "手动买入", sell: "手动卖出",
+const actions: Record<string, Message> = {
+  pause_entry: "operations.pauseNewEntries", resume_entry: "operations.resumeNewEntries", refresh: "operations.refreshMonitoring",
+  set_parameters: "operations.editParameters", cancel_order: "operations.cancelOrder", close_position: "operations.closePosition",
+  flatten: "operations.closeAllStrategyPositions", buy: "operations.manualBuy", sell: "operations.manualSell",
 };
 const shadow = new Set(["pause_entry", "resume_entry"]);
 const safe = new Set(["refresh"]);
@@ -20,23 +21,23 @@ export function ControlPanel({ strategy }: { strategy: Detail }) {
   const bound = new Set(registry.data?.controls.flatMap((item) => item.command ? [item.command] : []));
   const available = strategy.capabilities.filter((item) => !shadow.has(item.id) && !bound.has(item.id));
   return <div className="stack">
-    <Panel title="开仓权限与风控"><EntryControl strategy={strategy} registry={registry.data} ready={registry.isSuccess} /></Panel>
+    <Panel title={t("operations.entryPermissionsAndRiskControls")}><EntryControl strategy={strategy} registry={registry.data} ready={registry.isSuccess} /></Panel>
     <DynamicControls strategy={strategy} registry={registry.data && { ...registry.data, controls: registry.data.controls.filter((item) => !entryBinding(item.command)) }} error={registry.error} loading={registry.isPending}
       operation={(command, close) => <OperationView command={command} strategy={strategy.name} close={close} />} />
-    <Panel title="会话声明的操作" hint="操作由策略主动声明，最终状态以策略回执为准。">
-      {strategy.archived_at ? <Empty title="策略已归档" /> : !available.length ?
-        <Empty title="没有独立的会话操作" text="已绑定注册组件的操作可在控制面板中使用。" /> :
+    <Panel title={t("operations.sessionActions")} hint={t("operations.theStrategyDeclaresTheseActionsAndReports")}>
+      {strategy.archived_at ? <Empty title={t("operations.strategyArchived")} /> : !available.length ?
+        <Empty title={t("operations.noStandaloneSessionActions")} text={t("operations.actionsBoundToRegisteredControlsAreAvailable")} /> :
         <div className="control-grid">{available.map((cap) => {
           const risky = cap.high_risk || !safe.has(cap.id);
           const blocked = strategy.mode === "live" && risky && !strategy.live_trading_enabled;
           const unavailable = !strategy.executor_online;
           return <button key={cap.id} disabled={blocked || unavailable} onClick={() => setSelected(cap)} className="control-button">
-            <strong>{cap.label}</strong><small>{blocked ? "实盘高风险操作未启用" : unavailable ? "执行实例离线"
-              : risky ? "需二次确认" : "一次性操作"}</small>
+            <strong>{cap.label}</strong><small>{blocked ? t("operations.highRiskLiveTradingIsDisabled") : unavailable ? t("operations.executorOffline")
+              : risky ? t("operations.confirmationRequired") : t("operations.oneTimeAction")}</small>
           </button>;
         })}</div>}
     </Panel>
-    <Panel title="近期指令"><OperationTable strategyId={strategy.id} compact /></Panel>
+    <Panel title={t("operations.recentCommands")}><OperationTable strategyId={strategy.id} compact /></Panel>
     {selected && <CommandDialog capability={selected} strategy={strategy} close={() => setSelected(null)} />}
   </div>;
 }
@@ -55,10 +56,10 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
   const reported = control.reported_current ? control.reported : null;
   const requested = control.desired.entry_enabled;
   const values = [
-    ["期望交易权限", requested === undefined ? "由策略决定" : requested ? "允许新开仓" : "暂停新开仓"],
-    ["实际上报权限", reported?.entry_enabled != null ? reported.entry_enabled ? "允许新开仓" : "暂停新开仓" : "等待当前实例回报"],
-    ["本地风控锁", reported?.risk_locked == null ? "未知" : reported.risk_locked ? "已锁定" : "未锁定"],
-    ["有效开仓权限", control.effective_entry_enabled == null ? "未知" : control.effective_entry_enabled ? "允许" : "禁止"],
+    [t("operations.desiredEntryPermission"), requested === undefined ? t("operations.managedByTheStrategy") : requested ? t("operations.allowNewEntries") : t("operations.pauseNewEntries")],
+    [t("operations.reportedEntryPermission"), reported?.entry_enabled != null ? reported.entry_enabled ? t("operations.allowNewEntries") : t("operations.pauseNewEntries") : t("operations.waitingForCurrentInstance")],
+    [t("operations.localRiskLock"), reported?.risk_locked == null ? t("operations.unknown") : reported.risk_locked ? t("operations.locked") : t("operations.unlocked")],
+    [t("operations.effectiveEntryPermission"), control.effective_entry_enabled == null ? t("operations.unknown") : control.effective_entry_enabled ? t("operations.allowed") : t("operations.blocked")],
   ] as const;
   const issue = useMutation({
     mutationFn: ({ enabled, binding }: { enabled: boolean; binding?: NonNullable<ControlRegistryView["controls"][number]> }) =>
@@ -89,22 +90,22 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
   const resume = action(true);
   return <div className="stack entry-control">
     <div className="value-grid">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-    <div role="status">{awaitingApply ? "等待策略确认" : "已同步"}</div>
+    <div role="status">{awaitingApply ? t("operations.waitingForStrategyConfirmation") : t("operations.inSync")}</div>
     <div className="toolbar">
       {pause.capability && <button type="button" className="button secondary" disabled={pause.disabled}
-        onClick={() => issue.mutate({ enabled: false, binding: pause.binding })}>暂停新开仓</button>}
+        onClick={() => issue.mutate({ enabled: false, binding: pause.binding })}>{t("operations.pauseNewEntries")}</button>}
       {resume.capability && <button type="button" className="button secondary" disabled={resume.disabled}
-        onClick={() => setConfirm(true)}>恢复新开仓</button>}
+        onClick={() => setConfirm(true)}>{t("operations.resumeNewEntries")}</button>}
     </div>
-    {record && <div className="toolbar"><CommandBadge state={record.state} /><a href={`#operations/${record.id}`}>查看指令</a></div>}
+    {record && <div className="toolbar"><CommandBadge state={record.state} /><a href={`#operations/${record.id}`}>{t("commandFeedback.viewCommand")}</a></div>}
     <ErrorNotice error={issue.error} />
-    {confirm && <Dialog title="恢复新开仓" close={() => setConfirm(false)}>
-      <p>{strategy.name} · 实际权限 {values[1][1]} · 本地风控锁 {values[2][1]}</p>
-      <p>恢复开仓权限后，本地风控锁继续生效。</p>
+    {confirm && <Dialog title={t("operations.resumeNewEntries")} close={() => setConfirm(false)}>
+      <p>{strategy.name} {t("operations.actualPermission")}{" "}{values[1][1]} {t("operations.localRiskLockText")}{" "}{values[2][1]}</p>
+      <p>{t("operations.theLocalRiskLockRemainsActiveWhen")}</p>
       <ErrorNotice error={issue.error} />
-      <div className="dialog-actions"><button type="button" className="button secondary" onClick={() => setConfirm(false)}>取消</button>
+      <div className="dialog-actions"><button type="button" className="button secondary" onClick={() => setConfirm(false)}>{t("dashboardBuilder.cancel")}</button>
         <button type="button" className="button primary" disabled={resume.disabled}
-          onClick={() => issue.mutate({ enabled: true, binding: resume.binding })}>提交恢复请求</button></div>
+          onClick={() => issue.mutate({ enabled: true, binding: resume.binding })}>{t("operations.submitResumeRequest")}</button></div>
     </Dialog>}
   </div>;
 }
@@ -127,14 +128,14 @@ export function CommandDialog({ capability, strategy, close, initial, context }:
   return <Dialog title={capability.label} close={close}>
     {record ? <OperationView command={record} strategy={strategy.name} close={close} /> :
       <form className="stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
-        <p>目标策略 <strong>{strategy.name}</strong></p>
+        <p>{t("dynamicControls.targetStrategy")}{" "}<strong>{strategy.name}</strong></p>
         {context && <p>{context}</p>}
-        {(capability.high_risk || !safe.has(capability.id)) && <p className="notice warn">提交后请核对账户、标的和数量，再确认执行。交易操作仍由策略风控判断。</p>}
+        {(capability.high_risk || !safe.has(capability.id)) && <p className="notice warn">{t("operations.reviewTheAccountSymbolAndQuantityBefore")}</p>}
         {Object.entries(capability.parameters).map(([name, parameter]) => <ParameterInput key={name}
           {...{ name, parameter }} value={parameters[name]} set={(value) => setParameters({ ...parameters, [name]: value })} />)}
         <ErrorNotice error={create.error} />
-        <div className="dialog-actions"><button type="button" className="button secondary" onClick={close}>取消</button>
-          <button className="button primary" disabled={create.isPending}>提交请求</button></div>
+        <div className="dialog-actions"><button type="button" className="button secondary" onClick={close}>{t("dashboardBuilder.cancel")}</button>
+          <button className="button primary" disabled={create.isPending}>{t("dynamicControls.submitRequest")}</button></div>
       </form>}
   </Dialog>;
 }
@@ -163,39 +164,39 @@ export function OperationView({ command, strategy, close }: { command: Command; 
   return <div className="stack">
     <div className="toolbar"><CommandBadge state={display.state} /><span className="mono subtle">{display.id}</span></div>
     <dl className="detail-list">
-      {strategy && <><dt>策略</dt><dd>{strategy}</dd></>}
-      <dt>指令</dt><dd>{actions[display.action] ?? display.action}</dd>
-      <dt>发起人</dt><dd>{display.actor}</dd><dt>截止时间</dt><dd>{when(display.expires_at)}</dd>
-      {display.control_id && <><dt>控件</dt><dd>{display.control_id} · v{display.control_revision}</dd></>}
-      {display.revision != null && <><dt>控制修订</dt><dd>{display.revision}</dd></>}
+      {strategy && <><dt>{t("app.strategies")}</dt><dd>{strategy}</dd></>}
+      <dt>{t("operations.command")}</dt><dd>{label(actions[display.action], display.action)}</dd>
+      <dt>{t("operations.requestedBy")}</dt><dd>{display.actor}</dd><dt>{t("operations.deadline")}</dt><dd>{when(display.expires_at)}</dd>
+      {display.control_id && <><dt>{t("operations.control")}</dt><dd>{display.control_id} · v{display.control_revision}</dd></>}
+      {display.revision != null && <><dt>{t("operations.controlRevision")}</dt><dd>{display.revision}</dd></>}
     </dl>
-    {Object.keys(display.arguments).length > 0 && <Code label="提交参数">{JSON.stringify(display.arguments, null, 2)}</Code>}
-    {display.result != null && <Code label="策略回执">{JSON.stringify(display.result, null, 2)}</Code>}
+    {Object.keys(display.arguments).length > 0 && <Code label={t("operations.submittedParameters")}>{JSON.stringify(display.arguments, null, 2)}</Code>}
+    {display.result != null && <Code label={t("operations.strategyReceipt")}>{JSON.stringify(display.result, null, 2)}</Code>}
     {display.error && <div className="notice warn">{display.error}</div>}
-    {!!audit.data?.length && <details className="form-detail"><summary>执行审计</summary>
-      <Table columns={["时间", "操作", "执行者"]}>
+    {!!audit.data?.length && <details className="form-detail"><summary>{t("operations.executionAudit")}</summary>
+      <Table columns={[t("marketChart.time"), t("onboarding.actions"), t("operations.actor")]}>
         {audit.data.map((row) => <tr key={row.id}><td>{when(row.created_at)}</td>
           <td className="mono">{row.action}</td><td className="mono">{row.actor}</td></tr>)}
       </Table>
     </details>}
-    {canConfirm && <div className="notice warn"><CircleAlert size={17} /><span>请核对策略和参数。确认后，授权实例可在有效期内领取一次性执行许可。</span></div>}
+    {canConfirm && <div className="notice warn"><CircleAlert size={17} /><span>{t("operations.reviewTheStrategyAndParametersConfirmationLets")}</span></div>}
     {display.state === "unknown" && <form className="stack" onSubmit={(e) => { e.preventDefault(); act.mutate("reconcile"); }}>
-      <div className="notice warn">请先核对程序与券商侧的实际记录，再填写核对依据。</div>
-      <Field label="核对结果"><select value={resolution} onChange={(e) => setResolution(e.target.value as typeof resolution)}>
-        <option value="failed">已核实未执行成功</option><option value="succeeded">已核实执行成功</option></select></Field>
-      <Field label="核对依据"><textarea value={evidence} onChange={(e) => setEvidence(e.target.value)} required minLength={3} maxLength={1000} /></Field>
-      <button className="button secondary" disabled={act.isPending}>保存核对结果</button>
+      <div className="notice warn">{t("operations.checkTheAgentAndBrokerRecordsBefore")}</div>
+      <Field label={t("operations.reconciliationOutcome")}><select value={resolution} onChange={(e) => setResolution(e.target.value as typeof resolution)}>
+        <option value="failed">{t("operations.verifiedUnsuccessful")}</option><option value="succeeded">{t("operations.verifiedSuccessful")}</option></select></Field>
+      <Field label={t("operations.reconciliationEvidence")}><textarea value={evidence} onChange={(e) => setEvidence(e.target.value)} required minLength={3} maxLength={1000} /></Field>
+      <button className="button secondary" disabled={act.isPending}>{t("operations.saveReconciliation")}</button>
     </form>}
     <ErrorNotice error={act.error} />
-    <div className="dialog-actions"><button className="button secondary" onClick={close}>关闭</button>
-      {canCancel && <button className="button quiet danger-text" disabled={act.isPending} onClick={() => act.mutate("cancel")}>取消请求</button>}
-      {canConfirm && <button className="button danger" disabled={act.isPending} onClick={() => act.mutate("confirm")}>确认执行</button>}</div>
+    <div className="dialog-actions"><button className="button secondary" onClick={close}>{t("dynamicControls.close")}</button>
+      {canCancel && <button className="button quiet danger-text" disabled={act.isPending} onClick={() => act.mutate("cancel")}>{t("operations.cancelRequest")}</button>}
+      {canConfirm && <button className="button danger" disabled={act.isPending} onClick={() => act.mutate("confirm")}>{t("operations.confirmExecution")}</button>}</div>
   </div>;
 }
 
 function InspectCommand({ id, close }: { id: string; close: () => void }) {
   const operation = useData<Command>(`commands/${id}`, true, 3_000);
-  return <Dialog title="指令详情" close={close}><ErrorNotice error={operation.error} />
+  return <Dialog title={t("operations.commandDetails")} close={close}><ErrorNotice error={operation.error} />
     {operation.data ? <OperationView command={operation.data} close={close} /> : operation.isPending ? <Loading /> : null}</Dialog>;
 }
 
@@ -216,25 +217,25 @@ export function OperationTable({ strategyId, compact = false, selected, close }:
   const names = Object.fromEntries((strategies.data ?? []).map((s) => [s.id, s.name]));
   const rows = commands.data ?? [];
   return <>
-    {!compact && <div className="toolbar"><select aria-label="筛选操作状态" value={state} onChange={(e) => { setState(e.target.value); setCursor([]); }}>
-      <option value="">全部状态</option>{Object.entries(stateText).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div>}
+    {!compact && <div className="toolbar"><select aria-label={t("operations.filterCommandStatus")} value={state} onChange={(e) => { setState(e.target.value); setCursor([]); }}>
+      <option value="">{t("operations.allStatuses")}</option>{Object.entries(stateText).map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}</select></div>}
     <ErrorNotice error={commands.error} />
-    {commands.isPending ? <Loading /> : <Table columns={["指令", ...(compact ? [] : ["策略"]), "状态", "发起人", "创建时间", ""]} empty={!rows.length}>
-      {rows.map((item) => <tr key={item.id}><td>{actions[item.action] ?? item.action}</td>
+    {commands.isPending ? <Loading /> : <Table columns={[t("operations.command"), ...(compact ? [] : [t("app.strategies")]), t("onboarding.status"), t("operations.requestedBy"), t("operations.createdAt"), ""]} empty={!rows.length}>
+      {rows.map((item) => <tr key={item.id}><td>{label(actions[item.action], item.action)}</td>
         {!compact && <td><a href={strategyPath(item.strategy_id, "control")}>{names[item.strategy_id] ?? item.strategy_id}</a></td>}
         <td><CommandBadge state={item.state} /></td><td className="mono subtle">{item.actor}</td><td>{when(item.created_at)}</td>
-        <td><button className="button quiet" onClick={() => setInspect(item.id)}>详情</button></td></tr>)}
+        <td><button className="button quiet" onClick={() => setInspect(item.id)}>{t("operations.details")}</button></td></tr>)}
     </Table>}
-    {!compact && <div className="toolbar"><button className="button secondary" disabled={!before} onClick={() => setCursor(cursor.slice(0, -1))}>上一页</button>
+    {!compact && <div className="toolbar"><button className="button secondary" disabled={!before} onClick={() => setCursor(cursor.slice(0, -1))}>{t("operations.previousPage")}</button>
       <button className="button secondary" disabled={commands.data?.length !== 30} onClick={() => {
         const last = commands.data?.at(-1);
         if (last) setCursor([...cursor, last.id]);
-      }}>下一页</button></div>}
+      }}>{t("operations.nextPage")}</button></div>}
     {(inspect || selected) && <InspectCommand id={(inspect ?? selected)!} close={() => { setInspect(undefined); close?.(); }} />}
   </>;
 }
 
 export function OperationsPage({ commandId }: { commandId?: string }) {
-  return <><PageTitle title="操作记录" sub="Web 和 Telegram 的远程指令、执行回执与核对结果。" />
+  return <><PageTitle title={t("app.operations")} sub={t("operations.remoteCommandsFromTheWebAndTelegram")} />
     <Panel><OperationTable selected={commandId} close={() => { if (commandId) location.hash = "#operations"; }} /></Panel></>;
 }

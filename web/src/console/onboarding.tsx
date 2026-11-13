@@ -1,3 +1,4 @@
+import { label, t, type Message } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { BookOpen, ChevronRight, Eye, EyeOff, KeyRound, Plus, RefreshCw } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -14,32 +15,32 @@ export const defaultStrategy: StrategySettings = {
 export function StrategyFields({ form, set, basic = false }: { form: StrategySettings; set: (form: StrategySettings) => void; basic?: boolean }) {
   return <>
     <div className="form-grid">
-      <Field label="策略名称"><input maxLength={100} required value={form.name} onChange={(e) => set({ ...form, name: e.target.value })} /></Field>
-      <Field label="交易模式"><select value={form.mode} onChange={(e) => set({ ...form, mode: e.target.value as StrategySettings["mode"], live_trading_enabled: false })}>
-        <option value="paper">模拟盘</option><option value="live">实盘</option><option value="backtest">回测</option></select></Field>
-      {!basic && <><Field label="分组"><input maxLength={100} value={form.group} onChange={(e) => set({ ...form, group: e.target.value })} /></Field>
-      <Field label="标签" hint="以逗号分隔"><input defaultValue={form.tags.join(", ")} onChange={(e) => set({ ...form, tags: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} /></Field></>}
+      <Field label={t("onboarding.strategyName")}><input maxLength={100} required value={form.name} onChange={(e) => set({ ...form, name: e.target.value })} /></Field>
+      <Field label={t("onboarding.tradingMode")}><select value={form.mode} onChange={(e) => set({ ...form, mode: e.target.value as StrategySettings["mode"], live_trading_enabled: false })}>
+        <option value="paper">{t("onboarding.paper")}</option><option value="live">{t("onboarding.live")}</option><option value="backtest">{t("onboarding.backtest")}</option></select></Field>
+      {!basic && <><Field label={t("onboarding.group")}><input maxLength={100} value={form.group} onChange={(e) => set({ ...form, group: e.target.value })} /></Field>
+      <Field label={t("onboarding.tags")} hint={t("onboarding.commaSeparated")}><input defaultValue={form.tags.join(", ")} onChange={(e) => set({ ...form, tags: e.target.value.split(/[,，]/).map((s) => s.trim()).filter(Boolean) })} /></Field></>}
     </div>
-    {!basic && <><Field label="策略说明"><textarea rows={2} maxLength={1000} value={form.description} onChange={(e) => set({ ...form, description: e.target.value })} /></Field>
-    <details className="form-detail"><summary>断线、数据保留与告警</summary><div className="stack">
+    {!basic && <><Field label={t("onboarding.strategyDescription")}><textarea rows={2} maxLength={1000} value={form.description} onChange={(e) => set({ ...form, description: e.target.value })} /></Field>
+    <details className="form-detail"><summary>{t("onboarding.disconnectBehaviorRetentionAndAlerts")}</summary><div className="stack">
       <div className="form-grid">
-        <Field label="断线策略" hint="需要程序自行实施并回报"><select value={form.disconnect_policy}
+        <Field label={t("onboarding.disconnectPolicy")} hint={t("onboarding.theAgentMustApplyAndReportThis")}><select value={form.disconnect_policy}
           onChange={(e) => set({ ...form, disconnect_policy: e.target.value as StrategySettings["disconnect_policy"] })}>
-          <option value="continue">继续自主运行</option><option value="block_entry">禁止新开仓，保留本地风控</option>
+          <option value="continue">{t("onboarding.continueRunningIndependently")}</option><option value="block_entry">{t("onboarding.blockNewEntriesAndKeepLocalRisk")}</option>
         </select></Field>
-        <Field label="数据保留（天）"><input type="number" required min={1} max={3650} value={form.retention_days}
+        <Field label={t("onboarding.retentionDays")}><input type="number" required min={1} max={3650} value={form.retention_days}
           onChange={(e) => set({ ...form, retention_days: Number(e.target.value) })} /></Field>
-        <Field label="最低告警等级"><select value={form.alerts.minimum} onChange={(e) =>
+        <Field label={t("onboarding.minimumAlertSeverity")}><select value={form.alerts.minimum} onChange={(e) =>
           set({ ...form, alerts: { ...form.alerts, minimum: e.target.value as StrategySettings["alerts"]["minimum"] } })}>
-          {Object.entries(severityText).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          {Object.entries(severityText).map(([value, label]) => <option key={value} value={value}>{t(label)}</option>)}
         </select></Field>
       </div>
       <label className="checkbox"><input type="checkbox" checked={form.alerts.enabled} onChange={(e) =>
-        set({ ...form, alerts: { ...form.alerts, enabled: e.target.checked } })} /> 记录并通知该策略的告警</label>
-      <div className="field"><span>告警分类</span><CategoryPicker selected={form.alerts.categories}
+        set({ ...form, alerts: { ...form.alerts, enabled: e.target.checked } })} /> {t("onboarding.recordAndSendAlertsForThisStrategy")}</label>
+      <div className="field"><span>{t("onboarding.alertCategories")}</span><CategoryPicker selected={form.alerts.categories}
         onChange={(categories) => set({ ...form, alerts: { ...form.alerts, categories } })} /></div>
       {form.mode === "live" && <label className="checkbox danger-text"><input type="checkbox" checked={form.live_trading_enabled}
-        onChange={(e) => set({ ...form, live_trading_enabled: e.target.checked })} /> 允许通过 QuantBot 提交已声明的实盘高风险操作</label>}
+        onChange={(e) => set({ ...form, live_trading_enabled: e.target.checked })} /> {t("onboarding.allowDeclaredHighRiskLiveTradingOperations")}</label>}
     </div></details></>}
   </>;
 }
@@ -47,15 +48,15 @@ export function StrategyFields({ form, set, basic = false }: { form: StrategySet
 export function CategoryPicker({ selected, onChange }: { selected: string[]; onChange: (items: string[]) => void }) {
   return <div className="chips">{Object.entries(categoryText).map(([key, label]) =>
     <label className="chip" key={key}><input type="checkbox" checked={selected.includes(key)}
-      onChange={(e) => onChange(e.target.checked ? [...selected, key] : selected.filter((item) => item !== key))} />{label}</label>)}
-    <small>未选择时包含全部分类</small></div>;
+      onChange={(e) => onChange(e.target.checked ? [...selected, key] : selected.filter((item) => item !== key))} />{t(label)}</label>)}
+    <small>{t("onboarding.anEmptySelectionIncludesAllCategories")}</small></div>;
 }
 
-const scopeLabels: Record<Scope, string> = { session: "会话与心跳", telemetry: "上报数据", control: "同步开仓权限", commands: "领取一次性指令" };
+const scopeLabels: Record<Scope, Message> = { session: "onboarding.sessionAndHeartbeat", telemetry: "onboarding.reportData", control: "onboarding.syncEntryPermission", commands: "onboarding.claimOneTimeCommands" };
 
 const fullScopes = Object.keys(scopeLabels) as Scope[];
 const scopeSummary = (scopes: Scope[]) => scopes.length === fullScopes.length
-  ? "完整接入" : scopes.map((scope) => scopeLabels[scope]).join(" · ");
+  ? t("onboarding.fullAccess") : scopes.map((scope) => label(scopeLabels[scope])).join(" · ");
 
 function TokenFields({ scopes, setScopes, expiry, setExpiry, expanded = false }: {
   scopes: Scope[]; setScopes: (s: Scope[]) => void; expiry?: string; setExpiry?: (s: string) => void; expanded?: boolean;
@@ -68,11 +69,11 @@ function TokenFields({ scopes, setScopes, expiry, setExpiry, expanded = false }:
     setScopes([...next]);
   };
   return <>
-    <details className="form-detail" open={expanded || undefined}><summary>高级权限设置</summary><div className="chips">{fullScopes.map((scope) =>
+    <details className="form-detail" open={expanded || undefined}><summary>{t("onboarding.advancedPermissions")}</summary><div className="chips">{fullScopes.map((scope) =>
       <label className="chip" key={scope}><input type="checkbox" checked={scopes.includes(scope)} disabled={scope === "session"}
-        onChange={(e) => set(scope, e.target.checked)} />{scopeLabels[scope]}</label>)}</div></details>
-    {setExpiry && <Field label="Token 到期时间（可选）"><input type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>}
-    {scopes.length === fullScopes.length && <small className="subtle">完整接入 · 交易操作仍需策略授权</small>}
+        onChange={(e) => set(scope, e.target.checked)} />{label(scopeLabels[scope])}</label>)}</div></details>
+    {setExpiry && <Field label={t("onboarding.tokenExpirationOptional")}><input type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>}
+    {scopes.length === fullScopes.length && <small className="subtle">{t("onboarding.fullAccessTradingOperationsStillRequireStrategy")}</small>}
   </>;
 }
 
@@ -88,11 +89,11 @@ export function CreateStrategy({ close }: { close: () => void }) {
   if (create.data) return <CredentialDialog credential={create.data.credential} close={() => {
     location.hash = strategyPath(create.data.strategy.id, "api"); close();
   }} />;
-  return <Dialog title="添加策略" close={close}><form className="stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
+  return <Dialog title={t("onboarding.addStrategy")} close={close}><form className="stack" onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
     <StrategyFields form={form} set={set} basic />
     <ErrorNotice error={create.error} />
-    <div className="dialog-actions"><button className="button secondary" type="button" onClick={close}>取消</button>
-      <button className="button primary" disabled={create.isPending}><KeyRound size={16} /> 创建并生成 Token</button></div>
+    <div className="dialog-actions"><button className="button secondary" type="button" onClick={close}>{t("dashboardBuilder.cancel")}</button>
+      <button className="button primary" disabled={create.isPending}><KeyRound size={16} /> {t("onboarding.createAndGenerateToken")}</button></div>
   </form></Dialog>;
 }
 
@@ -105,113 +106,28 @@ const repository = "https://github.com/yaho7/QuantBot";
 const docs = `${repository}/blob/main`;
 
 function aiInstructions(endpoint: string, strategyId: string, sandbox?: SandboxCredentials) {
-  const testEndpoint = sandbox?.endpoint ?? "复制时自动填入";
+  const testEndpoint = sandbox?.endpoint ?? t("onboarding.filledInWhenCopied");
   const instanceName = `strategy-${strategyId.slice(0, 8)}`;
-  const config = JSON.stringify({ endpoint: testEndpoint, secret: sandbox?.secret ?? "复制时自动填入", instance_name: instanceName }, null, 2);
-  return `请帮我将当前量化交易程序**完整接入 QuantBot 监控与远程控制平台**，直接修改项目代码完成接入。
-
-**QuantBot GitHub 仓库：** [${repository}](${repository})
-
-**Sandbox Endpoint：** \`${testEndpoint}\`
-
-**临时 Key ID：** \`${sandbox?.key ?? "复制时自动填入"}\` · **有效期至：** ${sandbox?.expires_at ?? "复制时自动填入"}
-
-**策略 ID：** \`${strategyId}\`
-
-**正式 Endpoint：** \`${endpoint}\`
-
-**协议：** Agent HTTP API，报告和控件 \`schema_version: 1\`。规范和示例由 GitHub 仓库维护。
-
-### 一、接入目标
-
-先主动读取 GitHub 上的 [README](${docs}/README.md)、[PROTOCOL.md](${docs}/PROTOCOL.md)、[跨语言接入指南](${docs}/docs/INTEGRATION.md)、[OpenAPI](${docs}/docs/openapi.json)、[JSON Schema](${repository}/tree/main/docs/schemas)、[接入示例](${repository}/tree/main/examples) 和 [连接排查](${docs}/docs/TROUBLESHOOTING.md)。阅读当前项目后，直接修改代码，按实际能力完成监控和安全的高级控制。先识别当前语言、现有 HTTP 客户端、主程序生命周期、数据缓存、开仓判断和原有风控入口，再选择实现方式。Python 可用 urllib.request，JavaScript/TypeScript 用 fetch，Go 用 net/http，C# 和 Java 用标准 HttpClient。C++ 或特殊运行环境优先复用现有 HTTP 库。避免重复开发。
-
-### 二、主程序集成
-
-- 接入代码运行在量化主程序内，可单独组织成模块。随主程序启动自动连接，无需额外进程或容器。
-- 复用当前程序的运行状态、参数、持仓、订单和交易执行入口。
-- 保留原有策略算法、券商连接、交易规则及风控。网络通信不得阻塞行情、下单或风控流程。
-
-### 三、配置与密钥
-
-- 创建主程序启动时自动读取的 \`quantbot.json\`，直接使用下方测试配置。将 \`quantbot.json\` 加入 \`.gitignore\`，创建 Secret 为空的 \`quantbot.example.json\`。若已有正式配置，先保留原文件，在隔离的测试副本里写入测试配置。禁止输出、提交或记录 Secret。
-
-\`\`\`json
-${config}
-\`\`\`
-
-- Endpoint 已含 Agent API 前缀，直接追加 \`/session\` 等相对路径。允许正式 \`/api/agent\` 和测试 \`/api/sandbox/agent\`。使用 \`secret\` 作为 Bearer Token。
-- 通过测试 Endpoint 识别 Sandbox，在连接任何真实券商前进入模拟模式。使用模拟数据、独立的本地开仓状态、命令去重和回执存储。Sandbox 指令只进入模拟处理逻辑，禁止触发真实下单、平仓或撤单。
-- 验收后，用户只需把 \`endpoint\` 换成上方正式 Endpoint、把 \`secret\` 换成该策略的正式 Secret，再重启。无需索取正式 Token。缺少配置或 Secret 时保留原有程序行为。
-
-### 四、完整数据监控
-
-- **运行监控**：在线状态、健康状态、运行时长、券商连接和异常。
-- **账户及交易**：余额、可用资金、账户净值、购买力、持仓、订单、成交、信号及手续费。
-- **策略绩效**：累计收益、当日收益、净值曲线、最大回撤和已有绩效指标。
-- **行情、日志和自定义指标**：已有 K 线和行情、重要日志、错误、风控事件、交易提醒及有意义的内部指标。
-
-按会话返回的间隔发送心跳，运行状态变化时更新。其他数据按事件或合理的间隔上报。复用内存、缓存和已有数据，避免额外频繁请求券商 API。使用官方 Schema，没有的数据不要编造，成交重传沿用相同事件 ID。
-
-### 五、高级控制功能
-
-**高级控制是接入重点。** 使用官方会话、能力声明、动态控件和命令机制，为当前程序完成可安全实施的功能。
-
-1. **运行控制**：优先支持暂停和恢复新开仓、主动刷新，以及运行阶段、异常和风控锁的展示。按现有能力考虑启用或停用程序已有功能。
-2. **动态参数**：展示当前参数和实际生效值。对允许动态调整的参数，按需使用开关、滑块、数值输入或下拉菜单，并回报实际应用结果。
-3. **订单和持仓**：展示订单及持仓，明确区分策略归属持仓与券商账户持仓。根据程序已有能力评估撤单、指定平仓、全部平仓及手动买卖。
-4. **自定义操作**：从程序现有功能中选择适合远程操作的方法，提供清晰的名称、参数范围、实际状态和错误反馈。只展示已经实现和验证的操作。
-5. **执行与安全**：正确同步期望状态和实际状态。一次性命令按协议领取执行许可，再执行和回报真实结果。处理超时、重连、重复命令及结果未知。交易操作必须通过原有风控及交易执行入口。
-
-### 六、高级功能实施原则
-
-- **只读和低风险功能**：状态查询、参数展示、刷新信息和只读控件可直接完成。
-- **暂停和恢复新开仓**：优先实现，仅改变新开仓权限。确保止损、减仓和必要风控继续运行，恢复开仓不能解除本地风控锁。
-- **影响交易行为的功能**：修改交易参数、撤单、平仓、手动买卖等，先给出具体方案，经我同意后再修改相关代码。可先完成其余接入工作。
-- **程序尚不支持的功能**：说明限制及可行扩展，不凭空增加交易能力。
-
-使用 QuantBot 官方动态控件与命令机制，让控制面板随程序实际能力变化。
-
-### 七、可靠性
-
-- 统一发送 \`User-Agent: QuantBot-Integration/1.0\`、\`Accept: application/json\`、\`Content-Type: application/json\` 和 Bearer Secret。保持 TLS 校验，禁止自动跟随重定向。
-- 用独立线程或异步任务执行 HTTP，设置连接和请求超时。按有上限的指数退避和随机抖动自动重连。429 遵守 Retry-After，401 提示更换 Secret，403 区分 QuantBot 权限与 Cloudflare 1010 等上游拦截。脱敏诊断仅包含请求路径、状态、错误类型和追踪 ID。
-- 用有界队列批量上报，快照可合并，重要事件和待发回执应持久化。重传沿用事件 ID 和时间戳。最后应用的开仓权限保存到本地，重连和重启后先对账。命令执行前持久化命令 ID，按一次性许可执行并保存真实回执，结果未知时核对原交易记录。
-- 文件尽量精简，优先保留一个通信模块和本地配置。不引入无关依赖或重构。
-
-### 八、测试与交付
-
-直接用已填好的配置完成 Sandbox 测试。建立会话并发送心跳，上报至少一类模拟遥测，注册至少一个控件。声明 \`pause_entry\`、\`resume_entry\`、\`refresh\` 并使用执行实例。服务会自动发出模拟暂停和刷新；读取期望开仓修订、回报应用结果，领取刷新 Permit 并回报成功。验证恢复开仓、参数读取和异常重连。测试命令及遥测只能使用 Sandbox Endpoint。
-
-完成后列出修改的文件，并用新手能理解的方式说明：
-
-1. Token 填在哪个文件、哪个字段。
-2. 怎样按原来的方式启动程序。
-3. 如何在 QuantBot 网页确认接入，查看监控和控制面板。
-4. 已实现哪些高级功能，如何使用。
-5. 哪些功能需要我批准，以及实现难度和风险。
-
-**先自动完成 Sandbox 验收。正式启用时由我替换 Endpoint 和 Secret，高风险操作仍由我批准。**
-
-整体原则：**充分发挥 QuantBot 的高级能力，监控全面、控制灵活、操作安全、实现简洁，且不干扰原有量化交易程序。**`;
+  const config = JSON.stringify({ endpoint: testEndpoint, secret: sandbox?.secret ?? t("onboarding.filledInWhenCopied"), instance_name: instanceName }, null, 2);
+  return t("onboarding.sandboxPrompt", { repository, docs, testEndpoint, key: sandbox?.key ?? t("onboarding.filledInWhenCopied"), expires: sandbox?.expires_at ?? t("onboarding.filledInWhenCopied"), strategyId, endpoint, config });
 }
 
 function AgentPrompt({ endpoint, strategyId, disabled }: { endpoint: string; strategyId?: string; disabled?: boolean }) {
-  if (!strategyId) return <Panel title="AI 一键接入测试"><a className="button secondary" href="#strategies">选择策略开始测试</a></Panel>;
+  if (!strategyId) return <Panel title={t("onboarding.oneClickAiIntegrationTest")}><a className="button secondary" href="#strategies">{t("onboarding.selectAStrategyToStartTesting")}</a></Panel>;
   return <SandboxPanel {...{ endpoint, strategyId, disabled }} preview={aiInstructions(endpoint, strategyId)}
     prompt={(credentials) => aiInstructions(endpoint, strategyId, credentials)} />;
 }
 
 function CredentialDialog({ credential, close }: { credential: Credential; close: () => void }) {
   const endpoint = useAgentEndpoint();
-  return <Dialog title="接入凭据已生成" close={close}><div className="stack">
+  return <Dialog title={t("onboarding.accessCredentialCreated")} close={close}><div className="stack">
     <KeyValue label="Endpoint" value={endpoint} />
-    <KeyValue label="策略 ID" value={credential.strategy_id} />
+    <KeyValue label={t("onboarding.strategyId")} value={credential.strategy_id} />
     <KeyValue label="Key" value={credential.id} />
     <small className="subtle">{scopeSummary(credential.scopes)}</small>
     <SecretValue load={async () => credential.token} />
     <AgentPrompt endpoint={endpoint} strategyId={credential.strategy_id} />
-    <div className="dialog-actions"><button className="button primary" onClick={close}>完成</button></div>
+    <div className="dialog-actions"><button className="button primary" onClick={close}>{t("onboarding.done")}</button></div>
   </div></Dialog>;
 }
 
@@ -233,9 +149,9 @@ function SecretValue({ load }: { load: () => Promise<string> }) {
   }
   return <>
     <div className="key-value"><div><small>Secret</small><code>{secret ?? "••••••••••••"}</code></div>
-      <button type="button" className="icon-button" aria-label={secret ? "隐藏 Secret" : "查看 Secret"}
+      <button type="button" className="icon-button" aria-label={secret ? t("onboarding.hideSecret") : t("onboarding.showSecret")}
         disabled={pending} onClick={() => void toggle()}>{secret ? <EyeOff size={18} /> : <Eye size={18} />}</button>
-      {secret && <CopyButton value={secret} label="复制 Secret" />}
+      {secret && <CopyButton value={secret} label={t("onboarding.copySecret")} />}
     </div>
     <ErrorNotice error={error} />
   </>;
@@ -268,27 +184,27 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
     onSuccess: () => void query.invalidateQueries({ queryKey: ["live"] }),
   });
   return <div className="stack">
-    <Panel title="接入凭据" hint="重新生成会立即作废当前 Token，并沿用它的权限和到期时间。"
+    <Panel title={t("onboarding.accessCredentials")} hint={t("onboarding.regeneratingRevokesTheCurrentTokenImmediatelyAnd")}
       action={!strategy.archived_at && <div className="toolbar">
-        {current && <button className="button primary" onClick={() => { regenerate.reset(); setReplacing(current); }}><RefreshCw size={16} /> 重新生成 Token</button>}
-        <button className={`button ${current ? "secondary" : "primary"}`} onClick={() => setEditing("new")}><Plus size={16} /> 新建 Token</button>
+        {current && <button className="button primary" onClick={() => { regenerate.reset(); setReplacing(current); }}><RefreshCw size={16} /> {t("onboarding.regenerateToken")}</button>}
+        <button className={`button ${current ? "secondary" : "primary"}`} onClick={() => setEditing("new")}><Plus size={16} /> {t("onboarding.newToken")}</button>
       </div>}>
-      <KeyValue label="策略 ID" value={id} /><KeyValue label="Endpoint" value={endpoint} />
+      <KeyValue label={t("onboarding.strategyId")} value={id} /><KeyValue label="Endpoint" value={endpoint} />
       {current && <><KeyValue label="Key" value={current.id} />
         <SecretValue key={current.id} load={async () => (await api<Credential>(strategyApi(id, `tokens/${current.id}/reveal`), "POST")).token} /></>}
       <ErrorNotice error={tokens.error ?? revoke.error} />
-      {tokens.isPending ? <Loading /> : <Table columns={["Key", "权限", "最近使用", "有效期", "状态", "操作"]} empty={!tokens.data?.length}>
+      {tokens.isPending ? <Loading /> : <Table columns={["Key", t("onboarding.permissions"), t("onboarding.lastUsed"), t("onboarding.expires"), t("onboarding.status"), t("onboarding.actions")]} empty={!tokens.data?.length}>
         {tokens.data?.map((token) => {
           const expired = token.expires_at && Date.parse(token.expires_at) <= Date.now();
           return <tr key={token.id}><td className="mono">{token.id}</td><td>{scopeSummary(token.scopes)}</td>
-            <td>{when(token.last_used_at)}</td><td>{token.expires_at ? when(token.expires_at) : "长期"}</td>
-            <td>{token.revoked_at ? "已撤销" : expired ? "已过期" : "有效"}</td>
+            <td>{when(token.last_used_at)}</td><td>{token.expires_at ? when(token.expires_at) : t("onboarding.noExpiration")}</td>
+            <td>{token.revoked_at ? t("onboarding.revoked") : expired ? t("onboarding.expired") : t("onboarding.active")}</td>
             <td className="row-actions">{!strategy.archived_at && <>
-              {!token.revoked_at && !expired && <button className="button quiet" onClick={() => setPermissions(token)}>编辑权限</button>}
-              <button className="button quiet" onClick={() => setEditing(token)}>轮换</button>
+              {!token.revoked_at && !expired && <button className="button quiet" onClick={() => setPermissions(token)}>{t("onboarding.editPermissions")}</button>}
+              <button className="button quiet" onClick={() => setEditing(token)}>{t("onboarding.rotate")}</button>
               {!token.revoked_at && <button className="button quiet danger-text" onClick={() => {
-                if (confirm("撤销该 Token 后，使用它的实例将失去连接。继续撤销？")) revoke.mutate(token);
-              }}>撤销</button>}
+                if (confirm(t("onboarding.revokeThisTokenAgentsUsingItWill"))) revoke.mutate(token);
+              }}>{t("dashboardBuilder.undo")}</button>}
             </>}{!strategy.archived_at && !token.revoked_at && !expired && token.id !== current?.id &&
               <SecretValue load={async () => (await api<Credential>(strategyApi(id, `tokens/${token.id}/reveal`), "POST")).token} />}</td></tr>;
         })}
@@ -307,14 +223,14 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
       setPermissions(null);
       void query.invalidateQueries({ queryKey: ["live"] });
     }} />}
-    {replacing && <Dialog title="重新生成 Token" close={() => { if (!regenerate.isPending) setReplacing(null); }}>
+    {replacing && <Dialog title={t("onboarding.regenerateToken")} close={() => { if (!regenerate.isPending) setReplacing(null); }}>
       <div className="stack">
-        <p>旧 Token <code>{replacing.id}</code> 会立即失效。请将新 Token 填入量化程序的配置文件，让程序恢复连接。</p>
+        <p>{t("onboarding.theOldToken")}{" "}<code>{replacing.id}</code> {t("onboarding.willExpireImmediatelyUpdateYourStrategyConfiguration")}</p>
         <ErrorNotice error={regenerate.error} />
         <div className="dialog-actions">
-          <button className="button secondary" disabled={regenerate.isPending} onClick={() => setReplacing(null)}>取消</button>
+          <button className="button secondary" disabled={regenerate.isPending} onClick={() => setReplacing(null)}>{t("dashboardBuilder.cancel")}</button>
           <button className="button danger" disabled={regenerate.isPending} onClick={() => regenerate.mutate(replacing)}>
-            {regenerate.isPending ? "正在生成…" : "确认重新生成"}
+            {regenerate.isPending ? t("onboarding.generating") : t("onboarding.confirmRegeneration")}
           </button>
         </div>
       </div>
@@ -351,26 +267,26 @@ function ConnectionDiagnostics({ strategy, endpoint, token, loadingToken }: {
     last_command_delivery_at: lastDelivery ?? null,
     schema_errors: failures.map(({ type, observed_at, count }) => ({ type, observed_at, count })),
   };
-  return <Panel title="连接诊断" action={<CopyButton value={JSON.stringify(diagnostics, null, 2)} label="复制诊断" />}>
+  return <Panel title={t("onboarding.connectionDiagnostics")} action={<CopyButton value={JSON.stringify(diagnostics, null, 2)} label={t("onboarding.copyDiagnostics")} />}>
     <ErrorNotice error={catalog.error ?? controls.error ?? delivery.error} />
-    <p className="subtle">{instance ? "下方信息来自 QuantBot 收到的请求。" : "等待程序连接。启动后，这里会自动更新。"} 代理拦截请查看策略端的脱敏诊断。</p>
+    <p className="subtle">{instance ? t("onboarding.informationBelowComesFromRequestsReceivedBy") : t("onboarding.waitingForTheAgentToConnectThis")} {t("onboarding.seeTheAgentSRedactedDiagnosticsFor")}</p>
     <dl className="form-grid detail-list">
-      <div><dt>当前 Key</dt><dd>{loadingToken ? "加载中" : !token ? "无有效凭据" : token.last_used_at ? `已使用 · ${when(token.last_used_at)}` : "未使用"}</dd></div>
-      <div><dt>最近实例</dt><dd>{instance ? `${instance.instance_id} · ${instance.online ? "在线" : "离线"}` : "尚未连接"}</dd></div>
-      <div><dt>收到的标准报告</dt><dd>{types.length ? types.join(" · ") : catalog.data ? "尚无报告" : "—"}</dd></div>
-      <div><dt>控制执行资格</dt><dd>{diagnostics.executor_authorized ? `已授权 · ${executor?.instance_id}` : "未授权"}</dd></div>
-      <div><dt>动态控件</dt><dd>{controls.data ? `${controls.data.controls.length} 个` : "—"}</dd></div>
-      <div><dt>命令接收</dt><dd>{lastDelivery ? `已验证 · ${when(lastDelivery)}` : "未验证"}</dd></div>
+      <div><dt>{t("onboarding.currentKey")}</dt><dd>{loadingToken ? t("onboarding.loading") : !token ? t("onboarding.noValidCredential") : token.last_used_at ? t("onboarding.used", { date: when(token.last_used_at) }) : t("onboarding.unused")}</dd></div>
+      <div><dt>{t("onboarding.latestInstance")}</dt><dd>{instance ? `${instance.instance_id} · ${instance.online ? t("onboarding.online") : t("onboarding.offline")}` : t("onboarding.neverConnected")}</dd></div>
+      <div><dt>{t("onboarding.standardReportsReceived")}</dt><dd>{types.length ? types.join(" · ") : catalog.data ? t("onboarding.noReportsYet") : "—"}</dd></div>
+      <div><dt>{t("onboarding.executorAuthorization")}</dt><dd>{diagnostics.executor_authorized ? t("onboarding.authorized", { instance: executor?.instance_id }) : t("onboarding.unauthorized")}</dd></div>
+      <div><dt>{t("onboarding.dynamicControls")}</dt><dd>{controls.data ? t("onboarding.registered", { total: controls.data.controls.length }) : "—"}</dd></div>
+      <div><dt>{t("onboarding.commandDelivery")}</dt><dd>{lastDelivery ? t("onboarding.verified", { date: when(lastDelivery) }) : t("onboarding.unverified")}</dd></div>
     </dl>
-    <Table columns={["实例", "连接", "最后心跳", "程序", "Key"]} empty={!strategy.instances.length}>
-      {strategy.instances.map((item) => <tr key={item.instance_id}><td className="mono">{item.instance_id}</td><td>{item.online ? "在线" : "离线"}</td>
+    <Table columns={[t("onboarding.instance"), t("onboarding.connection"), t("onboarding.lastHeartbeat"), t("onboarding.agent"), "Key"]} empty={!strategy.instances.length}>
+      {strategy.instances.map((item) => <tr key={item.instance_id}><td className="mono">{item.instance_id}</td><td>{item.online ? t("onboarding.online") : t("onboarding.offline")}</td>
         <td>{when(item.last_seen)}</td><td>{[item.declarations.language, item.declarations.framework, item.declarations.version, item.declarations.broker].filter(Boolean).join(" · ") || "—"}</td>
         <td className="mono">{item.token_id}</td></tr>)}
     </Table>
     {failures.map((item) => <div key={item.type} className="notice warn">
-      {item.type} · 协议不兼容 · {item.count} 次 · {when(item.observed_at)}
+      {item.type} {t("onboarding.incompatibleProtocol")}{" "}{item.count} {t("onboarding.occurrences")}{" "}{when(item.observed_at)}
     </div>)}
-    <a className="button secondary" href={`#api/${encodeURIComponent(id)}`}><BookOpen size={16} /> AI 接入指引</a>
+    <a className="button secondary" href={`#api/${encodeURIComponent(id)}`}><BookOpen size={16} /> {t("onboarding.aiIntegrationGuide")}</a>
   </Panel>;
 }
 
@@ -385,12 +301,12 @@ function EditToken({ strategyId, previous, close, done }: { strategyId: string; 
     e.preventDefault();
     mutation.mutate({ scopes, expires_at: expiry ? new Date(expiry).toISOString() : null });
   }
-  return <Dialog title={previous ? "轮换 Token" : "新建 Token"} close={close}>
+  return <Dialog title={previous ? t("onboarding.rotateToken") : t("onboarding.newToken")} close={close}>
     <form className="stack" onSubmit={submit}>
-      {previous && <div className="notice">旧 Token 最多保留一小时，原有到期时间更早时仍按原时间到期。程序使用新 Token 接入后，可手动撤销旧 Token。</div>}
+      {previous && <div className="notice">{t("onboarding.theOldTokenStaysValidForUp")}</div>}
       <TokenFields {...{ scopes, setScopes, expiry, setExpiry }} />
       <ErrorNotice error={mutation.error} />
-      <div className="dialog-actions"><button className="button primary" disabled={mutation.isPending}>{previous ? "确认轮换" : "生成 Token"}</button></div>
+      <div className="dialog-actions"><button className="button primary" disabled={mutation.isPending}>{previous ? t("onboarding.confirmRotation") : t("onboarding.generateToken")}</button></div>
     </form>
   </Dialog>;
 }
@@ -401,12 +317,12 @@ function EditPermissions({ token, close, saved }: { token: Token; close: () => v
     mutationFn: () => api<Token>(strategyApi(token.strategy_id, `tokens/${token.id}/permissions`), "PUT", { scopes }),
     onSuccess: saved,
   });
-  return <Dialog title="编辑 Token 权限" close={close}>
+  return <Dialog title={t("onboarding.editTokenPermissions")} close={close}>
     <form className="stack" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
-      <p className="subtle">保存后立即生效。Secret 保持不变。</p>
+      <p className="subtle">{t("onboarding.changesTakeEffectImmediatelyAndKeepThe")}</p>
       <TokenFields scopes={scopes} setScopes={setScopes} expanded />
       <ErrorNotice error={mutation.error} />
-      <div className="dialog-actions"><button className="button primary" disabled={mutation.isPending}>保存权限</button></div>
+      <div className="dialog-actions"><button className="button primary" disabled={mutation.isPending}>{t("onboarding.savePermissions")}</button></div>
     </form>
   </Dialog>;
 }
@@ -422,25 +338,25 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
       (parsed.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname)));
   const endpoint = valid ? `${parsed!.origin}/api/agent` : defaultEndpoint;
   return <>
-    <PageTitle title="API 接入" sub="使用标准 HTTP 注册、上报和接收控制指令。" action={<a href={`${docs}/PROTOCOL.md`} target="_blank" rel="noreferrer" className="button secondary"><BookOpen size={16} /> GitHub 文档</a>} />
+    <PageTitle title={t("app.apiIntegration")} sub={t("onboarding.registerAgentsReportDataAndReceiveCommands")} action={<a href={`${docs}/PROTOCOL.md`} target="_blank" rel="noreferrer" className="button secondary"><BookOpen size={16} /> {t("onboarding.githubDocumentation")}</a>} />
     <div className="stack">
       <AgentPrompt endpoint={endpoint} strategyId={strategyId} />
-      <Panel title="连接信息">
-        <Field label="自定义 Endpoint" hint="填写策略所在机器可以访问的完整 Endpoint。">
+      <Panel title={t("onboarding.connectionDetails")}>
+        <Field label={t("onboarding.customEndpoint")} hint={t("onboarding.enterTheFullEndpointReachableFromThe")}>
           <input type="url" placeholder={defaultEndpoint} value={customEndpoint} onChange={(event) => setCustomEndpoint(event.target.value)} />
         </Field>
-        {entered && !valid && <p role="alert" className="notice error">请输入 https://域名/api/agent。HTTP 仅可用于回环地址。</p>}
+        {entered && !valid && <p role="alert" className="notice error">{t("onboarding.enterHttpsYourHostApiAgentHttp")}</p>}
         <KeyValue label="Endpoint" value={endpoint} />
-        {strategyId && <KeyValue label="策略 ID" value={strategyId} />}
-        {strategyId ? <a className="text-link" href={strategyPath(strategyId, "api")}>管理 Token 和连接诊断 <ChevronRight size={14} /></a>
-          : <a className="text-link" href="#strategies">选择策略并管理 Token <ChevronRight size={14} /></a>}
+        {strategyId && <KeyValue label={t("onboarding.strategyId")} value={strategyId} />}
+        {strategyId ? <a className="text-link" href={strategyPath(strategyId, "api")}>{t("onboarding.manageTokensAndDiagnostics")}{" "}<ChevronRight size={14} /></a>
+          : <a className="text-link" href="#strategies">{t("onboarding.selectAStrategyToManageTokens")}{" "}<ChevronRight size={14} /></a>}
       </Panel>
-      <Panel title="GitHub 接入文档">
+      <Panel title={t("onboarding.githubIntegrationDocs")}>
         <div className="toolbar">
-          <a className="text-link" href={`${docs}/docs/INTEGRATION.md`} target="_blank" rel="noreferrer">接入指南 <ChevronRight size={14} /></a>
+          <a className="text-link" href={`${docs}/docs/INTEGRATION.md`} target="_blank" rel="noreferrer">{t("onboarding.integrationGuide")}{" "}<ChevronRight size={14} /></a>
           <a className="text-link" href={`${docs}/docs/openapi.json`} target="_blank" rel="noreferrer">OpenAPI <ChevronRight size={14} /></a>
           <a className="text-link" href={`${repository}/tree/main/docs/schemas`} target="_blank" rel="noreferrer">JSON Schema <ChevronRight size={14} /></a>
-          <a className="text-link" href={`${repository}/tree/main/examples`} target="_blank" rel="noreferrer">HTTP 示例 <ChevronRight size={14} /></a>
+          <a className="text-link" href={`${repository}/tree/main/examples`} target="_blank" rel="noreferrer">{t("onboarding.httpExamples")}{" "}<ChevronRight size={14} /></a>
         </div>
       </Panel>
     </div>

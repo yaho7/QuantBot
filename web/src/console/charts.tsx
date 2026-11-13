@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { BarChart, LineChart, PieChart, ScatterChart } from "echarts/charts";
 import { DataZoomComponent, GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
 import { init, use, type EChartsType } from "echarts/core";
@@ -30,9 +31,9 @@ export function TimeSeries({ series, chart, unit, height, minimum = 2 }: {
 }) {
   const palette = useChartPalette();
   const data = series.filter((entry) => entry.points.filter((point) => Number.isFinite(Number(point.value))).length >= minimum);
-  if (!data.length) return <Empty title="所选范围数据不足" text={minimum > 1 ? "曲线至少需要两个实际观测点。" : "等待策略上报数据。"} />;
+  if (!data.length) return <Empty title={t("charts.insufficientDataInThisRange")} text={minimum > 1 ? t("charts.aLineChartNeedsAtLeastTwo") : t("charts.waitingForStrategyData")} />;
   const axis = { axisLine: { lineStyle: { color: palette.border } }, axisLabel: { color: palette.muted } };
-  return <Graphic height={height} label="历史时间序列" option={{
+  return <Graphic height={height} label={t("charts.historicalTimeSeries")} option={{
     color: palette.series, textStyle: { color: palette.ink }, animation: false,
     legend: { top: 0, type: "scroll", textStyle: { color: palette.ink } },
     grid: { top: 42, left: "4%", right: "4%", bottom: 42, containLabel: true },
@@ -57,7 +58,7 @@ export function Distribution({ data, chart, height, label }: {
   data: { name: string; value: number }[]; chart: Chart; height: number; label: string;
 }) {
   const palette = useChartPalette();
-  if (!data.length) return <Empty title="没有可统计的上报数据" />;
+  if (!data.length) return <Empty title={t("charts.noDataToSummarize")} />;
   const tooltip = { renderMode: "richText" as const, backgroundColor: palette.surface, textStyle: { color: palette.ink } };
   const option: EChartsOption = chart === "pie" ? {
     legend: { bottom: 3, type: "scroll", textStyle: { color: palette.ink } }, tooltip: { trigger: "item", ...tooltip },

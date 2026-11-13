@@ -310,3 +310,10 @@ dialog::backdrop { background: #100f0f80; }
   .workbench-status a { min-height: 44px; display: inline-flex; align-items: center; }
   .workbench-grid .widget h2 { font-size: 1rem; }
 }
+
+.language-picker { width: auto; max-width: 8rem; }
+@media (max-width: 480px) {
+  .console-topbar .top-actions > a { display: none; }
+  .language-picker { max-width: 6.6rem; }
+  .bottom-nav a { min-width: 0; text-align: center; }
+}

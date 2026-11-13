@@ -1,3 +1,4 @@
+import { label, t } from "../i18n";
 import { useQueries } from "@tanstack/react-query";
 import { useEffect, useSyncExternalStore } from "react";
 import { toast } from "sonner";
@@ -16,14 +17,14 @@ function replace(commands: Command[]) {
   subscribers.forEach((listener) => listener());
 }
 function show(command: Command) {
-  const options = { id: command.id, action: { label: "查看指令", onClick: () => { location.hash = `#operations/${command.id}`; } } };
-  if (command.state === "succeeded") toast.success(stateText[command.state], options);
+  const options = { id: command.id, action: { label: t("commandFeedback.viewCommand"), onClick: () => { location.hash = `#operations/${command.id}`; } } };
+  if (command.state === "succeeded") toast.success(label(stateText[command.state]), options);
   else if (command.state === "failed" || command.state === "unknown" || command.state === "expired") {
-    toast.error(stateText[command.state], options);
-  } else toast(stateText[command.state], options);
+    toast.error(label(stateText[command.state]), options);
+  } else toast(label(stateText[command.state]), options);
 }
 export function submitted(command: Command) {
-  if (command.state === "pending") toast("已发送 · 等待策略确认", { id: command.id });
+  if (command.state === "pending") toast(t("commandFeedback.sentWaitingForStrategyConfirmation"), { id: command.id });
   else show(command);
   if (active.has(command.state)) replace([...tracked.filter((item) => item.id !== command.id), command]);
 }
