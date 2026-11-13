@@ -367,7 +367,14 @@ class Controls:
                 )
             reason = None
             action = definition.get("command")
-            if action and action not in {*SHADOW_ACTIONS, ENTRY_TOGGLE} and not active:
+            if (
+                action
+                and action not in {*SHADOW_ACTIONS, ENTRY_TOGGLE}
+                and executor
+                and "commands" not in json.loads(executor["scopes"])
+            ):
+                reason = "执行实例凭据缺少指令权限"
+            elif action and action not in {*SHADOW_ACTIONS, ENTRY_TOGGLE} and not active:
                 reason = "执行实例离线"
             elif row["instance_id"] != strategy["executor_id"] or strategy["archived_at"]:
                 reason = "控制注册表需要由当前执行实例发布"

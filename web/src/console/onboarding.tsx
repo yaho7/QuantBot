@@ -52,8 +52,12 @@ export function CategoryPicker({ selected, onChange }: { selected: string[]; onC
 
 const scopeLabels: Record<Scope, string> = { session: "会话与心跳", telemetry: "上报数据", control: "同步开仓权限", commands: "领取一次性指令" };
 
-function TokenFields({ scopes, setScopes, expiry, setExpiry }: {
-  scopes: Scope[]; setScopes: (s: Scope[]) => void; expiry: string; setExpiry: (s: string) => void;
+const fullScopes = Object.keys(scopeLabels) as Scope[];
+const scopeSummary = (scopes: Scope[]) => scopes.length === fullScopes.length
+  ? "完整接入" : scopes.map((scope) => scopeLabels[scope]).join(" · ");
+
+function TokenFields({ scopes, setScopes, expiry, setExpiry, expanded = false }: {
+  scopes: Scope[]; setScopes: (s: Scope[]) => void; expiry?: string; setExpiry?: (s: string) => void; expanded?: boolean;
 }) {
   const set = (scope: Scope, checked: boolean) => {
     const next = new Set(scopes);
@@ -63,10 +67,11 @@ function TokenFields({ scopes, setScopes, expiry, setExpiry }: {
     setScopes([...next]);
   };
   return <>
-    <div className="field"><span>Token 权限</span><div className="chips">{(Object.keys(scopeLabels) as Scope[]).map((scope) =>
+    <details className="form-detail" open={expanded || undefined}><summary>高级权限设置</summary><div className="chips">{fullScopes.map((scope) =>
       <label className="chip" key={scope}><input type="checkbox" checked={scopes.includes(scope)} disabled={scope === "session"}
-        onChange={(e) => set(scope, e.target.checked)} />{scopeLabels[scope]}</label>)}</div></div>
-    <Field label="Token 到期时间（可选）"><input type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>
+        onChange={(e) => set(scope, e.target.checked)} />{scopeLabels[scope]}</label>)}</div></details>
+    {setExpiry && <Field label="Token 到期时间（可选）"><input type="datetime-local" value={expiry} onChange={(e) => setExpiry(e.target.value)} /></Field>}
+    {scopes.length === fullScopes.length && <small className="subtle">完整接入 · 交易操作仍需策略授权</small>}
   </>;
 }
 
@@ -212,6 +217,7 @@ function CredentialDialog({ credential, close }: { credential: Credential; close
     <KeyValue label="Endpoint" value={endpoint} />
     <KeyValue label="策略 ID" value={credential.strategy_id} />
     <KeyValue label="Key" value={credential.id} />
+    <small className="subtle">{scopeSummary(credential.scopes)}</small>
     <SecretValue load={async () => credential.token} />
     <AgentPrompt endpoint={endpoint} strategyId={credential.strategy_id} />
     <details className="form-detail"><summary>标准 HTTP 示例</summary><HttpExamples endpoint={endpoint} /></details>
@@ -252,6 +258,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
   const tokens = useData<Token[]>(strategyApi(id, "tokens"));
   const catalog = useData<Catalog>(strategyApi(id, "components"));
   const [editing, setEditing] = useState<Token | "new" | null>(null);
+  const [permissions, setPermissions] = useState<Token | null>(null);
   const [replacing, setReplacing] = useState<Token | null>(null);
   const [revealed, reveal] = useState<Credential | null>(null);
   const current = tokens.data?.find((token) => !token.revoked_at && (!token.expires_at || Date.parse(token.expires_at) > Date.now()));
@@ -284,10 +291,11 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
       {tokens.isPending ? <Loading /> : <Table columns={["Key", "权限", "最近使用", "有效期", "状态", "操作"]} empty={!tokens.data?.length}>
         {tokens.data?.map((token) => {
           const expired = token.expires_at && Date.parse(token.expires_at) <= Date.now();
-          return <tr key={token.id}><td className="mono">{token.id}</td><td>{token.scopes.join(" · ")}</td>
+          return <tr key={token.id}><td className="mono">{token.id}</td><td>{scopeSummary(token.scopes)}</td>
             <td>{when(token.last_used_at)}</td><td>{token.expires_at ? when(token.expires_at) : "长期"}</td>
             <td>{token.revoked_at ? "已撤销" : expired ? "已过期" : "有效"}</td>
             <td className="row-actions">{!strategy.archived_at && <>
+              {!token.revoked_at && !expired && <button className="button quiet" onClick={() => setPermissions(token)}>编辑权限</button>}
               <button className="button quiet" onClick={() => setEditing(token)}>轮换</button>
               {!token.revoked_at && <button className="button quiet danger-text" onClick={() => {
                 if (confirm("撤销该 Token 后，使用它的实例将失去连接。继续撤销？")) revoke.mutate(token);
@@ -312,6 +320,12 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
       close={() => setEditing(null)} done={(credential) => {
         setEditing(null); reveal(credential); void query.invalidateQueries({ queryKey: ["live"] });
       }} />}
+    {permissions && <EditPermissions token={permissions} close={() => setPermissions(null)} saved={(updated) => {
+      query.setQueryData<Token[]>(["live", strategyApi(id, "tokens")],
+        (items) => items?.map((item) => item.id === updated.id ? updated : item));
+      setPermissions(null);
+      void query.invalidateQueries({ queryKey: ["live"] });
+    }} />}
     {replacing && <Dialog title="重新生成 Token" close={() => { if (!regenerate.isPending) setReplacing(null); }}>
       <div className="stack">
         <p>旧 Token <code>{replacing.id}</code> 会立即失效。请将新 Token 填入量化程序的配置文件，让程序恢复连接。</p>
@@ -329,7 +343,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
 }
 
 function EditToken({ strategyId, previous, close, done }: { strategyId: string; previous?: Token; close: () => void; done: (credential: Credential) => void }) {
-  const [scopes, setScopes] = useState<Scope[]>(previous?.scopes ?? ["session", "telemetry"]);
+  const [scopes, setScopes] = useState<Scope[]>(previous?.scopes ?? fullScopes);
   const [expiry, setExpiry] = useState("");
   const mutation = useMutation({
     mutationFn: (payload: TokenOptions) => api<Credential>(strategyApi(strategyId, previous ? `tokens/${previous.id}/rotate` : "tokens"), "POST", payload),
@@ -345,6 +359,22 @@ function EditToken({ strategyId, previous, close, done }: { strategyId: string; 
       <TokenFields {...{ scopes, setScopes, expiry, setExpiry }} />
       <ErrorNotice error={mutation.error} />
       <div className="dialog-actions"><button className="button primary" disabled={mutation.isPending}>{previous ? "确认轮换" : "生成 Token"}</button></div>
+    </form>
+  </Dialog>;
+}
+
+function EditPermissions({ token, close, saved }: { token: Token; close: () => void; saved: (token: Token) => void }) {
+  const [scopes, setScopes] = useState(token.scopes);
+  const mutation = useMutation({
+    mutationFn: () => api<Token>(strategyApi(token.strategy_id, `tokens/${token.id}/permissions`), "PUT", { scopes }),
+    onSuccess: saved,
+  });
+  return <Dialog title="编辑 Token 权限" close={close}>
+    <form className="stack" onSubmit={(event) => { event.preventDefault(); mutation.mutate(); }}>
+      <p className="subtle">保存后立即生效。Secret 保持不变。</p>
+      <TokenFields scopes={scopes} setScopes={setScopes} expanded />
+      <ErrorNotice error={mutation.error} />
+      <div className="dialog-actions"><button className="button primary" disabled={mutation.isPending}>保存权限</button></div>
     </form>
   </Dialog>;
 }

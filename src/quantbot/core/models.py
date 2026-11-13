@@ -116,11 +116,8 @@ class StrategySettings(Payload):
     alerts: AlertPolicy = Field(default_factory=AlertPolicy)
 
 
-class TokenSettings(Payload):
-    scopes: list[Scope] = Field(
-        default_factory=lambda: ["session", "telemetry"], min_length=1, max_length=4
-    )
-    expires_at: Stamp | None = None
+class TokenPermissions(Payload):
+    scopes: list[Scope] = Field(min_length=1, max_length=4)
 
     @model_validator(mode="after")
     def check_scopes(self):
@@ -129,6 +126,15 @@ class TokenSettings(Payload):
         if "commands" in self.scopes and "control" not in self.scopes:
             raise ValueError("commands requires control")
         return self
+
+
+class TokenSettings(TokenPermissions):
+    scopes: list[Scope] = Field(
+        default_factory=lambda: ["session", "telemetry", "control", "commands"],
+        min_length=1,
+        max_length=4,
+    )
+    expires_at: Stamp | None = None
 
 
 class StrategyCreate(StrategySettings):

@@ -157,6 +157,52 @@ class Strategies:
         self.wake()
         return token
 
+    def update_token_permissions(self, sid, actor, token_id, body):
+        with self.db.transaction():
+            self.active(sid)
+            token = self.auth.token_metadata(sid, token_id)
+            if token["revoked_at"] is not None or (
+                token["expires_at"]
+                and datetime.fromisoformat(token["expires_at"]).timestamp() <= self.clock()
+            ):
+                raise Problem(409, "Only active credentials can change permissions")
+            previous = set(token["scopes"])
+            scopes = set(body.scopes)
+            if previous == scopes:
+                return token
+            self.db.execute(
+                "UPDATE strategy_tokens SET scopes=? WHERE strategy_id=? AND id=?",
+                (encode(body.scopes), sid, token_id),
+            )
+            if "commands" in previous - scopes:
+                for row in self.db.all(
+                    """SELECT c.* FROM commands c JOIN agent_instances i
+                       ON i.session_id=c.session_id WHERE c.strategy_id=? AND i.token_id=?
+                       AND c.revision IS NULL
+                       AND c.state IN ('confirmation_required','pending','accepted')""",
+                    (sid, token_id),
+                ):
+                    self.commands.transition(row, "expired", "Credential command scope removed")
+            if "control" in previous - scopes:
+                for table in ("reported_state", "control_values"):
+                    self.db.execute(
+                        f"""UPDATE {table} SET session_id='' WHERE strategy_id=?
+                           AND session_id IN (
+                               SELECT session_id FROM agent_instances WHERE token_id=?
+                           )""",  # noqa: S608 - Table names are fixed above.
+                        (sid, token_id),
+                    )
+            self.audit(
+                actor,
+                "token.permissions",
+                sid,
+                token_id=token_id,
+                previous=token["scopes"],
+                scopes=body.scopes,
+            )
+        self.wake()
+        return self.auth.token_metadata(sid, token_id)
+
     def regenerate_token(self, sid, actor, old_id):
         with self.db.transaction():
             self.active(sid)
@@ -204,7 +250,11 @@ class Strategies:
         executor = next(
             (a for a in self.instances(sid) if a["instance_id"] == strategy["executor_id"]), None
         )
-        if not executor or (live and not self.eligible(executor)):
+        if (
+            not executor
+            or "control" not in json.loads(executor["scopes"])
+            or (live and not self.eligible(executor))
+        ):
             return None
         return executor
 
@@ -296,14 +346,16 @@ class Strategies:
             "offline_after_seconds": OFFLINE_AFTER,
             "mode": json.loads(strategy["settings"])["mode"],
             "control": self.control(sid),
+            "scopes": sorted(credential.scopes),
         }
 
     def agent(self, credential, session_id, *, executor=False):
         if not session_id or len(session_id) != 32:
             raise Problem(409, "Establish an agent session first")
         row = self.db.one(
-            """SELECT i.*, s.executor_id FROM agent_instances i JOIN strategies s
-               ON s.id=i.strategy_id WHERE i.strategy_id=? AND i.token_id=?
+            """SELECT i.*, s.executor_id, t.scopes FROM agent_instances i JOIN strategies s
+               ON s.id=i.strategy_id JOIN strategy_tokens t ON t.id=i.token_id
+               WHERE i.strategy_id=? AND i.token_id=?
                AND i.session_id=? AND i.boot_id=?""",
             (credential.strategy_id, credential.id, session_id, self.boot),
         )
@@ -327,7 +379,11 @@ class Strategies:
             if body is not None:
                 self.update_runtime(agent, body.model_dump(mode="json", exclude_unset=True), now)
             self.refresh_presence(sid)
-        return {"server_time": timestamp(now), "control": self.control(sid)}
+        return {
+            "server_time": timestamp(now),
+            "control": self.control(sid),
+            "scopes": json.loads(agent["scopes"]) if body is not None else [],
+        }
 
     def update_runtime(self, agent, fields, observed):
         runtime = json.loads(agent["runtime"])
@@ -468,6 +524,7 @@ class Strategies:
                     "last_seen": timestamp(a["last_seen"]),
                     "runtime": json.loads(a["runtime"]),
                     "declarations": json.loads(a["declarations"]),
+                    "scopes": json.loads(a["scopes"]),
                     "token_id": a["token_id"],
                 }
                 for a in agents

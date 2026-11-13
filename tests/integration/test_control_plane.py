@@ -175,6 +175,62 @@ def test_credentials_and_scope(server):
     assert http.put(AGENT + "/heartbeat", headers=new_headers, json={}).status_code == 401
 
 
+def test_edit_permissions_immediately_revokes_existing_command_access(server):
+    http, _, _ = server
+    response = http.post(ADMIN + "/strategies", json={"name": "Full access", "mode": "paper"})
+    assert response.status_code == 201
+    credential = response.json()["credential"]
+    sid = credential["strategy_id"]
+    assert credential["scopes"] == ALL
+    headers, enrolled = connect(http, credential)
+    assert set(enrolled["scopes"]) == set(ALL)
+    report(http, headers)
+    command = issue(http, sid, "refresh").json()
+    assert poll(http, headers)[0]["id"] == command["id"]
+    permissions = f"{ADMIN}/strategies/{sid}/tokens/{credential['id']}/permissions"
+    assert http.put(permissions, json={"scopes": ["session", "commands"]}).status_code == 422
+    other, _ = create(http)
+    assert (
+        http.put(permissions.replace(sid, other), json={"scopes": ["session"]}).status_code == 404
+    )
+    restricted = ["session", "telemetry"]
+    updated = http.put(permissions, json={"scopes": restricted})
+    assert updated.status_code == 200 and updated.json()["scopes"] == restricted
+    assert "token" not in updated.json()
+    assert http.get(AGENT + "/commands", headers=headers).status_code == 403
+    claim = f"{AGENT}/commands/{command['id']}/claim"
+    assert http.post(claim, headers=headers).status_code == 403
+    assert http.get(AGENT + "/control", headers=headers).status_code == 403
+    assert http.put(AGENT + "/heartbeat", headers=headers, json={}).json()["scopes"] == restricted
+    assert http.get(f"{ADMIN}/commands/{command['id']}").json()["state"] == "expired"
+    assert http.put(permissions, json={"scopes": ALL}).status_code == 200
+    assert http.post(claim, headers=headers).status_code == 409
+    assert not http.get(AGENT + "/control", headers=headers).json()["reported_current"]
+
+    replies = []
+    started = threading.Event()
+
+    def wait_for_commands():
+        started.set()
+        replies.append(http.get(AGENT + "/commands", params={"wait": 20}, headers=headers))
+
+    worker = threading.Thread(target=wait_for_commands, daemon=True)
+    worker.start()
+    assert started.wait(1)
+    assert http.put(permissions, json={"scopes": restricted}).status_code == 200
+    worker.join(2)
+    assert not worker.is_alive() and replies[0].status_code == 403
+    audit = http.get(ADMIN + "/audit", params={"strategy_id": sid}).json()
+    changes = [item for item in audit if item["action"] == "token.permissions"]
+    assert len(changes) == 3
+    assert changes[0]["actor"] == "web:admin"
+    assert changes[0]["detail"] == {
+        "token_id": credential["id"],
+        "previous": ALL,
+        "scopes": restricted,
+    }
+
+
 def test_token_rotation_allows_handoff_without_two_active_sessions(server):
     http, clock, _ = server
     sid, old = create(http)

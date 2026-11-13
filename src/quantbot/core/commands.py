@@ -82,6 +82,8 @@ class Commands:
         declaration = json.loads(agent["declarations"])
         if not declaration["executor"]:
             raise Problem(409, "The instance is not currently configured to execute commands")
+        if action not in SHADOW_ACTIONS and "commands" not in json.loads(agent["scopes"]):
+            raise Problem(403, "The executor credential lacks the commands scope")
         item = next((item for item in declaration["capabilities"] if item["id"] == action), None)
         if item is None:
             raise Problem(422, "The executor has not declared this action")
@@ -512,6 +514,7 @@ class Commands:
             )
             if (
                 not self.strategies.eligible(agent)
+                or "control" not in json.loads(agent["scopes"])
                 or not json.loads(agent["declarations"])["executor"]
             ):
                 raise Problem(422, "Select a connected instance that declared executor capability")

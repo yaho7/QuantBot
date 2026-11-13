@@ -143,6 +143,19 @@
             "title": "Offline After Seconds",
             "type": "integer"
           },
+          "scopes": {
+            "items": {
+              "enum": [
+                "session",
+                "telemetry",
+                "control",
+                "commands"
+              ],
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
           "session_id": {
             "title": "Session Id",
             "type": "string"
@@ -160,7 +173,8 @@
           "heartbeat_interval_seconds",
           "offline_after_seconds",
           "mode",
-          "control"
+          "control",
+          "scopes"
         ],
         "title": "AgentSession",
         "type": "object"
@@ -2189,6 +2203,19 @@
           "control": {
             "$ref": "#/components/schemas/ControlView"
           },
+          "scopes": {
+            "items": {
+              "enum": [
+                "session",
+                "telemetry",
+                "control",
+                "commands"
+              ],
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
           "server_time": {
             "format": "date-time",
             "title": "Server Time",
@@ -2197,7 +2224,8 @@
         },
         "required": [
           "server_time",
-          "control"
+          "control",
+          "scopes"
         ],
         "title": "HeartbeatAck",
         "type": "object"
@@ -2286,6 +2314,19 @@
           "runtime": {
             "$ref": "#/components/schemas/Heartbeat"
           },
+          "scopes": {
+            "items": {
+              "enum": [
+                "session",
+                "telemetry",
+                "control",
+                "commands"
+              ],
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
           "token_id": {
             "title": "Token Id",
             "type": "string"
@@ -2297,7 +2338,8 @@
           "last_seen",
           "runtime",
           "declarations",
-          "token_id"
+          "token_id",
+          "scopes"
         ],
         "title": "InstanceView",
         "type": "object"
@@ -5379,6 +5421,31 @@
           "type"
         ],
         "title": "Toggle",
+        "type": "object"
+      },
+      "TokenPermissions": {
+        "additionalProperties": false,
+        "properties": {
+          "scopes": {
+            "items": {
+              "enum": [
+                "session",
+                "telemetry",
+                "control",
+                "commands"
+              ],
+              "type": "string"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "title": "Scopes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scopes"
+        ],
+        "title": "TokenPermissions",
         "type": "object"
       },
       "TokenSettings": {
@@ -8734,6 +8801,105 @@
           }
         ],
         "summary": "Revoke Token",
+        "tags": [
+          "Administration"
+        ]
+      }
+    },
+    "/api/admin/strategies/{strategy_id}/tokens/{token_id}/permissions": {
+      "put": {
+        "description": "Change an active credential's scopes without replacing its Secret.",
+        "operationId": "update_token_permissions_api_admin_strategies__strategy_id__tokens__token_id__permissions_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "title": "Strategy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "token_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,63}$",
+              "title": "Token Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TokenPermissions"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Credential missing, invalid, revoked or expired"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Insufficient permission"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Session, revision, idempotency or state conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Invalid schema or parameters"
+          }
+        },
+        "security": [
+          {
+            "AdministratorSession": []
+          }
+        ],
+        "summary": "Update Token Permissions",
         "tags": [
           "Administration"
         ]

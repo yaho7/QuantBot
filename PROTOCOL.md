@@ -193,6 +193,8 @@ curl -fsS --connect-timeout 5 --max-time 10 -A 'QuantBot-Integration/1.0' -H 'Ac
 
 Endpoint 是程序访问的 API 地址。Key 是凭据 ID，Secret 是程序作为 Bearer Token 发送的值。Secret 默认隐藏，仅在签发响应和管理员主动调用 `POST /api/admin/strategies/{strategy_id}/tokens/{token_id}/reveal` 时返回。查看操作会记录到审计日志。
 
+新 Token 默认启用四项 API 权限。管理员可用 `PUT /api/admin/strategies/{strategy_id}/tokens/{token_id}/permissions` 提交 `{"scopes":[...]}` 修改权限。Key、Secret 和到期时间保持原值。权限即时生效并记入审计；移除命令权限会使该凭据下尚未执行的一次性命令过期。已领取的执行许可可能已被使用，按实际结果或未知结果核对。会话建立和心跳响应的 `scopes` 反映当前授权，客户端按需停止或恢复对应接口。
+
 `POST /api/admin/strategies/{strategy_id}/tokens/{token_id}/regenerate` 沿用原凭据的权限和到期时间，签发成功时立即撤销该凭据。需要保留切换时间时，可使用「轮换」操作。
 
 运行中的交互文档位于 `/docs`。查看 [完整 OpenAPI 3.1 规范](docs/openapi.json)。

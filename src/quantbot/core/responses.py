@@ -73,11 +73,13 @@ class AgentSession(BaseModel):
     offline_after_seconds: int
     mode: Literal["live", "paper", "backtest"]
     control: ControlView
+    scopes: list[Scope]
 
 
 class HeartbeatAck(BaseModel):
     server_time: ISOTime
     control: ControlView
+    scopes: list[Scope]
 
 
 class SnapshotAck(BaseModel):
@@ -157,6 +159,7 @@ class InstanceView(BaseModel):
     runtime: Heartbeat
     declarations: SessionOpen
     token_id: str
+    scopes: list[Scope]
 
 
 class StrategyView(StrategySettings):

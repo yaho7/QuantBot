@@ -48,6 +48,7 @@ from .models import (
     Stamp,
     StrategyCreate,
     StrategySettings,
+    TokenPermissions,
     TokenSettings,
 )
 from .registry import Registry
@@ -400,6 +401,14 @@ async def tokens(request: Request, strategy_id: Key, actor=ADMIN):
 @admin.post("/strategies/{strategy_id}/tokens", status_code=201, response_model=CredentialIssued)
 async def new_token(request: Request, strategy_id: Key, body: TokenSettings, actor=ADMIN):
     return runtime(request).strategies.change_token(strategy_id, actor, body)
+
+
+@admin.put("/strategies/{strategy_id}/tokens/{token_id}/permissions", response_model=CredentialView)
+async def update_token_permissions(
+    request: Request, strategy_id: Key, token_id: Key, body: TokenPermissions, actor=ADMIN
+):
+    """Change an active credential's scopes without replacing its Secret."""
+    return runtime(request).strategies.update_token_permissions(strategy_id, actor, token_id, body)
 
 
 @admin.post(

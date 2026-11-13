@@ -15,6 +15,7 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await expect(dialog.locator("input, select, textarea")).toHaveCount(2);
   await dialog.getByRole("button", { name: "创建并生成 Token" }).click();
   await expect(dialog.getByText("••••••••••••", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("完整接入", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "查看 Secret" }).click();
   const basicToken = await dialog.locator("code").filter({ hasText: /^qb_/ }).textContent();
   expect(basicToken).toMatch(/^qb_/);
@@ -52,6 +53,16 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await expect(page.getByText(regenerated!, { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "隐藏 Secret" }).click();
   await expect(page.getByText(regenerated!, { exact: true })).toHaveCount(0);
+  const keyRow = page.getByRole("row").filter({ hasText: "完整接入" }).filter({ hasText: "有效" });
+  await keyRow.getByRole("button", { name: "编辑权限" }).click();
+  const permissions = page.getByRole("dialog", { name: "编辑 Token 权限" });
+  await permissions.getByLabel("同步开仓权限").uncheck();
+  await expect(permissions.getByLabel("领取一次性指令")).not.toBeChecked();
+  await permissions.getByRole("button", { name: "保存权限" }).click();
+  await expect(permissions).toBeHidden();
+  await page.getByRole("button", { name: "查看 Secret" }).click();
+  await expect(page.getByText(regenerated!, { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "隐藏 Secret" }).click();
   const old = await request.post("/api/agent/session", {
     headers: { Authorization: `Bearer ${basicToken}` }, data: { instance_id: "old-token" },
   });
