@@ -4,8 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from quantbot.v2.api import make_app
-from quantbot.v2.schemas import AUXILIARY, schema_document
+from quantbot.core.api import make_app
+from quantbot.core.schemas import AUXILIARY, schema_document
 
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"

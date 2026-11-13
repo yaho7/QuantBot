@@ -1,4 +1,4 @@
-# QuantBot v2 HTTP 协议
+# QuantBot HTTP 协议
 
 ## 认证与会话
 

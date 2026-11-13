@@ -22,7 +22,7 @@ def test_archive_revokes_tokens_and_preserves_identity_and_history(tmp_path):
 def test_change_password_revokes_old_admin_sessions(tmp_path):
     with client(tmp_path / "admin.db", Clock()) as http:
         log_in(http)
-        prior = http.cookies.get("quantbot_v2_session")
+        prior = http.cookies.get("quantbot_session")
         assert (
             http.put(
                 ADMIN + "/system/password",
@@ -33,7 +33,7 @@ def test_change_password_revokes_old_admin_sessions(tmp_path):
             ).status_code
             == 200
         )
-        assert http.cookies.get("quantbot_v2_session") != prior
+        assert http.cookies.get("quantbot_session") != prior
         assert (
             http.post(
                 ADMIN + "/login",

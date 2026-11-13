@@ -7,11 +7,11 @@ import sys
 SERVICE_ID = 10001
 DATA = "/data"
 DATA_FILES = (
-    "quantbot-v2.lock",
-    "quantbot-v2.sqlite3",
-    "quantbot-v2.sqlite3-wal",
-    "quantbot-v2.sqlite3-shm",
-    "quantbot-v2.sqlite3-journal",
+    "quantbot.lock",
+    "quantbot.sqlite3",
+    "quantbot.sqlite3-wal",
+    "quantbot.sqlite3-shm",
+    "quantbot.sqlite3-journal",
 )
 
 

@@ -12,12 +12,12 @@ from urllib.parse import urlsplit
 import uvicorn
 
 from quantbot import __version__
-from quantbot.v2.api import make_app
-from quantbot.v2.auth import password_hash
-from quantbot.v2.db import backup_sqlite, encode
-from quantbot.v2.errors import Problem
-from quantbot.v2.models import MIN_PASSWORD_LENGTH
-from quantbot.v2.runtime import Runtime, exclusive_database
+from quantbot.core.api import make_app
+from quantbot.core.auth import password_hash
+from quantbot.core.db import backup_sqlite, encode
+from quantbot.core.errors import Problem
+from quantbot.core.models import MIN_PASSWORD_LENGTH
+from quantbot.core.runtime import Runtime, exclusive_database
 
 DEFAULT_DATA = Path.home() / ".local/share/quantbot"
 LOOPBACK_PROXIES = "127.0.0.1,::1"
@@ -152,7 +152,7 @@ def parser():
 def run():
     command = parser()
     args = command.parse_args()
-    path = args.data_dir.expanduser().resolve() / "quantbot-v2.sqlite3"
+    path = args.data_dir.expanduser().resolve() / "quantbot.sqlite3"
     try:
         if args.operation == "serve":
             serve(args, path)

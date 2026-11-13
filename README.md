@@ -1,4 +1,4 @@
-# QuantBot v2
+# QuantBot
 
 QuantBot 是面向独立量化交易程序的 HTTP 监控与远程控制平台。程序主动连接、上报标准数据并领取远程指令。Web 和 Telegram 共用策略身份、交易权限、指令状态和回执。
 

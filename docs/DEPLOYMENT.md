@@ -10,8 +10,6 @@ docker compose up -d
 
 打开 [http://localhost:8888](http://localhost:8888)，按网页引导创建管理员。端口绑定在宿主机回环地址，数据库保存在 Compose 文件旁的 `./data` 目录。镜像启动时会为该目录和 QuantBot 数据库文件设置权限，然后以 UID/GID 10001 运行服务。请使用专用的数据目录。
 
-如果原部署使用 Docker 命名卷，先按下文备份，再停止旧容器。将备份复制到新部署的 `./data/quantbot-v2.sqlite3` 后启动。旧卷可以保留到验证完成。如果旧容器因权限问题无法启动，可停止旧容器后从命名卷复制数据库及其存在的 `-wal`、`-shm` 和 `-journal` 文件，再启动新容器。
-
 如果 Docker 运行在另一台机器，在浏览器所在机器执行下列命令，再访问本机 8888 端口。
 
 ```bash
@@ -59,7 +57,7 @@ curl -fsS https://quantbot.example.com/healthz
 ```bash
 uv tool install .
 quantbot admin
-mkdir -p ~/.config/systemd/user ~/.config/quantbot-v2
+mkdir -p ~/.config/systemd/user ~/.config/quantbot
 install -m 0644 deploy/quantbot.service ~/.config/systemd/user/quantbot.service
 systemctl --user daemon-reload
 systemctl --user enable --now quantbot
@@ -69,7 +67,7 @@ journalctl --user -u quantbot
 
 服务单元默认使用 `~/.local/bin/quantbot`。通过 `uv tool dir --bin` 检查实际目录并在需要时调整 `ExecStart`。若希望 SSH 退出后用户服务继续运行，可以为服务账户启用 systemd linger。 [服务单元](../deploy/quantbot.service)
 
-将部署配置写入 `~/.config/quantbot-v2/service.env`。默认监听 `127.0.0.1:23456`，数据位于 `~/.local/share/quantbot`。本地访问使用浏览器回环地址或 SSH 端口转发。
+将部署配置写入 `~/.config/quantbot/service.env`。默认监听 `127.0.0.1:23456`，数据位于 `~/.local/share/quantbot`。本地访问使用浏览器回环地址或 SSH 端口转发。
 
 ```dotenv
 QB_HOST=127.0.0.1
@@ -89,10 +87,10 @@ QB_TRUST_PROXY=127.0.0.1,::1
 ```bash
 quantbot backup ~/quantbot-backup-$(date -u +%Y%m%dT%H%M%SZ).sqlite3
 systemctl --user stop quantbot
-bash install.sh --ref v2.0.6
+bash install.sh
 systemctl --user start quantbot
 ```
 
 `--ref` 接受已发布的版本或已验证的提交。Docker 部署用 `docker compose exec --user 10001:10001 quantbot quantbot backup /tmp/quantbot-backup.sqlite3` 创建备份，再用 `docker compose cp quantbot:/tmp/quantbot-backup.sqlite3 ./quantbot-backup.sqlite3` 将备份拷到宿主机的私有目录。执行 `docker compose pull && docker compose up -d` 获取并应用最新镜像。升级后检查健康接口、Web 登录、策略重新接入与实际控制对账。
 
-恢复备份时先停止 QuantBot 服务。将现有数据库与 WAL/SHM 文件移至另一处保留，再复制已验证的备份到数据目录的 `quantbot-v2.sqlite3`，核对服务用户可读写。重启后已授予许可但缺少回执的命令按未知结果处理。涉及真实交易的操作按券商实际记录核对。
+恢复备份时先停止 QuantBot 服务。将现有数据库与 WAL/SHM 文件移至另一处保留，再复制已验证的备份到数据目录的 `quantbot.sqlite3`，核对服务用户可读写。重启后已授予许可但缺少回执的命令按未知结果处理。涉及真实交易的操作按券商实际记录核对。

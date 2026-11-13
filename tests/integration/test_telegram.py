@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from quantbot.v2.telegram_service import Delivery, TelegramInterface, chart_photo
+from quantbot.core.telegram_service import Delivery, TelegramInterface, chart_photo
 
 from .test_control_plane import ADMIN, AGENT, Clock, client, connect, create, log_in, poll, report
 

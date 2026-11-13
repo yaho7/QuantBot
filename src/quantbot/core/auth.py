@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from .db import Database, encode, record
 from .errors import Problem
 
+TOKEN_PREFIX = "qb_"  # noqa: S105 - Public prefix, not a credential.
+TOKEN_LENGTH = len(TOKEN_PREFIX) + 43
+
 
 def digest(secret: str) -> str:
     return hashlib.sha256(secret.encode()).hexdigest()
@@ -62,7 +65,7 @@ class Auth:
         if expiry is not None and expiry <= now:
             raise Problem(422, "Token expiry must be in the future")
         token_id = secrets.token_hex(12)
-        secret = "qb2_" + secrets.token_urlsafe(32)
+        secret = TOKEN_PREFIX + secrets.token_urlsafe(32)
         self.db.execute(
             "INSERT INTO strategy_tokens VALUES (?, ?, ?, ?, ?, ?, NULL, NULL)",
             (token_id, strategy_id, digest(secret), encode(options.scopes), now, expiry),
@@ -87,7 +90,7 @@ class Auth:
         )
 
     def authenticate(self, secret: str | None, scope: str) -> Credential:
-        if not secret or len(secret) != 47 or not secret.startswith("qb2_"):
+        if not secret or len(secret) != TOKEN_LENGTH or not secret.startswith(TOKEN_PREFIX):
             raise Problem(401, "Invalid strategy credential")
         now = self.clock()
         row = self.db.one(

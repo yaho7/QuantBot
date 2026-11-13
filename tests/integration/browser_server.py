@@ -6,9 +6,9 @@ from tempfile import TemporaryDirectory
 
 import uvicorn
 
-from quantbot.v2.api import make_app
-from quantbot.v2.auth import password_hash
-from quantbot.v2.db import encode
+from quantbot.core.api import make_app
+from quantbot.core.auth import password_hash
+from quantbot.core.db import encode
 
 
 def bootstrap(runtime):

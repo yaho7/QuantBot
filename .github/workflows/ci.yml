@@ -71,7 +71,7 @@ jobs:
             | jq -e '.authenticated'
           test "$(docker compose exec -T quantbot awk '/^Uid:/ {print $2}' /proc/1/status)" = 10001
           docker compose down
-          sudo chown root:root data data/quantbot-v2.sqlite3 data/quantbot-v2.lock
+          sudo chown root:root data data/quantbot.sqlite3 data/quantbot.lock
           sudo chmod 0755 data
           docker compose up -d --pull never --wait --wait-timeout 60
           curl --fail --silent --show-error "$setup" | jq -e '.required == false'

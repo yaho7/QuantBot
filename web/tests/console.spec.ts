@@ -14,8 +14,8 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await expect(dialog.getByLabel("交易模式")).toHaveValue("paper");
   await expect(dialog.locator("input, select, textarea")).toHaveCount(2);
   await dialog.getByRole("button", { name: "创建并生成 Token" }).click();
-  const basicToken = await dialog.locator("code").filter({ hasText: /^qb2_/ }).textContent();
-  expect(basicToken).toMatch(/^qb2_/);
+  const basicToken = await dialog.locator("code").filter({ hasText: /^qb_/ }).textContent();
+  expect(basicToken).toMatch(/^qb_/);
   await expect(dialog.getByRole("button", { name: "复制 AI 提示词" })).toBeVisible();
   await expect(dialog.locator(".agent-prompt")).toContainText("github.com/yaho7/QuantBot");
   await expect(dialog.locator(".agent-prompt")).toContainText("/api/agent/monitor/");

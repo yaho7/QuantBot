@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=-%h/.config/quantbot-v2/service.env
+EnvironmentFile=-%h/.config/quantbot/service.env
 ExecStart=%h/.local/bin/quantbot serve
 Restart=on-failure
 RestartSec=3

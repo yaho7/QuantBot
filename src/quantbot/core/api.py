@@ -1,4 +1,4 @@
-"""HTTP transport for the v2 control plane."""
+"""HTTP transport for the control plane."""
 
 import asyncio
 import json
@@ -78,7 +78,7 @@ from .schemas import schema_document
 from .telegram_service import supervise
 from .telegram_settings import TelegramConfig, TelegramUpdate
 
-COOKIE = "quantbot_v2_session"
+COOKIE = "quantbot_session"
 BODY_LIMIT = 1024 * 1024
 bearer = HTTPBearer(auto_error=False, scheme_name="StrategyToken")
 cookie = APIKeyCookie(name=COOKIE, auto_error=False, scheme_name="AdministratorSession")

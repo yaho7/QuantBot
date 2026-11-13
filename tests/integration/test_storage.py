@@ -3,8 +3,8 @@ from contextlib import closing
 
 import pytest
 
-from quantbot.v2.db import Database, backup_sqlite
-from quantbot.v2.runtime import Runtime
+from quantbot.core.db import Database, backup_sqlite
+from quantbot.core.runtime import Runtime
 
 
 def test_backup_copies_committed_wal_and_never_overwrites(tmp_path):

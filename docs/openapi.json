@@ -5656,7 +5656,7 @@
     "securitySchemes": {
       "AdministratorSession": {
         "in": "cookie",
-        "name": "quantbot_v2_session",
+        "name": "quantbot_session",
         "type": "apiKey"
       },
       "StrategyToken": {

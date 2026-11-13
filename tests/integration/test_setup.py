@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from quantbot.__main__ import docker_gateway, trusted_proxies
-from quantbot.v2.api import make_app
+from quantbot.core.api import make_app
 
 SETUP = "/api/admin/setup"
 ORIGIN = "http://localhost:8888"
