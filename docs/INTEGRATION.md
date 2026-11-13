@@ -42,3 +42,15 @@ AI 应先读 [README](../README.md)、[HTTP 协议](../PROTOCOL.md)、[OpenAPI](
 ## 验收
 
 用模拟策略运行 [Python 标准库参考实现](../examples/http_agent.py) 或 [curl 请求](../PROTOCOL.md#curl-接入)。在 **Token 与诊断** 确认实例在线和报告类型，然后测试断线与重连。对需要控制的接入，验证暂停、恢复、风险锁保持、动态控件实际值，以及重复指令只执行一次。使用模拟或回测数据。
+
+[Node.js 示例](../examples/http_monitor.mjs) 和 [Go 示例](../examples/http_monitor.go) 各发送一条标准状态报告。它们演示请求校验和脱敏错误诊断。持续监控、退避、状态对账和控制可参考 Python 示例及协议。以下命令只需选择与你项目匹配的一种运行时。
+
+```bash
+export QB_ENDPOINT=http://127.0.0.1:23456/api/agent
+read -rs QB_TOKEN
+export QB_TOKEN
+node examples/http_monitor.mjs
+go run examples/http_monitor.go
+```
+
+开发验收使用 `QB_REQUIRE_LANGUAGE_TESTS=1 uv run pytest tests/integration/test_language_contract.py`。测试用同一套模拟策略流程验证 Python、Node.js、Go 的 HTTP 传输，包括会话、状态、只读控件、暂停和恢复、一次性领取、回执及服务重启。
