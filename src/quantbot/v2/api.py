@@ -645,14 +645,13 @@ class Transport:
         local_peer = peer in {"127.0.0.1", "::1"}
         # The default Compose publishes on host loopback. Docker can NAT its source
         # address to a private bridge address before forwarding it into the container.
-        local_access = local_host and (
-            local_peer
-            or (
-                self.docker_local_http
-                and docker_bridge_peer(peer)
-                and not request.headers.get("x-forwarded-for")
-                and not request.headers.get("forwarded")
+        local_access = (
+            local_host
+            and not any(
+                header in request.headers
+                for header in ("x-forwarded-proto", "x-forwarded-for", "forwarded")
             )
+            and (local_peer or (self.docker_local_http and docker_bridge_peer(peer)))
         )
         request.state.local_access = local_access
         error = None

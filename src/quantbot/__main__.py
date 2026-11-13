@@ -5,6 +5,7 @@ import getpass
 import logging
 import os
 import sqlite3
+from ipaddress import IPv4Address
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -18,6 +19,7 @@ from quantbot.v2.errors import Problem
 from quantbot.v2.runtime import Runtime, exclusive_database
 
 DEFAULT_DATA = Path.home() / ".local/share/quantbot"
+LOOPBACK_PROXIES = "127.0.0.1,::1"
 
 
 def secret(name):
@@ -64,11 +66,35 @@ def configure_admin(service, username, password, *, replace=False):
             service.strategies.audit("local", "admin.configure")
 
 
-def serve(args, path):
-    origin = public_origin(os.environ.get("QB_PUBLIC_URL"))
-    trusted = os.environ.get("QB_TRUST_PROXY", "127.0.0.1,::1")
+def docker_gateway(routes=Path("/proc/net/route"), interfaces=Path("/sys/class/net")):
+    """Find the host gateway of the container's default veth route."""
+    try:
+        for line in routes.read_text().splitlines()[1:]:
+            interface, destination, gateway, flags, *_ = line.split()
+            if destination != "00000000" or int(flags, 16) & 3 != 3:
+                continue
+            link = interfaces / interface
+            if (link / "ifindex").read_text() != (link / "iflink").read_text():
+                return str(IPv4Address(bytes.fromhex(gateway)[::-1]))
+    except (OSError, ValueError):
+        pass
+    return None
+
+
+def trusted_proxies(docker_local_http):
+    trusted = os.environ.get("QB_TRUST_PROXY")
+    if trusted is None:
+        gateway = docker_gateway() if docker_local_http else None
+        trusted = f"{LOOPBACK_PROXIES},{gateway}" if gateway else LOOPBACK_PROXIES
     if any(item.strip() == "*" for item in trusted.split(",")):
         raise ValueError("QB_TRUST_PROXY must name the proxy addresses or networks")
+    return trusted
+
+
+def serve(args, path):
+    origin = public_origin(os.environ.get("QB_PUBLIC_URL"))
+    docker_local_http = os.environ.get("QB_DOCKER_LOCAL_HTTP") == "1"
+    trusted = trusted_proxies(docker_local_http)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     for name in ("httpx", "httpcore", "telegram"):
         logging.getLogger(name).setLevel(logging.CRITICAL)
@@ -91,7 +117,7 @@ def serve(args, path):
         bootstrap=bootstrap,
         telegram_token=secret("QB_TELEGRAM_TOKEN"),
         local_url=local_url,
-        docker_local_http=os.environ.get("QB_DOCKER_LOCAL_HTTP") == "1",
+        docker_local_http=docker_local_http,
     )
     uvicorn.run(
         app,

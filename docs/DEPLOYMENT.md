@@ -18,7 +18,7 @@ docker compose up -d
 ssh -N -L 8888:127.0.0.1:8888 user@your-server
 ```
 
-远程开放控制台或策略 API 时，在宿主机使用 HTTPS 反向代理转发至 `127.0.0.1:8888`，并按下文配置 `QB_PUBLIC_URL` 和 `QB_TRUST_PROXY`。镜像默认支持 Docker 转发本机浏览器请求，请保留 Compose 的回环端口绑定。
+远程开放控制台或策略 API 时，在宿主机使用 HTTPS 反向代理转发至 `127.0.0.1:8888`，保留原始 Host 并传递 `X-Forwarded-Proto`。镜像默认信任本机和检测到的 Docker 网桥网关。请保留 Compose 的回环端口绑定。可用 `QB_PUBLIC_URL` 指定外部地址，用于 Telegram 登录链接和限制公开域名。
 
 已有管理员时会进入登录页。自动部署可以用 `QB_ADMIN_USERNAME` 和 `QB_ADMIN_PASSWORD_FILE` 预置管理员。Bot Token 可以在 Web 设置，也可以用 `QB_TELEGRAM_TOKEN_FILE` 提供。
 
@@ -26,7 +26,7 @@ ssh -N -L 8888:127.0.0.1:8888 user@your-server
 
 如果 `cloudflared` 在 Docker 宿主机上运行，在 Cloudflare 的公开主机名路由中将 Service URL 设为 `http://127.0.0.1:8888`，浏览器使用 `https://quantbot.example.com`。保留原始 Host。Cloudflare 会通过 `X-Forwarded-Proto` 传递访客使用的协议。[Cloudflare 回源协议](https://developers.cloudflare.com/tunnel/concepts/routing/#supported-protocols) · [Cloudflare 请求头](https://developers.cloudflare.com/fundamentals/reference/http-headers/#x-forwarded-proto)
 
-如果 HTTPS 域名返回 `HTTPS is required for remote connections`，先确认回源没有丢弃 `X-Forwarded-Proto`。Docker 默认网桥部署中，容器通常看到的宿主机代理地址是网桥网关。在部署目录查看地址：
+如果 HTTPS 域名返回 `HTTPS is required for remote connections`，先确认回源传递了 `X-Forwarded-Proto: https`。如果网桥网关未自动检测到，可在部署目录查看地址并显式信任：
 
 ```bash
 docker inspect --format '{{range .NetworkSettings.Networks}}{{println .Gateway}}{{end}}' \
@@ -48,7 +48,7 @@ docker compose -f compose.yml -f compose.override.yaml up -d
 curl -fsS https://quantbot.example.com/healthz
 ```
 
-如果 `cloudflared` 也是容器，且与 QuantBot 直连同一个 Docker 网络，回源使用 `http://quantbot:8888`，`QB_TRUST_PROXY` 填 `cloudflared` 在该网络上的固定容器 IP。只信任实际代理的地址，并保留 QuantBot 的回环端口绑定。首次创建管理员仍需通过本机或 SSH 转发访问 `http://localhost:8888`。
+如果 `cloudflared` 也是容器，且与 QuantBot 直连同一个 Docker 网络，回源使用 `http://quantbot:8888`，`QB_TRUST_PROXY` 填 `cloudflared` 在该网络上的固定容器 IP。显式设置会覆盖默认代理地址。只信任实际代理的地址，并保留 QuantBot 的回环端口绑定。首次创建管理员仍需通过本机或 SSH 转发访问 `http://localhost:8888`。
 
 ## Linux 用户服务
 

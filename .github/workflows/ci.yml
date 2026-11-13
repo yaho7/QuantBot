@@ -61,6 +61,9 @@ jobs:
           setup=http://localhost:8888/api/v2/admin/setup
           curl --fail --silent --show-error "$setup" | jq -e '.required and .available'
           curl --fail --silent --show-error "$setup" \
+            -H 'Host: quantbot.example.com' -H 'X-Forwarded-Proto: https' \
+            -H 'X-Forwarded-For: 203.0.113.10' | jq -e '.required and (.available | not)'
+          curl --fail --silent --show-error "$setup" \
             -H 'Origin: http://localhost:8888' -H 'Content-Type: application/json' \
             --data '{"username":"compose-admin","password":"compose-smoke-test"}' \
             | jq -e '.authenticated'

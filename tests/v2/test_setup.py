@@ -3,7 +3,9 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 
 from fastapi.testclient import TestClient
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+from quantbot.__main__ import docker_gateway, trusted_proxies
 from quantbot.v2.api import make_app
 
 SETUP = "/api/v2/admin/setup"
@@ -63,3 +65,45 @@ def test_remote_setup_is_disabled(tmp_path):
         assert client.get(ORIGIN + "/healthz").status_code == 200
     with TestClient(app, base_url=ORIGIN, client=("8.8.8.8", 1234)) as client:
         assert client.get("/healthz").status_code == 426
+
+
+def test_docker_host_proxy_preserves_https_without_opening_remote_setup(tmp_path, monkeypatch):
+    routes = tmp_path / "route"
+    routes.write_text("Iface Destination Gateway Flags\neth0 00000000 010012AC 0003\n")
+    link = tmp_path / "eth0"
+    link.mkdir()
+    (link / "ifindex").write_text("2\n")
+    (link / "iflink").write_text("3\n")
+    gateway = docker_gateway(routes, tmp_path)
+    assert gateway == "172.18.0.1"
+    monkeypatch.setattr("quantbot.__main__.docker_gateway", lambda: gateway)
+    monkeypatch.delenv("QB_TRUST_PROXY", raising=False)
+    app = ProxyHeadersMiddleware(
+        make_app(tmp_path / "quantbot.sqlite3", docker_local_http=True, telegram_network=False),
+        trusted_hosts=trusted_proxies(docker_local_http=True),
+    )
+    forwarded = {"X-Forwarded-Proto": "https", "X-Forwarded-For": "203.0.113.10"}
+    domain = "http://quantbot.example.test"
+    with TestClient(app, base_url=ORIGIN, client=(gateway, 1234)) as client:
+        assert client.get(SETUP).json() == {"required": True, "available": True}
+        assert client.get(domain + SETUP, headers=forwarded).json() == {
+            "required": True,
+            "available": False,
+        }
+        assert client.get(domain + SETUP).status_code == 426
+        assert client.get(SETUP, headers={"X-Forwarded-Proto": "https"}).json() == {
+            "required": True,
+            "available": False,
+        }
+        assert client.post(SETUP, json=ACCOUNT, headers={"Origin": ORIGIN}).status_code == 201
+        login = client.post(
+            domain + "/api/v2/admin/login",
+            json=ACCOUNT,
+            headers={**forwarded, "Origin": "https://quantbot.example.test"},
+        )
+        assert login.status_code == 200
+        assert "Secure" in login.headers["set-cookie"]
+    with TestClient(app, base_url=domain, client=("172.18.0.2", 1234)) as client:
+        assert client.get(SETUP, headers=forwarded).status_code == 426
+    monkeypatch.setenv("QB_TRUST_PROXY", "172.18.0.3")
+    assert trusted_proxies(docker_local_http=True) == "172.18.0.3"
