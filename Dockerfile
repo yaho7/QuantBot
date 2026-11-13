@@ -18,10 +18,10 @@ RUN uv sync --frozen --no-dev --no-editable \
     && groupadd --gid 10001 quantbot \
     && useradd --uid 10001 --gid 10001 --home-dir /data --no-create-home quantbot \
     && install -d -m 0700 -o quantbot -g quantbot /data
-ENV PATH="/app/.venv/bin:$PATH" QB_DATA_DIR=/data QB_HOST=0.0.0.0 QB_PORT=23456
+ENV PATH="/app/.venv/bin:$PATH" QB_DATA_DIR=/data QB_HOST=0.0.0.0 QB_PORT=8888
 USER 10001:10001
-EXPOSE 23456
+EXPOSE 8888
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
-  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:23456/healthz', timeout=3).close()"]
+  CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/healthz', timeout=3).close()"]
 ENTRYPOINT ["quantbot"]
 CMD ["serve"]

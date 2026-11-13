@@ -2,19 +2,23 @@
 
 ## Docker Compose
 
-准备能解析到服务器的域名，并开放 TCP 80 与 443 给 Caddy。配置文件只暴露 Caddy 端口。QuantBot 仅信任 Compose 网络中 Caddy 的固定地址。
+保存仓库的 [compose.yml](../compose.yml)，在同一目录启动：
 
 ```bash
-export QB_DOMAIN=quantbot.example.com
-docker compose build
-docker compose run --rm -it quantbot admin
 docker compose up -d
-docker compose ps
 ```
 
-访问配置的 HTTPS 域名。数据存放在 `quantbot-data` 卷。服务容器以 UID/GID 10001 运行。使用宿主目录挂载数据时，授予这个 UID 写权限。如果 Compose 网络地址与本机网络冲突，同时修改子网、Caddy 地址及 `QB_TRUST_PROXY`。 [Compose 配置](../compose.yml)
+打开 [http://localhost:8888](http://localhost:8888)，按网页引导创建管理员。Compose 仅启动 QuantBot，端口绑定在宿主机回环地址，数据库存放在 `quantbot-data` 卷。服务容器以 UID/GID 10001 运行。使用宿主目录挂载数据时，授予这个 UID 写权限。
 
-初始化也可以设置 `QB_ADMIN_USERNAME` 和 `QB_ADMIN_PASSWORD_FILE`，后者指向容器可读的私有挂载文件。首次启动会初始化 v2 数据库。已有管理员时会使用数据库中的账户。Bot Token 可以在 Web 设置，或通过 `QB_TELEGRAM_TOKEN_FILE` 提供。
+如果 Docker 运行在另一台机器，在浏览器所在机器执行下列命令，再访问本机 8888 端口。
+
+```bash
+ssh -N -L 8888:127.0.0.1:8888 user@your-server
+```
+
+远程开放控制台或策略 API 时，在宿主机使用 HTTPS 反向代理转发至 `127.0.0.1:8888`，并按下文配置 `QB_PUBLIC_URL` 和 `QB_TRUST_PROXY`。请保留 Compose 的回环端口绑定。`QB_DOCKER_LOCAL_HTTP=1` 允许 Docker 转发本机浏览器请求到容器，适用于这种端口绑定。
+
+已有管理员时会进入登录页。自动部署可以用 `QB_ADMIN_USERNAME` 和 `QB_ADMIN_PASSWORD_FILE` 预置管理员。Bot Token 可以在 Web 设置，也可以用 `QB_TELEGRAM_TOKEN_FILE` 提供。
 
 ## Linux 用户服务
 
@@ -42,7 +46,7 @@ QB_PUBLIC_URL=https://quantbot.example.com
 QB_TRUST_PROXY=127.0.0.1,::1
 ```
 
-在反向代理上终止 TLS，转发原始 `Host` 和 `X-Forwarded-Proto`，仅信任实际代理的 IP 或网段。代理的读超时至少覆盖 25 秒长轮询，SSE 路径关闭代理缓冲。Caddy 的常规反向代理配置可直接使用。HTTP 远程请求会被拒绝。
+在反向代理上终止 TLS，转发原始 `Host` 和 `X-Forwarded-Proto`，仅信任实际代理的 IP 或网段。代理的读超时至少覆盖 25 秒长轮询，SSE 路径关闭代理缓冲。Caddy 示例可参考 [deploy/Caddyfile](../deploy/Caddyfile)。HTTP 远程请求会被拒绝。
 
 常用变量包括 `QB_DATA_DIR`、`QB_HOST`、`QB_PORT`、`QB_PUBLIC_URL`、`QB_TRUST_PROXY`、`QB_ADMIN_USERNAME`、`QB_ADMIN_PASSWORD_FILE` 和 `QB_TELEGRAM_TOKEN_FILE`。服务通过 `/healthz` 检查，系统设置页面显示版本和数据库 Schema。
 
@@ -57,6 +61,6 @@ bash install.sh --ref v2.0.0
 systemctl --user start quantbot
 ```
 
-`--ref` 接受已发布的版本或已验证的提交。Docker 部署从服务容器执行 `quantbot backup`，再用 `docker compose cp` 将备份拷到宿主机的私有目录。构建新镜像后执行 `docker compose up -d --build`。升级后检查健康接口、Web 登录、策略重新接入与实际控制对账。
+`--ref` 接受已发布的版本或已验证的提交。Docker 部署从服务容器执行 `quantbot backup`，再用 `docker compose cp` 将备份拷到宿主机的私有目录。执行 `docker compose pull && docker compose up -d` 获取并应用最新镜像。升级后检查健康接口、Web 登录、策略重新接入与实际控制对账。
 
 恢复备份时先停止 QuantBot 服务。将现有数据库与 WAL/SHM 文件移至另一处保留，再复制已验证的备份到数据目录的 `quantbot-v2.sqlite3`，核对服务用户可读写。重启后已授予许可但缺少回执的命令按未知结果处理。涉及真实交易的操作按券商实际记录核对。

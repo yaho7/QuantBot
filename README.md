@@ -8,17 +8,42 @@ QuantBot 是面向独立量化交易程序的 HTTP 监控与远程控制平台�
 - 开仓权限对账、单一授权执行实例、高风险二次确认、一次性执行许可、未知结果核对与审计。
 - 策略自行部署，持续处理行情、持仓和本地风控。QuantBot 通过期望状态请求暂停或恢复新开仓。
 
+## Docker Compose（推荐）
+
+将以下内容保存为 `compose.yml`。Compose 会从 GitHub Packages 拉取镜像，并使用命名卷保存数据。
+
+```yaml
+services:
+  quantbot:
+    image: ghcr.io/yaho7/quantbot:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8888:8888"
+    environment:
+      QB_DOCKER_LOCAL_HTTP: "1"
+    volumes:
+      - quantbot-data:/data
+
+volumes:
+  quantbot-data:
+```
+
+```bash
+docker compose up -d
+```
+
+打开 [http://localhost:8888](http://localhost:8888)，按网页引导创建管理员。服务器部署时，可通过 SSH 转发本机的 8888 端口完成初始化。 [部署与更新](docs/DEPLOYMENT.md)
+
 ## 本地启动
 
 需要 Python 3.11+、SQLite 3.35+。仓库包含已构建的 React 控制台。
 
 ```bash
 uv sync --frozen
-uv run quantbot admin
 uv run quantbot serve
 ```
 
-打开控制台，使用刚创建的管理员账户登录。在 **添加策略** 中输入名称和交易模式。只监控时选会话与上报权限。需要暂停和恢复时加开仓权限，需要领取一次性指令时加命令权限。将一次性显示的 Token 保存到策略自己的密钥配置。 [本地控制台](http://127.0.0.1:23456/ui/)
+打开控制台，按网页引导创建管理员。在 **添加策略** 中输入名称和交易模式。只监控时选会话与上报权限。需要暂停和恢复时加开仓权限，需要领取一次性指令时加命令权限。将一次性显示的 Token 保存到策略自己的密钥配置。 [本地控制台](http://127.0.0.1:23456/ui/)
 
 以下示例使用普通 Python 标准库。先在 Web 创建一个模拟盘策略并赋予相应权限。
 

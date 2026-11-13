@@ -50,6 +50,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: QB_DOMAIN=quantbot.example.test docker compose config --quiet
-      - run: docker build --tag quantbot:ci .
-      - run: docker run --rm quantbot:ci --version
+      - run: docker compose config --quiet
+      - run: docker build --tag ghcr.io/yaho7/quantbot:latest .
+      - name: Verify the recommended Compose setup
+        run: |
+          trap 'docker compose down --volumes' EXIT
+          docker compose up -d --pull never --wait --wait-timeout 60
+          curl --fail --silent --show-error http://localhost:8888/healthz
+          setup=http://localhost:8888/api/v2/admin/setup
+          curl --fail --silent --show-error "$setup" | jq -e '.required and .available'
+          curl --fail --silent --show-error "$setup" \
+            -H 'Origin: http://localhost:8888' -H 'Content-Type: application/json' \
+            --data '{"username":"compose-admin","password":"compose-smoke-test"}' \
+            | jq -e '.authenticated'
+          docker compose down
+          docker compose up -d --pull never --wait --wait-timeout 60
+          curl --fail --silent --show-error "$setup" | jq -e '.required == false'
