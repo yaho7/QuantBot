@@ -3,7 +3,7 @@ import { CircleAlert, ShieldCheck } from "lucide-react";
 import { useState } from "react";
 import { DynamicControls, type ControlRegistryView } from "./dynamic-controls";
 import { api, readSession, sessionKey, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
-import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, ParameterInput, Table, useData, when } from "./ui";
+import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, ParameterInput, Table, stateText, useData, when } from "./ui";
 
 const actions: Record<string, string> = {
   pause_entry: "暂停新开仓", resume_entry: "恢复新开仓", refresh: "刷新监控",
@@ -147,16 +147,17 @@ export function OperationTable({ strategyId, compact = false, selected, close }:
   const before = cursor.at(-1);
   const [state, setState] = useState("");
   const query = new URLSearchParams({ limit: compact ? "8" : "30" });
+  if (!compact) query.set("unknown_first", "true");
   if (strategyId) query.set("strategy_id", strategyId);
   if (before) query.set("before", before);
+  if (state) query.set("state", state);
   const commands = useData<Command[]>(`commands?${query}`);
   const strategies = useData<Strategy[]>("strategies", !compact);
   const names = Object.fromEntries((strategies.data ?? []).map((s) => [s.id, s.name]));
-  const rows = commands.data?.filter((item) => !state || item.state === state) ?? [];
+  const rows = commands.data ?? [];
   return <>
-    {!compact && <div className="toolbar"><select aria-label="筛选当前页状态" value={state} onChange={(e) => setState(e.target.value)}>
-      <option value="">全部状态</option><option value="pending">等待策略</option><option value="executing">执行中</option>
-      <option value="succeeded">成功</option><option value="failed">失败</option><option value="unknown">结果未知</option></select></div>}
+    {!compact && <div className="toolbar"><select aria-label="筛选操作状态" value={state} onChange={(e) => { setState(e.target.value); setCursor([]); }}>
+      <option value="">全部状态</option>{Object.entries(stateText).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></div>}
     <ErrorNotice error={commands.error} />
     {commands.isPending ? <Loading /> : <Table columns={["指令", ...(compact ? [] : ["策略"]), "状态", "发起人", "创建时间", ""]} empty={!rows.length}>
       {rows.map((item) => <tr key={item.id}><td>{actions[item.action] ?? item.action}</td>

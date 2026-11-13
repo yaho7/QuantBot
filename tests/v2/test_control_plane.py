@@ -175,6 +175,27 @@ def test_credentials_and_scope(server):
     assert http.put(AGENT + "/heartbeat", headers=new_headers, json={}).status_code == 401
 
 
+def test_command_history_filters_and_prioritizes_unknown_across_pages(server):
+    http, _, path = server
+    sid, _ = create(http)
+    with sqlite3.connect(path) as db:
+        for index, state in enumerate(("unknown", "succeeded", "failed", "unknown", "succeeded")):
+            db.execute(
+                """INSERT INTO commands(id, strategy_id, instance_id, actor, request_id, action,
+                   arguments, fingerprint, state, protected, risky, created_at, updated_at, expires_at)
+                   VALUES (?, ?, 'test', 'web:admin', ?, 'refresh', '{}', '', ?, 0, 0, ?, ?, ?)""",
+                (f"cmd-{index}", sid, f"request-{index}", state, NOW + index, NOW, NOW + 100),
+            )
+    url = ADMIN + "/commands"
+    first = http.get(url, params={"limit": 2, "unknown_first": True}).json()
+    assert [row["id"] for row in first] == ["cmd-3", "cmd-0"]
+    second = http.get(url, params={"limit": 2, "unknown_first": True, "before": "cmd-0"}).json()
+    assert [row["id"] for row in second] == ["cmd-4", "cmd-2"]
+    assert [row["id"] for row in http.get(url, params={"state": "failed", "limit": 1}).json()] == [
+        "cmd-2"
+    ]
+
+
 def test_telemetry_exactness_validation_and_dedup(server):
     http, clock, _ = server
     sid, credential = create(http)

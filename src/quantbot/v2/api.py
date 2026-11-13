@@ -55,6 +55,7 @@ from .responses import (
     AgentSession,
     AuditView,
     CommandQueue,
+    CommandState,
     CommandView,
     ControlCatalog,
     ControlView,
@@ -540,12 +541,14 @@ async def list_commands(
     request: Request,
     strategy_id: Key | None = None,
     before: Key | None = None,
+    state: CommandState | None = None,
+    unknown_first: bool = False,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     actor=ADMIN,
 ):
     service = runtime(request).commands
     service.sweep()
-    return service.list(strategy_id, limit, before)
+    return service.list(strategy_id, limit, before, state=state, unknown_first=unknown_first)
 
 
 @admin.get("/commands/{command_id}", response_model=CommandView)

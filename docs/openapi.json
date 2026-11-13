@@ -5925,6 +5925,44 @@
           },
           {
             "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "confirmation_required",
+                    "pending",
+                    "accepted",
+                    "executing",
+                    "succeeded",
+                    "failed",
+                    "unknown",
+                    "expired",
+                    "superseded",
+                    "cancelled"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "unknown_first",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Unknown First",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {

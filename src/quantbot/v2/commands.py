@@ -49,14 +49,28 @@ class Commands:
             omit=("fingerprint", "session_id"),
         )
 
-    def list(self, sid=None, limit=50, before=None):
+    def list(self, sid=None, limit=50, before=None, *, state=None, unknown_first=False):
         return [
             self.public(row)
             for row in self.db.all(
                 """SELECT * FROM commands WHERE (? IS NULL OR strategy_id=?)
-               AND (? IS NULL OR rowid<(SELECT rowid FROM commands WHERE id=?))
-               ORDER BY rowid DESC LIMIT ?""",
-                (sid, sid, before, before, limit),
+               AND (? IS NULL OR state=?)
+               AND (? IS NULL OR ((? AND state='unknown'), rowid) < (
+                   SELECT (? AND state='unknown'), rowid FROM commands WHERE id=?
+               ))
+               ORDER BY (? AND state='unknown') DESC, rowid DESC LIMIT ?""",
+                (
+                    sid,
+                    sid,
+                    state,
+                    state,
+                    before,
+                    unknown_first,
+                    unknown_first,
+                    before,
+                    unknown_first,
+                    limit,
+                ),
             )
         ]
 
