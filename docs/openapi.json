@@ -5671,9 +5671,9 @@
   },
   "openapi": "3.1.0",
   "paths": {
-    "/api/v2/admin/alerts": {
+    "/api/admin/alerts": {
       "get": {
-        "operationId": "alerts_api_v2_admin_alerts_get",
+        "operationId": "alerts_api_admin_alerts_get",
         "parameters": [
           {
             "in": "query",
@@ -5766,10 +5766,10 @@
         ]
       }
     },
-    "/api/v2/admin/audit": {
+    "/api/admin/audit": {
       "get": {
         "description": "Read the audit trail, optionally restricted to a strategy or command.",
-        "operationId": "audit_api_v2_admin_audit_get",
+        "operationId": "audit_api_admin_audit_get",
         "parameters": [
           {
             "in": "query",
@@ -5826,7 +5826,7 @@
                   "items": {
                     "$ref": "#/components/schemas/AuditView"
                   },
-                  "title": "Response Audit Api V2 Admin Audit Get",
+                  "title": "Response Audit Api Admin Audit Get",
                   "type": "array"
                 }
               }
@@ -5885,9 +5885,9 @@
         ]
       }
     },
-    "/api/v2/admin/commands": {
+    "/api/admin/commands": {
       "get": {
-        "operationId": "list_commands_api_v2_admin_commands_get",
+        "operationId": "list_commands_api_admin_commands_get",
         "parameters": [
           {
             "in": "query",
@@ -5982,7 +5982,7 @@
                   "items": {
                     "$ref": "#/components/schemas/CommandView"
                   },
-                  "title": "Response List Commands Api V2 Admin Commands Get",
+                  "title": "Response List Commands Api Admin Commands Get",
                   "type": "array"
                 }
               }
@@ -6041,9 +6041,9 @@
         ]
       }
     },
-    "/api/v2/admin/commands/{command_id}": {
+    "/api/admin/commands/{command_id}": {
       "get": {
-        "operationId": "command_detail_api_v2_admin_commands__command_id__get",
+        "operationId": "command_detail_api_admin_commands__command_id__get",
         "parameters": [
           {
             "in": "path",
@@ -6119,9 +6119,9 @@
         ]
       }
     },
-    "/api/v2/admin/commands/{command_id}/cancel": {
+    "/api/admin/commands/{command_id}/cancel": {
       "post": {
-        "operationId": "cancel_command_api_v2_admin_commands__command_id__cancel_post",
+        "operationId": "cancel_command_api_admin_commands__command_id__cancel_post",
         "parameters": [
           {
             "in": "path",
@@ -6197,9 +6197,9 @@
         ]
       }
     },
-    "/api/v2/admin/commands/{command_id}/confirm": {
+    "/api/admin/commands/{command_id}/confirm": {
       "post": {
-        "operationId": "confirm_api_v2_admin_commands__command_id__confirm_post",
+        "operationId": "confirm_api_admin_commands__command_id__confirm_post",
         "parameters": [
           {
             "in": "path",
@@ -6275,9 +6275,9 @@
         ]
       }
     },
-    "/api/v2/admin/commands/{command_id}/reconcile": {
+    "/api/admin/commands/{command_id}/reconcile": {
       "post": {
-        "operationId": "reconcile_api_v2_admin_commands__command_id__reconcile_post",
+        "operationId": "reconcile_api_admin_commands__command_id__reconcile_post",
         "parameters": [
           {
             "in": "path",
@@ -6363,9 +6363,9 @@
         ]
       }
     },
-    "/api/v2/admin/events": {
+    "/api/admin/events": {
       "get": {
-        "operationId": "event_history_api_v2_admin_events_get",
+        "operationId": "event_history_api_admin_events_get",
         "parameters": [
           {
             "in": "query",
@@ -6540,10 +6540,10 @@
         ]
       }
     },
-    "/api/v2/admin/history/metrics": {
+    "/api/admin/history/metrics": {
       "post": {
         "description": "Compare exact series across strategies with optional UTC bucket aggregation.",
-        "operationId": "compare_metrics_api_v2_admin_history_metrics_post",
+        "operationId": "compare_metrics_api_admin_history_metrics_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6615,9 +6615,9 @@
         ]
       }
     },
-    "/api/v2/admin/login": {
+    "/api/admin/login": {
       "post": {
-        "operationId": "login_api_v2_admin_login_post",
+        "operationId": "login_api_admin_login_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6684,9 +6684,9 @@
         ]
       }
     },
-    "/api/v2/admin/login/link": {
+    "/api/admin/login/link": {
       "post": {
-        "operationId": "link_login_api_v2_admin_login_link_post",
+        "operationId": "link_login_api_admin_login_link_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -6757,9 +6757,9 @@
         ]
       }
     },
-    "/api/v2/admin/logout": {
+    "/api/admin/logout": {
       "post": {
-        "operationId": "logout_api_v2_admin_logout_post",
+        "operationId": "logout_api_admin_logout_post",
         "responses": {
           "200": {
             "content": {
@@ -6821,9 +6821,9 @@
         ]
       }
     },
-    "/api/v2/admin/overview": {
+    "/api/admin/overview": {
       "get": {
-        "operationId": "overview_api_v2_admin_overview_get",
+        "operationId": "overview_api_admin_overview_get",
         "responses": {
           "200": {
             "content": {
@@ -6845,9 +6845,9 @@
         ]
       }
     },
-    "/api/v2/admin/session": {
+    "/api/admin/session": {
       "get": {
-        "operationId": "admin_session_api_v2_admin_session_get",
+        "operationId": "admin_session_api_admin_session_get",
         "responses": {
           "200": {
             "content": {
@@ -6909,9 +6909,9 @@
         ]
       }
     },
-    "/api/v2/admin/setup": {
+    "/api/admin/setup": {
       "get": {
-        "operationId": "setup_status_api_v2_admin_setup_get",
+        "operationId": "setup_status_api_admin_setup_get",
         "responses": {
           "200": {
             "content": {
@@ -6920,7 +6920,7 @@
                   "additionalProperties": {
                     "type": "boolean"
                   },
-                  "title": "Response Setup Status Api V2 Admin Setup Get",
+                  "title": "Response Setup Status Api Admin Setup Get",
                   "type": "object"
                 }
               }
@@ -6974,7 +6974,7 @@
         ]
       },
       "post": {
-        "operationId": "setup_admin_api_v2_admin_setup_post",
+        "operationId": "setup_admin_api_admin_setup_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7041,9 +7041,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies": {
+    "/api/admin/strategies": {
       "get": {
-        "operationId": "list_strategies_api_v2_admin_strategies_get",
+        "operationId": "list_strategies_api_admin_strategies_get",
         "responses": {
           "200": {
             "content": {
@@ -7052,7 +7052,7 @@
                   "items": {
                     "$ref": "#/components/schemas/StrategyView"
                   },
-                  "title": "Response List Strategies Api V2 Admin Strategies Get",
+                  "title": "Response List Strategies Api Admin Strategies Get",
                   "type": "array"
                 }
               }
@@ -7111,7 +7111,7 @@
         ]
       },
       "post": {
-        "operationId": "create_strategy_api_v2_admin_strategies_post",
+        "operationId": "create_strategy_api_admin_strategies_post",
         "requestBody": {
           "content": {
             "application/json": {
@@ -7185,9 +7185,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/archived": {
+    "/api/admin/strategies/archived": {
       "get": {
-        "operationId": "archived_api_v2_admin_strategies_archived_get",
+        "operationId": "archived_api_admin_strategies_archived_get",
         "responses": {
           "200": {
             "content": {
@@ -7209,9 +7209,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}": {
+    "/api/admin/strategies/{strategy_id}": {
       "delete": {
-        "operationId": "archive_api_v2_admin_strategies__strategy_id__delete",
+        "operationId": "archive_api_admin_strategies__strategy_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -7255,7 +7255,7 @@
         ]
       },
       "get": {
-        "operationId": "strategy_api_v2_admin_strategies__strategy_id__get",
+        "operationId": "strategy_api_admin_strategies__strategy_id__get",
         "parameters": [
           {
             "in": "path",
@@ -7348,7 +7348,7 @@
         ]
       },
       "put": {
-        "operationId": "update_strategy_api_v2_admin_strategies__strategy_id__put",
+        "operationId": "update_strategy_api_admin_strategies__strategy_id__put",
         "parameters": [
           {
             "in": "path",
@@ -7434,9 +7434,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/commands": {
+    "/api/admin/strategies/{strategy_id}/commands": {
       "post": {
-        "operationId": "create_command_api_v2_admin_strategies__strategy_id__commands_post",
+        "operationId": "create_command_api_admin_strategies__strategy_id__commands_post",
         "parameters": [
           {
             "in": "path",
@@ -7522,10 +7522,10 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/components": {
+    "/api/admin/strategies/{strategy_id}/components": {
       "get": {
         "description": "Discover compatible charts from observed standard records.",
-        "operationId": "components_api_v2_admin_strategies__strategy_id__components_get",
+        "operationId": "components_api_admin_strategies__strategy_id__components_get",
         "parameters": [
           {
             "in": "path",
@@ -7599,10 +7599,10 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/components/{component}": {
+    "/api/admin/strategies/{strategy_id}/components/{component}": {
       "get": {
         "description": "Retrieve normalized current data or the selected component's historical records.",
-        "operationId": "component_data_api_v2_admin_strategies__strategy_id__components__component__get",
+        "operationId": "component_data_api_admin_strategies__strategy_id__components__component__get",
         "parameters": [
           {
             "in": "path",
@@ -7753,10 +7753,10 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/controls": {
+    "/api/admin/strategies/{strategy_id}/controls": {
       "get": {
         "description": "Read the registered components and last agent-reported state.",
-        "operationId": "read_controls_api_v2_admin_strategies__strategy_id__controls_get",
+        "operationId": "read_controls_api_admin_strategies__strategy_id__controls_get",
         "parameters": [
           {
             "in": "path",
@@ -7832,10 +7832,10 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/controls/{control_id}/invoke": {
+    "/api/admin/strategies/{strategy_id}/controls/{control_id}/invoke": {
       "post": {
         "description": "Create a command through the validated control binding and registry revision.",
-        "operationId": "invoke_control_api_v2_admin_strategies__strategy_id__controls__control_id__invoke_post",
+        "operationId": "invoke_control_api_admin_strategies__strategy_id__controls__control_id__invoke_post",
         "parameters": [
           {
             "in": "path",
@@ -7931,9 +7931,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/dashboard": {
+    "/api/admin/strategies/{strategy_id}/dashboard": {
       "get": {
-        "operationId": "dashboard_api_v2_admin_strategies__strategy_id__dashboard_get",
+        "operationId": "dashboard_api_admin_strategies__strategy_id__dashboard_get",
         "parameters": [
           {
             "in": "path",
@@ -8007,7 +8007,7 @@
         ]
       },
       "put": {
-        "operationId": "save_dashboard_api_v2_admin_strategies__strategy_id__dashboard_put",
+        "operationId": "save_dashboard_api_admin_strategies__strategy_id__dashboard_put",
         "parameters": [
           {
             "in": "path",
@@ -8091,9 +8091,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/executor": {
+    "/api/admin/strategies/{strategy_id}/executor": {
       "put": {
-        "operationId": "executor_api_v2_admin_strategies__strategy_id__executor_put",
+        "operationId": "executor_api_admin_strategies__strategy_id__executor_put",
         "parameters": [
           {
             "in": "path",
@@ -8147,10 +8147,10 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/market": {
+    "/api/admin/strategies/{strategy_id}/market": {
       "get": {
         "description": "Query reported OHLCV and order, fill, signal, and risk markers.",
-        "operationId": "market_api_v2_admin_strategies__strategy_id__market_get",
+        "operationId": "market_api_admin_strategies__strategy_id__market_get",
         "parameters": [
           {
             "in": "path",
@@ -8288,9 +8288,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/metrics": {
+    "/api/admin/strategies/{strategy_id}/metrics": {
       "get": {
-        "operationId": "metric_history_api_v2_admin_strategies__strategy_id__metrics_get",
+        "operationId": "metric_history_api_admin_strategies__strategy_id__metrics_get",
         "parameters": [
           {
             "in": "path",
@@ -8444,9 +8444,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/restore": {
+    "/api/admin/strategies/{strategy_id}/restore": {
       "post": {
-        "operationId": "restore_api_v2_admin_strategies__strategy_id__restore_post",
+        "operationId": "restore_api_admin_strategies__strategy_id__restore_post",
         "parameters": [
           {
             "in": "path",
@@ -8490,9 +8490,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/tokens": {
+    "/api/admin/strategies/{strategy_id}/tokens": {
       "get": {
-        "operationId": "tokens_api_v2_admin_strategies__strategy_id__tokens_get",
+        "operationId": "tokens_api_admin_strategies__strategy_id__tokens_get",
         "parameters": [
           {
             "in": "path",
@@ -8513,7 +8513,7 @@
                   "items": {
                     "$ref": "#/components/schemas/CredentialView"
                   },
-                  "title": "Response Tokens Api V2 Admin Strategies  Strategy Id  Tokens Get",
+                  "title": "Response Tokens Api Admin Strategies  Strategy Id  Tokens Get",
                   "type": "array"
                 }
               }
@@ -8572,7 +8572,7 @@
         ]
       },
       "post": {
-        "operationId": "new_token_api_v2_admin_strategies__strategy_id__tokens_post",
+        "operationId": "new_token_api_admin_strategies__strategy_id__tokens_post",
         "parameters": [
           {
             "in": "path",
@@ -8658,9 +8658,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/tokens/{token_id}": {
+    "/api/admin/strategies/{strategy_id}/tokens/{token_id}": {
       "delete": {
-        "operationId": "revoke_token_api_v2_admin_strategies__strategy_id__tokens__token_id__delete",
+        "operationId": "revoke_token_api_admin_strategies__strategy_id__tokens__token_id__delete",
         "parameters": [
           {
             "in": "path",
@@ -8739,9 +8739,9 @@
         ]
       }
     },
-    "/api/v2/admin/strategies/{strategy_id}/tokens/{token_id}/rotate": {
+    "/api/admin/strategies/{strategy_id}/tokens/{token_id}/rotate": {
       "post": {
-        "operationId": "rotate_token_api_v2_admin_strategies__strategy_id__tokens__token_id__rotate_post",
+        "operationId": "rotate_token_api_admin_strategies__strategy_id__tokens__token_id__rotate_post",
         "parameters": [
           {
             "in": "path",
@@ -8837,9 +8837,9 @@
         ]
       }
     },
-    "/api/v2/admin/system": {
+    "/api/admin/system": {
       "get": {
-        "operationId": "system_api_v2_admin_system_get",
+        "operationId": "system_api_admin_system_get",
         "responses": {
           "200": {
             "content": {
@@ -8861,9 +8861,9 @@
         ]
       }
     },
-    "/api/v2/admin/system/password": {
+    "/api/admin/system/password": {
       "put": {
-        "operationId": "change_password_api_v2_admin_system_password_put",
+        "operationId": "change_password_api_admin_system_password_put",
         "requestBody": {
           "content": {
             "application/json": {
@@ -8905,9 +8905,9 @@
         ]
       }
     },
-    "/api/v2/admin/telegram": {
+    "/api/admin/telegram": {
       "get": {
-        "operationId": "telegram_settings_api_v2_admin_telegram_get",
+        "operationId": "telegram_settings_api_admin_telegram_get",
         "responses": {
           "200": {
             "content": {
@@ -8969,7 +8969,7 @@
         ]
       },
       "put": {
-        "operationId": "update_telegram_api_v2_admin_telegram_put",
+        "operationId": "update_telegram_api_admin_telegram_put",
         "requestBody": {
           "content": {
             "application/json": {
@@ -9041,10 +9041,10 @@
         ]
       }
     },
-    "/api/v2/agent/commands": {
+    "/api/agent/commands": {
       "get": {
         "description": "Wait for queued work or a newer desired revision. A response is not an execution permit.",
-        "operationId": "commands_api_v2_agent_commands_get",
+        "operationId": "commands_api_agent_commands_get",
         "parameters": [
           {
             "in": "query",
@@ -9155,10 +9155,10 @@
         ]
       }
     },
-    "/api/v2/agent/commands/{command_id}/claim": {
+    "/api/agent/commands/{command_id}/claim": {
       "post": {
         "description": "Consume the only opportunity to obtain a permit for this command.",
-        "operationId": "claim_api_v2_agent_commands__command_id__claim_post",
+        "operationId": "claim_api_agent_commands__command_id__claim_post",
         "parameters": [
           {
             "in": "path",
@@ -9250,10 +9250,10 @@
         ]
       }
     },
-    "/api/v2/agent/commands/{command_id}/result": {
+    "/api/agent/commands/{command_id}/result": {
       "post": {
         "description": "Report an execution outcome. Retrying the same receipt is idempotent.",
-        "operationId": "result_api_v2_agent_commands__command_id__result_post",
+        "operationId": "result_api_agent_commands__command_id__result_post",
         "parameters": [
           {
             "in": "path",
@@ -9355,9 +9355,9 @@
         ]
       }
     },
-    "/api/v2/agent/control": {
+    "/api/agent/control": {
       "get": {
-        "operationId": "control_api_v2_agent_control_get",
+        "operationId": "control_api_agent_control_get",
         "parameters": [
           {
             "in": "header",
@@ -9439,9 +9439,9 @@
         ]
       }
     },
-    "/api/v2/agent/control/reported": {
+    "/api/agent/control/reported": {
       "put": {
-        "operationId": "report_control_api_v2_agent_control_reported_put",
+        "operationId": "report_control_api_agent_control_reported_put",
         "parameters": [
           {
             "in": "header",
@@ -9533,10 +9533,10 @@
         ]
       }
     },
-    "/api/v2/agent/controls": {
+    "/api/agent/controls": {
       "put": {
         "description": "Publish a complete control registry. Use a higher revision to update or remove controls.",
-        "operationId": "publish_controls_api_v2_agent_controls_put",
+        "operationId": "publish_controls_api_agent_controls_put",
         "parameters": [
           {
             "in": "header",
@@ -9628,10 +9628,10 @@
         ]
       }
     },
-    "/api/v2/agent/controls/state": {
+    "/api/agent/controls/state": {
       "put": {
         "description": "Report actual values and disabled states for the currently registered revision.",
-        "operationId": "publish_values_api_v2_agent_controls_state_put",
+        "operationId": "publish_values_api_agent_controls_state_put",
         "parameters": [
           {
             "in": "header",
@@ -9723,10 +9723,10 @@
         ]
       }
     },
-    "/api/v2/agent/events": {
+    "/api/agent/events": {
       "post": {
         "description": "Ingest events idempotently by strategy and event ID.",
-        "operationId": "events_api_v2_agent_events_post",
+        "operationId": "events_api_agent_events_post",
         "parameters": [
           {
             "in": "header",
@@ -9818,10 +9818,10 @@
         ]
       }
     },
-    "/api/v2/agent/heartbeat": {
+    "/api/agent/heartbeat": {
       "put": {
         "description": "Keep the session active and report runtime health.",
-        "operationId": "heartbeat_api_v2_agent_heartbeat_put",
+        "operationId": "heartbeat_api_agent_heartbeat_put",
         "parameters": [
           {
             "in": "header",
@@ -9913,10 +9913,10 @@
         ]
       }
     },
-    "/api/v2/agent/metric-definitions": {
+    "/api/agent/metric-definitions": {
       "put": {
         "description": "Register metric metadata. Charts become available after points are received.",
-        "operationId": "define_metrics_api_v2_agent_metric_definitions_put",
+        "operationId": "define_metrics_api_agent_metric_definitions_put",
         "parameters": [
           {
             "in": "header",
@@ -10008,10 +10008,10 @@
         ]
       }
     },
-    "/api/v2/agent/metrics": {
+    "/api/agent/metrics": {
       "post": {
         "description": "Ingest a batch of timestamped metric points, including historical backfill.",
-        "operationId": "metrics_api_v2_agent_metrics_post",
+        "operationId": "metrics_api_agent_metrics_post",
         "parameters": [
           {
             "in": "header",
@@ -10103,10 +10103,10 @@
         ]
       }
     },
-    "/api/v2/agent/monitor/{instance_id}": {
+    "/api/agent/monitor/{instance_id}": {
       "post": {
         "description": "Report telemetry and refresh presence with a Bearer Token, without a session header.",
-        "operationId": "monitor_api_v2_agent_monitor__instance_id__post",
+        "operationId": "monitor_api_agent_monitor__instance_id__post",
         "parameters": [
           {
             "in": "path",
@@ -10208,10 +10208,10 @@
         ]
       }
     },
-    "/api/v2/agent/reports": {
+    "/api/agent/reports": {
       "post": {
         "description": "Ingest a batch of validated, explicitly typed records.",
-        "operationId": "reports_api_v2_agent_reports_post",
+        "operationId": "reports_api_agent_reports_post",
         "parameters": [
           {
             "in": "header",
@@ -10303,10 +10303,10 @@
         ]
       }
     },
-    "/api/v2/agent/session": {
+    "/api/agent/session": {
       "post": {
         "description": "Register an instance and obtain its session ID.",
-        "operationId": "session_api_v2_agent_session_post",
+        "operationId": "session_api_agent_session_post",
         "parameters": [
           {
             "in": "header",
@@ -10398,10 +10398,10 @@
         ]
       }
     },
-    "/api/v2/agent/snapshot": {
+    "/api/agent/snapshot": {
       "put": {
         "description": "Replace the instance snapshot, retaining time-series samples.",
-        "operationId": "snapshot_api_v2_agent_snapshot_put",
+        "operationId": "snapshot_api_agent_snapshot_put",
         "parameters": [
           {
             "in": "header",
@@ -10493,9 +10493,9 @@
         ]
       }
     },
-    "/api/v2/data-types": {
+    "/api/data-types": {
       "get": {
-        "operationId": "data_types_api_v2_data_types_get",
+        "operationId": "data_types_api_data_types_get",
         "responses": {
           "200": {
             "content": {
@@ -10512,9 +10512,9 @@
         ]
       }
     },
-    "/api/v2/schemas/{kind}": {
+    "/api/schemas/{kind}": {
       "get": {
-        "operationId": "schema_api_v2_schemas__kind__get",
+        "operationId": "schema_api_schemas__kind__get",
         "parameters": [
           {
             "in": "path",
@@ -10552,9 +10552,9 @@
         ]
       }
     },
-    "/api/v2/stream": {
+    "/api/stream": {
       "get": {
-        "operationId": "stream_api_v2_stream_get",
+        "operationId": "stream_api_stream_get",
         "responses": {
           "200": {
             "content": {

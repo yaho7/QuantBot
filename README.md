@@ -59,7 +59,7 @@ Web 将显示实例上线、模拟指标及已声明的控件。尝试修改 RSI
 - [Docker、Linux 服务、HTTPS、备份和更新](docs/DEPLOYMENT.md)
 - [目录结构、数据模型和安全边界](DESIGN.md)
 
-运行中的服务还提供 `/docs`、`/openapi.json`、`/api/v2/data-types` 和 `/api/v2/schemas/{type}`。Web **API 接入** 页面可复制完整规范、接入示例和 AI 提示词。
+运行中的服务还提供 `/docs`、`/openapi.json`、`/api/data-types` 和 `/api/schemas/{type}`。Web **API 接入** 页面可复制完整规范、接入示例和 AI 提示词。
 
 ## 开发验证
 

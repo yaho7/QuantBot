@@ -8,7 +8,7 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from quantbot.__main__ import docker_gateway, trusted_proxies
 from quantbot.v2.api import make_app
 
-SETUP = "/api/v2/admin/setup"
+SETUP = "/api/admin/setup"
 ORIGIN = "http://localhost:8888"
 ACCOUNT = {"username": "operator", "password": "qb-pass8"}
 
@@ -36,7 +36,7 @@ def test_first_run_creates_administrator_once(tmp_path):
                 )
             )
         assert statuses == [201, 409]
-        assert client.get("/api/v2/admin/session").json() == {"actor": "web:operator"}
+        assert client.get("/api/admin/session").json() == {"actor": "web:operator"}
         assert client.get(SETUP).json() == {"required": False, "available": False}
     with closing(sqlite3.connect(path)) as db:
         assert (
@@ -45,7 +45,7 @@ def test_first_run_creates_administrator_once(tmp_path):
         )
     with TestClient(app, base_url=ORIGIN, client=("172.20.0.1", 1234)) as client:
         assert client.get(SETUP).json() == {"required": False, "available": False}
-        assert client.post("/api/v2/admin/login", json=ACCOUNT).status_code == 200
+        assert client.post("/api/admin/login", json=ACCOUNT).status_code == 200
 
 
 def test_remote_plain_http_is_rejected(tmp_path):

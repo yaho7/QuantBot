@@ -25,7 +25,7 @@ class ExecutorAssignment(Payload):
 
 
 def register(app, administrator, session_cookie):
-    router = APIRouter(prefix="/api/v2/admin", tags=["Administration"])
+    router = APIRouter(prefix="/api/admin", tags=["Administration"])
     admin = Depends(administrator)
 
     @router.get("/overview")

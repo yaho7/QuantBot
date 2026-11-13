@@ -33,7 +33,7 @@ function useLive(enabled: boolean) {
   const client = useQueryClient();
   useEffect(() => {
     if (!enabled) return;
-    const stream = new EventSource("/api/v2/stream");
+    const stream = new EventSource("/api/stream");
     let timer: number | undefined;
     const update = () => {
       if (timer !== undefined) return;

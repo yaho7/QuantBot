@@ -244,7 +244,7 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, method = "GET", payload?: unknown): Promise<T> {
-  const url = path.startsWith("/") ? path : `/api/v2/admin/${path}`;
+  const url = path.startsWith("/") ? path : `/api/admin/${path}`;
   const response = await fetch(url, {
     method,
     credentials: "same-origin",

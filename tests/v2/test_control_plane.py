@@ -24,8 +24,8 @@ CAPS = [
         "parameters": {"offset": {"label": "Offset", "type": "decimal", "minimum": "0"}},
     },
 ]
-ADMIN = "/api/v2/admin"
-AGENT = "/api/v2/agent"
+ADMIN = "/api/admin"
+AGENT = "/api/agent"
 
 
 def stamp(seconds=NOW):
@@ -182,7 +182,8 @@ def test_command_history_filters_and_prioritizes_unknown_across_pages(server):
         for index, state in enumerate(("unknown", "succeeded", "failed", "unknown", "succeeded")):
             db.execute(
                 """INSERT INTO commands(id, strategy_id, instance_id, actor, request_id, action,
-                   arguments, fingerprint, state, protected, risky, created_at, updated_at, expires_at)
+                   arguments, fingerprint, state, protected, risky,
+                   created_at, updated_at, expires_at)
                    VALUES (?, ?, 'test', 'web:admin', ?, 'refresh', '{}', '', ?, 0, 0, ?, ?, ?)""",
                 (f"cmd-{index}", sid, f"request-{index}", state, NOW + index, NOW, NOW + 100),
             )

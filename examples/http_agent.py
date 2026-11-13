@@ -114,7 +114,7 @@ class Demo:
             or (parsed.query or parsed.fragment or not parsed.hostname)
         ):
             raise SystemExit("QB_URL must be the HTTP or HTTPS origin")
-        self.url = url.rstrip("/") + "/api/v2/agent"
+        self.url = url.rstrip("/") + "/api/agent"
         self.opener = build_opener(NoRedirect)
         self.headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
         self.instance = instance

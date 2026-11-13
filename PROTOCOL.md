@@ -15,7 +15,7 @@
 
 ## Agent API
 
-以下路径以 `/api/v2/agent` 开头。
+以下路径以 `/api/agent` 开头。
 
 | 方法 | 路径 | 权限 | 用途 |
 |---|---|---|---|
@@ -38,7 +38,7 @@ JSON 体积上限为 1 MiB。校验错误会返回字段位置和错误类型。
 
 ## 标准数据与图表
 
-基础监控使用 `POST /api/v2/agent/monitor/{instance_id}`。发送策略 Bearer Token 和 `{"records":[...]}`，无需会话头。固定使用同一个实例名（最长 56 个字符），每 15 秒上报一次。上报会更新在线状态，断网或服务重启后重试即可。需要控制指令时使用下文的 Session 协议。
+基础监控使用 `POST /api/agent/monitor/{instance_id}`。发送策略 Bearer Token 和 `{"records":[...]}`，无需会话头。固定使用同一个实例名（最长 56 个字符），每 15 秒上报一次。上报会更新在线状态，断网或服务重启后重试即可。需要控制指令时使用下文的 Session 协议。
 
 `POST /reports` 和基础监控接受相同的记录。每条记录显式包含 `type`、整数 `schema_version: 1` 和 RFC 3339 `observed_at`。服务端统一为 UTC。交易金额、价格、数量、费用、净值、收益、指标值等使用十进制字符串。百分比按百分数值上报，例如 `"1.25"` 表示 1.25%。币种使用大写代码。
 
@@ -59,7 +59,7 @@ JSON 体积上限为 1 MiB。校验错误会返回字段位置和错误类型。
 | connection | `broker_connected`、可选授权到期及说明 | 连接快照与历史 | 连接卡和时间轴 |
 | alert | `id`、`code`、`severity`、`message`，可选 `dedup_key` | 唯一事件及告警 | 告警历史及通知 |
 
-完整必填字段、枚举、范围和格式由版本化 JSON Schema 给出。查询 `/api/v2/data-types` 得到每类的 Schema 地址和组件映射。通过 `/api/v2/schemas/batch` 下载包含全部 14 种记录的联合 Schema。 [批量上报 Schema](docs/schemas/batch.schema.json)
+完整必填字段、枚举、范围和格式由版本化 JSON Schema 给出。查询 `/api/data-types` 得到每类的 Schema 地址和组件映射。通过 `/api/schemas/batch` 下载包含全部 14 种记录的联合 Schema。 [批量上报 Schema](docs/schemas/batch.schema.json)
 
 快照采用 `type: "snapshot"`、`schema_version: 1`、`observed_at`。一个快照可以同时包含运行状态、账户、持仓、订单、成交、绩效和指标。其标准字段共享快照的观察时间。结构化事件采用 `type: "event"`、`schema_version: 1`、`id` 和 `occurred_at`，可携带标准 `fill` 或 `marker`。扩展属性仅允许有限的标量值，图表按显式标准类型和受控字段匹配。 [快照 Schema](docs/schemas/snapshot.schema.json) · [事件 Schema](docs/schemas/event.schema.json)
 
@@ -74,12 +74,12 @@ export QB_URL=http://127.0.0.1:23456
 read -rs QB_TOKEN
 export QB_TOKEN
 
-SESSION=$(curl -fsS "$QB_URL/api/v2/agent/session" \
+SESSION=$(curl -fsS "$QB_URL/api/agent/session" \
   -H "Authorization: Bearer $QB_TOKEN" -H 'Content-Type: application/json' \
   -d '{"instance_id":"curl-example","language":"HTTP","version":"1.0"}')
 QB_SESSION=$(jq -r .session_id <<<"$SESSION")
 
-curl -fsS -X PUT "$QB_URL/api/v2/agent/heartbeat" \
+curl -fsS -X PUT "$QB_URL/api/agent/heartbeat" \
   -H "Authorization: Bearer $QB_TOKEN" -H "X-Agent-Session: $QB_SESSION" \
   -H 'Content-Type: application/json' -d '{"health":"healthy"}'
 
@@ -90,7 +90,7 @@ jq -n --arg now "$STAMP" '{records:[
   ]},
   {type:"metric",schema_version:1,observed_at:$now,name:"rsi_14",value:"52.15",unit:"index"},
   {type:"log",schema_version:1,observed_at:$now,id:("started-"+$now),severity:"info",message:"HTTP example connected"}
-]}' | curl -fsS "$QB_URL/api/v2/agent/reports" \
+]}' | curl -fsS "$QB_URL/api/agent/reports" \
   -H "Authorization: Bearer $QB_TOKEN" -H "X-Agent-Session: $QB_SESSION" \
   -H 'Content-Type: application/json' --data-binary @-
 ```
@@ -168,7 +168,7 @@ jq -n --arg now "$STAMP" '{records:[
 ```
 
 ```bash
-curl -fsS -X PUT "$QB_URL/api/v2/agent/controls" \
+curl -fsS -X PUT "$QB_URL/api/agent/controls" \
   -H "Authorization: Bearer $QB_TOKEN" -H "X-Agent-Session: $QB_SESSION" \
   -H 'Content-Type: application/json' --data-binary @controls.json
 ```
@@ -177,6 +177,6 @@ curl -fsS -X PUT "$QB_URL/api/v2/agent/controls" \
 
 ## 管理 API 与事件流
 
-`/api/v2/admin` 使用管理员会话，供 Web 管理策略、Token、命令、Telegram 和系统设置。历史接口支持按范围查询标准数据与精确十进制聚合。 `POST /api/v2/admin/history/metrics` 可按策略、实例、指标、账户和单位选择最多十个数据源。布局保存使用仪表盘修订号。实时更新使用经管理员认证的 `GET /api/v2/stream`，浏览器同时定期刷新。
+`/api/admin` 使用管理员会话，供 Web 管理策略、Token、命令、Telegram 和系统设置。历史接口支持按范围查询标准数据与精确十进制聚合。 `POST /api/admin/history/metrics` 可按策略、实例、指标、账户和单位选择最多十个数据源。布局保存使用仪表盘修订号。实时更新使用经管理员认证的 `GET /api/stream`，浏览器同时定期刷新。
 
 运行中的交互文档位于 `/docs`。查看 [完整 OpenAPI 3.1 规范](docs/openapi.json)。

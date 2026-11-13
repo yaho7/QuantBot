@@ -88,8 +88,8 @@ COMMON_ERRORS = {
     409: {"model": Error, "description": "Session, revision, idempotency or state conflict"},
     422: {"model": Error, "description": "Invalid schema or parameters"},
 }
-agent = APIRouter(prefix="/api/v2/agent", tags=["Agent"], responses=COMMON_ERRORS)
-admin = APIRouter(prefix="/api/v2/admin", tags=["Administration"], responses=COMMON_ERRORS)
+agent = APIRouter(prefix="/api/agent", tags=["Agent"], responses=COMMON_ERRORS)
+admin = APIRouter(prefix="/api/admin", tags=["Administration"], responses=COMMON_ERRORS)
 log = logging.getLogger(__name__)
 
 
@@ -681,7 +681,7 @@ class Transport:
             error = (426, "HTTPS is required for remote connections")
         elif self.origin and request.url.scheme == "https" and host != urlsplit(self.origin).netloc:
             error = (421, "Request host does not match the configured public URL")
-        elif request.method not in {"GET", "HEAD", "OPTIONS"} and path.startswith("/api/v2/admin"):
+        elif request.method not in {"GET", "HEAD", "OPTIONS"} and path.startswith("/api/admin"):
             if request.headers.get("origin") not in {None, origin}:
                 error = (403, "Cross-origin administrator request rejected")
             elif request.headers.get("sec-fetch-site") == "cross-site":
@@ -818,11 +818,11 @@ def make_app(
         headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
         return JSONResponse({"detail": str(exc)}, status_code=exc.status, headers=headers)
 
-    @app.get("/api/v2/data-types", tags=["Schemas"])
+    @app.get("/api/data-types", tags=["Schemas"])
     async def data_types():
         return Registry.definition()
 
-    @app.get("/api/v2/schemas/{kind}", tags=["Schemas"])
+    @app.get("/api/schemas/{kind}", tags=["Schemas"])
     async def schema(kind: str):
         return schema_document(kind)
 
@@ -864,7 +864,7 @@ def make_app(
     async def health():
         return {"status": "ok"}
 
-    @app.get("/api/v2/stream", tags=["Administration"])
+    @app.get("/api/stream", tags=["Administration"])
     async def stream(request: Request, actor=ADMIN):
         async def updates():
             service = runtime(request)

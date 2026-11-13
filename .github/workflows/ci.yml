@@ -58,7 +58,7 @@ jobs:
           test ! -e data
           docker compose up -d --pull never --wait --wait-timeout 60
           curl --fail --silent --show-error http://localhost:8888/healthz
-          setup=http://localhost:8888/api/v2/admin/setup
+          setup=http://localhost:8888/api/admin/setup
           curl --fail --silent --show-error "$setup" | jq -e '.required and .available'
           curl --fail --silent --show-error "$setup" \
             -H 'Host: quantbot.example.com' -H 'X-Forwarded-Proto: https' \

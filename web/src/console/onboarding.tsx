@@ -99,7 +99,7 @@ function shell(origin: string) {
 read -rs QB_TOKEN
 export QB_TOKEN
 while true; do
-  curl -fsS --max-time 10 "$QB_URL/api/v2/agent/monitor/my-program" \\
+  curl -fsS --max-time 10 "$QB_URL/api/agent/monitor/my-program" \\
     -H "Authorization: Bearer $QB_TOKEN" -H 'Content-Type: application/json' \\
     -d "{\"records\":[{\"type\":\"status\",\"schema_version\":1,\"observed_at\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"runtime\":{\"health\":\"healthy\"}}]}"
   sleep 15
@@ -110,7 +110,7 @@ function python(origin: string) {
   return `import json, os, time, urllib.error, urllib.request
 from datetime import datetime, timezone
 
-root = os.getenv("QB_URL", ${JSON.stringify(origin)}).rstrip("/") + "/api/v2/agent"
+root = os.getenv("QB_URL", ${JSON.stringify(origin)}).rstrip("/") + "/api/agent"
 headers = {"Authorization": "Bearer " + os.environ["QB_TOKEN"],
            "Content-Type": "application/json"}
 
@@ -138,18 +138,18 @@ if __name__ == "__main__":
 }
 
 function aiInstructions(origin: string, strategyId?: string) {
-  return `为我的独立量化程序添加 QuantBot HTTP 接入。API 地址 ${origin}/api/v2/agent${strategyId ? `，Strategy ID ${strategyId}` : ""}。
+  return `为我的独立量化程序添加 QuantBot HTTP 接入。API 地址 ${origin}/api/agent${strategyId ? `，Strategy ID ${strategyId}` : ""}。
 从环境变量 QB_TOKEN 读取策略凭据，并作为 Authorization: Bearer 发送。仅监控时每 15 秒 POST /monitor/{稳定实例名}，使用 {"records":[...]} 上报状态和指标，不需要会话或额外心跳。网络错误后重试。
 用 OpenAPI 和 JSON Schema 校验数据。金额和数量用十进制字符串，时间戳带时区，事件 ID 在重传时保持不变。
 只有需要远程控制时才启用控制权限并 POST /session，后续带 X-Agent-Session，按返回的间隔 PUT /heartbeat，遇 409 重建会话。应用并本地持久化期望开仓权限，再回报 revision 与风险锁。一次性指令须先领取许可，记录命令 ID，结果未知先核对。
-接口与数据定义：${origin}/openapi.json、${origin}/api/v2/data-types。`;
+接口与数据定义：${origin}/openapi.json、${origin}/api/data-types。`;
 }
 
 function CredentialDialog({ credential, close }: { credential: Credential; close: () => void }) {
   const origin = useAgentOrigin();
   return <Dialog title="接入 Token 已生成" close={close}><div className="stack">
     <div className="notice warn">Token 明文仅显示一次。请复制并保存到程序的密钥配置。</div>
-    <KeyValue label="API 地址" value={`${origin}/api/v2/agent`} />
+    <KeyValue label="API 地址" value={`${origin}/api/agent`} />
     <KeyValue label="策略 ID" value={credential.strategy_id} />
     <KeyValue label="API Token" value={credential.token} />
     <details className="form-detail" open><summary>HTTP 接入示例和 AI 提示词</summary><div className="stack">
@@ -179,7 +179,7 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
   return <div className="stack">
     <Panel title="接入凭据" hint="每个 Token 的权限、有效期和最近使用时间独立管理。"
       action={!strategy.archived_at && <button className="button primary" onClick={() => setEditing("new")}><Plus size={16} /> 新建 Token</button>}>
-      <KeyValue label="策略 ID" value={id} /><KeyValue label="API 地址" value={`${origin}/api/v2/agent`} />
+      <KeyValue label="策略 ID" value={id} /><KeyValue label="API 地址" value={`${origin}/api/agent`} />
       <ErrorNotice error={tokens.error ?? revoke.error} />
       {tokens.isPending ? <Loading /> : <Table columns={["Token ID", "权限", "最近使用", "有效期", "状态", "操作"]} empty={!tokens.data?.length}>
         {tokens.data?.map((token) => {
@@ -247,9 +247,9 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
     parsed.pathname === "/" && !parsed.search && !parsed.hash;
   const origin = (valid ? parsed?.origin : undefined) ?? defaultOrigin;
   const spec = useQuery({ queryKey: ["spec"], queryFn: () => api<OpenApi>("/openapi.json"), staleTime: Infinity });
-  const types = useQuery({ queryKey: ["types"], queryFn: () => api<DataType[]>("/api/v2/data-types"), staleTime: Infinity });
+  const types = useQuery({ queryKey: ["types"], queryFn: () => api<DataType[]>("/api/data-types"), staleTime: Infinity });
   const [schema, setSchema] = useState("status");
-  const schemaUrl = `/api/v2/schemas/${schema}`;
+  const schemaUrl = `/api/schemas/${schema}`;
   const definition = useQuery({ queryKey: ["schema", schema], queryFn: () => api<unknown>(schemaUrl), staleTime: Infinity });
   return <>
     <PageTitle title="API 接入" sub="使用标准 HTTP 注册、上报和接收控制指令。" action={<a href="/docs" className="button secondary"><BookOpen size={16} /> 交互文档</a>} />
@@ -259,7 +259,7 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
           <input type="url" placeholder={defaultOrigin} value={customOrigin} onChange={(event) => setCustomOrigin(event.target.value)} />
         </Field>
         {customOrigin.trim() && !valid && <p role="alert" className="notice error">请输入不带路径的 HTTP 或 HTTPS 地址。</p>}
-        <KeyValue label="API 地址" value={`${origin}/api/v2/agent`} />
+        <KeyValue label="API 地址" value={`${origin}/api/agent`} />
         {strategyId && <KeyValue label="策略 ID" value={strategyId} />}
         {strategyId ? <a className="text-link" href={strategyPath(strategyId, "api")}>管理 Token 和连接诊断 <ChevronRight size={14} /></a>
           : <a className="text-link" href="#strategies">选择策略并管理 Token <ChevronRight size={14} /></a>}
@@ -274,7 +274,7 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
       </ol>
         <ErrorNotice error={spec.error} />
         {spec.data && <><Table columns={["方法", "路径", "说明"]}>
-          {Object.entries(spec.data.paths).filter(([path]) => path.startsWith("/api/v2/agent/")).flatMap(([path, methods]) =>
+          {Object.entries(spec.data.paths).filter(([path]) => path.startsWith("/api/agent/")).flatMap(([path, methods]) =>
             Object.entries(methods).map(([method, info]) => <tr key={`${method} ${path}`}><td className="mono">{method.toUpperCase()}</td>
               <td className="mono">{path}</td><td>{info.description ?? info.summary}</td></tr>))}
         </Table><div className="toolbar"><CopyButton value={JSON.stringify(spec.data, null, 2)} label="复制完整 OpenAPI" />
@@ -293,15 +293,15 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
       <Panel title="自定义控制组件" hint="Web 和 Telegram 使用同一份声明与执行回执。">
         <div className="stack">
           <p className="subtle">支持 button、toggle、select、number、slider、text、form 和 readonly。声明引用当前会话已注册的 command。重复发送同一版本和内容是幂等操作。更新和移除时发送完整列表并递增 revision。</p>
-          <Code label="PUT /api/v2/agent/controls">{JSON.stringify({
+          <Code label="PUT /api/agent/controls">{JSON.stringify({
             schema_version: 1, revision: 1, groups: [{ id: "parameters", label: "参数" }],
             controls: [{ id: "rsi_period", type: "number", label: "RSI 周期", command: "set_rsi",
               group: "parameters", parameter: "period", integer: true, min: 5, max: 30, step: 1 }],
           }, null, 2)}</Code>
-          <Code label="PUT /api/v2/agent/controls/state">{JSON.stringify({
+          <Code label="PUT /api/agent/controls/state">{JSON.stringify({
             revision: 1, observed_at: "2026-01-01T12:00:00Z", values: { rsi_period: 14 },
           }, null, 2)}</Code>
-          <Code label="curl · 注册组件">{`curl -fsS -X PUT "$QB_URL/api/v2/agent/controls" \\
+          <Code label="curl · 注册组件">{`curl -fsS -X PUT "$QB_URL/api/agent/controls" \\
   -H "Authorization: Bearer $QB_TOKEN" \\
   -H "X-Agent-Session: $QB_SESSION" \\
   -H 'Content-Type: application/json' --data-binary @controls.json`}</Code>
@@ -317,7 +317,7 @@ request(f"/commands/{command_id}/result", "POST", {
 })
 # 已实际生效的值再用 PUT /controls/state 上报。`}</Code>
           <p className="subtle">401 表示凭据无效，403 表示缺少作用域或实例授权，409 表示版本、状态或许可冲突，422 表示 Schema 或参数验证失败。</p>
-          <a className="text-link" href="/api/v2/schemas/controls">查看完整 Control Schema <ChevronRight size={14} /></a>
+          <a className="text-link" href="/api/schemas/controls">查看完整 Control Schema <ChevronRight size={14} /></a>
         </div>
       </Panel>
       <Panel title="HTTP 示例" hint="使用环境变量传入策略 Token。">

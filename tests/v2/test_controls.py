@@ -152,7 +152,7 @@ def test_all_components_revision_and_state_validation(tmp_path):
         log_in(http)
         sid, credential = create(http)
         headers = connect_controls(http, credential)
-        assert http.get("/api/v2/schemas/controls").status_code == 200
+        assert http.get("/api/schemas/controls").status_code == 200
         registry = publish(http, headers)
         assert registry.status_code == 200, registry.text
         assert publish(http, headers).json() == registry.json()

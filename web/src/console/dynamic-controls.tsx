@@ -61,7 +61,7 @@ export function DynamicControls({ strategy, registry, error, loading, operation 
     action={<SlidersHorizontal size={20} />}>
     <ErrorNotice error={error} />
     {loading ? <Loading /> : !registry?.controls.length ? <Empty title="策略尚未注册动态控件"
-      text="程序可以通过 PUT /api/v2/agent/controls 声明控制组件。" /> :
+      text="程序可以通过 PUT /api/agent/controls 声明控制组件。" /> :
       <div className="stack">{groups.map((group) => <section key={group.id ?? "general"} className="stack control-group">
         <h3>{group.label}</h3><div className="control-grid">{group.controls.map((definition) => {
           const report = registry.states[definition.id];

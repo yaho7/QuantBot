@@ -91,7 +91,7 @@ class Registry:
                 "type": kind,
                 "schema_version": 1,
                 "storage": MODES[kind],
-                "schema": f"/api/v2/schemas/{kind}",
+                "schema": f"/api/schemas/{kind}",
                 "components": [key for key, (_, source, _) in COMPONENTS.items() if source == kind],
                 "timestamp": "observed_at",
             }

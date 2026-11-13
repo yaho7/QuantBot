@@ -13,7 +13,7 @@ from uuid import uuid4
 import httpx
 
 ROOT = Path(__file__).resolve().parents[2]
-ADMIN = "/api/v2/admin"
+ADMIN = "/api/admin"
 
 
 def eventually(check, seconds=15):

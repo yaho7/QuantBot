@@ -66,6 +66,13 @@ def test_token_only_monitor_survives_outage_and_server_restart(tmp_path):
         sid, credential = create(http, scopes=["session", "telemetry"])
         headers = token_headers(credential)
         url = AGENT + "/monitor/strategy-a"
+        assert (
+            http.post("/api/v2/agent/monitor/strategy-a", headers=headers, json={}).status_code
+            == 404
+        )
+        assert all(
+            not route.startswith("/api/v2/") for route in http.get("/openapi.json").json()["paths"]
+        )
         for offset in (0, 15, 30, 45, 60):
             clock.value = NOW + offset
             point = packet("metric", offset, name="rsi", unit="index", value="12.2")
@@ -99,7 +106,7 @@ def test_registry_schema_discovery_and_stale_data(tmp_path):
         log_in(http)
         sid, credential = create(http)
         headers, _ = connect(http, credential)
-        types = http.get("/api/v2/data-types").json()
+        types = http.get("/api/data-types").json()
         assert {item["type"] for item in types} == {
             "status",
             "portfolio",
