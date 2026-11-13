@@ -7,7 +7,7 @@ export const statusText: Record<Status, string> = { online: "在线", offline: "
 export const modeText: Record<Mode, string> = { live: "实盘", paper: "模拟盘", backtest: "回测" };
 export const stateText: Record<CommandState, string> = {
   confirmation_required: "等待确认", pending: "等待策略", accepted: "已投递",
-  executing: "执行中", succeeded: "策略确认成功", failed: "执行失败", unknown: "结果未知",
+  executing: "执行中", succeeded: "策略确认成功", failed: "执行失败", unknown: "结果未知 · 待核对",
   expired: "已过期", superseded: "已被替代", cancelled: "已取消",
 };
 export const severityText = { debug: "调试", info: "信息", warning: "警告", error: "错误", critical: "严重" };

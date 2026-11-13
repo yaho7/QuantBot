@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bell, Braces, CircleHelp, ClipboardList, LayoutDashboard, LayoutGrid, LogOut, Menu, Settings } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { api, ApiError, MIN_PASSWORD_LENGTH, readSession, sessionKey } from "./api";
 import { ApiPage, CreateStrategy } from "./onboarding";
 import { OperationsPage } from "./operations";
@@ -10,8 +10,10 @@ import { StrategyPage } from "./strategy";
 import { DarkMode, useTheme } from "./theme";
 import { Brand, ErrorNotice, Field, Loading } from "./ui";
 
+const Workbench = lazy(() => import("./workbench"));
+
 const nav = [
-  { key: "overview", title: "运行总览", icon: LayoutDashboard },
+  { key: "workbench", title: "工作台", icon: LayoutDashboard },
   { key: "strategies", title: "策略", icon: LayoutGrid },
   { key: "api", title: "API 接入", icon: Braces },
   { key: "operations", title: "操作记录", icon: ClipboardList },
@@ -74,7 +76,7 @@ function Login({ hash }: { hash: string }) {
   useEffect(() => {
     if (!ticket || usedLink.current || setup.data?.required !== false) return;
     usedLink.current = true;
-    history.replaceState(null, "", "#overview");
+    history.replaceState(null, "", "#workbench");
     void api("login/link", "POST", { ticket })
       .then(() => client.invalidateQueries({ queryKey: sessionKey }))
       .catch(setLinkError);
@@ -151,7 +153,7 @@ export function App() {
   if (session.data === null) return <Login hash={hash} />;
   if (!actor) return <main className="login"><ConnectionError error={session.error} retry={() => void session.refetch()} /></main>;
   const [section, id, tab] = hash.slice(1).split("/");
-  const page = section === "strategy" ? "strategies" : nav.some((item) => item.key === section) ? section : "overview";
+  const page = section === "strategy" ? "strategies" : section === "overview" || nav.some((item) => item.key === section) ? section : "workbench";
   const add = () => setAdding(true);
   return <DarkMode value={dark}>
     <header className="topbar" onKeyDown={(event) => {
@@ -160,7 +162,7 @@ export function App() {
         menuButton.current?.focus();
       }
     }}>
-      <a href="#overview" onClick={() => setMenu(false)} aria-label="QuantBot 总览"><Brand /></a>
+      <a href="#workbench" onClick={() => setMenu(false)} aria-label="QuantBot 工作台"><Brand /></a>
       <button className="icon-button hamburger" ref={menuButton} aria-label={menu ? "关闭导航" : "打开导航"}
         aria-controls="main-navigation" aria-expanded={menu} onClick={() => setMenu(!menu)}><Menu size={20} /></button>
       <nav id="main-navigation" className={`top-nav${menu ? " open" : ""}`} aria-label="主导航">
@@ -175,6 +177,7 @@ export function App() {
     </header>
     <main id="main" className="page">
       <ErrorNotice error={logout.error} />
+      {page === "workbench" && <Suspense fallback={<Loading />}><Workbench strategyId={id ? decodeURIComponent(id) : undefined} /></Suspense>}
       {page === "overview" && <OverviewPage add={add} />}
       {page === "strategies" && (section === "strategy" && id ?
         <StrategyPage key={id} strategyId={decodeURIComponent(id)} tab={tab} /> : <StrategiesPage add={add} />)}

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert, ShieldCheck } from "lucide-react";
+import { CircleAlert } from "lucide-react";
 import { useState } from "react";
 import { DynamicControls, type ControlRegistryView } from "./dynamic-controls";
 import { api, readSession, sessionKey, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
@@ -17,22 +17,10 @@ export function ControlPanel({ strategy }: { strategy: Detail }) {
   const [selected, setSelected] = useState<Capability | null>(null);
   const registry = useData<ControlRegistryView>(strategyApi(strategy.id, "controls"), true, 6_000);
   const bound = new Set(registry.data?.controls.flatMap((item) => item.command ? [item.command] : []));
-  const available = strategy.capabilities.filter((item) => shadow.has(item.id) || !bound.has(item.id));
-  const control = strategy.control;
-  const reported = control.reported_current ? control.reported : null;
-  const requested = control.desired.entry_enabled;
-  const values = [
-    ["期望交易权限", requested === undefined ? "由策略决定" : requested ? "允许新开仓" : "暂停新开仓"],
-    ["实际上报权限", reported ? reported.entry_enabled ? "允许新开仓" : "暂停新开仓" : "等待当前实例回报"],
-    ["本地风控锁", reported?.risk_locked == null ? "未知" : reported.risk_locked ? "已锁定" : "未锁定"],
-    ["有效开仓权限", control.effective_entry_enabled == null ? "未知" : control.effective_entry_enabled ? "允许" : "禁止"],
-  ];
+  const available = strategy.capabilities.filter((item) => !shadow.has(item.id) && !bound.has(item.id));
   return <div className="stack">
-    <Panel title="开仓权限与风控" hint={`期望修订 ${control.desired.revision} · 实际修订 ${control.reported?.revision ?? "—"} · ${control.in_sync ? "已同步" : "等待同步"}`}>
-      <div className="value-grid">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-      <div className="notice"><ShieldCheck size={16} /><span>暂停新开仓期间，策略仍需运行行情处理、监控和本地风控。恢复开仓时，本地风控锁继续有效。</span></div>
-    </Panel>
-    <DynamicControls strategy={strategy} registry={registry.data} error={registry.error} loading={registry.isPending}
+    <Panel title="开仓权限与风控"><EntryControl strategy={strategy} registry={registry.data} ready={registry.isSuccess} /></Panel>
+    <DynamicControls strategy={strategy} registry={registry.data && { ...registry.data, controls: registry.data.controls.filter((item) => !entryBinding(item.command)) }} error={registry.error} loading={registry.isPending}
       operation={(command, close) => <OperationView command={command} strategy={strategy.name} close={close} />} />
     <Panel title="会话声明的操作" hint="操作由策略主动声明，最终状态以策略回执为准。">
       {strategy.archived_at ? <Empty title="策略已归档" /> : !available.length ?
@@ -49,6 +37,73 @@ export function ControlPanel({ strategy }: { strategy: Detail }) {
     </Panel>
     <Panel title="近期指令"><OperationTable strategyId={strategy.id} compact /></Panel>
     {selected && <CommandDialog capability={selected} strategy={strategy} close={() => setSelected(null)} />}
+  </div>;
+}
+
+export const entryBinding = (action?: string) => action === "set_trading_enabled" || !!action && shadow.has(action);
+
+export function EntryControl({ strategy, registry, ready }: { strategy: Detail; registry?: ControlRegistryView; ready: boolean }) {
+  const client = useQueryClient();
+  const [confirm, setConfirm] = useState(false);
+  const [requestIds, setRequestIds] = useState(() => [crypto.randomUUID(), crypto.randomUUID()]);
+  const [command, setCommand] = useState<Command>();
+  const latest = useData<Command>(`commands/${command?.id ?? ""}`, !!command, 3_000);
+  const record = latest.data ?? command;
+  const pending = !!record && ["confirmation_required", "pending", "accepted", "executing", "unknown"].includes(record.state);
+  const control = strategy.control;
+  const reported = control.reported_current ? control.reported : null;
+  const requested = control.desired.entry_enabled;
+  const values = [
+    ["期望交易权限", requested === undefined ? "由策略决定" : requested ? "允许新开仓" : "暂停新开仓"],
+    ["实际上报权限", reported?.entry_enabled != null ? reported.entry_enabled ? "允许新开仓" : "暂停新开仓" : "等待当前实例回报"],
+    ["本地风控锁", reported?.risk_locked == null ? "未知" : reported.risk_locked ? "已锁定" : "未锁定"],
+    ["有效开仓权限", control.effective_entry_enabled == null ? "未知" : control.effective_entry_enabled ? "允许" : "禁止"],
+  ] as const;
+  const issue = useMutation({
+    mutationFn: ({ enabled, binding }: { enabled: boolean; binding?: NonNullable<ControlRegistryView["controls"][number]> }) =>
+      binding ? api<Command>(strategyApi(strategy.id, `controls/${binding.id}/invoke`), "POST", {
+        revision: registry?.revision, request_id: requestIds[Number(enabled)], ...(binding.type === "toggle" ? { value: enabled } : {}),
+      }) : api<Command>(strategyApi(strategy.id, "commands"), "POST", {
+        action: enabled ? "resume_entry" : "pause_entry", request_id: requestIds[Number(enabled)],
+      }),
+    onSuccess: (result) => {
+      setConfirm(false);
+      setRequestIds([crypto.randomUUID(), crypto.randomUUID()]);
+      setCommand(result);
+      void client.invalidateQueries({ queryKey: ["live"] });
+    },
+  });
+  const toggle = registry?.controls.find((item) => item.command === "set_trading_enabled");
+  const blocked = !ready || !!strategy.archived_at || pending || issue.isPending;
+  function action(enabled: boolean) {
+    const id = enabled ? "resume_entry" : "pause_entry";
+    const capability = strategy.capabilities.find((item) => item.id === id);
+    const binding = toggle ?? registry?.controls.find((item) => item.command === id);
+    const disabled = blocked || !capability || (binding ? !registry?.states[binding.id]?.available :
+      strategy.mode === "live" && capability.high_risk && !strategy.live_trading_enabled);
+    return { capability, binding, disabled };
+  }
+  const pause = action(false);
+  const resume = action(true);
+  return <div className="stack entry-control">
+    <div className="value-grid">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+    <div role="status">{control.in_sync ? "已同步" : "等待策略确认"}</div>
+    <div className="toolbar">
+      {pause.capability && <button type="button" className="button secondary" disabled={pause.disabled}
+        onClick={() => issue.mutate({ enabled: false, binding: pause.binding })}>暂停新开仓</button>}
+      {resume.capability && <button type="button" className="button secondary" disabled={resume.disabled}
+        onClick={() => setConfirm(true)}>恢复新开仓</button>}
+    </div>
+    {record && <div className="toolbar"><CommandBadge state={record.state} /><a href={`#operations/${record.id}`}>查看指令</a></div>}
+    <ErrorNotice error={issue.error} />
+    {confirm && <Dialog title="恢复新开仓" close={() => setConfirm(false)}>
+      <p>{strategy.name} · 实际权限 {values[1][1]} · 本地风控锁 {values[2][1]}</p>
+      <p>恢复开仓权限后，本地风控锁继续生效。</p>
+      <ErrorNotice error={issue.error} />
+      <div className="dialog-actions"><button type="button" className="button secondary" onClick={() => setConfirm(false)}>取消</button>
+        <button type="button" className="button primary" disabled={resume.disabled}
+          onClick={() => issue.mutate({ enabled: true, binding: resume.binding })}>提交恢复请求</button></div>
+    </Dialog>}
   </div>;
 }
 

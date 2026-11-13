@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Activity, ArrowLeft, ArrowRight, CloudOff, Shield } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
-import { api, strategyApi, strategyPath, type Detail, type EventRecord, type StrategySettings } from "./api";
+import { api, strategyApi, strategyPath, workbenchPath, type Detail, type EventRecord, type StrategySettings } from "./api";
 import { StrategyFields, TokenPanel } from "./onboarding";
 import { ControlPanel } from "./operations";
 import { Accounts, Fills, Orders, Performance, Positions } from "./telemetry-views";
@@ -11,7 +11,7 @@ const DashboardBuilder = lazy(() => import("./dashboard-builder"));
 
 const tabs = [
   ["", "概览"], ["charts", "仪表盘"], ["funds", "资金与绩效"], ["positions", "持仓"],
-  ["orders", "订单与成交"], ["events", "事件与日志"], ["control", "远程控制"], ["api", "Token 与诊断"], ["settings", "配置"],
+  ["orders", "订单与成交"], ["events", "事件与日志"], ["api", "Token 与诊断"], ["settings", "配置"],
 ];
 
 export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab?: string }) {
@@ -26,7 +26,7 @@ export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab
   return <>
     <a className="back-link" href="#strategies"><ArrowLeft size={15} /> 策略列表</a>
     <PageTitle title={strategy.name} sub={[modeText[strategy.mode], strategy.group, strategy.description].filter(Boolean).join(" · ")}
-      action={<StatusBadge status={strategy.status} />} />
+      action={<div className="toolbar"><StatusBadge status={strategy.status} /><a className="button secondary" href={workbenchPath(strategyId)}>打开工作台</a></div>} />
     {strategy.archived_at && <div className="notice warn">策略已归档。历史数据与配置仍可查看。</div>}
     <nav className="tabs" aria-label="策略详情">
       {tabs.map(([key, label]) => <a key={key} href={strategyPath(strategyId, key)} aria-current={tab === key ? "page" : undefined}>{label}</a>)}

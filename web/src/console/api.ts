@@ -265,3 +265,5 @@ export async function api<T>(path: string, method = "GET", payload?: unknown): P
 
 export const strategyPath = (id: string, tab = "") => `#strategy/${encodeURIComponent(id)}${tab ? `/${tab}` : ""}`;
 export const strategyApi = (id: string, suffix = "") => `strategies/${encodeURIComponent(id)}${suffix ? `/${suffix}` : ""}`;
+
+export const workbenchPath = (id = "") => `#workbench${id ? `/${encodeURIComponent(id)}` : ""}`;
