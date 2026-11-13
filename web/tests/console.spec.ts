@@ -18,7 +18,9 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   expect(basicToken).toMatch(/^qb_/);
   await expect(dialog.getByRole("button", { name: "复制 AI 提示词" })).toBeVisible();
   await expect(dialog.locator(".agent-prompt")).toContainText("github.com/yaho7/QuantBot");
-  await expect(dialog.locator(".agent-prompt")).toContainText("/api/agent/monitor/");
+  await expect(dialog.locator(".agent-prompt")).toContainText("完整接入 QuantBot 监控与远程控制平台");
+  await expect(dialog.locator(".agent-prompt")).toContainText("quantbot.example.json");
+  await expect(dialog.locator(".agent-prompt")).toContainText("经我同意后再修改相关代码");
   await expect(dialog.locator(".agent-prompt")).not.toContainText(basicToken!);
   await expect(dialog.getByText(/request\("\/monitor\/my-program"/)).toBeHidden();
   await dialog.getByRole("button", { name: "完成" }).click();
