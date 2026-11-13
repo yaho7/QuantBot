@@ -21,7 +21,7 @@ RUN uv sync --frozen --no-dev --no-editable \
     && groupadd --gid 10001 quantbot \
     && useradd --uid 10001 --gid 10001 --home-dir /data --no-create-home quantbot \
     && install -d -m 0700 -o quantbot -g quantbot /data
-ENV PATH="/app/.venv/bin:$PATH" QB_DATA_DIR=/data QB_HOST=0.0.0.0 QB_PORT=8888
+ENV PATH="/app/.venv/bin:$PATH" QB_DATA_DIR=/data QB_HOST=0.0.0.0 QB_PORT=8888 QB_DOCKER_LOCAL_HTTP=1
 USER 10001:10001
 EXPOSE 8888
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \

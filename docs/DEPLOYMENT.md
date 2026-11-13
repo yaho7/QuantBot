@@ -16,7 +16,7 @@ docker compose up -d
 ssh -N -L 8888:127.0.0.1:8888 user@your-server
 ```
 
-远程开放控制台或策略 API 时，在宿主机使用 HTTPS 反向代理转发至 `127.0.0.1:8888`，并按下文配置 `QB_PUBLIC_URL` 和 `QB_TRUST_PROXY`。请保留 Compose 的回环端口绑定。`QB_DOCKER_LOCAL_HTTP=1` 允许 Docker 转发本机浏览器请求到容器，适用于这种端口绑定。
+远程开放控制台或策略 API 时，在宿主机使用 HTTPS 反向代理转发至 `127.0.0.1:8888`，并按下文配置 `QB_PUBLIC_URL` 和 `QB_TRUST_PROXY`。镜像默认支持 Docker 转发本机浏览器请求，请保留 Compose 的回环端口绑定。
 
 已有管理员时会进入登录页。自动部署可以用 `QB_ADMIN_USERNAME` 和 `QB_ADMIN_PASSWORD_FILE` 预置管理员。Bot Token 可以在 Web 设置，也可以用 `QB_TELEGRAM_TOKEN_FILE` 提供。
 
