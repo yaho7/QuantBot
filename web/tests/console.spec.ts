@@ -21,6 +21,7 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   expect(basicToken).toMatch(/^qb_/);
   await expect(dialog.getByRole("button", { name: "复制 AI 接入提示词" })).toBeVisible();
   await expect(dialog.locator(".agent-prompt")).toContainText("github.com/yaho7/QuantBot");
+  await dialog.getByText("预览提示词", { exact: true }).click();
   await expect(dialog.locator(".agent-prompt")).toContainText("完整接入 QuantBot 监控与远程控制平台");
   await expect(dialog.locator(".agent-prompt")).toContainText("quantbot.example.json");
   await expect(dialog.locator(".agent-prompt")).toContainText(new URL(page.url()).origin + "/api/agent");
@@ -104,7 +105,7 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   });
   expect(receipt.ok()).toBeTruthy();
   await expect(page.locator(".entry-control").getByText("策略确认成功", { exact: true })).toBeVisible();
-  await expect(page.getByText("已锁定", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-widget="builtin-risk"]').getByText("已锁定", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "策略详情", exact: true }).click();
   await page.getByRole("link", { name: "资金与绩效" }).click();
   await expect(page.getByText("100.01", { exact: true })).toBeVisible();
@@ -255,6 +256,8 @@ test("builds a dashboard using real metrics, OHLCV, and chart markers", async ({
   await expect(page.getByRole("button", { name: "添加 持仓", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "添加 交易 K 线" }).click();
   await page.getByRole("button", { name: "应用组件配置" }).click();
+  await page.locator("[data-widget]").filter({ has: page.getByRole("heading", { name: "交易 K 线" }) })
+    .getByLabel("组件操作").click();
   await page.getByRole("button", { name: "上移 交易 K 线" }).click();
   await page.getByRole("button", { name: "保存布局" }).click();
   await expect(page.getByRole("button", { name: "编辑布局" })).toBeVisible();
@@ -290,20 +293,22 @@ test("persists a dragged desktop layout and a separately resized mobile layout w
   await page.getByRole("button", { name: "编辑布局" }).click();
   await expect(page.getByRole("button", { name: "暂停新开仓" })).toHaveCount(0);
   const handle = page.getByRole("button", { name: "拖动 程序状态" });
-  const entry = page.locator('[data-widget="builtin-entry"]');
+  await expect(page.locator('[data-widget="builtin-entry"]')).toContainText("有效开仓权限");
+  const risk = page.locator('[data-widget="builtin-risk"]');
   await handle.scrollIntoViewIfNeeded();
   const from = (await handle.boundingBox())!;
-  const to = (await entry.boundingBox())!;
+  const to = (await risk.boundingBox())!;
   await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
   await page.mouse.down();
-  await page.mouse.move(from.x + from.width / 2, to.y + 28, { steps: 15 });
+  await page.mouse.move(to.x + from.width / 2, to.y + from.height / 2, { steps: 15 });
   await page.mouse.up();
   await page.getByRole("button", { name: "保存布局" }).click();
   await expect(page.getByRole("button", { name: "编辑布局" })).toBeVisible();
   const before = (await (await http.get(root)).json()).widgets.find((widget: { id: string }) => widget.id === "builtin-program").placement;
-  expect(before.desktop.y).toBe(0);
+  expect(before.desktop.x).toBeGreaterThan(4);
+  const savedPosition = await page.locator('[data-widget="builtin-program"]').evaluate((node: HTMLElement) => node.style.transform);
   await page.reload();
-  await expect(page.locator("[data-widget]").first()).toHaveAttribute("data-widget", "builtin-program");
+  await expect(page.locator('[data-widget="builtin-program"]')).toHaveAttribute("style", expect.stringContaining(savedPosition));
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "编辑布局" }).click();

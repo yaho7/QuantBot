@@ -44,7 +44,9 @@ export function ControlPanel({ strategy }: { strategy: Detail }) {
 
 export const entryBinding = (action?: string) => action === "set_trading_enabled" || !!action && shadow.has(action);
 
-export function EntryControl({ strategy, registry, ready }: { strategy: Detail; registry?: ControlRegistryView; ready: boolean }) {
+export function EntryControl({ strategy, registry, ready, preview = false, compact = false, widget = false }: {
+  strategy: Detail; registry?: ControlRegistryView; ready: boolean; preview?: boolean; compact?: boolean; widget?: boolean;
+}) {
   const client = useQueryClient();
   const [confirm, setConfirm] = useState(false);
   const [requestIds, setRequestIds] = useState(() => [crypto.randomUUID(), crypto.randomUUID()]);
@@ -76,7 +78,7 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
     },
   });
   const toggle = registry?.controls.find((item) => item.command === "set_trading_enabled");
-  const blocked = !ready || !!strategy.archived_at || pending || issue.isPending;
+  const blocked = preview || !ready || !!strategy.archived_at || pending || issue.isPending;
   const awaitingApply = !control.in_sync || issue.isPending || record?.state === "pending";
   function action(enabled: boolean) {
     const id = enabled ? "resume_entry" : "pause_entry";
@@ -88,18 +90,26 @@ export function EntryControl({ strategy, registry, ready }: { strategy: Detail; 
   }
   const pause = action(false);
   const resume = action(true);
-  return <div className="stack entry-control">
-    <div className="value-grid">{values.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
-    <div role="status">{awaitingApply ? t("operations.waitingForStrategyConfirmation") : t("operations.inSync")}</div>
-    <div className="toolbar">
+  const sync = awaitingApply ? t("operations.waitingForStrategyConfirmation") : t("operations.inSync");
+  const facts = <dl className="entry-facts">{values.slice(0, 3).map(([label, value]) =>
+    <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
+  return <div className="entry-control">
+    <div className="entry-overview">
+      <div><span>{values[3][0]}</span><strong>{values[3][1]}</strong></div>
+      <span className={`badge ${awaitingApply ? "waiting" : "online"}`} role="status">{sync}</span>
+    </div>
+    {!compact && (widget ? <details className="entry-details" open={preview || undefined}>
+      <summary>{t("operations.details")}</summary>{facts}
+    </details> : facts)}
+    {!preview && <div className="widget-action toolbar">
       {pause.capability && <button type="button" className="button secondary" disabled={pause.disabled}
         onClick={() => issue.mutate({ enabled: false, binding: pause.binding })}>{t("operations.pauseNewEntries")}</button>}
       {resume.capability && <button type="button" className="button secondary" disabled={resume.disabled}
         onClick={() => setConfirm(true)}>{t("operations.resumeNewEntries")}</button>}
-    </div>
-    {record && <div className="toolbar"><CommandBadge state={record.state} /><a href={`#operations/${record.id}`}>{t("commandFeedback.viewCommand")}</a></div>}
-    <ErrorNotice error={issue.error} />
-    {confirm && <Dialog title={t("operations.resumeNewEntries")} close={() => setConfirm(false)}>
+    </div>}
+    {!preview && record && <div className="toolbar entry-receipt"><CommandBadge state={record.state} /><a href={`#operations/${record.id}`}>{t("commandFeedback.viewCommand")}</a></div>}
+    {!preview && <ErrorNotice error={issue.error} />}
+    {!preview && confirm && <Dialog title={t("operations.resumeNewEntries")} close={() => setConfirm(false)}>
       <p>{strategy.name} {t("operations.actualPermission")}{" "}{values[1][1]} {t("operations.localRiskLockText")}{" "}{values[2][1]}</p>
       <p>{t("operations.theLocalRiskLockRemainsActiveWhen")}</p>
       <ErrorNotice error={issue.error} />
@@ -236,6 +246,6 @@ export function OperationTable({ strategyId, compact = false, selected, close }:
 }
 
 export function OperationsPage({ commandId }: { commandId?: string }) {
-  return <><PageTitle title={t("app.operations")} sub={t("operations.remoteCommandsFromTheWebAndTelegram")} />
-    <Panel><OperationTable selected={commandId} close={() => { if (commandId) location.hash = "#operations"; }} /></Panel></>;
+  return <div className="operations-page"><PageTitle title={t("app.operations")} sub={t("operations.remoteCommandsFromTheWebAndTelegram")} />
+    <Panel><OperationTable selected={commandId} close={() => { if (commandId) location.hash = "#operations"; }} /></Panel></div>;
 }

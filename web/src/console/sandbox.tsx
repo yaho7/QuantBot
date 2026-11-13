@@ -121,7 +121,7 @@ export function SandboxPanel({ strategyId, endpoint, prompt, preview, disabled }
       </details>
     </div>}
     {!data && <CopyButton value={production} label={t("sandbox.copyProductionSetupInstructions")} />}
-    <details className="form-detail" open={!data || undefined}><summary>{t("sandbox.previewPrompt")}</summary>
+    <details className="form-detail" ><summary>{t("sandbox.previewPrompt")}</summary>
       <pre className="agent-prompt">{preview}</pre></details>
     {manual && active && <Dialog title={t("sandbox.copyAiIntegrationPromptManually")} close={() => setManual("")}>
       <textarea aria-label={t("sandbox.fullAiIntegrationPrompt")} readOnly autoFocus value={manual} rows={12}

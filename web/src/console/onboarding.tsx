@@ -184,14 +184,17 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
     onSuccess: () => void query.invalidateQueries({ queryKey: ["live"] }),
   });
   return <div className="stack">
+    <AgentPrompt endpoint={endpoint} strategyId={strategy.id} disabled={!!strategy.archived_at} />
     <Panel title={t("onboarding.accessCredentials")} hint={t("onboarding.regeneratingRevokesTheCurrentTokenImmediatelyAnd")}
       action={!strategy.archived_at && <div className="toolbar">
         {current && <button className="button primary" onClick={() => { regenerate.reset(); setReplacing(current); }}><RefreshCw size={16} /> {t("onboarding.regenerateToken")}</button>}
         <button className={`button ${current ? "secondary" : "primary"}`} onClick={() => setEditing("new")}><Plus size={16} /> {t("onboarding.newToken")}</button>
       </div>}>
-      <KeyValue label={t("onboarding.strategyId")} value={id} /><KeyValue label="Endpoint" value={endpoint} />
-      {current && <><KeyValue label="Key" value={current.id} />
-        <SecretValue key={current.id} load={async () => (await api<Credential>(strategyApi(id, `tokens/${current.id}/reveal`), "POST")).token} /></>}
+      <div className="credential-grid">
+        <KeyValue label={t("onboarding.strategyId")} value={id} /><KeyValue label="Endpoint" value={endpoint} />
+        {current && <><KeyValue label="Key" value={current.id} />
+          <SecretValue key={current.id} load={async () => (await api<Credential>(strategyApi(id, `tokens/${current.id}/reveal`), "POST")).token} /></>}
+      </div>
       <ErrorNotice error={tokens.error ?? revoke.error} />
       {tokens.isPending ? <Loading /> : <Table columns={["Key", t("onboarding.permissions"), t("onboarding.lastUsed"), t("onboarding.expires"), t("onboarding.status"), t("onboarding.actions")]} empty={!tokens.data?.length}>
         {tokens.data?.map((token) => {
@@ -204,13 +207,12 @@ export function TokenPanel({ strategy }: { strategy: Detail }) {
               <button className="button quiet" onClick={() => setEditing(token)}>{t("onboarding.rotate")}</button>
               {!token.revoked_at && <button className="button quiet danger-text" onClick={() => {
                 if (confirm(t("onboarding.revokeThisTokenAgentsUsingItWill"))) revoke.mutate(token);
-              }}>{t("dashboardBuilder.undo")}</button>}
+              }}>{t("onboarding.revoke")}</button>}
             </>}{!strategy.archived_at && !token.revoked_at && !expired && token.id !== current?.id &&
               <SecretValue load={async () => (await api<Credential>(strategyApi(id, `tokens/${token.id}/reveal`), "POST")).token} />}</td></tr>;
         })}
       </Table>}
     </Panel>
-    <AgentPrompt endpoint={endpoint} strategyId={strategy.id} disabled={!!strategy.archived_at} />
     <ConnectionDiagnostics strategy={strategy} endpoint={endpoint} token={current}
       loadingToken={tokens.isPending} />
     {editing && <EditToken strategyId={id} previous={editing === "new" ? undefined : editing}

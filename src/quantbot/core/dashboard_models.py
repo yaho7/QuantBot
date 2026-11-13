@@ -91,7 +91,7 @@ class WorkbenchWidget(Payload):
 
 
 class ControlWidget(WorkbenchWidget):
-    kind: Literal["entry", "program", "control", "capability"]
+    kind: Literal["entry", "program", "risk", "control", "capability"]
     ref: Key | None = None
 
     @model_validator(mode="after")

@@ -1,6 +1,6 @@
 import { label, t } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, ChartNoAxesCombined, GripVertical, PencilLine, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Ellipsis, GripVertical, PencilLine, Plus, Save, Trash2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import GridLayout, { collides, useContainerWidth, verticalCompactor, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
@@ -8,27 +8,41 @@ import { api, strategyApi, strategyPath, type Detail, type Strategy } from "./ap
 import { availabilityLabel, bucketOptions, candleKey, candleSelection, candleSource, chartName, componentName, marketComponent, metricSource, seriesComponent, seriesKey, seriesSelection, timeOptions, type BoardWidget, type Breakpoint, type Candidate, type ChartCatalog, type Dashboard, type GridPosition, type Series, type Widget } from "./dashboard-types";
 import { type ControlRegistryView } from "./dynamic-controls";
 import { controlWidgets, WorkbenchControl } from "./workbench-controls";
-import { Dialog, Empty, ErrorNotice, Field, Loading, Panel, useData, when } from "./ui";
+import { Dialog, Empty, ErrorNotice, Field, Loading, useData, when } from "./ui";
 
 const WidgetData = lazy(() => import("./widget-data"));
 
 const eligible = (item: Candidate) => item.state === "ready" || item.state === "stale";
 const EMPTY: Dashboard = { revision: 0, widgets: [] };
-const DEFAULT_COMPONENTS = ["accounts", "equity", "returns", "drawdown", "orders", "positions", "metric_cards"];
+const DEFAULT_COMPONENTS = ["accounts", "performance", "equity", "returns", "drawdown", "positions", "orders", "fills", "metric_cards"];
+const WORKBENCH_BREAKPOINT = 640;
+const wideComponents = new Set(["equity", "returns", "drawdown", "positions", "orders", "fills", "candles", "volume", "logs", "metrics"]);
+const compactComponents = new Set(["accounts", "performance", "metric_cards", "status"]);
 const ROW_HEIGHT = 104;
 const GAP = 12;
 const sizes = [
   ["dashboardBuilder.small", 2, 1], ["dashboardBuilder.medium", 4, 2], ["dashboardBuilder.large", 6, 3], ["dashboardBuilder.wide", 8, 3],
 ] as const;
 
+function defaultSize(widget: BoardWidget, cols: number): [number, number] {
+  if ("kind" in widget) {
+    if (widget.kind === "entry") return [4, 2];
+    if (widget.kind === "control") return [cols === 4 ? 4 : 2, 2];
+    return [2, 1];
+  }
+  if (compactComponents.has(widget.component)) return [2, 1];
+  if (wideComponents.has(widget.component) || widget.chart === "table") return [cols, 3];
+  return [4, 2];
+}
+
 function gridItems(widgets: BoardWidget[], breakpoint: Breakpoint, cols: number): Layout {
   const layout: Layout[number][] = [];
   for (const widget of widgets) {
     const saved = widget.placement?.[breakpoint];
-    const w = saved?.w ?? ("kind" in widget ? widget.kind === "entry" ? cols : Math.min(4, cols) :
-      breakpoint === "mobile" ? cols : widget.width * 4);
-    const h = saved?.h ?? ("kind" in widget ? widget.kind === "entry" ? 3 : 2 :
-      Math.ceil((widget.height + 86) / (ROW_HEIGHT + GAP)));
+    const [defaultWidth, defaultHeight] = defaultSize(widget, cols);
+    const legacy = !("kind" in widget) && !widget.id.startsWith("default-") && !widget.placement;
+    const w = saved?.w ?? (legacy ? breakpoint === "mobile" ? cols : widget.width * 4 : defaultWidth);
+    const h = saved?.h ?? (legacy ? Math.ceil((widget.height + 86) / (ROW_HEIGHT + GAP)) : defaultHeight);
     let item = { i: widget.id, x: saved?.x ?? 0, y: saved?.y ?? 0, w, h, maxH: 10 };
     if (!saved) {
       const bottom = Math.max(0, ...layout.map((entry) => entry.y + entry.h));
@@ -59,10 +73,10 @@ function widgetTitle(widget: BoardWidget, candidate?: Candidate) {
   return widget.title === candidate?.label ? componentName(widget.component) : widget.title;
 }
 
-function newWidget(item: Candidate): Widget {
+function newWidget(item: Candidate, id: string = crypto.randomUUID()): Widget {
   const first = item.sources.find((source) => source.samples > 1) ?? item.sources[0];
   return {
-    id: crypto.randomUUID(), component: item.id, title: item.label,
+    id, component: item.id, title: item.label,
     chart: item.recommended_chart, width: marketComponent(item.id) ? 2 : 1,
     height: 320, hours: 24, bucket_seconds: 0, aggregation: "last", markers: true,
     start_at: null, end_at: null,
@@ -75,7 +89,7 @@ export default function DashboardBuilder({ strategy, workbench = false, focus }:
   const sid = strategy.id;
   const client = useQueryClient();
   const { width, containerRef, mounted } = useContainerWidth();
-  const breakpoint: Breakpoint = width < 640 ? "mobile" : "desktop";
+  const breakpoint: Breakpoint = width < WORKBENCH_BREAKPOINT ? "mobile" : "desktop";
   const cols = breakpoint === "desktop" ? 8 : 4;
   const catalog = useData<ChartCatalog>(strategyApi(sid, "components"));
   const board = useData<Dashboard>(strategyApi(sid, "dashboard"));
@@ -87,16 +101,17 @@ export default function DashboardBuilder({ strategy, workbench = false, focus }:
   const [config, setConfig] = useState<Widget>();
   const components = catalog.data?.components ?? [];
   const controls = controlWidgets(strategy, registry.data);
-  const charts = DEFAULT_COMPONENTS.flatMap((id) => {
+  const charts = (workbench ? DEFAULT_COMPONENTS : ["accounts", "positions", "equity", "metric_cards"]).flatMap((id) => {
     const item = components.find((candidate) => candidate.id === id && eligible(candidate));
-    return item ? [{ ...newWidget(item), id: `default-${id}` }] : [];
+    return item ? [newWidget(item, `default-${id}`)] : [];
   });
-  const defaults = workbench ? [...controls.slice(0, 2), ...charts, ...controls.slice(2)].slice(0, 24) : charts;
+  const builtin = controls.filter((item) => ["entry", "program", "risk"].includes(item.kind));
+  const defaults = workbench ? [...builtin, ...charts, ...controls.filter((item) => !builtin.includes(item))].slice(0, 24) : charts;
   const persisted = board.data ?? EMPTY;
   const legacy = workbench && persisted.widgets.length > 0 &&
     persisted.widgets.every((widget) => !("kind" in widget) && !widget.placement);
   const initial = persisted.revision === 0 ? defaults : legacy ?
-    [...controls.slice(0, Math.min(2, 24 - persisted.widgets.length)), ...persisted.widgets] : persisted.widgets;
+    [...builtin.slice(0, Math.min(3, 24 - persisted.widgets.length)), ...persisted.widgets] : persisted.widgets;
   const current = draft ?? { ...persisted, widgets: initial };
   const widgets = current.widgets;
   const layout = gridItems(widgets, breakpoint, cols);
@@ -158,39 +173,35 @@ export default function DashboardBuilder({ strategy, workbench = false, focus }:
     target?.focus({ preventScroll: true });
     target?.scrollIntoView({ block: "center" });
   }, [focusedId, mounted, draft]);
-  return <div className="stack" ref={containerRef}>
-    <Panel title={workbench ? t("dashboardBuilder.strategyWidgets") : t("dashboardBuilder.dashboard")} action={<ChartNoAxesCombined size={21} />}>
-      <ErrorNotice error={board.error ?? catalog.error ?? registry.error ?? save.error} />
+  return <section className="dashboard-board" ref={containerRef}>
+    <header className="dashboard-heading">
+      <h2>{workbench ? t("dashboardBuilder.myWidgets") : t("dashboardBuilder.dashboard")}</h2>
+      {!draft && <button type="button" className="button secondary" disabled={!board.data || catalog.isPending}
+        onClick={() => setDraft({ ...current, widgets: withPlacements(widgets) })}><PencilLine size={15} /> {t("dashboardBuilder.editLayout")}</button>}
+    </header>
+    {draft && <div className="dashboard-editor">
       <div className="toolbar">
-        {draft ? <>
-          <button type="button" className="button secondary" disabled={!editable || widgets.length >= 24 ||
-            (!components.some(eligible) && !addableControls.length)} onClick={() => setAdd(true)}><Plus size={17} /> {t("dashboardBuilder.addWidget")}</button>
-          <button type="button" className="button secondary" disabled={!editable || !undo.length} onClick={() => {
-            setDraft(undo.at(-1) ?? null);
-            setUndo(undo.slice(0, -1));
-          }}>{t("dashboardBuilder.undo")}</button>
-          <select aria-label={t("dashboardBuilder.applyLayoutTemplate")} value="" disabled={!editable} onChange={(event) => {
-            const template = event.target.value;
-            edit(template === "monitoring" ? [...controls.slice(0, 2), ...charts] :
-              [...controls, ...charts.filter((widget) => widget.component === "accounts")].slice(0, 24));
-          }}><option value="" disabled>{t("dashboardBuilder.layoutTemplate")}</option><option value="monitoring">{t("dashboardBuilder.monitoring")}</option><option value="controls">{t("dashboardBuilder.controls")}</option></select>
-          <button type="button" className="button secondary" disabled={!editable} onClick={() => edit(defaults)}>{t("dashboardBuilder.restoreDefaults")}</button>
-          <button type="button" className="button primary" disabled={!editable} onClick={() => save.mutate()}><Save size={16} /> {t("dashboardBuilder.saveLayout")}</button>
-          <button type="button" className="button quiet" disabled={!editable} onClick={() => {
-            setDraft(null); setUndo([]); setConfig(undefined); save.reset();
-          }}>{t("dashboardBuilder.discardChanges")}</button>
-        </> : <button type="button" className="button secondary" disabled={!board.data || catalog.isPending}
-          onClick={() => setDraft({ ...current, widgets: withPlacements(widgets) })}><PencilLine size={15} /> {t("dashboardBuilder.editLayout")}</button>}
+        <button type="button" className="button secondary" disabled={!editable || widgets.length >= 24 ||
+          (!components.some(eligible) && !addableControls.length)} onClick={() => setAdd(true)}><Plus size={17} /> {t("dashboardBuilder.addWidget")}</button>
+        <select aria-label={t("dashboardBuilder.applyLayoutTemplate")} value="" disabled={!editable} onChange={(event) => {
+          edit(event.target.value === "monitoring" ? [...builtin, ...charts] :
+            [...controls, ...charts.filter((widget) => widget.component === "accounts")].slice(0, 24));
+        }}><option value="" disabled>{t("dashboardBuilder.layoutTemplate")}</option>
+          <option value="monitoring">{t("dashboardBuilder.monitoring")}</option><option value="controls">{t("dashboardBuilder.controls")}</option>
+        </select>
+        <button type="button" className="button quiet" disabled={!editable || !undo.length} onClick={() => {
+          setDraft(undo.at(-1) ?? null); setUndo(undo.slice(0, -1));
+        }}>{t("dashboardBuilder.undo")}</button>
+        <button type="button" className="button quiet" disabled={!editable} onClick={() => edit(defaults)}>{t("dashboardBuilder.restoreDefaults")}</button>
       </div>
-      {draft && <p className="subtle">{breakpoint === "mobile" ? t("dashboardBuilder.mobileLayout") : t("dashboardBuilder.desktopLayout")} {t("dashboardBuilder.useTheDragHandlesOrMoveButtons")}</p>}
-      {catalog.data?.schema_failures.some((item) => item.active) && <div className="notice warn">
-        {t("dashboardBuilder.someReportsAreIncompatibleWithTheStandard")}<a href={strategyPath(sid, "api")}>{t("dashboardBuilder.viewConnectionDiagnostics")}</a>
-      </div>}
-      {!!components.length && <details className="form-detail">
-        <summary>{t("dashboardBuilder.discoveredComponentsAndDataStatus")}</summary><div className="catalog-list">{components.map((item) =>
-          <span className="chip" key={item.id}>{componentName(item.id)} · {label(availabilityLabel[item.state])}</span>)}</div>
-      </details>}
-    </Panel>
+      <div className="toolbar dashboard-editor-save">
+        <button type="button" className="button quiet" disabled={!editable} onClick={() => {
+          setDraft(null); setUndo([]); setConfig(undefined); save.reset();
+        }}>{t("dashboardBuilder.discardChanges")}</button>
+        <button type="button" className="button primary" disabled={!editable} onClick={() => save.mutate()}><Save size={16} /> {t("dashboardBuilder.saveLayout")}</button>
+      </div>
+    </div>}
+    <ErrorNotice error={board.error ?? catalog.error ?? registry.error ?? save.error} />
     {board.isPending || catalog.isPending ? <Loading /> : !widgets.length ?
       <Empty title={components.length ? t("dashboardBuilder.noWidgetsOnThisDashboard") : t("dashboardBuilder.waitingForStandardReports")} /> : mounted &&
       <GridLayout key={breakpoint} width={width} layout={layout} compactor={verticalCompactor}
@@ -204,42 +215,59 @@ export default function DashboardBuilder({ strategy, workbench = false, focus }:
           const title = widgetTitle(widget, item);
           const compact = position.h === 1;
           const expanded = position.h >= 3 && position.w >= Math.min(4, cols);
-          return <article className="panel widget" data-widget={widget.id} id={`widget-${widget.id}`} tabIndex={-1} key={widget.id}>
-            <header className="panel-heading widget-header"><div><h2>{title}</h2>
-              {!compact && item && !("kind" in widget) && <p>{label(chartName[widget.chart])} · {label(availabilityLabel[item.state])} · {when(item.last_observed_at)}</p>}
-            </div>{draft && <div className="widget-actions">
-              <button type="button" className="icon-button drag-handle" aria-label={t("dashboardBuilder.drag", { title })} disabled={!editable}><GripVertical size={17} /></button>
-              <button type="button" className="icon-button" aria-label={t("dashboardBuilder.moveUp", { title })} disabled={!editable || index === 0}
-                onClick={() => move(index, -1)}><ArrowUp size={16} /></button>
-              <button type="button" className="icon-button" aria-label={t("dashboardBuilder.moveDown", { title })} disabled={!editable || index === sorted.length - 1}
-                onClick={() => move(index, 1)}><ArrowDown size={16} /></button>
-              {!("kind" in widget) && <button type="button" className="icon-button" aria-label={t("dashboardBuilder.configure", { title })} disabled={!editable}
-                onClick={() => setConfig(widget)}><PencilLine size={15} /></button>}
-              <button type="button" className="icon-button danger-text" aria-label={t("dashboardBuilder.delete", { title })} disabled={!editable}
-                onClick={() => edit(widgets.filter((entry) => entry.id !== widget.id))}><Trash2 size={15} /></button>
-            </div>}</header>
-            {draft && <select aria-label={t("dashboardBuilder.sizeOf", { title })} disabled={!editable} value=""
-              onChange={(event) => {
-                const size = sizes.find(([label]) => label === event.target.value);
-                if (size) resize(widget.id, position, Math.min(size[1], cols), size[2]);
-              }}>
-              <option value="">{position.w} × {position.h}</option>
-              {sizes.map(([label]) => <option key={label} value={label}>{t(label)}</option>)}
-            </select>}
-            <div className="widget-content">
-            {item?.state === "incompatible" && <div className="notice warn">{t("dashboardBuilder.recentReportsFailedSchemaValidationPreviouslyValidated")}</div>}
-            {"kind" in widget ? (draft ? null : <WorkbenchControl key={widget.id} {...{ widget, strategy, expanded }}
-              registry={registry.data} ready={registry.isSuccess} />) : <div inert={!!draft}>
-              {!item ? <Empty title={t("dashboardBuilder.noDataToDisplay")} /> : <Suspense fallback={<Loading />}><WidgetData
-                widget={widget} names={names} strategy={strategy} registry={registry.data} compact={compact} editing={!!draft}
-                chartHeight={Math.max(100, position.h * (ROW_HEIGHT + GAP) - 105)} /></Suspense>}
-            </div>}
+          return <article className={`widget ${compact ? "widget-compact" : ""}`} data-widget={widget.id}
+            id={`widget-${widget.id}`} tabIndex={-1} key={widget.id}>
+            <div className="panel widget-shell">
+              <header className="widget-header">
+                <h3 title={title}>{title}</h3>
+                {!compact && item && <span className="subtle" title={when(item.last_observed_at)}>{label(availabilityLabel[item.state])}</span>}
+              </header>
+              <div className="widget-content">
+                {"kind" in widget ? <WorkbenchControl {...{ widget, strategy, expanded, compact }} preview={!!draft}
+                  registry={registry.data} ready={registry.isSuccess} /> : <div className="widget-data" inert={!!draft}>
+                  {item?.state === "incompatible" && <div className="notice warn">{t("dashboardBuilder.recentReportsFailedSchemaValidationPreviouslyValidated")}</div>}
+                  {!item ? <Empty title={t("dashboardBuilder.noDataToDisplay")} /> : <Suspense fallback={<Loading />}><WidgetData
+                    widget={widget} names={names} strategy={strategy} registry={registry.data} compact={compact} editing={!!draft}
+                    chartHeight={Math.max(84, position.h * (ROW_HEIGHT + GAP) - GAP - 64)} /></Suspense>}
+                </div>}
+              </div>
             </div>
+            {draft && <div className="widget-actions">
+              <button type="button" className="icon-button drag-handle" aria-label={t("dashboardBuilder.drag", { title })} disabled={!editable}><GripVertical size={16} /></button>
+              <details>
+                <summary className="icon-button" aria-label={t("dashboardBuilder.widgetActions")}><Ellipsis size={17} /></summary>
+                <div className="widget-menu">
+                  <select aria-label={t("dashboardBuilder.sizeOf", { title })} disabled={!editable} value="" onChange={(event) => {
+                    const size = sizes.find(([label]) => label === event.target.value);
+                    if (size) resize(widget.id, position, Math.min(size[1], cols), size[2]);
+                    event.target.closest("details")?.removeAttribute("open");
+                  }}><option value="">{position.w} × {position.h}</option>
+                    {sizes.map(([label]) => <option key={label} value={label}>{t(label)}</option>)}
+                  </select>
+                  <button type="button" className="button quiet" disabled={!editable || index === 0}
+                    onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); move(index, -1); }}><ArrowUp size={15} /> {t("dashboardBuilder.moveUp", { title })}</button>
+                  <button type="button" className="button quiet" disabled={!editable || index === sorted.length - 1}
+                    onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); move(index, 1); }}><ArrowDown size={15} /> {t("dashboardBuilder.moveDown", { title })}</button>
+                  {!("kind" in widget) && <button type="button" className="button quiet" disabled={!editable}
+                    onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); setConfig(widget); }}><PencilLine size={15} /> {t("dashboardBuilder.configure", { title })}</button>}
+                  <button type="button" className="button quiet danger-text" disabled={!editable}
+                    onClick={() => edit(widgets.filter((entry) => entry.id !== widget.id))}><Trash2 size={15} /> {t("dashboardBuilder.delete", { title })}</button>
+                </div>
+              </details>
+            </div>}
           </article>;
         })}
       </GridLayout>}
     {add && <Dialog title={t("dashboardBuilder.addWidget")} close={() => setAdd(false)}>
       <div className="stack">
+        {catalog.data?.schema_failures.some((item) => item.active) && <div className="notice warn">
+          {t("dashboardBuilder.someReportsAreIncompatibleWithTheStandard")} <a href={strategyPath(sid, "api")}>{t("dashboardBuilder.viewConnectionDiagnostics")}</a>
+        </div>}
+        <details className="form-detail">
+          <summary>{t("dashboardBuilder.discoveredComponentsAndDataStatus")}</summary>
+          <div className="catalog-list">{components.map((item) => <span className="chip" key={item.id}>
+            {componentName(item.id)} · {label(availabilityLabel[item.state])}</span>)}</div>
+        </details>
         {addableControls.map((widget) => <div className="component-option" key={widget.id}>
           <strong>{widget.title}</strong><button type="button" className="button secondary" onClick={() => {
             edit([...widgets, { ...widget, id: crypto.randomUUID() }]); setAdd(false);
@@ -248,7 +276,7 @@ export default function DashboardBuilder({ strategy, workbench = false, focus }:
         {components.filter(eligible).map((item) => <div className="component-option" key={item.id}>
           <div><strong>{componentName(item.id)}</strong><small>{label(availabilityLabel[item.state])} · {label(chartName[item.recommended_chart])}</small></div>
           <button type="button" className="button secondary" onClick={() => {
-            const widget = newWidget(item);
+            const widget = newWidget(item, `default-${crypto.randomUUID()}`);
             edit([...widgets, widget]); setAdd(false); setConfig(widget);
           }}>{t("dashboardBuilder.add")}{" "}{componentName(item.id)}</button>
         </div>)}
@@ -259,7 +287,7 @@ export default function DashboardBuilder({ strategy, workbench = false, focus }:
       close={() => setConfig(undefined)} done={(widget) => {
         edit(widgets.map((item) => item.id === widget.id ? widget : item)); setConfig(undefined);
       }} />}
-  </div>;
+  </section>;
 }
 
 function localInput(value?: string | null) {

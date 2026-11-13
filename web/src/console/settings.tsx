@@ -106,8 +106,9 @@ export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: 
     onSuccess: () => { setCurrent(""); setNext(""); },
   });
   return <>
-    <PageTitle title={t("settings.systemSettings")} sub={t("settings.administratorSecurityServiceVersionAndDataStorage")} />
-    <div className="stack">
+    <PageTitle title={t("settings.systemSettings")} sub={t("settings.administratorSecurityServiceVersionAndDataStorage")}
+      action={<a className="button secondary" href="#api">{t("app.apiIntegration")}</a>} />
+    <div className="settings-grid">
       <Panel title={t("settings.appearance")} action={<SunMoon size={21} />}>
         <Field label={t("settings.theme")}><select value={theme} onChange={(e) => onTheme(e.target.value as Theme)}>
           <option value="system">{t("settings.systemDefault")}</option><option value="light">{t("settings.light")}</option><option value="dark">{t("settings.dark")}</option>
@@ -121,7 +122,7 @@ export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: 
               onChange={(e) => setNext(e.target.value)} /></Field></div>
           <ErrorNotice error={password.error} />
           {password.isSuccess && <div role="status" className="notice">{t("settings.passwordUpdatedPreviousWebSessionsHaveBeen")}</div>}
-          <div><button className="button primary" disabled={password.isPending}>{t("settings.updatePassword")}</button></div>
+          <div className="dialog-actions"><button className="button primary" disabled={password.isPending}>{t("settings.updatePassword")}</button></div>
         </form>
       </Panel>
       <Panel title={t("settings.dataManagement")} action={<Database size={21} />}>

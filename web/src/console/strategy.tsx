@@ -27,7 +27,7 @@ export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab
   return <>
     <a className="back-link" href="#strategies"><ArrowLeft size={15} /> {t("strategy.strategyList")}</a>
     <PageTitle title={strategy.name} sub={[label(modeText[strategy.mode]), strategy.group, strategy.description].filter(Boolean).join(" · ")}
-      action={<div className="toolbar"><StatusBadge status={strategy.status} /><a className="button secondary" href={workbenchPath(strategyId)}>{t("strategy.openWorkbench")}</a></div>} />
+      action={<div className="strategy-title-actions"><StatusBadge status={strategy.status} /><a className="button secondary" href={workbenchPath(strategyId)}>{t("strategy.openWorkbench")}</a></div>} />
     {strategy.archived_at && <div className="notice warn">{t("strategy.thisStrategyIsArchivedHistoryAndSettings")}</div>}
     <nav className="tabs" aria-label={t("strategy.strategyDetails")}>
       {tabs.map(([key, label]) => <a key={key} href={strategyPath(strategyId, key)} aria-current={tab === key ? "page" : undefined}>{t(label)}</a>)}

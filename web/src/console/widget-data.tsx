@@ -108,14 +108,18 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
   const data = query.data;
   switch (widget.component) {
     case "status":
+      if (compact) return <div className="widget-stat"><strong>{health(data.runtime?.health)}</strong></div>;
       return data.runtime ? <div className="value-grid">
         <div><span>{t("widgetData.runtimeStatus")}</span><strong>{health(data.runtime.health)}</strong></div>
         <div><span>{t("strategy.uptime")}</span><strong>{data.runtime.uptime_seconds == null ? "—" : t("strategy.sec", { seconds: data.runtime.uptime_seconds })}</strong></div>
         <div><span>{t("widgetData.observationTime")}</span><strong>{when(data.observed_at)}</strong></div>
       </div> : <Empty />;
     case "accounts":
-      if (compact) return <div className="widget-metrics">{data.accounts?.map((item) =>
-        <strong key={`${item.account_id}/${item.currency}`} title={item.account_id}>{money(item.equity, item.currency)}</strong>)}</div>;
+      if (compact) {
+        const account = data.accounts?.[0];
+        return <div className="widget-stat"><div className="widget-amount"><strong>{money(account?.equity)}</strong>{account && <span>{account.currency}</span>}</div>
+          {account && <span>{t("overview.dailyPL")} {money(account.daily_pnl, account.currency)}</span>}</div>;
+      }
       if (widget.chart === "table") return <Accounts rows={data.accounts ?? []} />;
       return data.accounts?.length ? <div className="value-grid">{data.accounts.map((item) =>
         <div key={`${item.account_id}/${item.currency}`}><span>{item.account_id} · {item.currency}</span>
@@ -152,6 +156,8 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
         chart={widget.chart} height={widget.height} label={t("widgetData.ordersByStatus")} />;
     }
     case "performance":
+      if (compact) return <div className="widget-stat"><strong>{money(data.performance?.cumulative_return, "%")}</strong>
+        <span>{t("telemetryViews.cumulativeReturn")}</span></div>;
       if (widget.chart === "table") return <Table columns={[t("widgetData.metric"), t("widgetData.value")]} empty={!Object.values(data.performance ?? {}).some((value) => value != null)}>
         {Object.entries(data.performance ?? {}).filter(([, value]) => value != null).map(([name, value]) =>
           <tr key={name}><td>{name}</td><td>{money(value)}</td></tr>)}</Table>;

@@ -72,8 +72,8 @@ export function DynamicControls({ strategy, registry, error, loading, operation 
   </Panel>;
 }
 
-export function DynamicControl({ strategy, registry, definition, operation, expanded = false }: {
-  strategy: Detail; registry: ControlRegistryView; definition: Definition; expanded?: boolean;
+export function DynamicControl({ strategy, registry, definition, operation, expanded = false, compact = false, preview = false, widget = false }: {
+  strategy: Detail; registry: ControlRegistryView; definition: Definition; expanded?: boolean; compact?: boolean; preview?: boolean; widget?: boolean;
   operation: (command: Command, close: () => void) => ReactNode;
 }) {
   const [selected, setSelected] = useState<number>();
@@ -81,21 +81,22 @@ export function DynamicControl({ strategy, registry, definition, operation, expa
   const close = () => setSelected(undefined);
   const inline = expanded && report?.available && report.confirmation_required === false &&
     ["slider", "select", "number", "toggle", "text"].includes(definition.type);
-  return <article className="control-card">
-    <div><span className="control-icon">{definition.type === "form" ? <ListChecks size={17} /> : <CircleDot size={17} />}</span>
-      <h4>{definition.label}</h4></div>
-    {definition.description && <p>{definition.description}</p>}
+  return <article className={widget ? "control-card widget-control" : "control-card"}>
+    {!widget && <div><span className="control-icon">{definition.type === "form" ? <ListChecks size={17} /> : <CircleDot size={17} />}</span>
+      <h4>{definition.label}</h4></div>}
+    {!compact && definition.description && <p>{definition.description}</p>}
+    {preview && definition.type === "button" && <p>{definition.label}</p>}
     {definition.type !== "button" && <p className="actual-value">
       {report?.value_stale ? t("dynamicControls.lastReported") : t("dynamicControls.actualValue")} <strong>{actual(definition, report?.value)}</strong>
     </p>}
-    {report?.unavailable_reason && <p role="status">{controlReason(report.unavailable_reason)}</p>}
-    {inline && selected === undefined ? <Invocation key={registry.revision} {...{ strategy, definition, report, operation, close }}
+    {!compact && report?.unavailable_reason && <p role="status">{controlReason(report.unavailable_reason)}</p>}
+    {!preview && (inline && selected === undefined ? <Invocation key={registry.revision} {...{ strategy, definition, report, operation, close }}
       revision={registry.revision} inline /> : definition.type !== "readonly" && <button type="button" className="button secondary"
       aria-label={`${definition.type === "button" ? t("dynamicControls.run") : t("dynamicControls.edit")} ${definition.label}`}
       disabled={!report?.available} onClick={() => setSelected(registry.revision)}>
       {definition.type === "button" ? t("dynamicControls.run") : t("dynamicControls.edit")}{report?.confirmation_required ? t("dynamicControls.confirmationRequired") : ""}
-    </button>}
-    {selected !== undefined && (selected !== registry.revision ?
+    </button>)}
+    {!preview && selected !== undefined && (selected !== registry.revision ?
       <Dialog title={t("dynamicControls.controlDefinitionUpdated")} close={close}><p>{t("dynamicControls.reopenThisControlAndReviewItsCurrent")}</p></Dialog> :
       report && <Invocation {...{ strategy, definition, report, operation, close }} revision={selected} />)}
   </article>;

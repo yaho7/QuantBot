@@ -5,7 +5,7 @@ import { Toaster } from "sonner";
 import { CommandFeedback } from "./command-feedback";
 import { QuickSearch } from "./quick-search";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, Braces, CircleHelp, ClipboardList, LayoutDashboard, LayoutGrid, LogOut, Settings } from "lucide-react";
+import { Bell, CircleHelp, ClipboardList, LayoutDashboard, LayoutGrid, LogOut, Settings } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { api, ApiError, MIN_PASSWORD_LENGTH, readSession, sessionKey } from "./api";
 import { ApiPage, CreateStrategy } from "./onboarding";
@@ -187,7 +187,7 @@ export function App() {
       {page === "api" && <ApiPage strategyId={id ? decodeURIComponent(id) : undefined} />}
       {page === "operations" && <OperationsPage commandId={id} />}
       {page === "telegram" && <TelegramPage />}
-      {page === "system" && <><div className="toolbar"><a className="button secondary" href="#api"><Braces size={16} /> {t("app.apiIntegration")}</a></div><SystemPage theme={theme} onTheme={setTheme} /></>}
+      {page === "system" && <SystemPage theme={theme} onTheme={setTheme} />}
     </main>
     <CommandFeedback />
     <Toaster theme={dark ? "dark" : "light"} position="top-right" />

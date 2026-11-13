@@ -52,7 +52,7 @@ interface WorkbenchWidget {
   placement?: Partial<Record<Breakpoint, GridPosition | null>> | null;
 }
 export interface ControlWidget extends WorkbenchWidget {
-  kind: "entry" | "program" | "control" | "capability";
+  kind: "entry" | "program" | "risk" | "control" | "capability";
   ref?: string;
 }
 export type BoardWidget = Widget | ControlWidget;
