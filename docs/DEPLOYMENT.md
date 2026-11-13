@@ -1,37 +1,37 @@
-# QuantBot 部署、升级与备份
+# QuantBot deployment, upgrades, and backups
 
 ## Docker Compose
 
-保存仓库的 [compose.yml](../compose.yml)，在同一目录启动：
+Save [compose.yml](../compose.yml) and start the service from the same directory.
 
 ```bash
 docker compose up -d
 ```
 
-打开 [http://localhost:8888](http://localhost:8888)，按网页引导创建管理员。端口绑定在宿主机回环地址，数据库保存在 Compose 文件旁的 `./data` 目录。镜像启动时会为该目录和 QuantBot 数据库文件设置权限，然后以 UID/GID 10001 运行服务。请使用专用的数据目录。
+Open [http://localhost:8888](http://localhost:8888) and create an administrator. The port binds to the host loopback interface and the database lives in `./data` next to the Compose file. The image configures permissions for this directory and database files before running as UID/GID 10001. Use a dedicated data directory.
 
-如果 Docker 运行在另一台机器，在浏览器所在机器执行下列命令，再访问本机 8888 端口。
+If Docker runs on another machine, forward the port from the machine running your browser.
 
 ```bash
 ssh -N -L 8888:127.0.0.1:8888 user@your-server
 ```
 
-远程开放控制台或策略 API 时，在宿主机使用 HTTPS 反向代理转发至 `127.0.0.1:8888`，保留原始 Host 并传递 `X-Forwarded-Proto`。镜像默认信任本机和检测到的 Docker 网桥网关。请保留 Compose 的回环端口绑定。可用 `QB_PUBLIC_URL` 指定外部地址，用于 Telegram 登录链接和限制公开域名。
+For remote console or Agent access, use an HTTPS reverse proxy to `127.0.0.1:8888`. Preserve the original Host and pass `X-Forwarded-Proto`. The image trusts loopback and the detected Docker bridge gateway by default. Keep the loopback binding. Set `QB_PUBLIC_URL` for Telegram login links and public hostname validation.
 
-已有管理员时会进入登录页。自动部署可以用 `QB_ADMIN_USERNAME` 和 `QB_ADMIN_PASSWORD_FILE` 预置管理员。Bot Token 可以在 Web 设置，也可以用 `QB_TELEGRAM_TOKEN_FILE` 提供。
+An existing administrator sees the login screen. For unattended deployments, seed the account with `QB_ADMIN_USERNAME` and `QB_ADMIN_PASSWORD_FILE`. Configure the bot token in the console or supply `QB_TELEGRAM_TOKEN_FILE`.
 
 ### Cloudflare Tunnel
 
-如果 `cloudflared` 在 Docker 宿主机上运行，在 Cloudflare 的公开主机名路由中将 Service URL 设为 `http://127.0.0.1:8888`，浏览器使用 `https://quantbot.example.com`。保留原始 Host。Cloudflare 会通过 `X-Forwarded-Proto` 传递访客使用的协议。[Cloudflare 回源协议](https://developers.cloudflare.com/tunnel/concepts/routing/#supported-protocols) · [Cloudflare 请求头](https://developers.cloudflare.com/fundamentals/reference/http-headers/#x-forwarded-proto)
+If `cloudflared` runs on the Docker host, route the public hostname to `http://127.0.0.1:8888` and browse to `https://quantbot.example.com`. Preserve the original Host. Cloudflare forwards the visitor protocol in `X-Forwarded-Proto`. [Origin protocols](https://developers.cloudflare.com/tunnel/concepts/routing/#supported-protocols) · [Cloudflare headers](https://developers.cloudflare.com/fundamentals/reference/http-headers/#x-forwarded-proto)
 
-如果 HTTPS 域名返回 `HTTPS is required for remote connections`，先确认回源传递了 `X-Forwarded-Proto: https`。如果网桥网关未自动检测到，可在部署目录查看地址并显式信任：
+If the HTTPS hostname returns `HTTPS is required for remote connections`, verify `X-Forwarded-Proto: https` reaches the origin. If the bridge gateway was not detected, inspect it and configure it explicitly.
 
 ```bash
 docker inspect --format '{{range .NetworkSettings.Networks}}{{println .Gateway}}{{end}}' \
   "$(docker compose ps -q quantbot)"
 ```
 
-在部署目录新建 `compose.override.yaml`，填入实际域名和代理地址。下面的 `172.18.0.1` 是示例，请换成上一步查到的地址。
+Create `compose.override.yaml` with the real hostname and proxy address. Replace the example gateway `172.18.0.1` with the address from the previous step.
 
 ```yaml
 services:
@@ -46,13 +46,13 @@ docker compose -f compose.yml -f compose.override.yaml up -d
 curl -fsS https://quantbot.example.com/healthz
 ```
 
-如果 `cloudflared` 也是容器，且与 QuantBot 直连同一个 Docker 网络，回源使用 `http://quantbot:8888`，`QB_TRUST_PROXY` 填 `cloudflared` 在该网络上的固定容器 IP。显式设置会覆盖默认代理地址。只信任实际代理的地址，并保留 QuantBot 的回环端口绑定。
+If `cloudflared` and QuantBot share a Docker network, use `http://quantbot:8888` as the origin and set `QB_TRUST_PROXY` to the fixed container IP for `cloudflared`. Explicit settings replace the default trust list. Trust only the actual proxy and retain loopback binding.
 
-打开 HTTPS 域名即可创建管理员。第一个成功提交的人将成为管理员，创建后初始化入口关闭。需要在公开域名前创建账号时，可先在本机初始化，或用上文的方式预置账号。
+The first successful setup creates the administrator and closes setup. If needed, initialize on loopback or seed the account before exposing the HTTPS hostname.
 
-## Linux 用户服务
+## Linux user service
 
-从克隆的仓库安装，或使用仓库安装脚本安装指定版本。
+Install from a checkout or use the installer with a specific version.
 
 ```bash
 uv tool install .
@@ -65,9 +65,9 @@ systemctl --user status quantbot
 journalctl --user -u quantbot
 ```
 
-服务单元默认使用 `~/.local/bin/quantbot`。通过 `uv tool dir --bin` 检查实际目录并在需要时调整 `ExecStart`。若希望 SSH 退出后用户服务继续运行，可以为服务账户启用 systemd linger。 [服务单元](../deploy/quantbot.service)
+The service unit defaults to `~/.local/bin/quantbot`. Check `uv tool dir --bin` and adjust `ExecStart` as needed. Enable systemd lingering for the service account if it must continue after logout. [Service unit](../deploy/quantbot.service)
 
-将部署配置写入 `~/.config/quantbot/service.env`。默认监听 `127.0.0.1:23456`，数据位于 `~/.local/share/quantbot`。本地访问使用浏览器回环地址或 SSH 端口转发。
+Write configuration to `~/.config/quantbot/service.env`. The default bind address is `127.0.0.1:23456` and the default data directory is `~/.local/share/quantbot`. Use loopback access or SSH forwarding.
 
 ```dotenv
 QB_HOST=127.0.0.1
@@ -76,22 +76,22 @@ QB_PUBLIC_URL=https://quantbot.example.com
 QB_TRUST_PROXY=127.0.0.1,::1
 ```
 
-在反向代理上终止 TLS，转发原始 `Host` 和 `X-Forwarded-Proto`，仅信任实际代理的 IP 或网段。代理的读超时至少覆盖 25 秒长轮询，SSE 路径关闭代理缓冲。Caddy 示例可参考 [deploy/Caddyfile](../deploy/Caddyfile)。HTTP 远程请求会被拒绝。
+Terminate TLS at the proxy, forward the original `Host` and `X-Forwarded-Proto`, and trust only the actual proxy addresses. Allow at least 25 seconds for long polling and disable proxy buffering for SSE. See the [Caddy example](../deploy/Caddyfile). Remote HTTP is rejected.
 
-常用变量包括 `QB_DATA_DIR`、`QB_HOST`、`QB_PORT`、`QB_PUBLIC_URL`、`QB_TRUST_PROXY`、`QB_ADMIN_USERNAME`、`QB_ADMIN_PASSWORD_FILE` 和 `QB_TELEGRAM_TOKEN_FILE`。服务通过 `/healthz` 检查，系统设置页面显示版本和数据库 Schema。
+Common settings include `QB_DATA_DIR`, `QB_HOST`, `QB_PORT`, `QB_PUBLIC_URL`, `QB_TRUST_PROXY`, `QB_ADMIN_USERNAME`, `QB_ADMIN_PASSWORD_FILE`, and `QB_TELEGRAM_TOKEN_FILE`. Check `/healthz` for health and System settings for the version and database schema.
 
-## 更新与备份
+## Upgrades and backups
 
-Docker 升级请在原来的 Compose 目录执行，继续挂载同一份 `./data` 到 `/data`。管理员、策略、设置和历史都保存在此目录。若打开网页又看见初始化，先确认容器实际挂载的位置：
+Run Docker upgrades from the original Compose directory and keep the same `./data` mounted at `/data`. It contains the administrator, strategies, settings, and history. If setup reappears, check the actual mount.
 
 ```bash
 docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' \
   "$(docker compose ps -q quantbot)"
 ```
 
-如果此前换过部署目录，或在目录挂载和 Docker 命名卷之间切换过，请先备份，再把 Compose 指回原来的存储。升级会继续打开同目录中唯一的 QuantBot 数据库。如果同一目录有两份数据库，服务使用 `quantbot.sqlite3` 并在启动日志中提示，保留另一份供恢复。需要恢复旧数据时，请先停止服务并备份两份数据库及各自的 WAL、SHM 和密钥文件，再从选定备份恢复。
+If the deployment directory or volume changed, take a backup and point Compose to the original storage. The service reuses the only existing database in the directory. If both database filenames exist, it uses `quantbot.sqlite3`, logs a notice, and retains the other file. Before restoring, stop the service and back up both databases, WAL/SHM files, and keys.
 
-使用 SQLite 在线备份获取包含已提交 WAL 的一致副本。备份文件必须是新的路径，包含管理员密码哈希和加密后的接入凭据。需要在恢复后继续查看 Secret 时，请同时备份原数据库同名的 `.key` 文件（默认 `quantbot.key`），并单独存放在只有运维人员可访问的位置。
+Use SQLite online backup for a consistent copy that includes committed WAL changes. Choose a new destination path. The copy contains password hashes and encrypted credentials. To retain secret reveal after restoration, also back up the matching `.key` file, usually `quantbot.key`, in a private location.
 
 ```bash
 quantbot backup ~/quantbot-backup-$(date -u +%Y%m%dT%H%M%SZ).sqlite3
@@ -100,6 +100,6 @@ bash install.sh
 systemctl --user start quantbot
 ```
 
-`--ref` 接受已发布的版本或已验证的提交。Docker 部署用 `docker compose exec --user 10001:10001 quantbot quantbot backup /tmp/quantbot-backup.sqlite3` 创建备份，再用 `docker compose cp quantbot:/tmp/quantbot-backup.sqlite3 ./quantbot-backup.sqlite3` 将备份拷到宿主机的私有目录。执行 `docker compose pull && docker compose up -d` 获取并应用最新镜像。升级后检查健康接口、Web 登录、策略重新接入与实际控制对账。
+`--ref` accepts a release tag or verified commit. For Docker, use `docker compose exec --user 10001:10001 quantbot quantbot backup /tmp/quantbot-backup.sqlite3`, then copy it out with `docker compose cp quantbot:/tmp/quantbot-backup.sqlite3 ./quantbot-backup.sqlite3`. Upgrade with `docker compose pull && docker compose up -d`. Verify health, login, reconnection, and actual control reconciliation.
 
-恢复备份时先停止 QuantBot 服务。将现有数据库与 WAL/SHM 文件移至另一处保留，再复制已验证的备份到数据目录的 `quantbot.sqlite3`，核对服务用户可读写。重启后已授予许可但缺少回执的命令按未知结果处理。涉及真实交易的操作按券商实际记录核对。
+Stop QuantBot before restoring. Keep the existing database and WAL/SHM files elsewhere, copy a verified backup to `quantbot.sqlite3`, and verify the service user can read and write it. Claimed commands without receipts become unknown after restart. Reconcile real trades against broker records.

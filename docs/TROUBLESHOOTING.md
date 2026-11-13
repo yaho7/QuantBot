@@ -1,8 +1,6 @@
-# QuantBot 接入排查
+# QuantBot troubleshooting
 
-从控制台复制完整 Endpoint，例如 `https://quantbot.example.com/api/agent`。将 Secret 填入策略配置，或通过 `QB_TOKEN` 传给示例脚本。Key 用于在控制台识别凭据。
-
-从 GitHub 获取仓库中的 [Python 示例](../examples/http_agent.py)。仅对模拟盘策略运行 `--control`。
+Copy the full endpoint from the console, for example `https://quantbot.example.com/api/agent`. Put the secret in the strategy configuration or pass it to the [Python example](../examples/http_agent.py) as `QB_TOKEN`. The key identifies the credential in the console. Use `--control` only with a paper strategy.
 
 ```bash
 export QB_ENDPOINT=https://quantbot.example.com/api/agent
@@ -11,24 +9,24 @@ export QB_TOKEN
 python3 examples/http_agent.py --follow
 ```
 
-失败时，示例输出可复制的 JSON 诊断，包含请求方法、路径、HTTP 状态、响应类型、错误类别及可用的追踪标识。分享诊断时可另附 Endpoint 和出错时间。凭据、响应原文和请求负载无需分享。
+On failure, the example prints JSON diagnostics with the method, path, HTTP status, response type, error class, and available trace IDs. Share the endpoint and time if helpful. Keep credentials, raw response bodies, and request payloads private.
 
-| 症状 | 分类 | 排查方式 |
+| Symptom | Error class | What to check |
 | --- | --- | --- |
-| DNS 失败 | `dns` | 确认策略机器能解析域名，检查容器 DNS。 |
-| TLS 失败 | `tls` | 检查证书链、信任库、域名及系统时间。保留证书校验。 |
-| QuantBot 401 | `authentication_failed` | 核对 Secret 是否属于该策略，凭据是否已撤销或过期。 |
-| QuantBot 403 | `permission_denied` | 查看安全摘要，核对 Token 权限或授权执行实例。 |
-| Cloudflare 1010 | `cloudflare_1010` | 按时间与 Ray ID 核查上游的客户端检查及安全策略。 |
-| HTML 403 或登录页 | `upstream_http_error` 或 `redirect_rejected` | 核对 Endpoint、Cloudflare Access、WAF 与上游代理鉴权策略。 |
-| QuantBot 409 | `state_conflict` | 会话结束时用原实例名重新注册。修订冲突时重新读取状态。交易命令结果按原记录核对。 |
-| 413 | `batch_too_large` | 缩小批次，QuantBot JSON 请求体上限为 1 MiB。 |
-| QuantBot 422 | `schema_mismatch` | 对照 JSON Schema 及诊断中的字段路径。 |
-| 429 | `rate_limited` | 按 `Retry-After` 等待再发送。 |
-| 502、503、504 | `gateway_unavailable` | 检查回源健康，采用有界退避重试。 |
+| DNS failure | `dns` | Confirm the strategy host resolves the domain. Check container DNS. |
+| TLS failure | `tls` | Check the certificate chain, trust store, hostname, and system time. Keep verification enabled. |
+| QuantBot 401 | `authentication_failed` | Confirm the secret belongs to the strategy and remains active. |
+| QuantBot 403 | `permission_denied` | Check token scopes and executor authorization. |
+| Cloudflare 1010 | `cloudflare_1010` | Review upstream security checks using the time and Ray ID. |
+| HTML 403 or login page | `upstream_http_error` or `redirect_rejected` | Check the endpoint, Cloudflare Access, WAF, and proxy authentication. |
+| QuantBot 409 | `state_conflict` | Reopen expired sessions with the same instance ID. Read current state on revision conflicts. Reconcile trade outcomes against actual records. |
+| 413 | `batch_too_large` | Shrink the batch. Production JSON is limited to 1 MiB, and Sandbox requests to 64 KiB. |
+| QuantBot 422 | `schema_mismatch` | Compare the diagnostic field paths with the JSON Schema. |
+| 429 | `rate_limited` | Wait for `Retry-After`. |
+| 502, 503, 504 | `gateway_unavailable` | Check the origin and retry with bounded backoff. |
 
-## Cloudflare 与反向代理
+## Cloudflare and reverse proxies
 
-策略请求应带应用程序标识 `User-Agent: QuantBot-Integration/1.0`。Cloudflare 1010 表示客户端特征检查拒绝了请求。确认是部署侧规则触发后，在受控环境中检查 API 路径的相关规则。对使用 Access 的部署，给策略配置该部署所需的服务鉴权。QuantBot 只观察到达应用的请求。 [Cloudflare 1010 文档](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/)
+Send `User-Agent: QuantBot-Integration/1.0`. Cloudflare 1010 indicates a client check rejected the request. Verify which deployment rule triggered the response and review that API path in a controlled environment. If the deployment uses Access, configure its service authentication on the strategy host. QuantBot only observes requests that reach the app. [Cloudflare 1010 documentation](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1010/)
 
-部署的代理应透传 Host、HTTPS 协议、Authorization、X-Agent-Session 和响应诊断头。给命令长轮询留出至少 25 秒等待时间及网络余量。用 `GET /healthz` 验证回源，再用示例验证带认证的 Agent 请求。 [部署配置](DEPLOYMENT.md)
+Forward the original host, HTTPS scheme, Authorization, X-Agent-Session, and response diagnostics. Allow at least 25 seconds plus network latency for command long polling. Check the origin with `GET /healthz`, then verify an authenticated Agent request. [Deployment guide](DEPLOYMENT.md)

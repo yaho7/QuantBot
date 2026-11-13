@@ -1,33 +1,33 @@
 # Telegram Bot
 
-## 配置
+## Setup
 
-1. 在 BotFather 创建 Bot。
-2. 在 Web **通知与 Telegram** 中添加 Bot Token 和数字 Telegram 用户 ID，开启 Bot。部署也可通过 `QB_TELEGRAM_TOKEN_FILE` 提供 Token。
-3. 每位授权用户先打开 Bot 私聊并发送 `/start`。Bot 仅响应授权用户的私聊。
-4. 在通知设置中选择等级、分类、最短推送间隔与静音时间。通过 Web 查看连接状态和通知记录。
+1. Create a bot with BotFather.
+2. In **Notifications and Telegram**, add the bot token and numeric Telegram user IDs, then enable the bot. Deployments can supply `QB_TELEGRAM_TOKEN_FILE`.
+3. Each authorized user opens a private conversation with the bot and sends `/start`. The bot responds only to authorized private chats.
+4. Set notification severity, categories, minimum interval, and quiet hours. Use the Web console to check connection status and history.
 
-环境提供的 Token 优先使用。Web 保存的 Bot Token 位于私有数据库，仅服务发送消息时读取。策略 Bearer Token 与 Bot 凭据分别管理。
+An environment-provided token takes precedence. The token saved from the Web console is kept in the private database and read by the service to send messages. Agent Bearer credentials are separate.
 
-## 浏览和操作
+## Navigation and commands
 
-| 命令 | 功能 |
+| Command | Purpose |
 |---|---|
-| `/menu`、`/use`、`/status` | 分页浏览、选择策略、查看连接、开仓权限、风控锁和实际数据 |
-| `/positions`、`/orders`、`/chart` | 区分策略及券商持仓、查看订单与真实净值历史 |
-| `/events`、`/alerts [分类]` | 查看最近策略事件与告警 |
-| `/controls` | 查看按组及顺序渲染的动态控制组件 |
-| `/pause`、`/resume` | 请求暂停或恢复新开仓 |
-| `/refresh`、`/action <ID> 参数=值` | 执行会话声明的刷新或业务操作 |
-| `/flatten`、`/cancel`、`/close`、`/set`、`/buy`、`/sell` | 会话快捷操作，需由策略主动声明 |
-| `/operations` | 查看指令进度、回执及可取消的请求 |
-| `/notifications on`、`/notifications off` | 查看或切换推送状态 |
-| `/web`、`/quickstart` | 获取一次性网页登录链接或 HTTP 接入说明 |
+| `/menu`, `/use`, `/status` | Browse and select strategies. Inspect connections, entry permissions, risk locks, and reported data. |
+| `/positions`, `/orders`, `/chart` | View strategy and broker positions, orders, and equity history. |
+| `/events`, `/alerts [category]` | View recent events and alerts. |
+| `/controls` | Open dynamic controls in their declared group and order. |
+| `/pause`, `/resume` | Request a pause or resume of new entries. |
+| `/refresh`, `/action <ID> name=value` | Invoke a declared refresh or business action. |
+| `/flatten`, `/cancel`, `/close`, `/set`, `/buy`, `/sell` | Invoke declared session capabilities. |
+| `/operations` | View command state and receipts or cancel eligible requests. |
+| `/notifications on`, `/notifications off` | View or change notification delivery. |
+| `/web`, `/quickstart` | Get a one-time login link or HTTP integration instructions. |
 
-策略列表支持全部暂停新开仓。只有具备相应能力的策略会收到权限请求。已绑定到动态组件的一次性指令从控制面板发起。控件按钮关联当前用户、策略和注册修订，三分钟内有效。按提示输入数字、文本或逐项填写表单，提交前可以返回和取消。高风险操作仍需要确认，确认后才能领取执行许可。
+The strategy list can pause new entries for all capable strategies. One-time actions bound to dynamic controls run from the control panel. Control buttons are bound to the current user, strategy, and registry revision and expire after three minutes. Follow prompts to fill values or forms. Go back or cancel before submitting. High-risk operations require confirmation before a permit can be claimed.
 
-Bot 展示的是共享命令状态。投递、执行中、实际回执、未知结果和过期具有独立状态。策略实际应用权限或参数后，Web 和 Telegram 会显示其上报值。管理员可以在 Web 按依据核对结果未知的指令。
+Delivery, execution, actual receipt, unknown outcome, and expiration have separate states. Both consoles display the strategy's reported values. Administrators can reconcile unknown outcomes with evidence in the Web console.
 
-## 通知
+## Notifications
 
-策略上下线、成交、交易异常、风控、授权到期、重要自定义事件和命令结果可进入通知队列。支持按策略告警规则及 Telegram 的等级、分类与推送开关过滤。相同去重键的告警在窗口内合并，网络失败后会退避重试。静音时段的错误和严重通知仍保留响铃。服务重启后保留每个收件人的通知进度。
+Connection changes, fills, trade exceptions, risk events, authorization expiry, important custom events, and command outcomes can enter the notification queue. Strategy alert rules and Telegram filters control delivery. Deduplication merges repeated keys within the window. Network failures retry with backoff. Error and critical notifications remain audible during quiet hours. Recipient progress persists across restarts.
