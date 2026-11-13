@@ -10,7 +10,7 @@ QuantBot 是面向独立量化交易程序的 HTTP 监控与远程控制平台�
 
 ## Docker Compose（推荐）
 
-将以下内容保存为 `compose.yml`。Compose 会从 GitHub Packages 拉取镜像，并使用命名卷保存数据。
+将以下内容保存为 `compose.yml`。Compose 会从 GitHub Packages 拉取镜像，数据存放在配置文件旁边的 `./data` 目录。
 
 ```yaml
 services:
@@ -20,10 +20,7 @@ services:
     ports:
       - "127.0.0.1:8888:8888"
     volumes:
-      - quantbot-data:/data
-
-volumes:
-  quantbot-data:
+      - ./data:/data
 ```
 
 ```bash

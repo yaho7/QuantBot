@@ -14,6 +14,7 @@ LABEL org.opencontainers.image.source="https://github.com/yaho7/QuantBot" \
 WORKDIR /app
 COPY --from=uv /uv /usr/local/bin/uv
 COPY pyproject.toml uv.lock README.md LICENSE ./
+COPY deploy/docker-entrypoint.py ./
 COPY src/ ./src/
 RUN rm -rf src/quantbot/web
 COPY --from=frontend /app/src/quantbot/web/ ./src/quantbot/web/
@@ -22,9 +23,8 @@ RUN uv sync --frozen --no-dev --no-editable \
     && useradd --uid 10001 --gid 10001 --home-dir /data --no-create-home quantbot \
     && install -d -m 0700 -o quantbot -g quantbot /data
 ENV PATH="/app/.venv/bin:$PATH" QB_DATA_DIR=/data QB_HOST=0.0.0.0 QB_PORT=8888 QB_DOCKER_LOCAL_HTTP=1
-USER 10001:10001
 EXPOSE 8888
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s \
   CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/healthz', timeout=3).close()"]
-ENTRYPOINT ["quantbot"]
+ENTRYPOINT ["/usr/local/bin/python", "-I", "/app/docker-entrypoint.py"]
 CMD ["serve"]
