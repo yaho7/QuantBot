@@ -91,3 +91,16 @@ An HTTP 429 queue limit, HTTP 503 storage busy, HTTP 507 storage full, or missin
 Send `PUT /api/v1/agent/snapshot` with version 1, a snapshot `observedAt`, and 1–32 distinct state records (status, connection, portfolio, position or performance). The snapshot is an atomic per-boot view and is separate from the report history. Retrying the same snapshot is safe. The same timestamp with different content or an older snapshot receives HTTP 422.
 
 `PUT /api/v1/agent/metric-definitions` accepts `{"version":1,"metrics":[{"name":"spread","label":"Spread","kind":"gauge"}]}`. Kinds are gauge, counter and ratio. Optional unit and description are presentation metadata. Update the named definitions using the same endpoint.
+
+## Runnable status reports
+
+Create a paper strategy and set `QB_AGENT_URL` to its QuantBot server's `/api/v1/agent` URL and `QB_TOKEN` to the newly issued credential. Each command creates a short-lived session, sends a heartbeat and submits one durable test status record. Set `QB_INSTANCE_ID` to override the language-specific example instance.
+
+```sh
+python3 examples/v3/report.py
+node examples/v3/report.mjs
+go run ./examples/v3
+bash examples/v3/report.sh
+```
+
+The curl example uses jq for JSON and OpenSSL for a unique boot ID. A successful run prints one inserted record. For an integration that performs operations, see the command lifecycle and permit requirements above.
