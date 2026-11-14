@@ -114,7 +114,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 		reports.RegisterSchema(r)
 		r.Get("/schemas/agent.json", serveAgentSchema)
 	})
-	router.Route("/api/v1", func(r chi.Router) {
+	router.Route("/api", func(r chi.Router) {
 		accounts.Register(r)
 
 		r.Group(func(r chi.Router) {

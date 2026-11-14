@@ -1,6 +1,6 @@
-# QuantBot v1 API
+# QuantBot browser API
 
-The browser API is rooted at `/api/v1`. Agent routes use `/api/agent`. Browser requests use the administrator session cookie. Mutations require the same `Origin` and the `X-CSRF-Token` supplied by `GET /auth/session`. Agent requests use independent Bearer credentials. See [Agent protocol](AGENT_PROTOCOL.md) for reports, controls and command execution.
+The browser API is rooted at `/api`. Agent routes use `/api/agent`. Browser requests use the administrator session cookie. Mutations require the same `Origin` and the `X-CSRF-Token` supplied by `GET /auth/session`. Agent requests use independent Bearer credentials. See [Agent protocol](AGENT_PROTOCOL.md) for reports, controls and command execution.
 
 | Path | Purpose |
 | --- | --- |
@@ -24,7 +24,7 @@ The browser API is rooted at `/api/v1`. Agent routes use `/api/agent`. Browser r
 
 ## Browser events
 
-Open an authenticated `EventSource('/api/v1/events')` and listen for the `change` event. Each event contains a `changes` array of `{strategyId, topic}` objects or `{"reset":true}`.
+Open an authenticated `EventSource('/api/events')` and listen for the `change` event. Each event contains a `changes` array of `{strategyId, topic}` objects or `{"reset":true}`.
 
 The five topics are `status`, `telemetry`, `controls`, `commands` and `alerts`. The browser invalidates only the affected query keys. Command changes also invalidate the desired state shown with the control. A reset asks the browser to refresh active queries after connecting or falling behind.
 

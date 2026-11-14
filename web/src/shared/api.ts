@@ -23,7 +23,7 @@ export async function api<T>(
   if (body !== undefined) headers.set("Content-Type", "application/json");
   if (method !== "GET") headers.set("X-CSRF-Token", csrf);
   if (key) headers.set("Idempotency-Key", key);
-  const result = await fetch("/api/v1" + path, {
+  const result = await fetch("/api" + path, {
     method,
     headers,
     credentials: "same-origin",

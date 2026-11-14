@@ -5,7 +5,7 @@ export function useRealtime(enabled: boolean) {
   const [connected, setConnected] = useState(false);
   useEffect(() => {
     if (!enabled) return;
-    const source = new EventSource("/api/v1/events");
+    const source = new EventSource("/api/events");
     source.onopen = () => setConnected(true);
     source.onerror = () => setConnected(false);
     source.addEventListener("change", (event) => {

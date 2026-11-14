@@ -452,7 +452,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(page.locator(".channel-card")).toContainText("测试告警渠道");
   await expect(page.locator(".channel-card")).toContainText("已停用");
   const channels = await page.evaluate(async () =>
-    (await fetch("/api/v1/admin/notifications")).json(),
+    (await fetch("/api/admin/notifications")).json(),
   );
   expect(JSON.stringify(channels)).not.toContain("local-browser-test-token");
 

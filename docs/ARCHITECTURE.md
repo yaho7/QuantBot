@@ -33,7 +33,7 @@ Track `created → confirmation_required → pending → accepted → executing 
 
 Every browser mutation requires a valid browser origin and, after login, CSRF protection. Use separate cookie and Bearer authentication contexts. Canonicalize the externally visible origin only through explicitly trusted reverse proxies. Remote access requires HTTPS. Response JSON errors have a stable code and message. JSON decoders reject unknown fields, ambiguous keys, invalid timestamps and unbounded bodies. API documentation and versioned report schemas are published with the service.
 
-| Authority | Routes under `/api/v1` | Contract |
+| Authority | Routes under `/api` | Contract |
 | --- | --- | --- |
 | Public browser | `GET/POST /auth/setup`, `POST /auth/login` | One-time first admin and rate-limited login |
 | Browser | `GET /auth/session`, `POST /auth/logout` | HttpOnly login cookie, expiry and CSRF |

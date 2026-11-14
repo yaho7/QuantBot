@@ -32,7 +32,7 @@ func TestLayoutRevisionAndPresentationAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	send := func(method, body string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(method, origin+"/api/v1/layouts/workbench", strings.NewReader(body))
+		req := httptest.NewRequest(method, origin+"/api/layouts/workbench", strings.NewReader(body))
 		req.RemoteAddr = "127.0.0.1:10000"
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Origin", origin)

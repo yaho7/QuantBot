@@ -61,7 +61,7 @@ func TestPublicTransportRequiresTrustedProxyAndHost(t *testing.T) {
 	})
 	send := func(peer, host, proto string, expected int) {
 		t.Helper()
-		request := httptest.NewRequest("POST", "http://"+host+"/api/v1/auth/setup",
+		request := httptest.NewRequest("POST", "http://"+host+"/api/auth/setup",
 			strings.NewReader(`{"username":"admin","password":"paper-test-password"}`))
 		request.RemoteAddr = peer + ":12345"
 		request.Header.Set("Origin", "https://"+host)
@@ -125,7 +125,7 @@ func testRoutes(t *testing.T, stores *storage.Stores, cfg config.Config, command
 
 func requestAuth(t *testing.T, handler http.Handler, method, path, body, origin string, cookie *http.Cookie, csrf string, expected int) *httptest.ResponseRecorder {
 	t.Helper()
-	request := httptest.NewRequest(method, "http://127.0.0.1:23456/api/v1/auth"+path, strings.NewReader(body))
+	request := httptest.NewRequest(method, "http://127.0.0.1:23456/api/auth"+path, strings.NewReader(body))
 	request.RemoteAddr = "127.0.0.1:12345"
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")

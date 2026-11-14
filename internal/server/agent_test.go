@@ -132,5 +132,5 @@ func apiPath(path string) string {
 	if strings.HasPrefix(path, "/agent/") {
 		return "/api" + path
 	}
-	return "/api/v1" + path
+	return "/api" + path
 }
