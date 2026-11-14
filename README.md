@@ -44,6 +44,7 @@ go vet ./...
 cd web
 npm ci
 npm run build
+npm run test:unit
 npx playwright install chromium
 npm run test:e2e
 ```

@@ -2,6 +2,6 @@
 
 Build the React assets and provide Go 1.26 on PATH, then run `npm run test:e2e` from `web`. Install Chromium using `npx playwright install chromium`, or use an installed Chrome with `QB_BROWSER_CHANNEL=chrome npm run test:e2e`.
 
-The suite starts an isolated native Go service and drives administrator setup, strategy creation, an HTTP Agent, reports, dynamic control confirmation, one execution grant, the receipt, and independently reported actual state. Screenshot outputs cover home, strategy detail, system dashboard and audit at 390, 430, 768, 1280 and 1600 pixels in light and dark. Detail screenshots wait for the chart canvas to render. The suite checks JavaScript errors and document-level horizontal overflow.
+The suite starts an isolated native Go service and exercises administrator setup, strategy creation, Agent reports, dynamic control confirmation, the execution grant, the receipt and separately reported actual state. It also verifies capability data and associations, layout changes and persistence, theme configuration and recovery, Sandbox controls, notification configuration, and storage and settings.
 
-Layout editing, theme administration, Sandbox and notification flows require their feature-level browser checks as those features land. Screenshots are written under `web/test-results` and are ignored by Git.
+Screenshots cover the workbench, strategy detail, dashboard, audit, notifications, storage, settings, Sandbox and themes at 390, 430, 768, 1280 and 1600 pixels in light and dark. Detail screenshots wait for the chart canvas. The suite checks JavaScript errors and horizontal page overflow. Screenshots are written under `web/test-results` and are ignored by Git.

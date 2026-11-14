@@ -22,6 +22,7 @@ The browser API is rooted at `/api`. Agent routes use `/api/agent`. Browser requ
 | `/admin/notifications` and per-channel `/test` and `/deliveries` | Encrypted channel configuration, test messages and delivery status |
 | `/theme`, `/admin/themes` and per-theme settings and rollback | Versioned theme installation and active workbench presentation |
 | `/admin/audit` | Read recent audit events |
+| `/admin/diagnostics` | Database and WAL sizes, process counters and effective Agent/telemetry settings |
 | `/events` | Subscribe to strategy/topic invalidations |
 
 ## Browser events

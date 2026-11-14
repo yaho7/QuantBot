@@ -1,6 +1,6 @@
 # QuantBot 3.0 architecture
 
-This design baseline is governed by [AGENTS.md](../AGENTS.md). Release evidence belongs in the [acceptance matrix](ACCEPTANCE.md). The previous product baseline is commit `9f96182`.
+Release evidence is in the [acceptance matrix](ACCEPTANCE.md). The previous product baseline is commit `9f96182`.
 
 ## Runtime
 
@@ -16,8 +16,8 @@ Use SQLite WAL, FULL durability for acknowledged writes, one writer per database
 | --- | --- |
 | control | `users` and `browser_sessions` (session digest, user, expiry, CSRF) |
 | control | `strategies`, `agent_tokens` (strategy, digest, scopes, expiry/revocation), `agent_instances` (strategy + instance, boot and presence), `agent_sessions` (digest, token, instance, boot, expiry) |
-| control | `control_definitions` (strategy + control, revision, schema), `control_states` (revision, reported value, time and availability), `desired_states` (command, target value) |
-| control | `commands` (strategy, control revision, target boot, owner session, input, deadline, receipt), `command_transitions` (command + sequence), `execution_permits` (unique command, digest), `audit` (actor, strategy, command, action, time) |
+| control | Capability registry, current observations, resource revisions, replay records and desired state |
+| control | `commands` (strategy, control revision, target boot, owner credential, input, deadline, receipt), `command_transitions` (command + sequence), `execution_permits` (unique command, digest), `audit` (actor, strategy, command, action, time) |
 | control | `trade_events` (strategy + report ID, kind, time and payload), `layouts` (user + layout key), `themes` (theme ID, active and previous revisions), `settings`, encrypted `notification_channels`, notification delivery progress, `sandboxes` metadata |
 | metrics | `samples` (strategy + report ID, kind, series, timestamp, payload), `latest` by strategy and series, `metric_definitions`, `rollups` (strategy + series + resolution + bucket), bounded non-critical logs |
 
@@ -27,7 +27,7 @@ Control and metric commits are independently retryable. A mixed upload receives 
 
 Each strategy has at most one designated, current executor. A new boot fences the old session. Revoked credentials lose authority on the next request, including after a poll wakeup. Browser command creation resolves the declared control revision, validates input, checks availability and the executor, and records actor and intent in the same transaction. A revision change invalidates queued intent. The policy applies to every channel.
 
-Track `created → confirmation_required → pending → accepted → executing → succeeded|failed|unknown`, with confirmation skipped only by policy. The other terminal states are `cancelled`, `expired`, and `rejected`. Persist every transition and audit record transactionally. Command submission uses an idempotency key scoped to the initiating actor and strategy. Polling only offers work. Acceptance binds a session and boot. Permit issuance is an atomic, one-time transition to executing and stores only a digest. Repeated permit requests cannot grant authority again. Results require the issued secret and are idempotent. Expired or interrupted execution enters unknown. Any reconciliation remains auditable and cannot return a command to the queue. Reported actual state remains separate from desired state and from execution receipts.
+Track `created → confirmation_required → pending → accepted → executing → succeeded|failed|unknown`, with confirmation skipped only by policy. The other terminal states are `cancelled`, `expired`, and `rejected`. Persist every transition and audit record transactionally. Command submission uses an idempotency key scoped to the initiating actor and strategy. Polling only offers work. Claim accepts the command and issues one permit in a single transaction, binding authority to the token, instance and boot. The server stores only the permit digest. Same-boot renewals preserve this binding. If a claim response is lost, retrying the same key requires reconciliation and cannot grant authority again. Results require the issued secret and are idempotent. Expired or interrupted execution enters unknown. Reconciliation cannot return a command to the queue. Reported actual state remains separate from desired state and execution receipts.
 
 ## HTTP and UI contract
 
@@ -39,11 +39,11 @@ Every browser mutation requires a valid browser origin and, after login, CSRF pr
 | Browser | `GET /auth/session`, `POST /auth/logout` | HttpOnly login cookie, expiry and CSRF |
 | Browser | `/strategies`, `/strategies/{id}/history`, `/events`, `/layouts/{key}` | Monitoring, point-budget history, SSE, persisted presentation layout |
 | Browser | `POST /strategies/{id}/commands`, `/commands/{id}/{action}` | Control input, confirmation/cancellation/reconciliation with current state and audit |
-| Admin | `/admin/{strategies,tokens,audit,themes,notifications,storage,security,settings,sandboxes}` | Management and diagnostics |
+| Admin | `/admin/{strategies,audit,themes,notifications,diagnostics}` | Management, effective settings, storage and diagnostics |
 | Agent credential | `POST /agent/session` | Scoped credential + stable instance ID and per-process boot ID → short-lived session |
-| Agent session | `PUT /agent/{heartbeat,snapshot,controls,controls/state}`, `POST /agent/reports` | Strict versioned bodies and durable counters |
-| Agent session | `GET /agent/commands`, `POST /agent/commands/{id}/{accept,claim,result}` | Bounded long poll, acceptance, unique permit and receipt |
-| Sandbox | `/sandbox/{id}/agent/*` | Same protocol validation with expiring credentials and a separate bounded runtime |
+| Agent session | `PUT /agent/{heartbeat,capabilities,state,resources/{type}}`, `POST /agent/{reports,events}` | Independent declarations and observations with strict schemas |
+| Agent session | `GET /agent/commands`, `POST /agent/commands/{id}/{claim,result}` | Bounded long poll, unique permit and receipt |
+| Sandbox | `/agent/sandbox/{id}/*` | Same Agent protocol with expiring credentials and a separate bounded runtime |
 
 The workbench owns `/`, `/strategies`, `/strategies/:id`, `/controls`, `/activity`, and `/alerts`. The strategy detail places controls before charts and holdings. The separate admin shell owns `/admin/{dashboard,strategies,integration,notifications,themes,storage,audit,security,settings}`. The mobile admin sidebar is a drawer. Theme packages affect only the workbench. Full frontend themes use an opaque-origin sandbox and a narrow, versioned host bridge. The host owns all credentialed requests and the trusted control dialog. Declarative themes configure allowlisted tokens and layout. Immutable installation revisions allow atomic activation and rollback. Classic is always available.
 
