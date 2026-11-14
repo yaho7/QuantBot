@@ -35,20 +35,9 @@ func Open(ctx context.Context, dir string) (*Stores, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("create data directory: %w", err)
 	}
-	dirInfo, err := os.Lstat(dir)
+	lock, err := LockExisting(dir)
 	if err != nil {
 		return nil, err
-	}
-	if !dirInfo.IsDir() || dirInfo.Mode().Perm()&0022 != 0 {
-		return nil, errors.New("data directory must be a directory writable only by its owner")
-	}
-	lock, err := openPrivateFile(filepath.Join(dir, "quantbot.lock"))
-	if err != nil {
-		return nil, fmt.Errorf("open data directory lock: %w", err)
-	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		_ = lock.Close()
-		return nil, fmt.Errorf("lock data directory: %w", err)
 	}
 	stores := &Stores{lock: lock}
 	stores.Control, err = openDatabase(ctx, dir, "control", 4)

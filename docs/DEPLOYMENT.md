@@ -80,26 +80,16 @@ Terminate TLS at the proxy, forward the original `Host` and `X-Forwarded-Proto`,
 
 Common settings include `QB_DATA_DIR`, `QB_HOST`, `QB_PORT`, `QB_PUBLIC_URL`, `QB_TRUST_PROXY`, `QB_ADMIN_USERNAME`, `QB_ADMIN_PASSWORD_FILE`, and `QB_TELEGRAM_TOKEN_FILE`. Check `/healthz` for health and System settings for the version and database schema.
 
-## Upgrades and backups
+## Go data backup and restore
 
-Run Docker upgrades from the original Compose directory and keep the same `./data` mounted at `/data`. It contains the administrator, strategies, settings, and history. If setup reappears, check the actual mount.
-
-```bash
-docker inspect --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' \
-  "$(docker compose ps -q quantbot)"
-```
-
-If the deployment directory or volume changed, take a backup and point Compose to the original storage. The service reuses the only existing database in the directory. If both database filenames exist, it uses `quantbot.sqlite3`, logs a notice, and retains the other file. Before restoring, stop the service and back up both databases, WAL/SHM files, and keys.
-
-Use SQLite online backup for a consistent copy that includes committed WAL changes. Choose a new destination path. The copy contains password hashes and encrypted credentials. To retain secret reveal after restoration, also back up the matching `.key` file, usually `quantbot.key`, in a private location.
+Stop QuantBot before making a backup so both databases and installed theme files represent the same service state. The ZIP includes `control.db`, `metrics.db`, the encryption key, and installed theme files. Store it privately. QuantBot writes the archive atomically and requires a new archive name.
 
 ```bash
-quantbot backup ~/quantbot-backup-$(date -u +%Y%m%dT%H%M%SZ).sqlite3
-systemctl --user stop quantbot
-bash install.sh
-systemctl --user start quantbot
+QB_DATA_DIR=/path/to/data quantbot backup /path/to/backup.zip
+QB_DATA_DIR=/path/to/restored-data quantbot restore /path/to/backup.zip
+QB_DATA_DIR=/path/to/restored-data quantbot doctor
 ```
 
-`--ref` accepts a release tag or verified commit. For Docker, use `docker compose exec --user 10001:10001 quantbot quantbot backup /tmp/quantbot-backup.sqlite3`, then copy it out with `docker compose cp quantbot:/tmp/quantbot-backup.sqlite3 ./quantbot-backup.sqlite3`. Upgrade with `docker compose pull && docker compose up -d`. Verify health, login, reconnection, and actual control reconciliation.
+Restore requires a new destination directory. It checks SQLite integrity and the encryption key before publishing the restored data. It expires queued commands, marks interrupted executions unknown and revokes restored Agent credentials and sessions. Sign in again, reconcile unknown commands, and issue fresh Agent credentials before assigning executors.
 
-Stop QuantBot before restoring. Keep the existing database and WAL/SHM files elsewhere, copy a verified backup to `quantbot.sqlite3`, and verify the service user can read and write it. Claimed commands without receipts become unknown after restart. Reconcile real trades against broker records.
+Run `quantbot doctor` with the service configuration to inspect directory permissions, database integrity, WAL mode, the encryption key, the configured theme and local readiness. Configuration or storage errors produce a nonzero exit code. Use `quantbot health` for a readiness probe.

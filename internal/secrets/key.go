@@ -49,16 +49,45 @@ func Open(ctx context.Context, dir string, settings *controldb.Queries) ([32]byt
 			return [32]byte{}, fmt.Errorf("create encryption key: %w", err)
 		}
 	}
-	sum := sha256.Sum256(key[:])
-	encoded, _ := json.Marshal(hex.EncodeToString(sum[:]))
+	encoded := keyFingerprint(key)
 	if uninitialized {
-		if err := settings.SetSetting(ctx, controldb.SetSettingParams{Key: fingerprintSetting, Value: string(encoded)}); err != nil {
+		if err := settings.SetSetting(ctx, controldb.SetSettingParams{Key: fingerprintSetting, Value: encoded}); err != nil {
 			return [32]byte{}, err
 		}
-	} else if fingerprint != string(encoded) {
+	} else if fingerprint != encoded {
 		return [32]byte{}, errors.New("encryption key does not match the control database")
 	}
 	return key, nil
+}
+
+// Verify checks an existing key without generating it or changing the database.
+func Verify(ctx context.Context, dir string, settings *controldb.Queries) error {
+	fingerprint, err := settings.GetSetting(ctx, fingerprintSetting)
+	if err != nil {
+		return fmt.Errorf("read encryption key fingerprint: %w", err)
+	}
+	dir = filepath.Join(dir, "secrets")
+	info, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
+		return errors.New("secrets directory must be private")
+	}
+	var key [32]byte
+	if err := readKey(filepath.Join(dir, "encryption.key"), &key); err != nil {
+		return err
+	}
+	if fingerprint != keyFingerprint(key) {
+		return errors.New("encryption key does not match the control database")
+	}
+	return nil
+}
+
+func keyFingerprint(key [32]byte) string {
+	sum := sha256.Sum256(key[:])
+	encoded, _ := json.Marshal(hex.EncodeToString(sum[:]))
+	return string(encoded)
 }
 
 func readKey(path string, key *[32]byte) error {

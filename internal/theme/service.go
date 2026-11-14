@@ -328,3 +328,28 @@ func (s *Service) getActive(ctx context.Context, q *controldb.Queries) (instance
 	slog.Warn("active theme fallback", "theme", active, "error", err)
 	return builtin(BuiltinClassic), nil
 }
+
+// CheckActive validates the configured theme without creating data directories.
+func CheckActive(ctx context.Context, db *sql.DB, dir, version string) (string, error) {
+	q := controldb.New(db)
+	active, err := activeTheme(ctx, q)
+	if errors.Is(err, sql.ErrNoRows) {
+		return BuiltinLumina, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if active == BuiltinLumina || active == BuiltinClassic {
+		return active, nil
+	}
+	row, err := q.GetTheme(ctx, active)
+	if err != nil {
+		return "", err
+	}
+	service := &Service{dir: filepath.Join(dir, "themes"), version: version}
+	view, err := service.readInstance(row)
+	if err == nil && !view.Available {
+		err = fmt.Errorf("active theme %q is incompatible or its entry is missing", active)
+	}
+	return active, err
+}

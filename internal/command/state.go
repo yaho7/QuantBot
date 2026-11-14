@@ -94,6 +94,49 @@ func (s *Service) Recover(ctx context.Context) error {
 	return s.expireCommands(ctx, true)
 }
 
+// QuarantineRestore requires manual reconciliation for every restored execution
+// and retires any unclaimed work before an Agent can reconnect.
+func QuarantineRestore(ctx context.Context, db storage.Database) error {
+	return storage.WithTx(ctx, db.Write, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx, "SELECT id FROM commands WHERE status IN ('confirmation_required','pending','accepted','executing')")
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return err
+		}
+		q := controldb.New(tx)
+		now := time.Now().UnixMilli()
+		for _, id := range ids {
+			cmd, err := q.GetCommand(ctx, id)
+			if err != nil {
+				return err
+			}
+			next := expired
+			if cmd.Status == executing {
+				next = unknown
+			}
+			if err := transition(ctx, q, &cmd, next, "system", "restored from backup", now); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, "UPDATE agent_tokens SET revoked_at=? WHERE revoked_at IS NULL", now/1000); err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, "DELETE FROM browser_sessions; DELETE FROM agent_sessions; UPDATE agent_instances SET last_seen=0; UPDATE strategies SET executor_instance=NULL")
+		return err
+	})
+}
+
 func (s *Service) Maintain(ctx context.Context) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()

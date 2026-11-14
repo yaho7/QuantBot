@@ -145,6 +145,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 			http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
 			return
 		}
+		w.Header().Set("X-QuantBot-Health", "ready")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
 	})
