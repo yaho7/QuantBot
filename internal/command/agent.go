@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/auth"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/strategy"
@@ -115,6 +116,9 @@ func (s *Service) withAgentCommand(r *http.Request, work agentWork) (controldb.C
 		}
 		return work(ctx, q, agent, &cmd, time.Now().UnixMilli())
 	})
+	if err == nil {
+		s.notify.Emit(cmd.StrategyID, realtime.Commands)
+	}
 	return cmd, err
 }
 

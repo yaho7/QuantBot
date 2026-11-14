@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 )
@@ -109,6 +110,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err)
 		return
 	}
+	s.notify.Emit(identity.StrategyID, realtime.Status)
 	httpapi.JSON(w, http.StatusCreated, struct {
 		Agent
 		Session string `json:"session"`
@@ -181,6 +183,7 @@ func (s *Service) heartbeat(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err)
 		return
 	}
+	s.notify.Emit(agent.StrategyID, realtime.Status)
 	httpapi.JSON(w, http.StatusOK, agent)
 }
 

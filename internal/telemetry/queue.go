@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/metricsdb"
 	"github.com/yaho7/QuantBot/internal/strategy"
@@ -33,6 +34,7 @@ type metricQueue struct {
 	flush    time.Duration
 	write    *sql.DB
 	failures atomic.Uint64
+	notify   realtime.Notify
 }
 
 type metricJob struct {
@@ -47,10 +49,10 @@ type metricResult struct {
 	err error
 }
 
-func newQueue(write *sql.DB, cfg QueueConfig) *metricQueue {
+func newQueue(write *sql.DB, cfg QueueConfig, notify realtime.Notify) *metricQueue {
 	q := &metricQueue{
 		jobs: make(chan metricJob, cfg.Capacity), done: make(chan struct{}),
-		batch: cfg.Batch, flush: cfg.Flush, write: write,
+		batch: cfg.Batch, flush: cfg.Flush, write: write, notify: notify,
 	}
 	go q.run()
 	return q
@@ -152,6 +154,9 @@ func (q *metricQueue) persist(jobs []metricJob) {
 		clear(results)
 	}
 	for i, job := range jobs {
+		if err == nil && results[i].Inserted > 0 {
+			q.notify.Emit(job.agent.StrategyID, realtime.Telemetry)
+		}
 		job.done <- metricResult{Ack: results[i], err: err}
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/control"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/secrets"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
@@ -36,17 +37,19 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 
-	commands := command.New(stores.Control, ctx, cfg.CommandPoll)
+	events := realtime.New()
+	commands := command.New(stores.Control, ctx, cfg.CommandPoll, events.Publish)
 	if err := commands.Recover(startup); err != nil {
 		return err
 	}
-	reports, err := telemetry.New(stores, telemetry.QueueConfig{Capacity: cfg.MetricsQueue, Batch: cfg.MetricsBatch, Flush: cfg.MetricsFlush})
+	reports, err := telemetry.New(stores, telemetry.QueueConfig{Capacity: cfg.MetricsQueue, Batch: cfg.MetricsBatch, Flush: cfg.MetricsFlush}, events.Publish)
 	if err != nil {
 		return err
 	}
 	defer reports.Close()
 	maintenance, cancelMaintenance := context.WithCancel(ctx)
 	var maintained sync.WaitGroup
+	maintained.Go(func() { events.Run(maintenance) })
 	maintained.Go(func() { commands.Maintain(maintenance) })
 	maintained.Go(func() { reports.Maintain(maintenance, cfg.DataDir) })
 	defer func() {
@@ -59,7 +62,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           routes(stores, cfg, commands, reports),
+		Handler:           routes(stores, cfg, commands, reports, events),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -84,13 +87,13 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 }
 
-func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service) http.Handler {
+func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus) http.Handler {
 	router := chi.NewRouter()
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
 	router.Use(origins.Guard)
 	accounts := auth.New(stores.Control)
-	strategies := strategy.New(stores.Control)
-	controls := control.New(stores.Control)
+	strategies := strategy.New(stores.Control, events.Publish)
+	controls := control.New(stores.Control, events.Publish)
 	router.Route("/api/v1", func(r chi.Router) {
 		accounts.Register(r)
 		reports.RegisterSchema(r)
@@ -102,6 +105,9 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
+			r.Get("/events", func(w http.ResponseWriter, r *http.Request) {
+				events.Stream(w, r, accounts.SessionActive)
+			})
 			strategies.RegisterBrowser(r)
 			controls.RegisterBrowser(r)
 			commands.RegisterBrowser(r)

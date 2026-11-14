@@ -12,6 +12,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/auth"
 	"github.com/yaho7/QuantBot/internal/command"
 	"github.com/yaho7/QuantBot/internal/config"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/telemetry"
 )
@@ -103,17 +104,17 @@ func newAuthTestServer(t *testing.T, cfg config.Config) http.Handler {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = stores.Close() })
-	return testRoutes(t, stores, cfg, command.New(stores.Control, t.Context(), cfg.CommandPoll))
+	return testRoutes(t, stores, cfg, command.New(stores.Control, t.Context(), cfg.CommandPoll, nil))
 }
 
 func testRoutes(t *testing.T, stores *storage.Stores, cfg config.Config, commands *command.Service) http.Handler {
 	t.Helper()
-	reports, err := telemetry.New(stores, telemetry.QueueConfig{Capacity: 4, Batch: 4, Flush: time.Millisecond})
+	reports, err := telemetry.New(stores, telemetry.QueueConfig{Capacity: 4, Batch: 4, Flush: time.Millisecond}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(reports.Close)
-	return routes(stores, cfg, commands, reports)
+	return routes(stores, cfg, commands, reports, realtime.New())
 }
 
 func requestAuth(t *testing.T, handler http.Handler, method, path, body, origin string, cookie *http.Cookie, csrf string, expected int) *httptest.ResponseRecorder {

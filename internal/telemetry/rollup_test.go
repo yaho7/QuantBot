@@ -17,7 +17,7 @@ func TestRollupsPreserveCandleOrderExactVolumeAndRetention(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stores.Close()
-	s, err := New(stores, QueueConfig{Capacity: 8, Batch: 8, Flush: time.Millisecond})
+	s, err := New(stores, QueueConfig{Capacity: 8, Batch: 8, Flush: time.Millisecond}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

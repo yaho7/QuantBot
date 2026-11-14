@@ -88,11 +88,7 @@ func (s *Service) Require(next http.Handler) http.Handler {
 			return
 		}
 		digest := Digest(cookie.Value)
-		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
-		session, err := controldb.New(s.store.Read).GetBrowserSession(ctx, controldb.GetBrowserSessionParams{
-			Digest: digest, ExpiresAt: time.Now().Unix(),
-		})
-		cancel()
+		session, err := s.session(r.Context(), digest)
 		if errors.Is(err, sql.ErrNoRows) {
 			unauthorized(w)
 			return
@@ -113,6 +109,19 @@ func (s *Service) Require(next http.Handler) http.Handler {
 		current := Session{UserID: session.UserID, Username: session.Username, CSRF: session.Csrf, ExpiresAt: session.ExpiresAt, Digest: digest}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), sessionKey{}, current)))
 	})
+}
+
+func (s *Service) session(ctx context.Context, digest string) (controldb.GetBrowserSessionRow, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return controldb.New(s.store.Read).GetBrowserSession(ctx, controldb.GetBrowserSessionParams{
+		Digest: digest, ExpiresAt: time.Now().Unix(),
+	})
+}
+
+func (s *Service) SessionActive(r *http.Request) bool {
+	_, err := s.session(r.Context(), Current(r).Digest)
+	return err == nil
 }
 
 func (s *Service) setupStatus(w http.ResponseWriter, r *http.Request) {

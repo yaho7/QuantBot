@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/auth"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 )
@@ -102,6 +103,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		commandError(w, err)
 		return
 	}
+	s.notify.Emit(cmd.StrategyID, realtime.Commands)
 	httpapi.JSON(w, response, present(cmd))
 }
 
@@ -190,6 +192,7 @@ func (s *Service) browserAction(w http.ResponseWriter, r *http.Request) {
 		commandError(w, err)
 		return
 	}
+	s.notify.Emit(cmd.StrategyID, realtime.Commands)
 	httpapi.JSON(w, http.StatusOK, present(cmd))
 }
 

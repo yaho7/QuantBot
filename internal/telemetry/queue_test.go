@@ -18,7 +18,7 @@ func TestQueueAdmissionAndDrainAfterClientCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer stores.Close()
-	q := newQueue(stores.Metrics.Write, QueueConfig{Capacity: 1, Batch: 1, Flush: time.Millisecond})
+	q := newQueue(stores.Metrics.Write, QueueConfig{Capacity: 1, Batch: 1, Flush: time.Millisecond}, nil)
 	defer q.close()
 	block, err := stores.Metrics.Write.BeginTx(t.Context(), nil)
 	if err != nil {

@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/metricsdb"
 	"github.com/yaho7/QuantBot/internal/strategy"
@@ -65,5 +66,6 @@ func (s *Service) defineMetrics(w http.ResponseWriter, r *http.Request, agent st
 		writeError(w, err)
 		return
 	}
+	s.notify.Emit(agent.StrategyID, realtime.Telemetry)
 	w.WriteHeader(http.StatusNoContent)
 }

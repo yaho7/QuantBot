@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/auth"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 )
@@ -43,11 +44,12 @@ var (
 )
 
 type Service struct {
-	store storage.Database
+	store  storage.Database
+	notify realtime.Notify
 }
 
-func New(store storage.Database) *Service {
-	return &Service{store: store}
+func New(store storage.Database, notify realtime.Notify) *Service {
+	return &Service{store: store, notify: notify}
 }
 
 func (s *Service) RegisterBrowser(r chi.Router) {
@@ -182,6 +184,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		httpError(w, err)
 		return
 	}
+	s.notify.Emit(id, realtime.Status)
 	httpapi.JSON(w, http.StatusCreated, map[string]any{
 		"strategy":   strategyView{ID: id, Name: input.Name, Group: input.Group, Mode: input.Mode, CreatedAt: now},
 		"credential": tokenView{ID: tokenID, Label: "Initial Agent", Scopes: scopeNames(AllScopes), CreatedAt: now, Token: raw},
@@ -245,6 +248,7 @@ func (s *Service) change(w http.ResponseWriter, r *http.Request, action string, 
 		httpError(w, err)
 		return
 	}
+	s.notify.Emit(id, realtime.Status)
 	w.WriteHeader(http.StatusNoContent)
 }
 

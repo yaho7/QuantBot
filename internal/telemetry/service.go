@@ -15,6 +15,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/strategy"
@@ -25,16 +26,17 @@ type Service struct {
 	schema   *jsonschema.Schema
 	queue    *metricQueue
 	inflight chan struct{}
+	notify   realtime.Notify
 }
 
-func New(stores *storage.Stores, cfg QueueConfig) (*Service, error) {
+func New(stores *storage.Stores, cfg QueueConfig, notify realtime.Notify) (*Service, error) {
 	schema, err := loadSchema()
 	if err != nil {
 		return nil, err
 	}
 	return &Service{
-		stores: stores, schema: schema, queue: newQueue(stores.Metrics.Write, cfg),
-		inflight: make(chan struct{}, cfg.Capacity+cfg.Batch),
+		stores: stores, schema: schema, queue: newQueue(stores.Metrics.Write, cfg, notify),
+		inflight: make(chan struct{}, cfg.Capacity+cfg.Batch), notify: notify,
 	}, nil
 }
 
@@ -124,6 +126,15 @@ func (s *Service) reports(w http.ResponseWriter, r *http.Request, agent strategy
 			return
 		}
 		ack.merge(saved)
+		if saved.Inserted > 0 {
+			s.notify.Emit(agent.StrategyID, realtime.Telemetry)
+			for _, item := range trades {
+				if item.Kind == "alert" {
+					s.notify.Emit(agent.StrategyID, realtime.Alerts)
+					break
+				}
+			}
+		}
 	}
 	if len(metrics) > 0 {
 		if _, err := strategy.Authorize(ctx, controldb.New(s.stores.Control.Read), r.Header.Get("Authorization"), strategy.ReportScope); err != nil {

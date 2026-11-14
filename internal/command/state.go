@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/strategy"
@@ -122,6 +123,7 @@ func (s *Service) expireCommands(ctx context.Context, restart bool) error {
 		if err != nil || len(rows) == 0 {
 			return err
 		}
+		var changed []string
 		if err := storage.WithTx(ctx, s.store.Write, func(tx *sql.Tx) error {
 			q := controldb.New(tx)
 			current, err := q.GetStaleCommands(ctx, args)
@@ -140,10 +142,14 @@ func (s *Service) expireCommands(ctx context.Context, restart bool) error {
 				if err := transition(ctx, q, &cmd, next, "system", reason, args.NowMs); err != nil {
 					return fmt.Errorf("expire command %s: %w", cmd.ID, err)
 				}
+				changed = append(changed, cmd.StrategyID)
 			}
 			return nil
 		}); err != nil {
 			return err
+		}
+		for _, id := range changed {
+			s.notify.Emit(id, realtime.Commands)
 		}
 		if len(rows) < 128 {
 			return nil

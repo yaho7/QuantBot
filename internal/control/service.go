@@ -12,17 +12,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/strategy"
 )
 
 type Service struct {
-	store storage.Database
+	store  storage.Database
+	notify realtime.Notify
 }
 
-func New(store storage.Database) *Service {
-	return &Service{store: store}
+func New(store storage.Database, notify realtime.Notify) *Service {
+	return &Service{store: store, notify: notify}
 }
 
 func (s *Service) RegisterAgent(r chi.Router) {
@@ -235,7 +237,8 @@ func (s *Service) agentTransaction(r *http.Request, work func(context.Context, *
 	if _, err := strategy.Authorize(ctx, controldb.New(s.store.Read), authorization, strategy.ControlScope); err != nil {
 		return err
 	}
-	return storage.WithTx(ctx, s.store.Write, func(tx *sql.Tx) error {
+	var id string
+	err := storage.WithTx(ctx, s.store.Write, func(tx *sql.Tx) error {
 		q := controldb.New(tx)
 		agent, err := strategy.Authorize(ctx, q, authorization, strategy.ControlScope)
 		if err != nil {
@@ -244,8 +247,13 @@ func (s *Service) agentTransaction(r *http.Request, work func(context.Context, *
 		if !agent.Executor {
 			return ErrExecutorRequired
 		}
+		id = agent.StrategyID
 		return work(ctx, q, agent)
 	})
+	if err == nil {
+		s.notify.Emit(id, realtime.Controls)
+	}
+	return err
 }
 
 type registryView struct {

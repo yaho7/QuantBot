@@ -15,20 +15,22 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/control"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/strategy"
 )
 
 type Service struct {
-	store storage.Database
-	stop  context.Context
-	poll  time.Duration
-	polls chan struct{}
+	store  storage.Database
+	stop   context.Context
+	poll   time.Duration
+	polls  chan struct{}
+	notify realtime.Notify
 }
 
-func New(store storage.Database, stop context.Context, poll time.Duration) *Service {
-	return &Service{store: store, stop: stop, poll: poll, polls: make(chan struct{}, 2048)}
+func New(store storage.Database, stop context.Context, poll time.Duration, notify realtime.Notify) *Service {
+	return &Service{store: store, stop: stop, poll: poll, polls: make(chan struct{}, 2048), notify: notify}
 }
 
 func (s *Service) RegisterBrowser(r chi.Router) {

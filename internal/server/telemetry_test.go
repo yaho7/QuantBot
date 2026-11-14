@@ -25,7 +25,7 @@ func TestTelemetryPartialCommitSafeReplayAndSnapshot(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = stores.Close() })
 	cfg := config.Config{}
-	handler := testRoutes(t, stores, cfg, command.New(stores.Control, ctx, 0))
+	handler := testRoutes(t, stores, cfg, command.New(stores.Control, ctx, 0, nil))
 	const origin = "http://127.0.0.1:23456"
 	setup, cookie := parseSession(t, requestAuth(t, handler, "POST", "/setup",
 		`{"username":"admin","password":"paper-test-password"}`, origin, nil, "", 200))
