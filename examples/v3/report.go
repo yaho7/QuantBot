@@ -28,9 +28,9 @@ var fixture []byte
 
 func run() error {
 	endpoint := strings.TrimRight(os.Getenv("QB_AGENT_URL"), "/")
-	token := os.Getenv("QB_TOKEN")
+	token := os.Getenv("QB_AGENT_TOKEN")
 	if endpoint == "" || token == "" {
-		return fmt.Errorf("set QB_AGENT_URL and QB_TOKEN")
+		return fmt.Errorf("set QB_AGENT_URL and QB_AGENT_TOKEN")
 	}
 	instance := os.Getenv("QB_INSTANCE_ID")
 	if instance == "" {

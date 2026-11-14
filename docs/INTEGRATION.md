@@ -18,8 +18,8 @@ From the repository root, set the endpoint and credential. Run one client per te
 
 ```bash
 export QB_AGENT_URL=http://127.0.0.1:23456/api/agent
-read -rs QB_TOKEN
-export QB_TOKEN
+read -rs QB_AGENT_TOKEN
+export QB_AGENT_TOKEN
 python3 examples/v3/report.py
 node examples/v3/report.mjs
 go run ./examples/v3

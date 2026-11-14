@@ -3,8 +3,8 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { setTimeout as sleep } from "node:timers/promises";
 
-const { QB_AGENT_URL, QB_TOKEN, QB_INSTANCE_ID = "js-example", QB_DEMO_CONTROL } = process.env;
-if (!QB_AGENT_URL || !QB_TOKEN) throw new Error("Set QB_AGENT_URL and QB_TOKEN");
+const { QB_AGENT_URL, QB_AGENT_TOKEN, QB_INSTANCE_ID = "js-example", QB_DEMO_CONTROL } = process.env;
+if (!QB_AGENT_URL || !QB_AGENT_TOKEN) throw new Error("Set QB_AGENT_URL and QB_AGENT_TOKEN");
 const endpoint = QB_AGENT_URL.replace(/\/+$/, "");
 const boot = randomUUID();
 const control = QB_DEMO_CONTROL === "1";
@@ -29,13 +29,13 @@ async function call(method, path, bearer, payload, key) {
 }
 
 const identity = { instanceId: QB_INSTANCE_ID, bootId: boot };
-let session = await call("POST", "/session", QB_TOKEN, identity);
+let session = await call("POST", "/session", QB_AGENT_TOKEN, identity);
 const current = session.revision;
 
 async function renew() {
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
-      session = await call("POST", "/session", QB_TOKEN, identity);
+      session = await call("POST", "/session", QB_AGENT_TOKEN, identity);
       console.log("session renewed");
       return;
     } catch (error) {

@@ -17,7 +17,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
 
 def main():
     endpoint = os.environ["QB_AGENT_URL"].rstrip("/")
-    token = os.environ["QB_TOKEN"]
+    token = os.environ["QB_AGENT_TOKEN"]
     instance = os.getenv("QB_INSTANCE_ID", "python-example")
     control = os.getenv("QB_DEMO_CONTROL") == "1"
     boot = uuid.uuid4().hex

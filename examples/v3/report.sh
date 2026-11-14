@@ -3,7 +3,7 @@
 set -euo pipefail
 
 endpoint="${QB_AGENT_URL:?Set QB_AGENT_URL}"
-token="${QB_TOKEN:?Set QB_TOKEN}"
+token="${QB_AGENT_TOKEN:?Set QB_AGENT_TOKEN}"
 instance="${QB_INSTANCE_ID:-curl-example}"
 control="${QB_DEMO_CONTROL:-0}"
 boot="$(openssl rand -hex 16)"
