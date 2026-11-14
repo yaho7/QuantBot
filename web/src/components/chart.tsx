@@ -19,6 +19,9 @@ export default function Chart({
   useEffect(() => {
     if (!ref.current || !points.length) return;
     const element = ref.current;
+    const chartColor =
+      getComputedStyle(element).getPropertyValue("--theme-chart").trim() ||
+      "#638ded";
     if (candle) {
       const chart = createChart(element, {
         autoSize: true,
@@ -68,9 +71,9 @@ export default function Chart({
           {},
           {
             label: "Value",
-            stroke: "#638ded",
+            stroke: chartColor,
             width: 2,
-            fill: "#638ded12",
+            fill: chartColor + "12",
             points: { show: false },
           },
         ],

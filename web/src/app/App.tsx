@@ -1,4 +1,11 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Link,
@@ -44,8 +51,11 @@ const Login = lazy(() =>
 );
 import { useRealtime } from "./realtime";
 import { Home } from "./home";
+import { activeTheme, ThemeContext } from "../themes/catalog";
+import { ThemeFrame, themeStyle } from "../themes/host";
 import { StrategyDetail, AllControls } from "./strategy";
 import { ActivityPage, AlertsPage } from "./activity";
+const ThemeAdmin = lazy(() => import("../admin/themes"));
 const Notifications = lazy(() => import("../admin/notifications"));
 const AdminDashboard = lazy(() =>
   import("../admin/pages").then((module) => ({
@@ -194,32 +204,72 @@ function Logout() {
 }
 function Workbench() {
   const { t } = useLanguage();
+  const query = useQuery(activeTheme);
+  const location = useLocation();
+  const [failed, setFailed] = useState("");
+  const theme = query.data;
+  const identity = (theme?.id ?? "") + ":" + (theme?.revision ?? "");
+  const fallback = !!query.error || (failed !== "" && failed === identity);
+  const selected = fallback ? undefined : theme;
+  const onFailure = useCallback(() => setFailed(identity), [identity]);
+  const full =
+    location.pathname === "/" &&
+    selected?.entryUrl &&
+    !new URLSearchParams(location.search).has("classic");
   return (
-    <div className="workbench-shell">
-      <header className="topbar">
-        <div className="container topbar-inner">
-          <Brand />
-          <nav aria-label={t("workbench")}>
-            {monitor.map(([path, label, Icon]) => (
-              <NavLink end={path === "/"} key={path} to={path}>
-                <Icon size={17} />
-                <span>{t(label)}</span>
-              </NavLink>
-            ))}
-          </nav>
-          <div className="actions">
-            <Link className="admin-link" to="/admin">
-              <Settings size={17} />
-              <span>{t("admin")}</span>
-            </Link>
-            <Logout />
+    <ThemeContext.Provider
+      value={fallback ? { cardView: "list" } : (selected?.presentation ?? {})}
+    >
+      <div
+        className="workbench-shell"
+        data-theme={selected?.id ?? "classic"}
+        data-theme-palette={selected && !selected.builtin ? "" : undefined}
+        data-theme-surface={selected?.presentation.surface}
+        style={themeStyle(selected)}
+      >
+        <header className="topbar">
+          <div className="container topbar-inner">
+            <Brand />
+            <nav aria-label={t("workbench")}>
+              {monitor.map(([path, label, Icon]) => (
+                <NavLink end={path === "/"} key={path} to={path}>
+                  <Icon size={17} />
+                  <span>{t(label)}</span>
+                </NavLink>
+              ))}
+            </nav>
+            <div className="actions">
+              <Link className="admin-link" to="/admin">
+                <Settings size={17} />
+                <span>{t("admin")}</span>
+              </Link>
+              <Logout />
+            </div>
           </div>
-        </div>
-      </header>
-      <main className="container">
-        <Outlet />
-      </main>
-    </div>
+        </header>
+        <main className="container">
+          {fallback && (
+            <p role="status" className="warning">
+              {t("themeFallback")}
+            </p>
+          )}
+          {full && selected ? (
+            <>
+              <Link className="button" to="/?classic=1">
+                {t("themeHostView")}
+              </Link>
+              <ThemeFrame
+                key={identity}
+                theme={selected}
+                onFailure={onFailure}
+              />
+            </>
+          ) : (
+            <Outlet />
+          )}
+        </main>
+      </div>
+    </ThemeContext.Provider>
   );
 }
 function AdminShell() {
@@ -344,6 +394,7 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", element: <AdminDashboard /> },
           { path: "notifications", element: <Notifications /> },
+          { path: "themes", element: <ThemeAdmin /> },
           { path: "strategies", element: <AdminStrategies /> },
           { path: "integration", element: <Integration /> },
           { path: "audit", element: <Audit /> },

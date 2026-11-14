@@ -15,6 +15,16 @@ Set the type to `declarative` and the entry to a JSON document. The presentation
 
 Set the type to `frontend` and point `entry` at an HTML document that loads bundled JavaScript and styles. Place scripts in separate files. The document runs in an opaque browser origin. Its content security policy limits resource loads to the installed revision's static path. See [theme security](THEME_SECURITY.md).
 
+### Host Bridge
+
+The iframe sends versioned messages to its host with `parent.postMessage`. Use the origin of its entry URL as the target origin. Wait for `{version:1,type:"quantbot:ready",settings:{...}}` after sending `{version:1,type:"quantbot:ready"}`.
+
+- `quantbot:strategies` with `requestId` returns strategy summaries and their last-seen time.
+- `quantbot:control` with `requestId`, `strategyId` and `controlId` requests the trusted control dialog. Its acknowledgment only means the dialog opens.
+- `quantbot:error` asks the host to fall back after a fatal render error.
+
+The host validates the source iframe, opaque origin, protocol version and request shape. It limits messages and dialogs. A missing handshake triggers Classic after five seconds. The full theme renders on the workbench home; navigation, saved widget editing, strategy pages and administration remain accessible through the host.
+
 ## Settings and lifecycle
 
 The optional settings file has a `fields` array. Each field declares `key`, `label`, `type` and `default`. Types include switch, select, number, text, color, image, background and slider. Select fields declare `options`. Number and slider fields may declare `min` and `max`. Image and background fields use an asset path or the empty string.

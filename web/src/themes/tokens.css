@@ -1479,3 +1479,54 @@ td button {
     flex-wrap: wrap;
   }
 }
+
+.workbench-shell[data-theme-palette] {
+  color: var(--text);
+  background-color: var(--canvas);
+  background-position: center;
+  background-size: cover;
+  min-height: 100vh;
+}
+:root:not([data-appearance="dark"]) .workbench-shell[data-theme-palette] {
+  --canvas: var(--canvas-light, #f5f6f8);
+  --surface: var(--surface-light, #fff);
+  --text: var(--text-light, #263346);
+  --muted: var(--muted-light, #7b8797);
+  --line: var(--line-light, #e6e9ef);
+  --accent: var(--accent-light, #4b76d8);
+  --success: var(--success-light, #269675);
+  --danger: var(--danger-light, #c75363);
+  --theme-chart: var(--theme-chart-light, #638ded);
+}
+:root[data-appearance="dark"] .workbench-shell[data-theme-palette] {
+  --canvas: var(--canvas-dark, #1b212a);
+  --surface: var(--surface-dark, #242c37);
+  --text: var(--text-dark, #d5dce8);
+  --muted: var(--muted-dark, #91a0b4);
+  --line: var(--line-dark, #374151);
+  --accent: var(--accent-dark, #81a9ff);
+  --success: var(--success-dark, #6ac9a2);
+  --danger: var(--danger-dark, #ee9a9e);
+  --theme-chart: var(--theme-chart-dark, #638ded);
+}
+.workbench-shell[data-theme-surface="glass"] .surface {
+  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  backdrop-filter: blur(12px);
+}
+.theme-frame {
+  display: block;
+  width: 100%;
+  min-height: min(80vh, 900px);
+  border: 0;
+}
+.theme-preview {
+  display: block;
+  max-width: min(100%, 520px);
+  max-height: 340px;
+  object-fit: contain;
+}
+
+.workbench-sections {
+  display: flex;
+  flex-direction: column;
+}

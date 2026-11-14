@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 test("initialization, real reports, command receipt and responsive shells", async ({
   page,
@@ -500,11 +503,9 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     },
   });
   expect(ready.status()).toBe(200);
-  const panel = page
-    .locator("section")
-    .filter({
-      has: page.getByRole("heading", { name: "Sandbox", exact: true }),
-    });
+  const panel = page.locator("section").filter({
+    has: page.getByRole("heading", { name: "Sandbox", exact: true }),
+  });
   await panel
     .getByRole("button", { name: "下发模拟命令", exact: true })
     .click();
@@ -548,6 +549,120 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   );
   expect(JSON.stringify(channels)).not.toContain("local-browser-test-token");
 
+  const fixture = testInfo.outputPath("theme-fixture");
+  mkdirSync(fixture, { recursive: true });
+  function bundle(version: string, script: string) {
+    writeFileSync(
+      join(fixture, "quantbot-theme.json"),
+      JSON.stringify({
+        id: "trial-theme",
+        name: "Trial Theme",
+        version,
+        author: "QuantBot test",
+        engine: "quantbot-theme-v1",
+        type: "frontend",
+        entry: "index.html",
+        minQuantBotVersion: "3.0.0",
+        settingsSchema: "settings.json",
+      }),
+    );
+    writeFileSync(
+      join(fixture, "settings.json"),
+      JSON.stringify({
+        fields: [
+          {
+            key: "compact",
+            label: "Compact view",
+            type: "switch",
+            default: false,
+          },
+        ],
+      }),
+    );
+    writeFileSync(
+      join(fixture, "index.html"),
+      '<!doctype html><html><body><output id="result"></output><script src="theme.js"></script></body></html>',
+    );
+    writeFileSync(join(fixture, "theme.js"), script);
+    const path = testInfo.outputPath("theme-" + version + ".zip");
+    execFileSync(
+      "zip",
+      [
+        "-q",
+        path,
+        "quantbot-theme.json",
+        "index.html",
+        "theme.js",
+        "settings.json",
+      ],
+      { cwd: fixture },
+    );
+    return path;
+  }
+  const working = bundle(
+    "1.0.0",
+    `
+    const host = location.origin;
+    function send(type, requestId, extra = {}) {
+      parent.postMessage({ version: 1, type, requestId, ...extra }, host);
+    }
+    addEventListener("message", async ({ data }) => {
+      if (data.type === "quantbot:ready") {
+        const blocked = await fetch(host + "/api/auth/session").then(() => false, () => true);
+        if (blocked) send("quantbot:strategies", "list");
+      }
+      if (data.type === "quantbot:strategies") {
+        const item = data.items[0];
+        document.querySelector("output").textContent = item.name;
+        const button = document.createElement("button");
+        button.textContent = "Ask host";
+        button.onclick = () => send("quantbot:control", "open", { strategyId: item.id, controlId: "rsi" });
+        document.body.append(button);
+      }
+    });
+    send("quantbot:ready", "ready");
+  `,
+  );
+  const broken = bundle(
+    "1.1.0",
+    'document.querySelector("output").textContent = "No handshake";',
+  );
+  await page.goto("/admin/themes");
+  await page.getByLabel("主题 ZIP").setInputFiles(working);
+  await page.getByRole("button", { name: "安装或更新" }).click();
+  const card = page.locator("article").filter({ hasText: "Trial Theme" });
+  await card.getByRole("button", { name: "启用主题", exact: true }).click();
+  await expect(card).toContainText("使用中");
+  await card.getByRole("button", { name: "主题设置", exact: true }).click();
+  await dialog.getByLabel("Compact view").check();
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await page.goto("/");
+  const iframe = page.locator('iframe[title="Trial Theme"]');
+  await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
+  const framed = page.frameLocator('iframe[title="Trial Theme"]');
+  await expect(framed.locator("output")).toContainText("动量");
+  await framed.getByRole("button", { name: "Ask host" }).click();
+  await expect(dialog).toContainText("RSI 周期");
+  await page.keyboard.press("Escape");
+  await page.goto("/admin/themes");
+  await page.getByLabel("主题 ZIP").setInputFiles(broken);
+  await page.getByRole("button", { name: "安装或更新" }).click();
+  await expect(
+    card.getByRole("button", { name: "回滚版本", exact: true }),
+  ).toBeVisible();
+  await page.goto("/");
+  await expect(
+    page.getByRole("status").filter({ hasText: "主题载入失败" }),
+  ).toBeVisible({ timeout: 8000 });
+  await expect(widget("自定义延迟")).toBeVisible();
+  await page.goto("/admin/themes");
+  await card.getByRole("button", { name: "回滚版本", exact: true }).click();
+  await expect(card).toContainText("1.0.0");
+  page.once("dialog", (confirm) => confirm.accept());
+  await card.getByRole("button", { name: "删除主题", exact: true }).click();
+  await expect(card).toHaveCount(0);
+
   for (const appearance of ["light", "dark"]) {
     await page.evaluate((mode) => {
       localStorage.setItem("qb.appearance", mode);
@@ -562,6 +677,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
         ["audit", "/admin/audit"],
         ["notifications", "/admin/notifications"],
         ["sandbox", "/admin/integration?strategy=" + id],
+        ["themes", "/admin/themes"],
       ]) {
         await page.goto(path);
         await expect(page.locator("h1")).toBeVisible();
