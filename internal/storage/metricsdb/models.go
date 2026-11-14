@@ -4,8 +4,37 @@
 
 package metricsdb
 
+type LatestSample struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	ReportID   string
+	ObservedAt int64
+	Data       string
+}
+
 type MetricDefinition struct {
 	StrategyID string
 	Name       string
 	Definition string
+}
+
+type Sample struct {
+	StrategyID  string
+	ReportID    string
+	InstanceID  string
+	Kind        string
+	Series      string
+	ObservedAt  int64
+	Data        string
+	Fingerprint string
+}
+
+type Snapshot struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+	ObservedAt int64
+	Records    string
 }

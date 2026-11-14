@@ -254,3 +254,28 @@ ORDER BY c.deadline LIMIT 128;
 
 -- name: ListAudit :many
 SELECT * FROM audit WHERE id < ? ORDER BY id DESC LIMIT 100;
+
+-- name: InsertTradeEvent :execrows
+INSERT INTO trade_events (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;
+
+-- name: TradeEventFingerprint :one
+SELECT fingerprint FROM trade_events WHERE strategy_id = ? AND kind = ? AND report_id = ?;
+
+-- name: ListTradeEvents :many
+SELECT * FROM trade_events
+WHERE kind = sqlc.arg(kind) AND (sqlc.arg(strategy_id) = '' OR strategy_id = sqlc.arg(strategy_id))
+AND observed_at < sqlc.arg(before_at)
+ORDER BY observed_at DESC, report_id DESC, strategy_id LIMIT sqlc.arg(page_size);
+
+-- name: LatestOrders :many
+SELECT e.* FROM trade_events e
+WHERE e.strategy_id = ? AND e.kind = 'order' AND NOT EXISTS (
+    SELECT 1 FROM trade_events newer
+    WHERE newer.strategy_id = e.strategy_id AND newer.kind = e.kind
+    AND newer.instance_id = e.instance_id AND newer.series = e.series
+    AND (newer.observed_at, newer.report_id) > (e.observed_at, e.report_id)
+) ORDER BY e.observed_at DESC, e.report_id DESC LIMIT 1000;
+
+-- name: FillFingerprint :one
+SELECT fingerprint FROM trade_events WHERE strategy_id = ? AND series = ? AND kind = 'fill';

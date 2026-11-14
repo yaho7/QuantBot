@@ -252,6 +252,22 @@ func (q *Queries) DeleteExpiredBrowserSessions(ctx context.Context, expiresAt in
 	return err
 }
 
+const fillFingerprint = `-- name: FillFingerprint :one
+SELECT fingerprint FROM trade_events WHERE strategy_id = ? AND series = ? AND kind = 'fill'
+`
+
+type FillFingerprintParams struct {
+	StrategyID string
+	Series     string
+}
+
+func (q *Queries) FillFingerprint(ctx context.Context, arg FillFingerprintParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, fillFingerprint, arg.StrategyID, arg.Series)
+	var fingerprint string
+	err := row.Scan(&fingerprint)
+	return fingerprint, err
+}
+
 const getActiveControlCommand = `-- name: GetActiveControlCommand :one
 SELECT id FROM commands WHERE strategy_id = ? AND control_id = ?
 AND status IN ('created','confirmation_required','pending','accepted','executing','unknown')
@@ -758,6 +774,81 @@ func (q *Queries) InsertExecutionPermit(ctx context.Context, arg InsertExecution
 	return err
 }
 
+const insertTradeEvent = `-- name: InsertTradeEvent :execrows
+INSERT INTO trade_events (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
+`
+
+type InsertTradeEventParams struct {
+	StrategyID  string
+	ReportID    string
+	InstanceID  string
+	Kind        string
+	Series      string
+	ObservedAt  int64
+	Data        string
+	Fingerprint string
+}
+
+func (q *Queries) InsertTradeEvent(ctx context.Context, arg InsertTradeEventParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertTradeEvent,
+		arg.StrategyID,
+		arg.ReportID,
+		arg.InstanceID,
+		arg.Kind,
+		arg.Series,
+		arg.ObservedAt,
+		arg.Data,
+		arg.Fingerprint,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const latestOrders = `-- name: LatestOrders :many
+SELECT e.strategy_id, e.report_id, e.instance_id, e.kind, e.series, e.observed_at, e.data, e.fingerprint FROM trade_events e
+WHERE e.strategy_id = ? AND e.kind = 'order' AND NOT EXISTS (
+    SELECT 1 FROM trade_events newer
+    WHERE newer.strategy_id = e.strategy_id AND newer.kind = e.kind
+    AND newer.instance_id = e.instance_id AND newer.series = e.series
+    AND (newer.observed_at, newer.report_id) > (e.observed_at, e.report_id)
+) ORDER BY e.observed_at DESC, e.report_id DESC LIMIT 1000
+`
+
+func (q *Queries) LatestOrders(ctx context.Context, strategyID string) ([]TradeEvent, error) {
+	rows, err := q.db.QueryContext(ctx, latestOrders, strategyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TradeEvent
+	for rows.Next() {
+		var i TradeEvent
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.ReportID,
+			&i.InstanceID,
+			&i.Kind,
+			&i.Series,
+			&i.ObservedAt,
+			&i.Data,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const limitBrowserSessions = `-- name: LimitBrowserSessions :exec
 DELETE FROM browser_sessions AS old WHERE old.user_id = ?1 AND old.digest IN (
     SELECT recent.digest FROM browser_sessions AS recent WHERE recent.user_id = ?1
@@ -1244,6 +1335,57 @@ func (q *Queries) ListStrategies(ctx context.Context, includeArchived interface{
 	return items, nil
 }
 
+const listTradeEvents = `-- name: ListTradeEvents :many
+SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint FROM trade_events
+WHERE kind = ?1 AND (?2 = '' OR strategy_id = ?2)
+AND observed_at < ?3
+ORDER BY observed_at DESC, report_id DESC, strategy_id LIMIT ?4
+`
+
+type ListTradeEventsParams struct {
+	Kind       string
+	StrategyID interface{}
+	BeforeAt   int64
+	PageSize   int64
+}
+
+func (q *Queries) ListTradeEvents(ctx context.Context, arg ListTradeEventsParams) ([]TradeEvent, error) {
+	rows, err := q.db.QueryContext(ctx, listTradeEvents,
+		arg.Kind,
+		arg.StrategyID,
+		arg.BeforeAt,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TradeEvent
+	for rows.Next() {
+		var i TradeEvent
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.ReportID,
+			&i.InstanceID,
+			&i.Kind,
+			&i.Series,
+			&i.ObservedAt,
+			&i.Data,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const putControlRegistry = `-- name: PutControlRegistry :exec
 INSERT INTO control_registries (strategy_id, revision, instance_id, boot_id, updated_at) VALUES (?, ?, ?, ?, ?)
 ON CONFLICT (strategy_id) DO UPDATE SET revision = excluded.revision, instance_id = excluded.instance_id,
@@ -1406,6 +1548,23 @@ type SetSettingParams struct {
 func (q *Queries) SetSetting(ctx context.Context, arg SetSettingParams) error {
 	_, err := q.db.ExecContext(ctx, setSetting, arg.Key, arg.Value)
 	return err
+}
+
+const tradeEventFingerprint = `-- name: TradeEventFingerprint :one
+SELECT fingerprint FROM trade_events WHERE strategy_id = ? AND kind = ? AND report_id = ?
+`
+
+type TradeEventFingerprintParams struct {
+	StrategyID string
+	Kind       string
+	ReportID   string
+}
+
+func (q *Queries) TradeEventFingerprint(ctx context.Context, arg TradeEventFingerprintParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, tradeEventFingerprint, arg.StrategyID, arg.Kind, arg.ReportID)
+	var fingerprint string
+	err := row.Scan(&fingerprint)
+	return fingerprint, err
 }
 
 const transitionCommand = `-- name: TransitionCommand :execrows

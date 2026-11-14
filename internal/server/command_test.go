@@ -24,7 +24,7 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 	defer func() { _ = stores.Close() }()
 	cfg := config.Config{CommandPoll: 2 * time.Second}
 	service := command.New(stores.Control, ctx, cfg.CommandPoll)
-	handler := routes(stores, cfg, service)
+	handler := testRoutes(t, stores, cfg, service)
 	const origin = "http://127.0.0.1:23456"
 	setup, cookie := parseSession(t, requestAuth(t, handler, "POST", "/setup",
 		`{"username":"admin","password":"paper-test-password"}`, origin, nil, "", 200))
@@ -126,7 +126,7 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 	if err := service.Recover(ctx); err != nil {
 		t.Fatal(err)
 	}
-	handler = routes(stores, cfg, service)
+	handler = testRoutes(t, stores, cfg, service)
 	recovered := send("GET", base, "", "", "", 200)
 	if !strings.Contains(recovered.Body.String(), `"status":"unknown"`) {
 		t.Fatalf("lost receipt was not marked unknown: %s", recovered.Body)

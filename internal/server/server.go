@@ -18,6 +18,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/strategy"
+	"github.com/yaho7/QuantBot/internal/telemetry"
 )
 
 const shutdownTimeout = 35 * time.Second
@@ -38,6 +39,11 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	if err := commands.Recover(startup); err != nil {
 		return err
 	}
+	reports, err := telemetry.New(stores, telemetry.QueueConfig{Capacity: cfg.MetricsQueue, Batch: cfg.MetricsBatch, Flush: cfg.MetricsFlush})
+	if err != nil {
+		return err
+	}
+	defer reports.Close()
 	maintenance, cancelMaintenance := context.WithCancel(ctx)
 	maintained := make(chan struct{})
 	go func() {
@@ -54,7 +60,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           routes(stores, cfg, commands),
+		Handler:           routes(stores, cfg, commands, reports),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -79,7 +85,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 }
 
-func routes(stores *storage.Stores, cfg config.Config, commands *command.Service) http.Handler {
+func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service) http.Handler {
 	router := chi.NewRouter()
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
 	router.Use(origins.Guard)
@@ -88,10 +94,12 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 	controls := control.New(stores.Control)
 	router.Route("/api/v1", func(r chi.Router) {
 		accounts.Register(r)
+		reports.RegisterSchema(r)
 		r.Route("/agent", func(r chi.Router) {
 			strategies.RegisterAgent(r)
 			controls.RegisterAgent(r)
 			commands.RegisterAgent(r)
+			reports.RegisterAgent(r)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)

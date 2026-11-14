@@ -18,10 +18,14 @@ type Config struct {
 	PublicOrigin   string
 	TrustedProxies []netip.Prefix
 	CommandPoll    time.Duration
+	MetricsQueue   int
+	MetricsBatch   int
+	MetricsFlush   time.Duration
 }
 
 func Load() (Config, error) {
-	config := Config{Listen: "127.0.0.1:23456", DataDir: "data", CommandPoll: 25 * time.Second}
+	config := Config{Listen: "127.0.0.1:23456", DataDir: "data", CommandPoll: 25 * time.Second,
+		MetricsQueue: 128, MetricsBatch: 16, MetricsFlush: 12 * time.Millisecond}
 	if value, ok := os.LookupEnv("QB_LISTEN"); ok {
 		config.Listen = value
 	}
@@ -66,6 +70,29 @@ func Load() (Config, error) {
 			return Config{}, fmt.Errorf("QB_COMMAND_POLL must be a duration up to 25s")
 		}
 		config.CommandPoll = poll
+	}
+	for _, item := range []struct {
+		name    string
+		target  *int
+		maximum int
+	}{
+		{"QB_METRICS_QUEUE", &config.MetricsQueue, 1024},
+		{"QB_METRICS_BATCH", &config.MetricsBatch, 128},
+	} {
+		if value := os.Getenv(item.name); value != "" {
+			number, err := strconv.Atoi(value)
+			if err != nil || number < 1 || number > item.maximum {
+				return Config{}, fmt.Errorf("%s must be an integer between 1 and %d", item.name, item.maximum)
+			}
+			*item.target = number
+		}
+	}
+	if value := os.Getenv("QB_METRICS_FLUSH"); value != "" {
+		flush, err := time.ParseDuration(value)
+		if err != nil || flush < time.Millisecond || flush > time.Second {
+			return Config{}, fmt.Errorf("QB_METRICS_FLUSH must be a duration between 1ms and 1s")
+		}
+		config.MetricsFlush = flush
 	}
 	return config, nil
 }

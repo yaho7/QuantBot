@@ -141,6 +141,17 @@ type Strategy struct {
 	ExecutorInstance sql.NullString
 }
 
+type TradeEvent struct {
+	StrategyID  string
+	ReportID    string
+	InstanceID  string
+	Kind        string
+	Series      string
+	ObservedAt  int64
+	Data        string
+	Fingerprint string
+}
+
 type User struct {
 	ID           int64
 	Username     string

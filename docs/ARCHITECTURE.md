@@ -21,7 +21,7 @@ Use SQLite WAL, FULL durability for acknowledged writes, one writer per database
 | control | `trade_events` (strategy + report ID, kind, time and payload), `layouts` (user + layout key), `themes` (theme ID, active and previous revisions), `settings`, encrypted `notification_channels`, notification delivery progress, `sandboxes` metadata |
 | metrics | `samples` (strategy + report ID, kind, series, timestamp, payload), `latest` by strategy and series, `metric_definitions`, `rollups` (strategy + series + resolution + bucket), bounded non-critical logs |
 
-Control and metric commits are independently retryable. A mixed upload receives success only after both commits. Stable report IDs allow retry after an interrupted response, even if only one database committed. A conflicting payload under an existing ID is rejected. Scope IDs to the strategy, and preserve ordering by event time and ID. Closed buckets use explicit raw, 1m, 5m, 1h, and 1d resolutions. OHLCV uses the first open, last close, extrema, and exact volume sum. Retention must account for accepted late data before deleting inputs.
+Control and metric commits are independently retryable. A mixed upload receives success only after both commits. Stable report IDs scoped by strategy and kind allow retry after an interrupted response, even if only one database committed. A conflicting payload under an existing ID is rejected. Preserve ordering by event time and ID. Closed buckets use explicit raw, 1m, 5m, 1h, and 1d resolutions. OHLCV uses the first open, last close, extrema, and exact volume sum. Retention must account for accepted late data before deleting inputs.
 
 ## Control invariants
 
@@ -64,4 +64,5 @@ No upstream code or assets were copied during this review. Record file-level sou
 | Chi, go-sqlite3, sqlc, Go x/crypto | Routing, embedded SQLite, generated typed SQL, password hashing | MIT, MIT with SQLite public domain, MIT, BSD-3-Clause |
 | React, Vite, Tailwind CSS, React Router, TanStack Query, Radix UI | UI, build, styling, routes, query cache, accessible controls | MIT |
 | TypeScript, Lucide, uPlot, Lightweight Charts | Type checking, icons, time series and financial charts | Apache-2.0, ISC with inherited MIT attribution, MIT, Apache-2.0 with NOTICE |
+| santhosh-tekuri/jsonschema v6 | Compile the same JSON Schema distributed to Agent developers and used for server-side validation | Apache-2.0 |
 | dnd-kit, Sonner, Zod, Playwright | Accessible reordering, notifications, validation, browser testing | MIT, MIT, MIT, Apache-2.0 |

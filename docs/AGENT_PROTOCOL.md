@@ -65,3 +65,29 @@ The designated online executor with `command` scope calls `GET /api/v1/agent/com
 4. Report actual state independently using `PUT /api/v1/agent/controls/state`.
 
 Use `POST /api/v1/agent/commands/{id}/reject` with a JSON `reason` when declining a command before receiving a permit. Run the local trading and risk checks immediately before broker actions. See [control security](CONTROL_SECURITY.md).
+
+## Telemetry
+
+Send `POST /api/v1/agent/reports` with a current `report` session and JSON `{"version":1,"records":[…]}`. Each record has `id`, `kind`, `observedAt` (UTC Unix milliseconds) and `data`. A batch holds 1–250 records, up to 512 KiB. The service publishes the schema at `GET /api/v1/schemas/report-v1.json`. The schema defines status, connection, portfolio, equity, position, order, fill, performance, metric, OHLCV, signal, risk, alert and log. Monetary and quantity fields are decimal strings. A candle timestamp must align to its UTC interval. Metrics support seven days of backfill, and reports may be at most two minutes ahead of server time.
+
+```json
+{
+  "version": 1,
+  "records": [
+    {
+      "id": "worker-a-equity-001",
+      "kind": "equity",
+      "observedAt": 1794643200000,
+      "data": {"accountId":"paper-1","currency":"USD","value":"10000.01"}
+    }
+  ]
+}
+```
+
+Replace the example timestamp with the observation time. Use stable unique IDs within each strategy and kind. A byte-equivalent canonical replay increments `duplicate`. Reusing an ID with different content increments `rejected`. Fills are also deduplicated by strategy, account and broker fill ID. A completed response gives `inserted`, `duplicate` and `rejected`, with zero-based indices for rejected records. If no record was accepted, the service returns HTTP 422. Invalid envelopes return HTTP 400, unsupported content types return HTTP 415 and oversized bodies return HTTP 413.
+
+An HTTP 429 queue limit, HTTP 503 storage busy, HTTP 507 storage full, or missing response can occur after part of a mixed batch commits. Retry the original batch with unchanged IDs after the condition clears. A successful response is sent after all accepted records commit. A metric job already queued can still commit after client disconnect or shutdown.
+
+Send `PUT /api/v1/agent/snapshot` with version 1, a snapshot `observedAt`, and 1–32 distinct state records (status, connection, portfolio, position or performance). The snapshot is an atomic per-boot view and is separate from the report history. Retrying the same snapshot is safe. The same timestamp with different content or an older snapshot receives HTTP 422.
+
+`PUT /api/v1/agent/metric-definitions` accepts `{"version":1,"metrics":[{"name":"spread","label":"Spread","kind":"gauge"}]}`. Kinds are gauge, counter and ratio. Optional unit and description are presentation metadata. Update the named definitions using the same endpoint.

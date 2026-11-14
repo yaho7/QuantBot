@@ -25,6 +25,236 @@ func (q *Queries) GetMetricDefinition(ctx context.Context, arg GetMetricDefiniti
 	return definition, err
 }
 
+const getSnapshot = `-- name: GetSnapshot :one
+SELECT strategy_id, instance_id, boot_id, observed_at, records FROM snapshots WHERE strategy_id = ? AND instance_id = ? AND boot_id = ?
+`
+
+type GetSnapshotParams struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+}
+
+func (q *Queries) GetSnapshot(ctx context.Context, arg GetSnapshotParams) (Snapshot, error) {
+	row := q.db.QueryRowContext(ctx, getSnapshot, arg.StrategyID, arg.InstanceID, arg.BootID)
+	var i Snapshot
+	err := row.Scan(
+		&i.StrategyID,
+		&i.InstanceID,
+		&i.BootID,
+		&i.ObservedAt,
+		&i.Records,
+	)
+	return i, err
+}
+
+const insertSample = `-- name: InsertSample :execrows
+INSERT INTO samples (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (strategy_id, kind, report_id) DO NOTHING
+`
+
+type InsertSampleParams struct {
+	StrategyID  string
+	ReportID    string
+	InstanceID  string
+	Kind        string
+	Series      string
+	ObservedAt  int64
+	Data        string
+	Fingerprint string
+}
+
+func (q *Queries) InsertSample(ctx context.Context, arg InsertSampleParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertSample,
+		arg.StrategyID,
+		arg.ReportID,
+		arg.InstanceID,
+		arg.Kind,
+		arg.Series,
+		arg.ObservedAt,
+		arg.Data,
+		arg.Fingerprint,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const listLatestSamples = `-- name: ListLatestSamples :many
+SELECT strategy_id, instance_id, kind, series, report_id, observed_at, data FROM latest_samples WHERE strategy_id = ? AND kind = ?
+ORDER BY observed_at DESC, report_id DESC LIMIT 1000
+`
+
+type ListLatestSamplesParams struct {
+	StrategyID string
+	Kind       string
+}
+
+func (q *Queries) ListLatestSamples(ctx context.Context, arg ListLatestSamplesParams) ([]LatestSample, error) {
+	rows, err := q.db.QueryContext(ctx, listLatestSamples, arg.StrategyID, arg.Kind)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LatestSample
+	for rows.Next() {
+		var i LatestSample
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.InstanceID,
+			&i.Kind,
+			&i.Series,
+			&i.ReportID,
+			&i.ObservedAt,
+			&i.Data,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMetricDefinitions = `-- name: ListMetricDefinitions :many
+SELECT strategy_id, name, definition FROM metric_definitions WHERE strategy_id = ? ORDER BY name LIMIT 1000
+`
+
+func (q *Queries) ListMetricDefinitions(ctx context.Context, strategyID string) ([]MetricDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, listMetricDefinitions, strategyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MetricDefinition
+	for rows.Next() {
+		var i MetricDefinition
+		if err := rows.Scan(&i.StrategyID, &i.Name, &i.Definition); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSnapshots = `-- name: ListSnapshots :many
+SELECT strategy_id, instance_id, boot_id, observed_at, records FROM snapshots WHERE strategy_id = ? ORDER BY observed_at DESC LIMIT 256
+`
+
+func (q *Queries) ListSnapshots(ctx context.Context, strategyID string) ([]Snapshot, error) {
+	rows, err := q.db.QueryContext(ctx, listSnapshots, strategyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Snapshot
+	for rows.Next() {
+		var i Snapshot
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.InstanceID,
+			&i.BootID,
+			&i.ObservedAt,
+			&i.Records,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const putLatestSample = `-- name: PutLatestSample :exec
+INSERT INTO latest_samples (strategy_id, instance_id, kind, series, report_id, observed_at, data)
+VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (strategy_id, instance_id, kind, series)
+DO UPDATE SET report_id = excluded.report_id, observed_at = excluded.observed_at, data = excluded.data
+WHERE (excluded.observed_at, excluded.report_id) > (latest_samples.observed_at, latest_samples.report_id)
+`
+
+type PutLatestSampleParams struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	ReportID   string
+	ObservedAt int64
+	Data       string
+}
+
+func (q *Queries) PutLatestSample(ctx context.Context, arg PutLatestSampleParams) error {
+	_, err := q.db.ExecContext(ctx, putLatestSample,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.Kind,
+		arg.Series,
+		arg.ReportID,
+		arg.ObservedAt,
+		arg.Data,
+	)
+	return err
+}
+
+const putSnapshot = `-- name: PutSnapshot :exec
+INSERT INTO snapshots (strategy_id, instance_id, boot_id, observed_at, records)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (strategy_id, instance_id, boot_id) DO UPDATE SET
+    observed_at = excluded.observed_at, records = excluded.records
+`
+
+type PutSnapshotParams struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+	ObservedAt int64
+	Records    string
+}
+
+func (q *Queries) PutSnapshot(ctx context.Context, arg PutSnapshotParams) error {
+	_, err := q.db.ExecContext(ctx, putSnapshot,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.BootID,
+		arg.ObservedAt,
+		arg.Records,
+	)
+	return err
+}
+
+const sampleFingerprint = `-- name: SampleFingerprint :one
+SELECT fingerprint FROM samples WHERE strategy_id = ? AND kind = ? AND report_id = ?
+`
+
+type SampleFingerprintParams struct {
+	StrategyID string
+	Kind       string
+	ReportID   string
+}
+
+func (q *Queries) SampleFingerprint(ctx context.Context, arg SampleFingerprintParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, sampleFingerprint, arg.StrategyID, arg.Kind, arg.ReportID)
+	var fingerprint string
+	err := row.Scan(&fingerprint)
+	return fingerprint, err
+}
+
 const setMetricDefinition = `-- name: SetMetricDefinition :exec
 INSERT INTO metric_definitions (strategy_id, name, definition) VALUES (?, ?, ?)
 ON CONFLICT (strategy_id, name) DO UPDATE SET definition = excluded.definition
