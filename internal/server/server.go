@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/auth"
+	"github.com/yaho7/QuantBot/internal/command"
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/control"
 	"github.com/yaho7/QuantBot/internal/httpapi"
@@ -33,12 +34,27 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 
+	commands := command.New(stores.Control, ctx, cfg.CommandPoll)
+	if err := commands.Recover(startup); err != nil {
+		return err
+	}
+	maintenance, cancelMaintenance := context.WithCancel(ctx)
+	maintained := make(chan struct{})
+	go func() {
+		defer close(maintained)
+		commands.Maintain(maintenance)
+	}()
+	defer func() {
+		cancelMaintenance()
+		<-maintained
+	}()
+
 	listener, err := (&net.ListenConfig{}).Listen(startup, "tcp", cfg.Listen)
 	if err != nil {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           routes(stores, cfg),
+		Handler:           routes(stores, cfg, commands),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -63,7 +79,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 }
 
-func routes(stores *storage.Stores, cfg config.Config) http.Handler {
+func routes(stores *storage.Stores, cfg config.Config, commands *command.Service) http.Handler {
 	router := chi.NewRouter()
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
 	router.Use(origins.Guard)
@@ -75,11 +91,13 @@ func routes(stores *storage.Stores, cfg config.Config) http.Handler {
 		r.Route("/agent", func(r chi.Router) {
 			strategies.RegisterAgent(r)
 			controls.RegisterAgent(r)
+			commands.RegisterAgent(r)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
 			strategies.RegisterBrowser(r)
 			controls.RegisterBrowser(r)
+			commands.RegisterBrowser(r)
 		})
 	})
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

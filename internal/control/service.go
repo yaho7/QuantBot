@@ -254,9 +254,17 @@ type registryView struct {
 	Controls []controlView `json:"controls"`
 }
 
+type desiredState struct {
+	CommandID string          `json:"commandId"`
+	Status    string          `json:"status"`
+	Value     json.RawMessage `json:"value"`
+	UpdatedAt int64           `json:"updatedAt"`
+}
+
 type controlView struct {
 	Definition
-	Actual *actualState `json:"actual"`
+	Actual  *actualState  `json:"actual"`
+	Desired *desiredState `json:"desired"`
 }
 
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
@@ -309,12 +317,20 @@ func (s *Service) writeRegistry(w http.ResponseWriter, ctx context.Context, id s
 				ID: row.ControlID, Value: json.RawMessage(row.Value), Available: &available, Reason: row.Reason, ObservedAt: row.ObservedAt,
 			}
 		}
+		desiredRows, err := q.ListDesiredStates(ctx, controldb.ListDesiredStatesParams{StrategyID: id, Revision: registry.Revision})
+		if err != nil {
+			return err
+		}
+		desired := make(map[string]*desiredState, len(desiredRows))
+		for _, row := range desiredRows {
+			desired[row.ControlID] = &desiredState{row.CommandID, row.Status, json.RawMessage(row.Value), row.UpdatedAt}
+		}
 		for _, row := range definitions {
 			var definition Definition
 			if err := json.Unmarshal([]byte(row.Definition), &definition); err != nil {
 				return err
 			}
-			view.Controls = append(view.Controls, controlView{definition, actual[row.ControlID]})
+			view.Controls = append(view.Controls, controlView{definition, actual[row.ControlID], desired[row.ControlID]})
 		}
 		return nil
 	})

@@ -60,6 +60,35 @@ type BrowserSession struct {
 	ExpiresAt int64
 }
 
+type Command struct {
+	ID         string
+	StrategyID string
+	ControlID  string
+	Revision   int64
+	Input      string
+	Actor      string
+	RequestKey string
+	InstanceID string
+	BootID     string
+	AcceptedBy sql.NullString
+	Status     string
+	CreatedAt  int64
+	UpdatedAt  int64
+	Deadline   int64
+	TimeoutMs  int64
+	Receipt    sql.NullString
+}
+
+type CommandTransition struct {
+	Sequence  int64
+	CommandID string
+	Previous  sql.NullString
+	Next      string
+	Actor     string
+	Reason    string
+	At        int64
+}
+
 type ControlDefinition struct {
 	StrategyID string
 	ControlID  string
@@ -81,6 +110,20 @@ type ControlState struct {
 	Available  int64
 	Reason     string
 	ObservedAt int64
+}
+
+type DesiredState struct {
+	StrategyID string
+	ControlID  string
+	CommandID  string
+	Revision   int64
+	Value      string
+}
+
+type ExecutionPermit struct {
+	CommandID string
+	Digest    string
+	IssuedAt  int64
 }
 
 type Setting struct {

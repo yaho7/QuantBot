@@ -47,6 +47,32 @@ func (q *Queries) AppendAudit(ctx context.Context, arg AppendAuditParams) error 
 	return err
 }
 
+const appendCommandTransition = `-- name: AppendCommandTransition :exec
+INSERT INTO command_transitions (command_id, previous, next, actor, reason, at)
+VALUES (?, ?, ?, ?, ?, ?)
+`
+
+type AppendCommandTransitionParams struct {
+	CommandID string
+	Previous  sql.NullString
+	Next      string
+	Actor     string
+	Reason    string
+	At        int64
+}
+
+func (q *Queries) AppendCommandTransition(ctx context.Context, arg AppendCommandTransitionParams) error {
+	_, err := q.db.ExecContext(ctx, appendCommandTransition,
+		arg.CommandID,
+		arg.Previous,
+		arg.Next,
+		arg.Actor,
+		arg.Reason,
+		arg.At,
+	)
+	return err
+}
+
 const archiveStrategy = `-- name: ArchiveStrategy :execrows
 UPDATE strategies SET archived_at = ?, executor_instance = NULL WHERE id = ? AND archived_at IS NULL
 `
@@ -226,6 +252,23 @@ func (q *Queries) DeleteExpiredBrowserSessions(ctx context.Context, expiresAt in
 	return err
 }
 
+const getActiveControlCommand = `-- name: GetActiveControlCommand :one
+SELECT id FROM commands WHERE strategy_id = ? AND control_id = ?
+AND status IN ('created','confirmation_required','pending','accepted','executing','unknown')
+`
+
+type GetActiveControlCommandParams struct {
+	StrategyID string
+	ControlID  string
+}
+
+func (q *Queries) GetActiveControlCommand(ctx context.Context, arg GetActiveControlCommandParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getActiveControlCommand, arg.StrategyID, arg.ControlID)
+	var id string
+	err := row.Scan(&id)
+	return id, err
+}
+
 const getActiveExecutor = `-- name: GetActiveExecutor :one
 SELECT a.digest, a.strategy_id, a.instance_id, a.boot_id, a.token_id, a.expires_at, i.last_seen
 FROM strategies s
@@ -342,6 +385,68 @@ func (q *Queries) GetBrowserSession(ctx context.Context, arg GetBrowserSessionPa
 	return i, err
 }
 
+const getCommand = `-- name: GetCommand :one
+SELECT id, strategy_id, control_id, revision, input, actor, request_key, instance_id, boot_id, accepted_by, status, created_at, updated_at, deadline, timeout_ms, receipt FROM commands WHERE id = ?
+`
+
+func (q *Queries) GetCommand(ctx context.Context, id string) (Command, error) {
+	row := q.db.QueryRowContext(ctx, getCommand, id)
+	var i Command
+	err := row.Scan(
+		&i.ID,
+		&i.StrategyID,
+		&i.ControlID,
+		&i.Revision,
+		&i.Input,
+		&i.Actor,
+		&i.RequestKey,
+		&i.InstanceID,
+		&i.BootID,
+		&i.AcceptedBy,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deadline,
+		&i.TimeoutMs,
+		&i.Receipt,
+	)
+	return i, err
+}
+
+const getCommandByKey = `-- name: GetCommandByKey :one
+SELECT id, strategy_id, control_id, revision, input, actor, request_key, instance_id, boot_id, accepted_by, status, created_at, updated_at, deadline, timeout_ms, receipt FROM commands WHERE actor = ? AND strategy_id = ? AND request_key = ?
+`
+
+type GetCommandByKeyParams struct {
+	Actor      string
+	StrategyID string
+	RequestKey string
+}
+
+func (q *Queries) GetCommandByKey(ctx context.Context, arg GetCommandByKeyParams) (Command, error) {
+	row := q.db.QueryRowContext(ctx, getCommandByKey, arg.Actor, arg.StrategyID, arg.RequestKey)
+	var i Command
+	err := row.Scan(
+		&i.ID,
+		&i.StrategyID,
+		&i.ControlID,
+		&i.Revision,
+		&i.Input,
+		&i.Actor,
+		&i.RequestKey,
+		&i.InstanceID,
+		&i.BootID,
+		&i.AcceptedBy,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Deadline,
+		&i.TimeoutMs,
+		&i.Receipt,
+	)
+	return i, err
+}
+
 const getControlDefinition = `-- name: GetControlDefinition :one
 SELECT strategy_id, control_id, definition FROM control_definitions WHERE strategy_id = ? AND control_id = ?
 `
@@ -396,6 +501,17 @@ func (q *Queries) GetControlState(ctx context.Context, arg GetControlStateParams
 		&i.ObservedAt,
 	)
 	return i, err
+}
+
+const getExecutionPermit = `-- name: GetExecutionPermit :one
+SELECT digest FROM execution_permits WHERE command_id = ?
+`
+
+func (q *Queries) GetExecutionPermit(ctx context.Context, commandID string) (string, error) {
+	row := q.db.QueryRowContext(ctx, getExecutionPermit, commandID)
+	var digest string
+	err := row.Scan(&digest)
+	return digest, err
 }
 
 const getLiveAgentSession = `-- name: GetLiveAgentSession :one
@@ -479,6 +595,78 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (string, error) {
 	return value, err
 }
 
+const getStaleCommands = `-- name: GetStaleCommands :many
+SELECT c.id, c.strategy_id, c.control_id, c.revision, c.input, c.actor, c.request_key, c.instance_id, c.boot_id, c.accepted_by, c.status, c.created_at, c.updated_at, c.deadline, c.timeout_ms, c.receipt FROM commands c
+JOIN strategies s ON s.id = c.strategy_id
+LEFT JOIN control_registries r ON r.strategy_id = c.strategy_id
+LEFT JOIN agent_instances i ON i.strategy_id = c.strategy_id AND i.instance_id = c.instance_id
+LEFT JOIN agent_sessions a ON a.strategy_id = c.strategy_id AND a.instance_id = c.instance_id
+LEFT JOIN agent_tokens t ON t.id = a.token_id
+WHERE c.status IN ('confirmation_required','pending','accepted','executing') AND (
+    c.deadline <= ?1
+    OR (c.status = 'executing' AND ?2 = 1)
+    OR s.archived_at IS NOT NULL OR s.executor_instance IS NOT c.instance_id
+    OR r.revision IS NOT c.revision OR i.boot_id IS NOT c.boot_id
+    OR i.last_seen <= ?3
+    OR a.digest IS NULL OR a.expires_at <= ?4 OR t.revoked_at IS NOT NULL
+    OR t.expires_at <= ?4 OR (t.scopes & 8) = 0
+    OR (c.status IN ('accepted','executing') AND a.digest IS NOT c.accepted_by)
+)
+ORDER BY c.deadline LIMIT 128
+`
+
+type GetStaleCommandsParams struct {
+	NowMs     int64
+	Restart   interface{}
+	SeenAfter int64
+	Now       int64
+}
+
+func (q *Queries) GetStaleCommands(ctx context.Context, arg GetStaleCommandsParams) ([]Command, error) {
+	rows, err := q.db.QueryContext(ctx, getStaleCommands,
+		arg.NowMs,
+		arg.Restart,
+		arg.SeenAfter,
+		arg.Now,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Command
+	for rows.Next() {
+		var i Command
+		if err := rows.Scan(
+			&i.ID,
+			&i.StrategyID,
+			&i.ControlID,
+			&i.Revision,
+			&i.Input,
+			&i.Actor,
+			&i.RequestKey,
+			&i.InstanceID,
+			&i.BootID,
+			&i.AcceptedBy,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Deadline,
+			&i.TimeoutMs,
+			&i.Receipt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getStrategy = `-- name: GetStrategy :one
 SELECT id, name, group_name, mode, created_at, archived_at, executor_instance FROM strategies WHERE id = ?
 `
@@ -498,6 +686,48 @@ func (q *Queries) GetStrategy(ctx context.Context, id string) (Strategy, error) 
 	return i, err
 }
 
+const insertCommand = `-- name: InsertCommand :exec
+INSERT INTO commands (
+    id, strategy_id, control_id, revision, input, actor, request_key, instance_id, boot_id,
+    status, created_at, updated_at, deadline, timeout_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'created', ?, ?, ?, ?)
+`
+
+type InsertCommandParams struct {
+	ID         string
+	StrategyID string
+	ControlID  string
+	Revision   int64
+	Input      string
+	Actor      string
+	RequestKey string
+	InstanceID string
+	BootID     string
+	CreatedAt  int64
+	UpdatedAt  int64
+	Deadline   int64
+	TimeoutMs  int64
+}
+
+func (q *Queries) InsertCommand(ctx context.Context, arg InsertCommandParams) error {
+	_, err := q.db.ExecContext(ctx, insertCommand,
+		arg.ID,
+		arg.StrategyID,
+		arg.ControlID,
+		arg.Revision,
+		arg.Input,
+		arg.Actor,
+		arg.RequestKey,
+		arg.InstanceID,
+		arg.BootID,
+		arg.CreatedAt,
+		arg.UpdatedAt,
+		arg.Deadline,
+		arg.TimeoutMs,
+	)
+	return err
+}
+
 const insertControlDefinition = `-- name: InsertControlDefinition :exec
 INSERT INTO control_definitions (strategy_id, control_id, definition) VALUES (?, ?, ?)
 `
@@ -510,6 +740,21 @@ type InsertControlDefinitionParams struct {
 
 func (q *Queries) InsertControlDefinition(ctx context.Context, arg InsertControlDefinitionParams) error {
 	_, err := q.db.ExecContext(ctx, insertControlDefinition, arg.StrategyID, arg.ControlID, arg.Definition)
+	return err
+}
+
+const insertExecutionPermit = `-- name: InsertExecutionPermit :exec
+INSERT INTO execution_permits (command_id, digest, issued_at) VALUES (?, ?, ?)
+`
+
+type InsertExecutionPermitParams struct {
+	CommandID string
+	Digest    string
+	IssuedAt  int64
+}
+
+func (q *Queries) InsertExecutionPermit(ctx context.Context, arg InsertExecutionPermitParams) error {
+	_, err := q.db.ExecContext(ctx, insertExecutionPermit, arg.CommandID, arg.Digest, arg.IssuedAt)
 	return err
 }
 
@@ -604,6 +849,41 @@ func (q *Queries) ListAgentTokens(ctx context.Context, strategyID string) ([]Lis
 	return items, nil
 }
 
+const listAudit = `-- name: ListAudit :many
+SELECT id, at, actor, "action", strategy_id, command_id, details FROM audit WHERE id < ? ORDER BY id DESC LIMIT 100
+`
+
+func (q *Queries) ListAudit(ctx context.Context, id int64) ([]Audit, error) {
+	rows, err := q.db.QueryContext(ctx, listAudit, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Audit
+	for rows.Next() {
+		var i Audit
+		if err := rows.Scan(
+			&i.ID,
+			&i.At,
+			&i.Actor,
+			&i.Action,
+			&i.StrategyID,
+			&i.CommandID,
+			&i.Details,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listBrowserSessions = `-- name: ListBrowserSessions :many
 SELECT created_at, expires_at, digest = ?1 AS is_current
 FROM browser_sessions WHERE user_id = ?2 AND expires_at > ?3
@@ -632,6 +912,103 @@ func (q *Queries) ListBrowserSessions(ctx context.Context, arg ListBrowserSessio
 	for rows.Next() {
 		var i ListBrowserSessionsRow
 		if err := rows.Scan(&i.CreatedAt, &i.ExpiresAt, &i.IsCurrent); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCommandTransitions = `-- name: ListCommandTransitions :many
+SELECT sequence, command_id, previous, next, actor, reason, at FROM command_transitions WHERE command_id = ? ORDER BY sequence
+`
+
+func (q *Queries) ListCommandTransitions(ctx context.Context, commandID string) ([]CommandTransition, error) {
+	rows, err := q.db.QueryContext(ctx, listCommandTransitions, commandID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CommandTransition
+	for rows.Next() {
+		var i CommandTransition
+		if err := rows.Scan(
+			&i.Sequence,
+			&i.CommandID,
+			&i.Previous,
+			&i.Next,
+			&i.Actor,
+			&i.Reason,
+			&i.At,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listCommands = `-- name: ListCommands :many
+SELECT id, strategy_id, control_id, revision, input, actor, request_key, instance_id, boot_id, accepted_by, status, created_at, updated_at, deadline, timeout_ms, receipt FROM commands
+WHERE (?1 = '' OR strategy_id = ?1)
+AND (?2 = '' OR status = ?2)
+AND (created_at < ?3 OR (created_at = ?3 AND id < ?4))
+ORDER BY created_at DESC, id DESC LIMIT ?5
+`
+
+type ListCommandsParams struct {
+	StrategyID interface{}
+	Status     interface{}
+	BeforeAt   int64
+	BeforeID   string
+	PageSize   int64
+}
+
+func (q *Queries) ListCommands(ctx context.Context, arg ListCommandsParams) ([]Command, error) {
+	rows, err := q.db.QueryContext(ctx, listCommands,
+		arg.StrategyID,
+		arg.Status,
+		arg.BeforeAt,
+		arg.BeforeID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Command
+	for rows.Next() {
+		var i Command
+		if err := rows.Scan(
+			&i.ID,
+			&i.StrategyID,
+			&i.ControlID,
+			&i.Revision,
+			&i.Input,
+			&i.Actor,
+			&i.RequestKey,
+			&i.InstanceID,
+			&i.BootID,
+			&i.AcceptedBy,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Deadline,
+			&i.TimeoutMs,
+			&i.Receipt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -692,6 +1069,118 @@ func (q *Queries) ListControlStates(ctx context.Context, strategyID string) ([]C
 			&i.Available,
 			&i.Reason,
 			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDesiredStates = `-- name: ListDesiredStates :many
+SELECT d.strategy_id, d.control_id, d.command_id, d.revision, d.value, c.status, c.updated_at FROM desired_states d JOIN commands c ON c.id = d.command_id
+WHERE d.strategy_id = ? AND d.revision = ? ORDER BY d.control_id
+`
+
+type ListDesiredStatesParams struct {
+	StrategyID string
+	Revision   int64
+}
+
+type ListDesiredStatesRow struct {
+	StrategyID string
+	ControlID  string
+	CommandID  string
+	Revision   int64
+	Value      string
+	Status     string
+	UpdatedAt  int64
+}
+
+func (q *Queries) ListDesiredStates(ctx context.Context, arg ListDesiredStatesParams) ([]ListDesiredStatesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listDesiredStates, arg.StrategyID, arg.Revision)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDesiredStatesRow
+	for rows.Next() {
+		var i ListDesiredStatesRow
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.ControlID,
+			&i.CommandID,
+			&i.Revision,
+			&i.Value,
+			&i.Status,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingCommands = `-- name: ListPendingCommands :many
+SELECT id, strategy_id, control_id, revision, input, actor, request_key, instance_id, boot_id, accepted_by, status, created_at, updated_at, deadline, timeout_ms, receipt FROM commands
+WHERE strategy_id = ?1 AND instance_id = ?2 AND boot_id = ?3
+AND status = 'pending' AND deadline > ?4 AND revision = ?5
+ORDER BY created_at, id LIMIT 32
+`
+
+type ListPendingCommandsParams struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+	Now        int64
+	Revision   int64
+}
+
+func (q *Queries) ListPendingCommands(ctx context.Context, arg ListPendingCommandsParams) ([]Command, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingCommands,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.BootID,
+		arg.Now,
+		arg.Revision,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Command
+	for rows.Next() {
+		var i Command
+		if err := rows.Scan(
+			&i.ID,
+			&i.StrategyID,
+			&i.ControlID,
+			&i.Revision,
+			&i.Input,
+			&i.Actor,
+			&i.RequestKey,
+			&i.InstanceID,
+			&i.BootID,
+			&i.AcceptedBy,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Deadline,
+			&i.TimeoutMs,
+			&i.Receipt,
 		); err != nil {
 			return nil, err
 		}
@@ -808,6 +1297,31 @@ func (q *Queries) PutControlState(ctx context.Context, arg PutControlStateParams
 	return err
 }
 
+const putDesiredState = `-- name: PutDesiredState :exec
+INSERT INTO desired_states (strategy_id, control_id, command_id, revision, value) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (strategy_id, control_id) DO UPDATE SET
+command_id = excluded.command_id, revision = excluded.revision, value = excluded.value
+`
+
+type PutDesiredStateParams struct {
+	StrategyID string
+	ControlID  string
+	CommandID  string
+	Revision   int64
+	Value      string
+}
+
+func (q *Queries) PutDesiredState(ctx context.Context, arg PutDesiredStateParams) error {
+	_, err := q.db.ExecContext(ctx, putDesiredState,
+		arg.StrategyID,
+		arg.ControlID,
+		arg.CommandID,
+		arg.Revision,
+		arg.Value,
+	)
+	return err
+}
+
 const rememberAgentBoot = `-- name: RememberAgentBoot :execrows
 INSERT INTO agent_boots(strategy_id, instance_id, boot_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING
 `
@@ -892,6 +1406,38 @@ type SetSettingParams struct {
 func (q *Queries) SetSetting(ctx context.Context, arg SetSettingParams) error {
 	_, err := q.db.ExecContext(ctx, setSetting, arg.Key, arg.Value)
 	return err
+}
+
+const transitionCommand = `-- name: TransitionCommand :execrows
+UPDATE commands SET status = ?1, updated_at = ?2,
+    accepted_by = ?3, deadline = ?4, receipt = ?5
+WHERE id = ?6 AND status = ?7
+`
+
+type TransitionCommandParams struct {
+	Next       string
+	UpdatedAt  int64
+	AcceptedBy sql.NullString
+	Deadline   int64
+	Receipt    sql.NullString
+	ID         string
+	Previous   string
+}
+
+func (q *Queries) TransitionCommand(ctx context.Context, arg TransitionCommandParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, transitionCommand,
+		arg.Next,
+		arg.UpdatedAt,
+		arg.AcceptedBy,
+		arg.Deadline,
+		arg.Receipt,
+		arg.ID,
+		arg.Previous,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const updateAgentHeartbeat = `-- name: UpdateAgentHeartbeat :execrows

@@ -176,3 +176,81 @@ JOIN agent_tokens t ON t.id = a.token_id
 WHERE s.id = sqlc.arg(strategy_id) AND s.archived_at IS NULL
 AND a.expires_at > sqlc.arg(now) AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > sqlc.arg(now))
 AND i.last_seen > sqlc.arg(seen_after) AND (t.scopes & sqlc.arg(scope)) = sqlc.arg(scope);
+
+-- name: GetCommand :one
+SELECT * FROM commands WHERE id = ?;
+
+-- name: GetCommandByKey :one
+SELECT * FROM commands WHERE actor = ? AND strategy_id = ? AND request_key = ?;
+
+-- name: GetActiveControlCommand :one
+SELECT id FROM commands WHERE strategy_id = ? AND control_id = ?
+AND status IN ('created','confirmation_required','pending','accepted','executing','unknown');
+
+-- name: InsertCommand :exec
+INSERT INTO commands (
+    id, strategy_id, control_id, revision, input, actor, request_key, instance_id, boot_id,
+    status, created_at, updated_at, deadline, timeout_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'created', ?, ?, ?, ?);
+
+-- name: TransitionCommand :execrows
+UPDATE commands SET status = sqlc.arg(next), updated_at = sqlc.arg(updated_at),
+    accepted_by = sqlc.narg(accepted_by), deadline = sqlc.arg(deadline), receipt = sqlc.narg(receipt)
+WHERE id = sqlc.arg(id) AND status = sqlc.arg(previous);
+
+-- name: AppendCommandTransition :exec
+INSERT INTO command_transitions (command_id, previous, next, actor, reason, at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+-- name: ListCommandTransitions :many
+SELECT * FROM command_transitions WHERE command_id = ? ORDER BY sequence;
+
+-- name: PutDesiredState :exec
+INSERT INTO desired_states (strategy_id, control_id, command_id, revision, value) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (strategy_id, control_id) DO UPDATE SET
+command_id = excluded.command_id, revision = excluded.revision, value = excluded.value;
+
+-- name: ListDesiredStates :many
+SELECT d.*, c.status, c.updated_at FROM desired_states d JOIN commands c ON c.id = d.command_id
+WHERE d.strategy_id = ? AND d.revision = ? ORDER BY d.control_id;
+
+-- name: InsertExecutionPermit :exec
+INSERT INTO execution_permits (command_id, digest, issued_at) VALUES (?, ?, ?);
+
+-- name: GetExecutionPermit :one
+SELECT digest FROM execution_permits WHERE command_id = ?;
+
+-- name: ListPendingCommands :many
+SELECT * FROM commands
+WHERE strategy_id = sqlc.arg(strategy_id) AND instance_id = sqlc.arg(instance_id) AND boot_id = sqlc.arg(boot_id)
+AND status = 'pending' AND deadline > sqlc.arg(now) AND revision = sqlc.arg(revision)
+ORDER BY created_at, id LIMIT 32;
+
+-- name: ListCommands :many
+SELECT * FROM commands
+WHERE (sqlc.arg(strategy_id) = '' OR strategy_id = sqlc.arg(strategy_id))
+AND (sqlc.arg(status) = '' OR status = sqlc.arg(status))
+AND (created_at < sqlc.arg(before_at) OR (created_at = sqlc.arg(before_at) AND id < sqlc.arg(before_id)))
+ORDER BY created_at DESC, id DESC LIMIT sqlc.arg(page_size);
+
+-- name: GetStaleCommands :many
+SELECT c.* FROM commands c
+JOIN strategies s ON s.id = c.strategy_id
+LEFT JOIN control_registries r ON r.strategy_id = c.strategy_id
+LEFT JOIN agent_instances i ON i.strategy_id = c.strategy_id AND i.instance_id = c.instance_id
+LEFT JOIN agent_sessions a ON a.strategy_id = c.strategy_id AND a.instance_id = c.instance_id
+LEFT JOIN agent_tokens t ON t.id = a.token_id
+WHERE c.status IN ('confirmation_required','pending','accepted','executing') AND (
+    c.deadline <= sqlc.arg(now_ms)
+    OR (c.status = 'executing' AND sqlc.arg(restart) = 1)
+    OR s.archived_at IS NOT NULL OR s.executor_instance IS NOT c.instance_id
+    OR r.revision IS NOT c.revision OR i.boot_id IS NOT c.boot_id
+    OR i.last_seen <= sqlc.arg(seen_after)
+    OR a.digest IS NULL OR a.expires_at <= sqlc.arg(now) OR t.revoked_at IS NOT NULL
+    OR t.expires_at <= sqlc.arg(now) OR (t.scopes & 8) = 0
+    OR (c.status IN ('accepted','executing') AND a.digest IS NOT c.accepted_by)
+)
+ORDER BY c.deadline LIMIT 128;
+
+-- name: ListAudit :many
+SELECT * FROM audit WHERE id < ? ORDER BY id DESC LIMIT 100;

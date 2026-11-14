@@ -54,3 +54,14 @@ The designated executor with both `control` and `command` scopes publishes a reg
 Kinds are `button`, `toggle`, `slider`, `numberInput`, `textInput`, `select`, `multiSelect`, `status`, `metricDisplay`, and `form`. Numeric values, ranges, and steps are decimal strings. Options are objects with `value` and `label`. Forms contain a `fields` array of input definitions. Button input is JSON null. Use `readOnly` and `disabled` for static constraints.
 
 `PUT /api/v1/agent/controls/state` takes `version: 1`, the committed `revision`, and `states`. Each entry has `id`, `value`, `available`, `observedAt` in UTC Unix milliseconds, and optional `reason`. Use availability and reason to report local safety locks. State batches validate and commit atomically. Replays return duplicate counts, older observations return stale counts, and conflicting values for the same timestamp are rejected. Registry changes clear previous actual state. Actual state and availability come from the Agent.
+
+## Commands
+
+The designated online executor with `command` scope calls `GET /api/v1/agent/commands?wait=25`. The server waits up to the configured window and returns an array, empty at timeout. `wait=0` returns immediately. Disconnecting a poll does not change commands. The response is an offer to process the listed command.
+
+1. Call `POST /api/v1/agent/commands/{id}/accept` with the current session. A successful response binds the command to that session. A repeated acceptance for the same current session is safe.
+2. Verify local readiness, then call `POST /api/v1/agent/commands/{id}/claim` with the same session. One request can succeed. The response includes `permit` and the execution `deadline` as Unix milliseconds. Execute only if the response contains the grant and the deadline remains valid.
+3. Journal the execution outcome and call `POST /api/v1/agent/commands/{id}/result` with `permit`, `status` (`succeeded`, `failed`, or `unknown`), optional `message`, and optional JSON `data`. Retry the same receipt after a transport failure. If needed, renew the session with the same boot and a valid command-scoped credential to replay the receipt.
+4. Report actual state independently using `PUT /api/v1/agent/controls/state`.
+
+Use `POST /api/v1/agent/commands/{id}/reject` with a JSON `reason` when declining a command before receiving a permit. Run the local trading and risk checks immediately before broker actions. See [control security](CONTROL_SECURITY.md).

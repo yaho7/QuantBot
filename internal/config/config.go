@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -16,10 +17,11 @@ type Config struct {
 	DataDir        string
 	PublicOrigin   string
 	TrustedProxies []netip.Prefix
+	CommandPoll    time.Duration
 }
 
 func Load() (Config, error) {
-	config := Config{Listen: "127.0.0.1:23456", DataDir: "data"}
+	config := Config{Listen: "127.0.0.1:23456", DataDir: "data", CommandPoll: 25 * time.Second}
 	if value, ok := os.LookupEnv("QB_LISTEN"); ok {
 		config.Listen = value
 	}
@@ -57,6 +59,13 @@ func Load() (Config, error) {
 			}
 			config.TrustedProxies = append(config.TrustedProxies, prefix.Masked())
 		}
+	}
+	if value := os.Getenv("QB_COMMAND_POLL"); value != "" {
+		poll, err := time.ParseDuration(value)
+		if err != nil || poll <= 0 || poll > 25*time.Second {
+			return Config{}, fmt.Errorf("QB_COMMAND_POLL must be a duration up to 25s")
+		}
+		config.CommandPoll = poll
 	}
 	return config, nil
 }

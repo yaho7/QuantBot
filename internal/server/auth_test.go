@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/yaho7/QuantBot/internal/auth"
+	"github.com/yaho7/QuantBot/internal/command"
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/storage"
 )
@@ -100,7 +101,7 @@ func newAuthTestServer(t *testing.T, cfg config.Config) http.Handler {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = stores.Close() })
-	return routes(stores, cfg)
+	return routes(stores, cfg, command.New(stores.Control, t.Context(), cfg.CommandPoll))
 }
 
 func requestAuth(t *testing.T, handler http.Handler, method, path, body, origin string, cookie *http.Cookie, csrf string, expected int) *httptest.ResponseRecorder {
