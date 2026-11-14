@@ -14,6 +14,7 @@ The API is rooted at `/api/v1`. Browser requests use the administrator session c
 | `GET /commands`, `GET /commands/{id}` | List commands or view one command and its transitions |
 | `POST /commands/{id}/confirm`, `/cancel`, `/reconcile` | Apply an authorized state transition |
 | `/admin/strategies` and per-strategy `/executor` and `/tokens` | Manage strategies and credentials |
+| `/admin/notifications` and per-channel `/test` and `/deliveries` | Encrypted channel configuration, test messages and delivery status |
 | `/admin/audit` | Read recent audit events |
 | `/events` | Subscribe to strategy/topic invalidations |
 

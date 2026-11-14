@@ -15,7 +15,7 @@ Requirements are in [AGENTS.md](../AGENTS.md). Update the evidence column after 
 | Separate administration workflow | Independent sidebar and mobile drawer, real dashboard, strategy, integration, themes, notifications, storage, audit, security and settings flows | Pending |
 | New installable themes | Upload and configure both package types, inspect ZIP attack cases, verify restricted iframe, switch, update, rollback, delete, force Classic fallback | Pending |
 | AI prompt and bounded Sandbox | Run all Agent endpoints with temporary credentials, verify renewal, revocation, expiry, global limits and isolation, then connect production | Pending |
-| Telegram notifications and operations | Verify delivery, retry, and authorization with test transport. Any chat control uses shared control policy and audit. | Pending |
+| Telegram notifications and operations | Verify delivery, retry, and authorization with test transport. Any chat control uses shared control policy and audit. | Simulated Telegram, Feishu/Lark, WeCom and DingTalk tests cover wire format, signatures, rejection and retry. Encrypted credentials and persistent delivery tests pass. Live credentials, browser and inbound Telegram controls pending. |
 | Backups, native and container installs | Serve, version, doctor, backup and restore on clean data. Build and smoke-test Docker for amd64 and arm64. | Pending |
 
 ## Release verification

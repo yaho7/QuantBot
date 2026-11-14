@@ -15,6 +15,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/control"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/notification"
 	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/secrets"
 	"github.com/yaho7/QuantBot/internal/storage"
@@ -33,7 +34,8 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	defer func() { err = errors.Join(err, stores.Close()) }()
-	if _, err := secrets.Open(startup, cfg.DataDir, controldb.New(stores.Control.Write)); err != nil {
+	key, err := secrets.Open(startup, cfg.DataDir, controldb.New(stores.Control.Write))
+	if err != nil {
 		return err
 	}
 
@@ -48,7 +50,9 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 	defer reports.Close()
 	maintenance, cancelMaintenance := context.WithCancel(ctx)
+	notifications := notification.New(stores.Control, key)
 	var maintained sync.WaitGroup
+	maintained.Go(func() { notifications.Run(maintenance) })
 	maintained.Go(func() { events.Run(maintenance) })
 	maintained.Go(func() { commands.Maintain(maintenance) })
 	maintained.Go(func() { reports.Maintain(maintenance, cfg.DataDir) })
@@ -62,7 +66,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           routes(stores, cfg, commands, reports, events),
+		Handler:           routes(stores, cfg, commands, reports, events, notifications),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -87,7 +91,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 }
 
-func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus) http.Handler {
+func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus, notifications *notification.Service) http.Handler {
 	router := chi.NewRouter()
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
 	router.Use(origins.Guard)
@@ -105,6 +109,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
+			notifications.Register(r)
 			r.Get("/admin/diagnostics", diagnostics(stores, reports, events, cfg.DataDir))
 			r.Get("/events", func(w http.ResponseWriter, r *http.Request) {
 				events.Stream(w, r, accounts.SessionActive)

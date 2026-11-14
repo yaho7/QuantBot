@@ -2,7 +2,9 @@ version: "2"
 sql:
   - engine: sqlite
     schema: internal/storage/migrations/control
-    queries: internal/storage/control.sql
+    queries:
+      - internal/storage/control.sql
+      - internal/storage/notifications.sql
     gen:
       go:
         package: controldb

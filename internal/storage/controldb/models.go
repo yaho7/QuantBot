@@ -126,6 +126,36 @@ type ExecutionPermit struct {
 	IssuedAt  int64
 }
 
+type NotificationChannel struct {
+	ID        string
+	Name      string
+	Provider  string
+	Encrypted []byte
+	Enabled   int64
+	Events    string
+	UpdatedAt int64
+}
+
+type NotificationDelivery struct {
+	ID         int64
+	ChannelID  string
+	EventID    int64
+	Status     string
+	Attempts   int64
+	NextAt     int64
+	LastError  string
+	ProviderID string
+	FinishedAt sql.NullInt64
+}
+
+type NotificationEvent struct {
+	ID        int64
+	Kind      string
+	Title     string
+	Body      string
+	CreatedAt int64
+}
+
 type Setting struct {
 	Key   string
 	Value string
