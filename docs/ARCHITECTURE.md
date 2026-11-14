@@ -63,7 +63,7 @@ No upstream code or assets were copied during this review. Record file-level sou
 | --- | --- | --- |
 | Chi, go-sqlite3, sqlc, Go x/crypto | Routing, embedded SQLite, generated typed SQL, password hashing | MIT, MIT with SQLite public domain, MIT, BSD-3-Clause |
 | React, Vite, Tailwind CSS, React Router, TanStack Query, Radix UI | UI, build, styling, routes, query cache, accessible controls | MIT |
-| TypeScript, Lucide, uPlot, Lightweight Charts | Type checking, icons, time series and financial charts | Apache-2.0, ISC with inherited MIT attribution, MIT, Apache-2.0 with NOTICE |
+| TypeScript, Lucide, uPlot, Lightweight Charts | Type checking, icons, time series and financial charts | Apache-2.0, ISC with inherited MIT attribution, MIT, Apache-2.0 with NOTICE. Redistributed runtime notices are in [licenses](licenses); candlestick charts display the TradingView link. |
 | santhosh-tekuri/jsonschema v6 | Compile the same JSON Schema distributed to Agent developers and used for server-side validation | Apache-2.0 |
 | tx7do/go-utils/notify | Telegram delivery plus signed Feishu/Lark, WeCom and DingTalk webhooks | MIT. QuantBot validates send destinations and platform receipts. |
 | dnd-kit, Sonner, Zod, Playwright | Accessible reordering, notifications, validation, browser testing | MIT, MIT, MIT, Apache-2.0 |
