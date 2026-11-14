@@ -8,7 +8,8 @@ import {
   type Point,
 } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
-import { Badge, ErrorView, Loading, shown, timestamp } from "../shared/ui";
+import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
+import { useDisplay } from "../shared/display";
 import { DataTable } from "../app/strategy";
 import { RelatedRecords } from "./related-records";
 
@@ -36,6 +37,7 @@ export function CapabilityWidget({
   detailed: boolean;
 }) {
   const { t } = useLanguage();
+  const display = useDisplay();
   const base = "/strategies/" + strategyId;
   const chart =
     capability.renderer === "line" || capability.renderer === "candlestick";
@@ -141,6 +143,7 @@ export function CapabilityWidget({
         <DataTable
           title=""
           maxColumns={40}
+          fields="annotations"
           renderCell={(key, value) =>
             key === "Related IDs" && value && typeof value === "object" ? (
               <RelatedRecords
@@ -187,7 +190,9 @@ export function CapabilityWidget({
             {typeof value === "string" &&
             (chart || capability.renderer === "number")
               ? formatDecimal(value)
-              : shown(value)}{" "}
+              : capability.kind === "state" && capability.group === "health" && typeof value === "boolean"
+                ? t(value ? "healthy" : "degraded")
+                : display.value(value)}{" "}
             {capability.unit}
           </strong>
           {detailed && recent && (

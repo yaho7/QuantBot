@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { resource, type CapabilityRecord } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
-import { ErrorView, Loading, Modal, shown, timestamp } from "../shared/ui";
+import { useDisplay } from "../shared/display";
+import { ErrorView, Loading, Modal, timestamp } from "../shared/ui";
 
 export function RelatedRecords({
   strategyId,
@@ -11,6 +12,7 @@ export function RelatedRecords({
   strategyId: string;
   associations?: Record<string, string>;
 }) {
+  const display = useDisplay();
   const [selected, setSelected] = useState<[string, string]>();
   return (
     <>
@@ -23,7 +25,7 @@ export function RelatedRecords({
             key={field}
             onClick={() => setSelected([field, value])}
           >
-            {field} {value}
+            {display.field(field)} {value}
           </button>
         ))}
       {selected && (
@@ -47,6 +49,7 @@ function RelatedDialog({
   close: () => void;
 }) {
   const { t } = useLanguage();
+  const display = useDisplay();
   const [field, value] = selected;
   const query = useQuery(
     resource<
@@ -72,7 +75,7 @@ function RelatedDialog({
     >
       <p>
         <code>
-          {field} {value}
+          {display.field(field)} {value}
         </code>
       </p>
       {query.isPending ? (
@@ -90,8 +93,8 @@ function RelatedDialog({
             >
               <time>{timestamp(row.observedAt)}</time>
               <span>
-                <strong>{row.capabilityId ?? row.kind}</strong> ·{" "}
-                {shown(row.value)}
+                <strong>{row.capabilityId ?? display.kind(row.kind ?? "")}</strong> ·{" "}
+                {display.value(row.value)}
               </span>
             </div>
           ))}

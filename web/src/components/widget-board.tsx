@@ -506,6 +506,7 @@ function TelemetryWidget({ widget }: { widget: Widget }) {
   if (widget.type === "positions")
     return (
       <DataTable
+        fields="standard"
         title=""
         rows={values.records
           .filter((r) => r.kind === "position")

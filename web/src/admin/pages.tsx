@@ -14,6 +14,7 @@ import {
   type Session,
 } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
+import { useDisplay } from "../shared/display";
 import {
   Badge,
   ErrorView,
@@ -26,6 +27,7 @@ import { Page } from "../app/App";
 
 export function AdminDashboard() {
   const { t } = useLanguage();
+  const display = useDisplay();
   const query = useQuery({
     ...resource<Diagnostics>("/admin/diagnostics"),
     refetchInterval: 10_000,
@@ -41,9 +43,9 @@ export function AdminDashboard() {
           <div className="summary-grid">
             {[
               [t("online"), query.data.onlineAgents],
-              ["Samples", query.data.samples],
-              ["SSE", query.data.sseSubscribers],
-              ["Queue", query.data.queueDepth],
+              [t("samples"), query.data.samples],
+              [t("sseSubscribers"), query.data.sseSubscribers],
+              [t("queueDepth"), query.data.queueDepth],
             ].map(([label, value]) => (
               <div className="summary-card" key={label}>
                 <span className="muted">{label}</span>
@@ -54,15 +56,15 @@ export function AdminDashboard() {
           <section className="section surface padded">
             <dl className="system-dl">
               {[
-                [t("uptime"), Math.floor(query.data.uptimeSeconds) + " s"],
+                [t("uptime"), display.unit(Math.floor(query.data.uptimeSeconds), "second")],
                 [
-                  "Peak RSS",
+                  t("peakMemory"),
                   (query.data.peakRssBytes / 1048576).toFixed(1) + " MiB",
                 ],
-                ["Heap", (query.data.heapBytes / 1048576).toFixed(1) + " MiB"],
-                ["CPU", query.data.cpuSeconds.toFixed(2) + " s"],
-                ["Goroutines", query.data.goroutines],
-                ["Write failures", query.data.writeFailures],
+                [t("heapMemory"), (query.data.heapBytes / 1048576).toFixed(1) + " MiB"],
+                ["CPU", display.unit(query.data.cpuSeconds, "second")],
+                [t("goRoutines"), query.data.goroutines],
+                [t("writeFailures"), query.data.writeFailures],
                 ...Object.entries(query.data.walBytes ?? {}).map(
                   ([name, value]) => [
                     name + " WAL",
@@ -236,6 +238,7 @@ type Token = {
 };
 export function Integration() {
   const { t } = useLanguage();
+  const display = useDisplay();
   const strategies = useQuery(resource<Strategy[]>("/admin/strategies"));
   const [params, setParams] = useSearchParams();
   const id =
@@ -305,7 +308,7 @@ export function Integration() {
               }}
             >
               <label>
-                Label
+                {t("displayName")}
                 <input
                   required
                   value={label}
@@ -313,7 +316,7 @@ export function Integration() {
                 />
               </label>
               <fieldset>
-                <legend>Scopes</legend>
+                <legend>{t("scopes")}</legend>
                 {["heartbeat", "report", "control", "command"].map((scope) => (
                   <label className="check-label" key={scope}>
                     <input
@@ -327,7 +330,7 @@ export function Integration() {
                         )
                       }
                     />
-                    {scope}
+                    {display.scope(scope)}
                   </label>
                 ))}
               </fieldset>
@@ -341,8 +344,8 @@ export function Integration() {
               <table>
                 <thead>
                   <tr>
-                    <th>Label</th>
-                    <th>Scopes</th>
+                    <th>{t("displayName")}</th>
+                    <th>{t("scopes")}</th>
                     <th>{t("created")}</th>
                     <th />
                   </tr>
@@ -351,7 +354,7 @@ export function Integration() {
                   {tokens.data?.map((row) => (
                     <tr key={row.id}>
                       <td>{row.label}</td>
-                      <td>{row.scopes.join(", ")}</td>
+                      <td>{row.scopes.map(display.scope).join(" · ")}</td>
                       <td>{timestamp(row.createdAt, true)}</td>
                       <td>
                         {row.revokedAt ? (
@@ -498,9 +501,9 @@ export function Audit() {
               <thead>
                 <tr>
                   <th>{t("created")}</th>
-                  <th>Actor</th>
-                  <th>Action</th>
-                  <th>Details</th>
+                  <th>{t("actor")}</th>
+                  <th>{t("action")}</th>
+                  <th>{t("details")}</th>
                 </tr>
               </thead>
               <tbody>

@@ -272,7 +272,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   // The receipt alone does not update the independently reported actual state.
   await expect(
     page.locator(".control-card").first().locator("dd").first(),
-  ).toHaveText("false");
+  ).toHaveText("关闭");
   state.states[0]!.value = true;
   state.states.forEach((s) => (s.observedAt = Date.now()));
   expect(
@@ -285,7 +285,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   ).toBeTruthy();
   await expect(
     page.locator(".control-card").first().locator("dd").first(),
-  ).toHaveText("true");
+  ).toHaveText("开启");
 
   const metric = await request.post("/api/agent/reports", {
     headers,
@@ -366,7 +366,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(widget("策略原始信号")).toContainText("真实信号");
   await expect(widget("策略原始信号")).toContainText("order-paper-42");
   await widget("策略原始信号")
-    .getByRole("button", { name: "order_id order-paper-42" })
+    .getByRole("button", { name: "订单编号 order-paper-42" })
     .click();
   await expect(dialog.getByRole("heading", { name: "关联记录" })).toBeVisible();
   await expect(dialog).toContainText("真实信号");

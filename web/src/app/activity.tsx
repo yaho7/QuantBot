@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { resource, type Command, type Datum } from "../shared/api";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
 import { useLanguage } from "../shared/i18n";
+import { useDisplay } from "../shared/display";
 import { Page } from "./App";
 import { CommandDialog } from "./control";
 
@@ -21,7 +22,7 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
     <>
       <div className="filter-bar">
         <select
-          aria-label="Status"
+          aria-label={t("status")}
           value={status}
           onChange={(e) => setStatus(e.target.value)}
         >
@@ -78,6 +79,7 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
 }
 export function AlertsPage() {
   const { t } = useLanguage();
+  const display = useDisplay();
   const query = useQuery(resource<Datum[]>("/alerts"));
   return (
     <Page title={t("alerts")}>
@@ -105,7 +107,7 @@ export function AlertsPage() {
                     : "warning"
                 }
               >
-                {String(row.data.severity)}
+                {display.severity(String(row.data.severity ?? ""))}
               </Badge>
               <time>{timestamp(row.observedAt)}</time>
             </Link>

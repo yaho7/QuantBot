@@ -129,7 +129,7 @@ export function Home() {
               {t("strategies")}{" "}
               <span className="muted count">{rows.length}</span>
             </h2>
-            <div className="view-switch" role="group" aria-label="View">
+            <div className="view-switch" role="group" aria-label={t("view")}>
               {views.map(([name, Icon]) => (
                 <button
                   key={name}
@@ -182,7 +182,7 @@ export function Home() {
               />
             </label>
             <select
-              aria-label="Sort"
+              aria-label={t("sort")}
               value={sort}
               onChange={(e) => setSort(e.target.value)}
             >

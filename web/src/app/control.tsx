@@ -13,7 +13,8 @@ import {
   type Registry,
   type Command,
 } from "../shared/api";
-import { Badge, ErrorView, Loading, Modal, shown } from "../shared/ui";
+import { Badge, ErrorView, Loading, Modal } from "../shared/ui";
+import { useDisplay } from "../shared/display";
 import { useLanguage } from "../shared/i18n";
 
 export function ControlPanel({
@@ -64,6 +65,7 @@ export function ControlCard({
   embedded?: boolean;
 }) {
   const { t } = useLanguage();
+  const display = useDisplay();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState<unknown>(
     editValue(control, control.actual?.value),
@@ -126,7 +128,7 @@ export function ControlCard({
                 ["high", "critical"].includes(control.risk) ? "warning" : ""
               }
             >
-              {control.risk}
+              {display.risk(control.risk)}
             </Badge>
           )}
         </header>
@@ -134,9 +136,9 @@ export function ControlCard({
       {control.description && <p className="muted">{control.description}</p>}
       <dl className="control-values">
         <dt>{t("actual")}</dt>
-        <dd>{shown(control.actual?.value)}</dd>
+        <dd>{display.value(control.actual?.value, control)}</dd>
         <dt>{t("desired")}</dt>
-        <dd>{shown(control.desired?.value)}</dd>
+        <dd>{display.value(control.desired?.value, control)}</dd>
       </dl>
       {control.actual?.reason && (
         <p className="warning">{control.actual.reason}</p>
@@ -186,10 +188,10 @@ export function ControlCard({
             </p>
             <p>{t("confirmHint")}</p>
             <dl className="compact-dl">
-              <dt>Strategy</dt>
+              <dt>{t("strategy")}</dt>
               <dd>{strategyId}</dd>
               <dt>{t("desired")}</dt>
-              <dd>{shown(command.input)}</dd>
+              <dd>{display.value(command.input, control)}</dd>
             </dl>
             <button
               className="primary"
@@ -411,6 +413,7 @@ export function CommandDialog({
   close: () => void;
 }) {
   const { t } = useLanguage();
+  const display = useDisplay();
   const query = useQuery(resource<Command>("/commands/" + commandId));
   const [note, setNote] = useState("");
   const [outcome, setOutcome] = useState("succeeded");
@@ -448,7 +451,7 @@ export function CommandDialog({
           </p>
           <dl className="compact-dl">
             <dt>{t("desired")}</dt>
-            <dd>{shown(query.data.input)}</dd>
+            <dd>{display.value(query.data.input)}</dd>
             <dt>ID</dt>
             <dd>{query.data.id}</dd>
           </dl>
@@ -457,12 +460,12 @@ export function CommandDialog({
               <li key={i}>
                 <strong>{t(entry.status as "pending")}</strong>
                 <time>{new Date(entry.at).toLocaleTimeString()}</time>
-                <p>{entry.reason}</p>
+                <p>{display.reason(entry.reason)}</p>
               </li>
             ))}
           </ol>
           {query.data.receipt && (
-            <p>{query.data.receipt.message ?? query.data.receipt.status}</p>
+            <p>{query.data.receipt.message ?? t(query.data.receipt.status as "succeeded")}</p>
           )}
           {query.data.status === "confirmation_required" && (
             <button

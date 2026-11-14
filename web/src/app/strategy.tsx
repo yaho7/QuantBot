@@ -11,12 +11,12 @@ import {
   type Point,
 } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
+import { useDisplay } from "../shared/display";
 import {
   Badge,
   decimalText,
   ErrorView,
   Loading,
-  shown,
   timestamp,
 } from "../shared/ui";
 const Chart = lazy(() => import("../components/chart"));
@@ -40,6 +40,7 @@ export function StrategyDetail() {
   const { id = "" } = useParams();
   const query = useQuery(resource<Strategy>("/strategies/" + id));
   const { t } = useLanguage();
+  const display = useDisplay();
   const catalog = useQuery({
     ...resource<CapabilityCatalog>("/strategies/" + id + "/capabilities"),
     refetchInterval: 5000,
@@ -114,7 +115,7 @@ export function StrategyDetail() {
         </span>
         {runtime && (
           <span>
-            {t("uptime")} · {Math.floor((Date.now() / 1000 - runtime) / 60)} min
+            {t("uptime")} · {display.unit(Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)), "minute")}
           </span>
         )}
         {health &&
@@ -178,10 +179,10 @@ export function StrategyDetail() {
       </section>
       <section className="section">
         {telemetry.error && <ErrorView error={telemetry.error} />}
-        <DataTable title={t("equity")} rows={accounts} />
+        <DataTable title={t("equity")} rows={accounts} fields="standard" />
         <div className="two-columns">
-          <DataTable title={t("positions")} rows={positions} />
-          <DataTable title={t("orders")} rows={orders} />
+          <DataTable title={t("positions")} rows={positions} fields="standard" />
+          <DataTable title={t("orders")} rows={orders} fields="standard" />
         </div>
       </section>
       <section className="section">
@@ -234,6 +235,7 @@ export function History({
   const [selected, setSelected] = useState(0);
   const [range, setRange] = useState(24);
   const { t } = useLanguage();
+  const display = useDisplay();
   const options = query.data?.series ?? [];
   const series = options[selected] ?? options[0];
   const window = useMemo(
@@ -260,25 +262,25 @@ export function History({
     <div className={(embedded ? "" : "surface ") + "chart-card"}>
       <div className="filter-bar">
         <select
-          aria-label="Series"
+          aria-label={t("series")}
           value={selected}
           onChange={(e) => setSelected(Number(e.target.value))}
         >
           {options.map((s, i) => (
             <option value={i} key={s.kind + s.series + s.instanceId}>
-              {s.kind} · {s.series} · {s.instanceId}
+              {[display.kind(s.kind), display.series(s.kind, s.series), s.instanceId].filter(Boolean).join(" · ")}
             </option>
           ))}
         </select>
         <select
-          aria-label="Time range"
+          aria-label={t("timeRange")}
           value={range}
           onChange={(e) => setRange(Number(e.target.value))}
         >
-          <option value={1}>1h</option>
-          <option value={24}>24h</option>
-          <option value={168}>7d</option>
-          <option value={720}>30d</option>
+          <option value={1}>{display.unit(1, "hour")}</option>
+          <option value={24}>{display.unit(24, "hour")}</option>
+          <option value={168}>{display.unit(7, "day")}</option>
+          <option value={720}>{display.unit(30, "day")}</option>
         </select>
       </div>
       {query.error || history.error ? (
@@ -298,8 +300,7 @@ export function History({
       )}
       {history.data && history.data.resolutionMs > 0 && (
         <small className="muted">
-          {history.data.resolutionMs / 60000} min · {history.data.points.length}{" "}
-          points
+          {display.unit(history.data.resolutionMs / 60000, "minute")} · {t("samples")} {history.data.points.length}
         </small>
       )}
     </div>
@@ -308,15 +309,18 @@ export function History({
 export function DataTable({
   title,
   rows,
+  fields,
   maxColumns = 10,
   renderCell,
 }: {
   title: string;
   rows: Record<string, unknown>[];
+  fields?: "standard" | "annotations";
   maxColumns?: number;
   renderCell?: (key: string, value: unknown) => ReactNode;
 }) {
   const { t } = useLanguage();
+  const display = useDisplay();
   const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))].slice(
     0,
     maxColumns,
@@ -330,7 +334,11 @@ export function DataTable({
             <thead>
               <tr>
                 {keys.map((key) => (
-                  <th key={key}>{key}</th>
+                  <th key={key}>
+                    {fields === "standard" || (fields === "annotations" && ["Observed at", "Resource ID", "Related IDs"].includes(key))
+                      ? display.field(key)
+                      : key}
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -339,7 +347,8 @@ export function DataTable({
                 <tr key={i}>
                   {keys.map((key) => (
                     <td key={key}>
-                      {renderCell?.(key, row[key]) ?? shown(row[key])}
+                      {renderCell?.(key, row[key]) ??
+                        (fields === "standard" ? display.tableValue(key, row[key]) : display.value(row[key]))}
                     </td>
                   ))}
                 </tr>
@@ -356,6 +365,7 @@ export function DataTable({
 function RecordFeed({ id }: { id: string }) {
   const [kind, setKind] = useState("log");
   const { t } = useLanguage();
+  const display = useDisplay();
   const query = useQuery(
     resource<Datum[]>("/strategies/" + id + "/records?kind=" + kind),
   );
@@ -364,7 +374,7 @@ function RecordFeed({ id }: { id: string }) {
       <div className="segmented">
         {["log", "fill", "signal", "risk", "alert"].map((k) => (
           <button key={k} aria-pressed={kind === k} onClick={() => setKind(k)}>
-            {k}
+            {display.kind(k)}
           </button>
         ))}
       </div>
@@ -378,7 +388,11 @@ function RecordFeed({ id }: { id: string }) {
             <div className="event-line" key={row.id}>
               <time>{timestamp(row.observedAt)}</time>
               <span>
-                {String(row.data.message ?? JSON.stringify(row.data))}
+                {typeof row.data.message === "string" && row.data.message
+                  ? row.data.message
+                  : Object.entries(row.data)
+                      .map(([key, value]) => display.field(key) + "：" + display.tableValue(key, value))
+                      .join(" · ")}
                 <RelatedRecords
                   strategyId={id}
                   associations={row.associations}

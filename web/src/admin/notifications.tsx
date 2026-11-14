@@ -4,6 +4,7 @@ import { Bell, Plus, Send, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, client, resource } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
+import { useDisplay } from "../shared/display";
 import { Badge, ErrorView, Loading, Modal, timestamp } from "../shared/ui";
 import { Page } from "../app/App";
 
@@ -31,6 +32,7 @@ const providers = [
 ];
 export default function Notifications() {
   const { t } = useLanguage();
+  const display = useDisplay();
   const query = useQuery(resource<Channel[]>("/admin/notifications"));
   const [editing, setEditing] = useState<Channel | "new">();
   const [selected, setSelected] = useState("");
@@ -84,7 +86,7 @@ export default function Notifications() {
               </p>
               <div className="channel-events">
                 {channel.events.map((event) => (
-                  <Badge key={event}>{event}</Badge>
+                  <Badge key={event}>{display.kind(event)}</Badge>
                 ))}
               </div>
               <div className="channel-actions">
@@ -153,18 +155,18 @@ export default function Notifications() {
             <table>
               <thead>
                 <tr>
-                  <th>Kind</th>
-                  <th>Status</th>
-                  <th>Attempts</th>
-                  <th>{t("created")}</th>
-                  <th>Error</th>
+                  <th>{t("type")}</th>
+                  <th>{t("status")}</th>
+                  <th>{t("attempts")}</th>
+                  <th>{t("nextAttempt")}</th>
+                  <th>{t("details")}</th>
                 </tr>
               </thead>
               <tbody>
                 {history.data?.map((delivery) => (
                   <tr key={delivery.id}>
-                    <td>{delivery.kind}</td>
-                    <td>{delivery.status}</td>
+                    <td>{display.kind(delivery.kind)}</td>
+                    <td>{display.delivery(delivery.status)}</td>
                     <td>{delivery.attempts}</td>
                     <td>{timestamp(delivery.nextAt)}</td>
                     <td>{delivery.lastError}</td>
@@ -187,6 +189,7 @@ function ChannelForm({
   close: () => void;
 }) {
   const { t } = useLanguage();
+  const display = useDisplay();
   const [name, setName] = useState(channel?.name ?? "");
   const [provider, setProvider] = useState(channel?.provider ?? "telegram");
   const [enabled, setEnabled] = useState(channel?.enabled ?? false);
@@ -283,7 +286,7 @@ function ChannelForm({
                   )
                 }
               />
-              {event}
+              {display.kind(event)}
             </label>
           ))}
         </fieldset>

@@ -164,7 +164,7 @@ function Root() {
     <div className="floating-tools" aria-label={t("appearance")}>
       <span
         className={"connection-dot " + (connected ? "online" : "")}
-        title={connected ? "SSE connected" : "Reconnecting"}
+        title={t(connected ? "connected" : "reconnecting")}
       />
       <button
         className="icon-button"
@@ -306,7 +306,7 @@ function AdminShell() {
     <div className="admin-shell">
       <header className="mobile-admin-header">
         <button
-          aria-label="Menu"
+          aria-label={t("menu")}
           className="icon-button"
           onClick={() => setOpen(true)}
         >
