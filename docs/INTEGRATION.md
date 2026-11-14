@@ -45,7 +45,9 @@ parameters, actions, resources and events. Use
 presentation only for display suggestions. Use health for health-state grouping.
 Send actual values via PUT /api/agent/state, historical points via
 POST /api/agent/reports, events via POST /api/agent/events and resource batches via
-PUT /api/agent/resources/{type}. Use epoch milliseconds for observation time.
+PUT /api/agent/resources/{type}. Use mode snapshot only for the full collection,
+or mode patch with upsert/delete and the last resourceRevision. Send a stable
+Idempotency-Key. Use epoch milliseconds for observation time.
 Reuse record IDs, observation times and contents on retry. Include explicit
 association IDs only when present in the source system.
 

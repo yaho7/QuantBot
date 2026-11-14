@@ -196,12 +196,124 @@
     "reports": {"oneOf": [{"$ref": "#/$defs/declaredBatch"}, {"$ref": "#/$defs/standardBatch"}]},
     "events": {"oneOf": [{"$ref": "#/$defs/declaredBatch"}, {"$ref": "#/$defs/standardEventBatch"}]},
     "resources": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "revision",
+            "resourceRevision",
+            "observedAt",
+            "mode",
+            "items"
+          ],
+          "properties": {
+            "revision": {
+              "$ref": "#/$defs/currentRevision"
+            },
+            "resourceRevision": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "observedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "mode": {
+              "const": "snapshot"
+            },
+            "items": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 250,
+              "items": {
+                "$ref": "#/$defs/resourceItem"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "revision",
+            "resourceRevision",
+            "observedAt",
+            "mode"
+          ],
+          "properties": {
+            "revision": {
+              "$ref": "#/$defs/currentRevision"
+            },
+            "resourceRevision": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "observedAt": {
+              "$ref": "#/$defs/timestamp"
+            },
+            "mode": {
+              "const": "patch"
+            },
+            "upsert": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 250,
+              "items": {
+                "$ref": "#/$defs/resourceItem"
+              }
+            },
+            "delete": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 250,
+              "items": {
+                "$ref": "#/$defs/recordId"
+              }
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "upsert"
+              ],
+              "properties": {
+                "upsert": {
+                  "minItems": 1
+                }
+              }
+            },
+            {
+              "required": [
+                "delete"
+              ],
+              "properties": {
+                "delete": {
+                  "minItems": 1
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "resourceItem": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["revision", "records"],
+      "required": [
+        "id",
+        "value"
+      ],
       "properties": {
-        "revision": {"$ref": "#/$defs/currentRevision"},
-        "records": {"type": "array", "minItems": 1, "maxItems": 250, "items": {"$ref": "#/$defs/resourceRecord"}}
+        "id": {
+          "$ref": "#/$defs/recordId"
+        },
+        "observedAt": {
+          "$ref": "#/$defs/timestamp"
+        },
+        "value": {},
+        "associations": {
+          "$ref": "#/$defs/associations"
+        }
       }
     },
     "declaredBatch": {

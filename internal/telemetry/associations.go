@@ -54,7 +54,19 @@ func (s *Service) related(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	items := make([]associatedRecord, 0, len(trades)+len(samples))
+	resources, err := q.FindAssociatedResources(ctx, controldb.FindAssociatedResourcesParams{
+		StrategyID: id, JsonPath: path, Association: value,
+	})
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	items := make([]associatedRecord, 0, len(trades)+len(samples)+len(resources))
+	for _, resource := range resources {
+		items = append(items, associatedRecord{ID: resource.ResourceID, CapabilityID: resource.CapabilityID,
+			ObservedAt: resource.ObservedAt, ReceivedAt: resource.ReceivedAt, Revision: resource.Revision,
+			Value: json.RawMessage(resource.Value), Associations: json.RawMessage(resource.Links)})
+	}
 	for _, event := range trades {
 		items = append(items, associatedRecord{ID: event.ReportID, Kind: event.Kind, ObservedAt: event.ObservedAt,
 			ReceivedAt: event.ReceivedAt, Value: json.RawMessage(event.Data), Associations: json.RawMessage(event.Associations)})

@@ -58,7 +58,7 @@ type declaredWrite struct {
 	index      int
 }
 
-func (s *Service) declared(w http.ResponseWriter, r *http.Request, agent strategy.Agent, revision int64, records []json.RawMessage, kind, resource string) {
+func (s *Service) declared(w http.ResponseWriter, r *http.Request, agent strategy.Agent, revision int64, records []json.RawMessage, kind string) {
 	ctx := r.Context()
 	if !agent.Executor {
 		httpapi.Error(w, http.StatusForbidden, "executor_required", "Designated executor required for declared observations")
@@ -111,13 +111,6 @@ func (s *Service) declared(w http.ResponseWriter, r *http.Request, agent strateg
 			ack.add(i, err.Error())
 			continue
 		}
-		if resource != "" {
-			if record.CapabilityID != "" && record.CapabilityID != resource {
-				ack.add(i, "resource capability ID must match the URL")
-				continue
-			}
-			record.CapabilityID = resource
-		}
 		capability, exists := capabilities[record.CapabilityID]
 		if !exists || !matchesRecordKind(capability, kind) {
 			ack.add(i, "record does not match a declared capability for this endpoint")
@@ -131,13 +124,6 @@ func (s *Service) declared(w http.ResponseWriter, r *http.Request, agent strateg
 		if err := capability.ValidateValue(record.Value, true); err != nil {
 			ack.add(i, err.Error())
 			continue
-		}
-		if capability.Renderer() == "candlestick" {
-			var candle seriesPoint
-			if err := json.Unmarshal(record.Value, &candle); err != nil || !validCandle(candle.Open, candle.High, candle.Low, candle.Close, candle.Volume) {
-				ack.add(i, "invalid candle range or volume")
-				continue
-			}
 		}
 		value, err := httpapi.CanonicalValue(record.Value)
 		if err != nil {

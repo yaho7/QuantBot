@@ -42,17 +42,23 @@ export function CapabilityWidget({
   const table = capability.renderer === "table";
   const current = useQuery({
     ...resource<CapabilityRecord[]>(base + "/capability-data"),
-    enabled:
-      capability.kind === "metric" ||
-      capability.kind === "resource" ||
-      capability.kind === "event",
+    enabled: capability.kind === "metric" || capability.kind === "event",
+  });
+  const resources = useQuery({
+    ...resource<{
+      resourceRevision: number;
+      observedAt: number;
+      items: CapabilityRecord[];
+    }>(base + "/resources/" + capability.id),
+    enabled: capability.kind === "resource",
   });
   const historyPath =
     base + "/capabilities/" + capability.id + "/history?limit=200";
   const history = useQuery({
     ...resource<CapabilityRecord[]>(historyPath),
     enabled:
-      chart || (table && capability.kind === "event" && capability.history),
+      capability.kind !== "resource" &&
+      (chart || (table && capability.kind === "event" && capability.history)),
   });
   const stateHistory = useQuery({
     ...resource<CapabilityRecord[]>(historyPath + "&source=state"),
@@ -100,7 +106,8 @@ export function CapabilityWidget({
     ],
     [records, stateHistory.data, revision, capability.sinceRevision],
   );
-  const error = current.error ?? history.error ?? stateHistory.error;
+  const error =
+    current.error ?? history.error ?? stateHistory.error ?? resources.error;
   const suggestion = capability.alert_suggestion;
   const formatDecimal = (input: string) => {
     const [whole, fraction = ""] = input.split(".");
@@ -122,7 +129,11 @@ export function CapabilityWidget({
       {error && <ErrorView error={error} />}
       {chart && (
         <CapabilityChart
-          records={chartRecords}
+          records={
+            capability.kind === "resource"
+              ? (resources.data?.items ?? emptyRecords)
+              : chartRecords
+          }
           candle={capability.renderer === "candlestick"}
         />
       )}
@@ -139,25 +150,35 @@ export function CapabilityWidget({
             ) : undefined
           }
           rows={
-            capability.kind === "event" && capability.history
-              ? (records.length ? records : record ? [record] : []).map(
-                  (item) => {
-                    return {
-                      "Observed at": timestamp(item.observedAt),
-                      ...asRow(item.value),
+            capability.kind === "resource"
+              ? (resources.data?.items ?? []).flatMap((item) =>
+                  (Array.isArray(item.value) ? item.value : [item.value]).map(
+                    (value) => ({
+                      "Resource ID": item.id,
+                      ...asRow(value),
                       "Related IDs": item.associations,
-                    };
-                  },
+                    }),
+                  ),
                 )
-              : (Array.isArray(value)
-                  ? value
-                  : value === undefined
-                    ? []
-                    : [value]
-                ).map((item) => ({
-                  ...asRow(item),
-                  "Related IDs": record?.associations,
-                }))
+              : capability.kind === "event" && capability.history
+                ? (records.length ? records : record ? [record] : []).map(
+                    (item) => {
+                      return {
+                        "Observed at": timestamp(item.observedAt),
+                        ...asRow(item.value),
+                        "Related IDs": item.associations,
+                      };
+                    },
+                  )
+                : (Array.isArray(value)
+                    ? value
+                    : value === undefined
+                      ? []
+                      : [value]
+                  ).map((item) => ({
+                    ...asRow(item),
+                    "Related IDs": record?.associations,
+                  }))
           }
         />
       ) : (
@@ -178,7 +199,13 @@ export function CapabilityWidget({
           />
         </div>
       )}
-      {stale && <Badge tone="warning">{t("staleData")}</Badge>}
+      {(stale ||
+        (resources.data?.observedAt &&
+          capability.stale_after_seconds &&
+          Date.now() - resources.data.observedAt >=
+            capability.stale_after_seconds * 1000)) && (
+        <Badge tone="warning">{t("staleData")}</Badge>
+      )}
       {capability.actual?.reason && (
         <p className="warning">{capability.actual.reason}</p>
       )}

@@ -19,6 +19,8 @@ import (
 func (s *Service) RegisterBrowser(r chi.Router) {
 	r.Get("/strategies/{id}/series", s.series)
 	r.Get("/strategies/{id}/capability-data", s.latestDeclared)
+	r.Get("/strategies/{id}/resources/{capability}", s.resourceCurrent)
+	r.Get("/strategies/{id}/resources/{capability}/history", s.resourceHistory)
 	r.Get("/strategies/{id}/capabilities/{capability}/history", s.replayDeclared)
 	r.Get("/strategies/{id}/history", s.history)
 	r.Get("/strategies/{id}/telemetry", s.latest)

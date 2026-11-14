@@ -10,6 +10,7 @@ The browser API is rooted at `/api`. Agent routes use `/api/agent`. Browser requ
 | `/strategies/{id}/controls` | Declared capabilities, desired intent and observed state |
 | `/strategies/{id}/series`, `/history`, `/telemetry`, `/records` | Discover and query monitoring data under the strategy path |
 | `/strategies/{id}/capabilities`, `/capability-data`, `/capabilities/{capability}/history` | Declared capabilities, latest data, health diagnostics and replay under the strategy path |
+| `/strategies/{id}/resources/{capability}`, `/resources/{capability}/history` under the strategy path | Current resource collection and replayable snapshot/patch operations. |
 | `GET /strategies/{id}/related?field=order_id&value=...` | Find up to 50 records with the same explicit association field and value within a strategy. |
 | `GET /layouts/{key}`, `PUT /layouts/{key}` | Read or save the administrator’s layout. Use `workbench` or `strategy-{id}`. Writes use the current layout revision. |
 | `/alerts` | Cross-strategy alert feed |

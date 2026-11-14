@@ -141,6 +141,9 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 				delete(definitions, row.ControlID)
 			}
 		}
+		if _, err := q.DeleteObsoleteResourceCollections(ctx, agent.StrategyID); err != nil {
+			return err
+		}
 		for id, definition := range definitions {
 			if err := q.PutControlDefinition(ctx, controldb.PutControlDefinitionParams{
 				StrategyID: agent.StrategyID, ControlID: id, Definition: definition, SinceRevision: revision,
@@ -148,7 +151,7 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		details := fmt.Sprintf(`{"revision":%d,"count":%d}`, revision, len(definitions))
+		details := fmt.Sprintf(`{"revision":%d,"count":%d}`, revision, len(capabilities))
 		return q.AppendAudit(ctx, controldb.AppendAuditParams{
 			At: time.Now().UnixMilli(), Actor: "agent:" + agent.InstanceID, Action: "control.registry_changed",
 			StrategyID: sql.NullString{String: agent.StrategyID, Valid: true}, Details: details,

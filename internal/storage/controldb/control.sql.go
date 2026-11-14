@@ -277,6 +277,21 @@ func (q *Queries) DeleteExpiredBrowserSessions(ctx context.Context, expiresAt in
 	return err
 }
 
+const deleteObsoleteResourceCollections = `-- name: DeleteObsoleteResourceCollections :execrows
+DELETE FROM resource_collections WHERE resource_collections.strategy_id = ? AND NOT EXISTS (
+    SELECT 1 FROM control_definitions d WHERE d.strategy_id = resource_collections.strategy_id
+    AND d.control_id = resource_collections.capability_id AND d.since_revision = resource_collections.since_revision
+)
+`
+
+func (q *Queries) DeleteObsoleteResourceCollections(ctx context.Context, strategyID string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteObsoleteResourceCollections, strategyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const fillFingerprint = `-- name: FillFingerprint :one
 SELECT fingerprint FROM trade_events WHERE strategy_id = ? AND series = ? AND kind = 'fill'
 `
@@ -369,6 +384,54 @@ func (q *Queries) FindAgentToken(ctx context.Context, digest string) (FindAgentT
 		&i.ArchivedAt,
 	)
 	return i, err
+}
+
+const findAssociatedResources = `-- name: FindAssociatedResources :many
+SELECT i.strategy_id, i.capability_id, i.since_revision, i.resource_id, i.revision, i.observed_at, i.received_at, i.instance_id, i.boot_id, i.value, i.links FROM resource_items i JOIN control_definitions d
+ON d.strategy_id = i.strategy_id AND d.control_id = i.capability_id AND d.since_revision = i.since_revision
+WHERE i.strategy_id = ?1 AND json_extract(i.links, ?2) = ?3
+ORDER BY i.observed_at DESC, i.resource_id DESC LIMIT 50
+`
+
+type FindAssociatedResourcesParams struct {
+	StrategyID  string
+	JsonPath    interface{}
+	Association string
+}
+
+func (q *Queries) FindAssociatedResources(ctx context.Context, arg FindAssociatedResourcesParams) ([]ResourceItem, error) {
+	rows, err := q.db.QueryContext(ctx, findAssociatedResources, arg.StrategyID, arg.JsonPath, arg.Association)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ResourceItem
+	for rows.Next() {
+		var i ResourceItem
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.CapabilityID,
+			&i.SinceRevision,
+			&i.ResourceID,
+			&i.Revision,
+			&i.ObservedAt,
+			&i.ReceivedAt,
+			&i.InstanceID,
+			&i.BootID,
+			&i.Value,
+			&i.Links,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const findAssociatedTrades = `-- name: FindAssociatedTrades :many
@@ -1492,6 +1555,21 @@ DELETE FROM capability_state_history WHERE (strategy_id,capability_id,observed_a
 
 func (q *Queries) PruneCapabilityStates(ctx context.Context, cutoff int64) (int64, error) {
 	result, err := q.db.ExecContext(ctx, pruneCapabilityStates, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const pruneResourceUpdates = `-- name: PruneResourceUpdates :execrows
+DELETE FROM resource_updates WHERE (strategy_id, capability_id, since_revision, resource_revision) IN (
+    SELECT old.strategy_id, old.capability_id, old.since_revision, old.resource_revision FROM resource_updates AS old
+    WHERE old.received_at < ?1 ORDER BY old.received_at LIMIT 2000
+)
+`
+
+func (q *Queries) PruneResourceUpdates(ctx context.Context, cutoff int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneResourceUpdates, cutoff)
 	if err != nil {
 		return 0, err
 	}

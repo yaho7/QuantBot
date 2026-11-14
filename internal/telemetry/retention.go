@@ -40,6 +40,11 @@ func (s *Service) prune(ctx context.Context, now time.Time) error {
 	}); err != nil {
 		return err
 	}
+	if err := pruneBatches(func() (int64, error) {
+		return controldb.New(s.stores.Control.Write).PruneResourceUpdates(ctx, now.Add(-30*24*time.Hour).UnixMilli())
+	}); err != nil {
+		return err
+	}
 	q := metricsdb.New(s.stores.Metrics.Write)
 	if err := pruneBatches(func() (int64, error) { return q.PruneSamples(ctx, now.Add(-rawRetention).UnixMilli()) }); err != nil {
 		return err

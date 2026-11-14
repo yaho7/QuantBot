@@ -96,11 +96,34 @@ An HTTP 429 queue limit, HTTP 503 storage busy, HTTP 507 storage full, or missin
 
 ## Declared data and replay
 
-For capability data, include the current `revision` and a `records` array. Each record includes a stable `id`, the `capabilityId`, UTC Unix milliseconds `observedAt`, and the declared `value`. Use `POST /api/agent/reports` for history-enabled metrics, parameter observations and states, `POST /api/agent/events` for declared events, and `PUT /api/agent/resources/{type}` for declared resources. The resource URL type is its capability ID. Do not combine standard and declared records in a single request. Standard events such as fills, signals and alerts may also be submitted to `/api/agent/events` in the standard report schema.
+For capability data, include the current `revision` and a `records` array. Each record includes a stable `id`, the `capabilityId`, UTC Unix milliseconds `observedAt`, and the declared `value`. Use `POST /api/agent/reports` for history-enabled metrics, parameter observations and states, `POST /api/agent/events` for declared events. Declared resources use the collection protocol below. Do not combine standard and declared records in a single request. Standard events such as fills, signals and alerts may also be submitted to `/api/agent/events` in the standard report schema.
 
 An optional `associations` object carries explicit `account_id`, `symbol`, `signal_id`, `decision_id`, `order_id`, `command_id`, or `correlation_id`. Clients match only explicitly submitted IDs. A matching ID alone does not establish causality.
 
-Declared record IDs deduplicate within the combination of strategy, capability and revision. Conflicting duplicates are rejected, and expired revisions return HTTP 409. Current resource and event data are available in `/api/strategies/{id}/capability-data`. A capability with `history: true` retains observations for 30 days with the original observation time, receive time, revision and identity. Query `/api/strategies/{id}/capabilities/{capability}/history` for report, resource and event history. Add `source=state` for observations received through the state endpoint. Replay enumerates only saved observations, including those from previous revisions.
+Declared record IDs deduplicate within the combination of strategy, capability and revision. Conflicting duplicates are rejected, and expired revisions return HTTP 409. Current metric and event data are available in `/api/strategies/{id}/capability-data`. A capability with `history: true` retains observations for 30 days with the original observation time, receive time, revision and identity. Query `/api/strategies/{id}/capabilities/{capability}/history` for report and event history. Add `source=state` for observations received through the state endpoint. Replay enumerates only saved observations, including those from previous revisions.
+
+## Resource collections
+
+`PUT /api/agent/resources/{type}` replaces or updates one collection. `{type}` is the declared capability ID. Each item’s `value` follows that capability’s value schema. Provide the current capability `revision`, the last acknowledged `resourceRevision` (initially zero), UTC milliseconds `observedAt`, and a stable `Idempotency-Key` header unique to the update within the collection. The initial write must be a snapshot.
+
+```json
+{"revision":7,"resourceRevision":0,"mode":"snapshot","observedAt":1794643200000,"items":[
+  {"id":"paper:AAPL","value":{"symbol":"AAPL"}},
+  {"id":"paper:MSFT","value":{"symbol":"MSFT"}}
+]}
+```
+
+A snapshot is authoritative. Omitted IDs are removed and an empty `items` clears the collection. Use it only when the strategy has the complete source view. A patch uses `upsert` and/or `delete`; omitted IDs keep their current values. Deleting a missing ID is harmless. An ID cannot appear in both lists. An optional per-item `observedAt` overrides the batch time for that item.
+
+```json
+{"revision":7,"resourceRevision":1,"mode":"patch","observedAt":1794643201000,
+ "upsert":[{"id":"paper:AAPL","value":{"symbol":"AAPL"}}],
+ "delete":["paper:MSFT"]}
+```
+
+The server checks the full update before committing it atomically. Success returns the new `resourceRevision`. Retrying the same key and payload returns the original acknowledgment with `duplicate: true`, even after later updates in the same compatible collection. Revision or payload conflicts return HTTP 409. A validation failure leaves the collection and its revision unchanged. An incompatible capability change starts a fresh collection. The request allows up to 250 total IDs.
+
+The browser reads `GET /api/strategies/{id}/resources/{capability}`. A zero revision means the first snapshot has yet to arrive. History-enabled resources persist snapshot and patch changes with observed and received time and revisions at `GET /api/strategies/{id}/resources/{capability}/history`. Replay patches in resource revision order after a snapshot for the same `sinceRevision`. Once a collection’s earlier history expires, a later patch alone cannot establish its full historical state.
 
 ## Request schemas and examples
 

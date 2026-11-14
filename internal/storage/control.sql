@@ -316,3 +316,21 @@ DELETE FROM capability_state_history WHERE (strategy_id,capability_id,observed_a
 SELECT * FROM trade_events
 WHERE strategy_id = @strategy_id AND json_extract(associations, @json_path) = @association
 ORDER BY observed_at DESC, report_id DESC LIMIT 50;
+
+-- name: DeleteObsoleteResourceCollections :execrows
+DELETE FROM resource_collections WHERE resource_collections.strategy_id = ? AND NOT EXISTS (
+    SELECT 1 FROM control_definitions d WHERE d.strategy_id = resource_collections.strategy_id
+    AND d.control_id = resource_collections.capability_id AND d.since_revision = resource_collections.since_revision
+);
+
+-- name: PruneResourceUpdates :execrows
+DELETE FROM resource_updates WHERE (strategy_id, capability_id, since_revision, resource_revision) IN (
+    SELECT old.strategy_id, old.capability_id, old.since_revision, old.resource_revision FROM resource_updates AS old
+    WHERE old.received_at < sqlc.arg(cutoff) ORDER BY old.received_at LIMIT 2000
+);
+
+-- name: FindAssociatedResources :many
+SELECT i.* FROM resource_items i JOIN control_definitions d
+ON d.strategy_id = i.strategy_id AND d.control_id = i.capability_id AND d.since_revision = i.since_revision
+WHERE i.strategy_id = sqlc.arg(strategy_id) AND json_extract(i.links, sqlc.arg(json_path)) = sqlc.arg(association)
+ORDER BY i.observed_at DESC, i.resource_id DESC LIMIT 50;

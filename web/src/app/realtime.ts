@@ -41,7 +41,8 @@ export function useRealtime(enabled: boolean) {
                 path === base + "/controls" ||
                 path === base + "/capabilities" ||
                 path === base + "/capability-data" ||
-                path.startsWith(base + "/capabilities/")
+                path.startsWith(base + "/capabilities/") ||
+                path.startsWith(base + "/resources/")
               );
             if (topic === "commands") return path === base + "/controls";
             if (topic === "telemetry") return path !== base + "/controls";

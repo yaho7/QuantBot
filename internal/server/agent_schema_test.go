@@ -54,7 +54,9 @@ func TestPublishedAgentSchemas(t *testing.T) {
 		{"events", `{"records":[{"id":"report","kind":"status","observedAt":42,"data":{"state":"running"}}]}`, false},
 		{"events", `{"revision":1,"records":[{"id":"record","observedAt":42,"capabilityId":"signal","value":{},"associations":{"order_id":"order-1"}}]}`, true},
 		{"events", `{"revision":1,"records":[{"id":"record","observedAt":42,"capabilityId":"signal","value":{},"associations":{"unknown":"id"}}]}`, false},
-		{"resources", `{"revision":1,"records":[{"id":"record","observedAt":42,"value":[]}]}`, true},
+		{"resources", `{"revision":1,"resourceRevision":0,"mode":"snapshot","observedAt":42,"items":[]}`, true},
+		{"resources", `{"revision":1,"resourceRevision":1,"mode":"patch","observedAt":42,"delete":["record"]}`, true},
+		{"resources", `{"revision":1,"resourceRevision":1,"mode":"patch","observedAt":42,"items":[],"delete":["record"]}`, false},
 		{"result", `{"permit":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123_-","status":"succeeded"}`, true},
 	} {
 		t.Run(tc.definition+" "+tc.body, func(t *testing.T) {

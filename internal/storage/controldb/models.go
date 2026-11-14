@@ -187,6 +187,45 @@ type NotificationEvent struct {
 	CreatedAt int64
 }
 
+type ResourceCollection struct {
+	StrategyID       string
+	CapabilityID     string
+	SinceRevision    int64
+	ResourceRevision int64
+	ObservedAt       int64
+	ReceivedAt       int64
+}
+
+type ResourceItem struct {
+	StrategyID    string
+	CapabilityID  string
+	SinceRevision int64
+	ResourceID    string
+	Revision      int64
+	ObservedAt    int64
+	ReceivedAt    int64
+	InstanceID    string
+	BootID        string
+	Value         string
+	Links         string
+}
+
+type ResourceUpdate struct {
+	StrategyID       string
+	CapabilityID     string
+	SinceRevision    int64
+	ResourceRevision int64
+	Revision         int64
+	RequestID        string
+	Digest           string
+	ObservedAt       int64
+	ReceivedAt       int64
+	InstanceID       string
+	BootID           string
+	Mode             string
+	Changes          sql.NullString
+}
+
 type Setting struct {
 	Key   string
 	Value string

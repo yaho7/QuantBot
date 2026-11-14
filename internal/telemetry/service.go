@@ -49,7 +49,7 @@ func (s *Service) WriteFailures() uint64 { return s.queue.failures.Load() }
 func (s *Service) RegisterAgent(r chi.Router) {
 	r.Post("/reports", s.authorized(s.ingest("report")))
 	r.Post("/events", s.authorized(s.ingest("event")))
-	r.Put("/resources/{type}", s.authorized(s.ingest("resource")))
+	r.Put("/resources/{type}", s.authorized(s.updateResource))
 }
 
 func (s *Service) RegisterSchema(r chi.Router) {
@@ -94,11 +94,7 @@ func (s *Service) ingest(kind string) func(http.ResponseWriter, *http.Request, s
 			return
 		}
 		if batch.Revision != nil {
-			s.declared(w, r, agent, *batch.Revision, batch.Records, kind, chi.URLParam(r, "type"))
-			return
-		}
-		if kind == "resource" {
-			httpapi.Error(w, 400, "invalid_batch", "Resource updates require a capability revision")
+			s.declared(w, r, agent, *batch.Revision, batch.Records, kind)
 			return
 		}
 		s.standard(w, r, agent, batch.Records, kind)

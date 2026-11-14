@@ -317,10 +317,13 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   });
   expect(signal.ok(), await signal.text()).toBeTruthy();
   const candles = await request.put("/api/agent/resources/candles", {
-    headers,
+    headers: { ...headers, "Idempotency-Key": "candles-snapshot" },
     data: {
       revision: 1,
-      records: [
+      mode: "snapshot",
+      resourceRevision: 0,
+      observedAt: now,
+      items: [
         {
           id: "bar-1",
           observedAt: now - 60000,

@@ -23,6 +23,7 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 	handler := testRoutes(t, stores, config.Config{}, command.New(stores.Control, t.Context(), 0, nil))
 	const origin = "http://127.0.0.1:23456"
 	account, cookie := parseSession(t, requestAuth(t, handler, "POST", "/setup", `{"username":"admin","password":"paper-test-password"}`, origin, nil, "", 200))
+	rscKey := "snapshot-1"
 	call := func(method, path, body, token string, status int) *httptest.ResponseRecorder {
 		t.Helper()
 		req := httptest.NewRequest(method, origin+apiPath(path), strings.NewReader(body))
@@ -30,7 +31,11 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		if strings.HasPrefix(path, "/agent/") {
 			req.Header.Set("Authorization", "Bearer "+token)
-			req.Header.Set("Idempotency-Key", "test-claim")
+			if strings.HasSuffix(path, "/claim") {
+				req.Header.Set("Idempotency-Key", "test-claim")
+			} else if strings.Contains(path, "/resources/") {
+				req.Header.Set("Idempotency-Key", rscKey)
+			}
 		} else {
 			req.Header.Set("Origin", origin)
 			req.Header.Set("X-CSRF-Token", account.CSRF)
@@ -88,10 +93,40 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 	}
 
 	report := fmt.Sprintf(`{"revision":1,"records":[{"id":"metric1","capabilityId":"latency","value":"1.001","observedAt":%d,"associations":{"correlation_id":"trace1"}}]}`, now)
-	resource := fmt.Sprintf(`{"revision":1,"records":[{"id":"position1","value":{"symbol":"BTC"},"observedAt":%d,"associations":{"account_id":"paper","signal_id":"signal1","correlation_id":"trace1"}}]}`, now)
+	resource := fmt.Sprintf(`{"revision":1,"resourceRevision":0,"mode":"snapshot","observedAt":%d,"items":[{"id":"position1","value":{"symbol":"BTC"},"associations":{"account_id":"paper","signal_id":"signal1","correlation_id":"trace1"}},{"id":"position2","value":{"symbol":"ETH"}}]}`, now)
+	resourcePath := "/agent/resources/position"
+	call("PUT", resourcePath, resource, worker.Session, 200)
+	if retry := call("PUT", resourcePath, resource, worker.Session, 200); !strings.Contains(retry.Body.String(), `"duplicate":true`) {
+		t.Fatal(retry.Body)
+	}
+	call("PUT", resourcePath, strings.Replace(resource, "ETH", "SOL", 1), worker.Session, 409)
+	rscKey = "stale"
+	call("PUT", resourcePath, resource, worker.Session, 409)
+	rscKey = "patch"
+	patch := fmt.Sprintf(`{"revision":1,"resourceRevision":1,"mode":"patch","observedAt":%d,"upsert":[{"id":"position1","value":{"symbol":"BTC"},"associations":{"signal_id":"signal1","correlation_id":"trace1"}}]}`, now)
+	call("PUT", resourcePath, patch, worker.Session, 200)
+	if read := call("GET", path+"/resources/position", "", "", 200); !strings.Contains(read.Body.String(), `"id":"position2"`) {
+		t.Fatal("patch deleted omitted resource")
+	}
+	rscKey = "bad-patch"
+	badPatch := fmt.Sprintf(`{"revision":1,"resourceRevision":2,"mode":"patch","observedAt":%d,"delete":["position2"],"upsert":[{"id":"position1","value":{"symbol":42}}]}`, now)
+	call("PUT", resourcePath, badPatch, worker.Session, 422)
+	if read := call("GET", path+"/resources/position", "", "", 200); !strings.Contains(read.Body.String(), `"id":"position2"`) {
+		t.Fatal("invalid patch deleted a resource")
+	}
+	rscKey = "delete"
+	deleteBody := fmt.Sprintf(`{"revision":1,"resourceRevision":2,"mode":"patch","observedAt":%d,"delete":["position2"]}`, now)
+	call("PUT", resourcePath, deleteBody, worker.Session, 200)
+	if read := call("GET", path+"/resources/position", "", "", 200); strings.Contains(read.Body.String(), `"id":"position2"`) {
+		t.Fatal("explicit delete did not remove resource")
+	}
+	rscKey = "patch"
+	if retry := call("PUT", resourcePath, patch, worker.Session, 200); !strings.Contains(retry.Body.String(), `"duplicate":true`) {
+		t.Fatal(retry.Body)
+	}
 	event := fmt.Sprintf(`{"revision":1,"records":[{"id":"signal1","capabilityId":"signal","value":{"symbol":"BTC"},"observedAt":%d}]}`, now)
 	for _, p := range []struct{ method, path, body string }{
-		{"POST", "/agent/reports", report}, {"PUT", "/agent/resources/position", resource}, {"POST", "/agent/events", event},
+		{"POST", "/agent/reports", report}, {"POST", "/agent/events", event},
 	} {
 		var ack telemetry.Ack
 		decodeTest(t, call(p.method, p.path, p.body, worker.Session, 200), &ack)
@@ -108,7 +143,7 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 	if history := call("GET", path+"/capabilities/signal/history", "", "", 200); strings.TrimSpace(history.Body.String()) != "[]" {
 		t.Fatal(history.Body)
 	}
-	if history := call("GET", path+"/capabilities/position/history", "", "", 200); !strings.Contains(history.Body.String(), `"signal_id":"signal1"`) ||
+	if history := call("GET", path+"/resources/position/history", "", "", 200); !strings.Contains(history.Body.String(), `"signal_id":"signal1"`) ||
 		!strings.Contains(history.Body.String(), `"revision":1`) {
 		t.Fatal(history.Body)
 	}
@@ -181,8 +216,21 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 		t.Fatal(err)
 	}
 	call("PUT", "/agent/capabilities", string(body), worker.Session, 200)
-	if latest := call("GET", path+"/capability-data", "", "", 200); strings.Contains(latest.Body.String(), `"id":"metric1"`) || !strings.Contains(latest.Body.String(), `"id":"position1"`) {
+	if latest := call("GET", path+"/capability-data", "", "", 200); strings.Contains(latest.Body.String(), `"id":"metric1"`) {
 		t.Fatalf("incompatible registry edit did not isolate the affected observation: %s", latest.Body)
+	}
+	if read := call("GET", path+"/resources/position", "", "", 200); !strings.Contains(read.Body.String(), `"id":"position1"`) {
+		t.Fatal("compatible update lost the resource collection")
+	}
+	rscKey = "patch"
+	if retry := call("PUT", resourcePath, patch, worker.Session, 200); !strings.Contains(retry.Body.String(), `"duplicate":true`) {
+		t.Fatal("compatible registry update did not preserve request idempotency")
+	}
+	rscKey = "clear"
+	clear := fmt.Sprintf(`{"revision":3,"resourceRevision":3,"mode":"snapshot","observedAt":%d,"items":[]}`, now)
+	call("PUT", resourcePath, clear, worker.Session, 200)
+	if read := call("GET", path+"/resources/position", "", "", 200); !strings.Contains(read.Body.String(), `"items":[]`) {
+		t.Fatal("empty authoritative snapshot did not clear the collection")
 	}
 	call("PUT", "/agent/capabilities", `{"revision":3,"capabilities":[]}`, worker.Session, 200)
 	call("PUT", "/agent/state", state, worker.Session, 409)
