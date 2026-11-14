@@ -47,6 +47,23 @@ func (q *Queries) AppendAudit(ctx context.Context, arg AppendAuditParams) error 
 	return err
 }
 
+const archiveStrategy = `-- name: ArchiveStrategy :execrows
+UPDATE strategies SET archived_at = ?, executor_instance = NULL WHERE id = ? AND archived_at IS NULL
+`
+
+type ArchiveStrategyParams struct {
+	ArchivedAt sql.NullInt64
+	ID         string
+}
+
+func (q *Queries) ArchiveStrategy(ctx context.Context, arg ArchiveStrategyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, archiveStrategy, arg.ArchivedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const changeAdminPassword = `-- name: ChangeAdminPassword :execrows
 UPDATE users SET password_hash = ?1
 WHERE id = 1 AND password_hash = ?2
@@ -63,6 +80,17 @@ func (q *Queries) ChangeAdminPassword(ctx context.Context, arg ChangeAdminPasswo
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const countAgentInstances = `-- name: CountAgentInstances :one
+SELECT count(*) FROM agent_instances WHERE strategy_id = ?
+`
+
+func (q *Queries) CountAgentInstances(ctx context.Context, strategyID string) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countAgentInstances, strategyID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createAdmin = `-- name: CreateAdmin :execrows
@@ -82,6 +110,34 @@ func (q *Queries) CreateAdmin(ctx context.Context, arg CreateAdminParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const createAgentToken = `-- name: CreateAgentToken :exec
+INSERT INTO agent_tokens (id, strategy_id, digest, label, scopes, created_at, expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+`
+
+type CreateAgentTokenParams struct {
+	ID         string
+	StrategyID string
+	Digest     string
+	Label      string
+	Scopes     int64
+	CreatedAt  int64
+	ExpiresAt  sql.NullInt64
+}
+
+func (q *Queries) CreateAgentToken(ctx context.Context, arg CreateAgentTokenParams) error {
+	_, err := q.db.ExecContext(ctx, createAgentToken,
+		arg.ID,
+		arg.StrategyID,
+		arg.Digest,
+		arg.Label,
+		arg.Scopes,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
 }
 
 const createBrowserSession = `-- name: CreateBrowserSession :exec
@@ -104,6 +160,29 @@ func (q *Queries) CreateBrowserSession(ctx context.Context, arg CreateBrowserSes
 		arg.Csrf,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+	)
+	return err
+}
+
+const createStrategy = `-- name: CreateStrategy :exec
+INSERT INTO strategies (id, name, group_name, mode, created_at) VALUES (?, ?, ?, ?, ?)
+`
+
+type CreateStrategyParams struct {
+	ID        string
+	Name      string
+	GroupName string
+	Mode      string
+	CreatedAt int64
+}
+
+func (q *Queries) CreateStrategy(ctx context.Context, arg CreateStrategyParams) error {
+	_, err := q.db.ExecContext(ctx, createStrategy,
+		arg.ID,
+		arg.Name,
+		arg.GroupName,
+		arg.Mode,
+		arg.CreatedAt,
 	)
 	return err
 }
@@ -154,6 +233,28 @@ func (q *Queries) GetAdmin(ctx context.Context) (User, error) {
 	return i, err
 }
 
+const getAgentInstance = `-- name: GetAgentInstance :one
+SELECT strategy_id, instance_id, boot_id, started_at, last_seen FROM agent_instances WHERE strategy_id = ? AND instance_id = ?
+`
+
+type GetAgentInstanceParams struct {
+	StrategyID string
+	InstanceID string
+}
+
+func (q *Queries) GetAgentInstance(ctx context.Context, arg GetAgentInstanceParams) (AgentInstance, error) {
+	row := q.db.QueryRowContext(ctx, getAgentInstance, arg.StrategyID, arg.InstanceID)
+	var i AgentInstance
+	err := row.Scan(
+		&i.StrategyID,
+		&i.InstanceID,
+		&i.BootID,
+		&i.StartedAt,
+		&i.LastSeen,
+	)
+	return i, err
+}
+
 const getBrowserSession = `-- name: GetBrowserSession :one
 SELECT u.id AS user_id, u.username, s.csrf, s.expires_at
 FROM browser_sessions s JOIN users u ON u.id = s.user_id
@@ -184,6 +285,76 @@ func (q *Queries) GetBrowserSession(ctx context.Context, arg GetBrowserSessionPa
 	return i, err
 }
 
+const getLiveAgentSession = `-- name: GetLiveAgentSession :one
+SELECT a.strategy_id, a.instance_id, a.boot_id, a.token_id, a.expires_at,
+    t.scopes, s.executor_instance, i.last_seen
+FROM agent_sessions a
+JOIN agent_tokens t ON t.id = a.token_id
+JOIN strategies s ON s.id = a.strategy_id
+JOIN agent_instances i ON i.strategy_id = a.strategy_id AND i.instance_id = a.instance_id AND i.boot_id = a.boot_id
+WHERE a.digest = ?1 AND a.expires_at > ?2 AND t.revoked_at IS NULL
+AND (t.expires_at IS NULL OR t.expires_at > ?2) AND s.archived_at IS NULL
+`
+
+type GetLiveAgentSessionParams struct {
+	Digest string
+	Now    int64
+}
+
+type GetLiveAgentSessionRow struct {
+	StrategyID       string
+	InstanceID       string
+	BootID           string
+	TokenID          string
+	ExpiresAt        int64
+	Scopes           int64
+	ExecutorInstance sql.NullString
+	LastSeen         int64
+}
+
+func (q *Queries) GetLiveAgentSession(ctx context.Context, arg GetLiveAgentSessionParams) (GetLiveAgentSessionRow, error) {
+	row := q.db.QueryRowContext(ctx, getLiveAgentSession, arg.Digest, arg.Now)
+	var i GetLiveAgentSessionRow
+	err := row.Scan(
+		&i.StrategyID,
+		&i.InstanceID,
+		&i.BootID,
+		&i.TokenID,
+		&i.ExpiresAt,
+		&i.Scopes,
+		&i.ExecutorInstance,
+		&i.LastSeen,
+	)
+	return i, err
+}
+
+const getLiveAgentToken = `-- name: GetLiveAgentToken :one
+SELECT t.id, t.strategy_id, t.digest, t.label, t.scopes, t.created_at, t.expires_at, t.revoked_at FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
+WHERE t.digest = ?1 AND t.revoked_at IS NULL AND s.archived_at IS NULL
+AND (t.expires_at IS NULL OR t.expires_at > ?2)
+`
+
+type GetLiveAgentTokenParams struct {
+	Digest string
+	Now    sql.NullInt64
+}
+
+func (q *Queries) GetLiveAgentToken(ctx context.Context, arg GetLiveAgentTokenParams) (AgentToken, error) {
+	row := q.db.QueryRowContext(ctx, getLiveAgentToken, arg.Digest, arg.Now)
+	var i AgentToken
+	err := row.Scan(
+		&i.ID,
+		&i.StrategyID,
+		&i.Digest,
+		&i.Label,
+		&i.Scopes,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+	)
+	return i, err
+}
+
 const getSetting = `-- name: GetSetting :one
 SELECT value FROM settings WHERE key = ?
 `
@@ -193,6 +364,25 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (string, error) {
 	var value string
 	err := row.Scan(&value)
 	return value, err
+}
+
+const getStrategy = `-- name: GetStrategy :one
+SELECT id, name, group_name, mode, created_at, archived_at, executor_instance FROM strategies WHERE id = ?
+`
+
+func (q *Queries) GetStrategy(ctx context.Context, id string) (Strategy, error) {
+	row := q.db.QueryRowContext(ctx, getStrategy, id)
+	var i Strategy
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.GroupName,
+		&i.Mode,
+		&i.CreatedAt,
+		&i.ArchivedAt,
+		&i.ExecutorInstance,
+	)
+	return i, err
 }
 
 const limitBrowserSessions = `-- name: LimitBrowserSessions :exec
@@ -205,6 +395,85 @@ DELETE FROM browser_sessions AS old WHERE old.user_id = ?1 AND old.digest IN (
 func (q *Queries) LimitBrowserSessions(ctx context.Context, userID int64) error {
 	_, err := q.db.ExecContext(ctx, limitBrowserSessions, userID)
 	return err
+}
+
+const listAgentInstances = `-- name: ListAgentInstances :many
+SELECT strategy_id, instance_id, boot_id, started_at, last_seen FROM agent_instances WHERE strategy_id = ? ORDER BY last_seen DESC LIMIT 256
+`
+
+func (q *Queries) ListAgentInstances(ctx context.Context, strategyID string) ([]AgentInstance, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentInstances, strategyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AgentInstance
+	for rows.Next() {
+		var i AgentInstance
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.InstanceID,
+			&i.BootID,
+			&i.StartedAt,
+			&i.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listAgentTokens = `-- name: ListAgentTokens :many
+SELECT id, strategy_id, label, scopes, created_at, expires_at, revoked_at
+FROM agent_tokens WHERE strategy_id = ? ORDER BY created_at DESC, id LIMIT 256
+`
+
+type ListAgentTokensRow struct {
+	ID         string
+	StrategyID string
+	Label      string
+	Scopes     int64
+	CreatedAt  int64
+	ExpiresAt  sql.NullInt64
+	RevokedAt  sql.NullInt64
+}
+
+func (q *Queries) ListAgentTokens(ctx context.Context, strategyID string) ([]ListAgentTokensRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAgentTokens, strategyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAgentTokensRow
+	for rows.Next() {
+		var i ListAgentTokensRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.StrategyID,
+			&i.Label,
+			&i.Scopes,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.RevokedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listBrowserSessions = `-- name: ListBrowserSessions :many
@@ -248,6 +517,126 @@ func (q *Queries) ListBrowserSessions(ctx context.Context, arg ListBrowserSessio
 	return items, nil
 }
 
+const listStrategies = `-- name: ListStrategies :many
+SELECT s.id, s.name, s.group_name, s.mode, s.created_at, s.archived_at, s.executor_instance, CAST(COALESCE((SELECT max(i.last_seen) FROM agent_instances i WHERE i.strategy_id = s.id), 0) AS INTEGER) AS last_seen
+FROM strategies s
+WHERE s.archived_at IS NULL OR ?1 = 1 ORDER BY s.name, s.id
+`
+
+type ListStrategiesRow struct {
+	ID               string
+	Name             string
+	GroupName        string
+	Mode             string
+	CreatedAt        int64
+	ArchivedAt       sql.NullInt64
+	ExecutorInstance sql.NullString
+	LastSeen         int64
+}
+
+func (q *Queries) ListStrategies(ctx context.Context, includeArchived interface{}) ([]ListStrategiesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listStrategies, includeArchived)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStrategiesRow
+	for rows.Next() {
+		var i ListStrategiesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.GroupName,
+			&i.Mode,
+			&i.CreatedAt,
+			&i.ArchivedAt,
+			&i.ExecutorInstance,
+			&i.LastSeen,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rememberAgentBoot = `-- name: RememberAgentBoot :execrows
+INSERT INTO agent_boots(strategy_id, instance_id, boot_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING
+`
+
+type RememberAgentBootParams struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+}
+
+func (q *Queries) RememberAgentBoot(ctx context.Context, arg RememberAgentBootParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, rememberAgentBoot, arg.StrategyID, arg.InstanceID, arg.BootID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const revokeAgentToken = `-- name: RevokeAgentToken :execrows
+UPDATE agent_tokens SET revoked_at = ?1
+WHERE id = ?2 AND strategy_id = ?3 AND revoked_at IS NULL
+`
+
+type RevokeAgentTokenParams struct {
+	Now        sql.NullInt64
+	TokenID    string
+	StrategyID string
+}
+
+func (q *Queries) RevokeAgentToken(ctx context.Context, arg RevokeAgentTokenParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, revokeAgentToken, arg.Now, arg.TokenID, arg.StrategyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const revokeStrategyTokens = `-- name: RevokeStrategyTokens :exec
+UPDATE agent_tokens SET revoked_at = ? WHERE strategy_id = ? AND revoked_at IS NULL
+`
+
+type RevokeStrategyTokensParams struct {
+	RevokedAt  sql.NullInt64
+	StrategyID string
+}
+
+func (q *Queries) RevokeStrategyTokens(ctx context.Context, arg RevokeStrategyTokensParams) error {
+	_, err := q.db.ExecContext(ctx, revokeStrategyTokens, arg.RevokedAt, arg.StrategyID)
+	return err
+}
+
+const selectExecutor = `-- name: SelectExecutor :execrows
+UPDATE strategies SET executor_instance = ?1 WHERE id = ?2
+AND archived_at IS NULL AND (?1 IS NULL OR EXISTS (
+    SELECT 1 FROM agent_instances WHERE strategy_id = ?2 AND instance_id = ?1
+))
+`
+
+type SelectExecutorParams struct {
+	InstanceID sql.NullString
+	StrategyID string
+}
+
+func (q *Queries) SelectExecutor(ctx context.Context, arg SelectExecutorParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, selectExecutor, arg.InstanceID, arg.StrategyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setSetting = `-- name: SetSetting :exec
 INSERT INTO settings (key, value) VALUES (?, ?)
 ON CONFLICT (key) DO UPDATE SET value = excluded.value
@@ -260,5 +649,104 @@ type SetSettingParams struct {
 
 func (q *Queries) SetSetting(ctx context.Context, arg SetSettingParams) error {
 	_, err := q.db.ExecContext(ctx, setSetting, arg.Key, arg.Value)
+	return err
+}
+
+const updateAgentHeartbeat = `-- name: UpdateAgentHeartbeat :execrows
+UPDATE agent_instances SET last_seen = ?1
+WHERE strategy_id = ?2 AND instance_id = ?3 AND boot_id = ?4
+`
+
+type UpdateAgentHeartbeatParams struct {
+	Now        int64
+	StrategyID string
+	InstanceID string
+	BootID     string
+}
+
+func (q *Queries) UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeartbeatParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateAgentHeartbeat,
+		arg.Now,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.BootID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const updateStrategy = `-- name: UpdateStrategy :execrows
+UPDATE strategies SET name = ?, group_name = ? WHERE id = ? AND archived_at IS NULL
+`
+
+type UpdateStrategyParams struct {
+	Name      string
+	GroupName string
+	ID        string
+}
+
+func (q *Queries) UpdateStrategy(ctx context.Context, arg UpdateStrategyParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateStrategy, arg.Name, arg.GroupName, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const upsertAgentInstance = `-- name: UpsertAgentInstance :exec
+INSERT INTO agent_instances(strategy_id, instance_id, boot_id, started_at, last_seen)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(strategy_id, instance_id) DO UPDATE SET boot_id = excluded.boot_id,
+    started_at = CASE WHEN agent_instances.boot_id = excluded.boot_id THEN agent_instances.started_at ELSE excluded.started_at END,
+    last_seen = excluded.last_seen
+`
+
+type UpsertAgentInstanceParams struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+	StartedAt  int64
+	LastSeen   int64
+}
+
+func (q *Queries) UpsertAgentInstance(ctx context.Context, arg UpsertAgentInstanceParams) error {
+	_, err := q.db.ExecContext(ctx, upsertAgentInstance,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.BootID,
+		arg.StartedAt,
+		arg.LastSeen,
+	)
+	return err
+}
+
+const upsertAgentSession = `-- name: UpsertAgentSession :exec
+INSERT INTO agent_sessions(digest, strategy_id, instance_id, boot_id, token_id, expires_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT(strategy_id, instance_id) DO UPDATE SET
+    digest = excluded.digest, boot_id = excluded.boot_id,
+    token_id = excluded.token_id, expires_at = excluded.expires_at
+`
+
+type UpsertAgentSessionParams struct {
+	Digest     string
+	StrategyID string
+	InstanceID string
+	BootID     string
+	TokenID    string
+	ExpiresAt  int64
+}
+
+func (q *Queries) UpsertAgentSession(ctx context.Context, arg UpsertAgentSessionParams) error {
+	_, err := q.db.ExecContext(ctx, upsertAgentSession,
+		arg.Digest,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.BootID,
+		arg.TokenID,
+		arg.ExpiresAt,
+	)
 	return err
 }

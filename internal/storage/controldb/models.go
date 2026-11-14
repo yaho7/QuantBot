@@ -8,6 +8,40 @@ import (
 	"database/sql"
 )
 
+type AgentBoot struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+}
+
+type AgentInstance struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+	StartedAt  int64
+	LastSeen   int64
+}
+
+type AgentSession struct {
+	Digest     string
+	StrategyID string
+	InstanceID string
+	BootID     string
+	TokenID    string
+	ExpiresAt  int64
+}
+
+type AgentToken struct {
+	ID         string
+	StrategyID string
+	Digest     string
+	Label      string
+	Scopes     int64
+	CreatedAt  int64
+	ExpiresAt  sql.NullInt64
+	RevokedAt  sql.NullInt64
+}
+
 type Audit struct {
 	ID         int64
 	At         int64
@@ -29,6 +63,16 @@ type BrowserSession struct {
 type Setting struct {
 	Key   string
 	Value string
+}
+
+type Strategy struct {
+	ID               string
+	Name             string
+	GroupName        string
+	Mode             string
+	CreatedAt        int64
+	ArchivedAt       sql.NullInt64
+	ExecutorInstance sql.NullString
 }
 
 type User struct {

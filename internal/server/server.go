@@ -15,6 +15,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/secrets"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
+	"github.com/yaho7/QuantBot/internal/strategy"
 )
 
 const shutdownTimeout = 35 * time.Second
@@ -66,7 +67,15 @@ func routes(stores *storage.Stores, cfg config.Config) http.Handler {
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
 	router.Use(origins.Guard)
 	accounts := auth.New(stores.Control)
-	router.Route("/api/v1", accounts.Register)
+	strategies := strategy.New(stores.Control)
+	router.Route("/api/v1", func(r chi.Router) {
+		accounts.Register(r)
+		r.Route("/agent", strategies.RegisterAgent)
+		r.Group(func(r chi.Router) {
+			r.Use(accounts.Require)
+			strategies.RegisterBrowser(r)
+		})
+	})
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
