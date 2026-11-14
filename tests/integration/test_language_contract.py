@@ -16,7 +16,7 @@ from examples.http_agent import Demo, RequestFailure
 
 from tests.integration.test_http_example import ADMIN, ROOT, eventually, stop, unused_port
 
-FIXTURE = ROOT / "tests/fixtures/go_contract_test.go"
+FIXTURE = ROOT / "tests/fixtures/go_contract_test.go.txt"
 
 
 class TransportFailure(RuntimeError):
@@ -62,10 +62,11 @@ def transport(request, tmp_path):
         command = [executable, "--input-type=module", "-e", NODE_DRIVER]
     else:
         shutil.copy(ROOT / "examples/http_monitor.go", tmp_path)
-        shutil.copy(FIXTURE, tmp_path)
+        fixture_name = "go_contract_test.go"
+        shutil.copy(FIXTURE, tmp_path / fixture_name)
         binary = tmp_path / "go-contract"
         subprocess.run(  # noqa: S603
-            [executable, "test", "-c", "-o", str(binary), "http_monitor.go", FIXTURE.name],
+            [executable, "test", "-c", "-o", str(binary), "http_monitor.go", fixture_name],
             cwd=tmp_path,
             check=True,
             capture_output=True,

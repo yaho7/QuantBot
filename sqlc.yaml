@@ -1,0 +1,16 @@
+version: "2"
+sql:
+  - engine: sqlite
+    schema: internal/storage/migrations/control
+    queries: internal/storage/control.sql
+    gen:
+      go:
+        package: controldb
+        out: internal/storage/controldb
+  - engine: sqlite
+    schema: internal/storage/migrations/metrics
+    queries: internal/storage/metrics.sql
+    gen:
+      go:
+        package: metricsdb
+        out: internal/storage/metricsdb

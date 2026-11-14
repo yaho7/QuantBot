@@ -27,4 +27,4 @@ Requirements are in [AGENTS.md](../AGENTS.md). Update the evidence column after 
 
 ## Checkpoint
 
-Stage A design and upstream reference review are recorded in [ARCHITECTURE.md](ARCHITECTURE.md). Next implement the Go lifecycle and storage foundation, followed by authentication, Agent identity and durable commands.
+Stage A design and upstream reference review are recorded in [ARCHITECTURE.md](ARCHITECTURE.md). The Go service foundation now opens two independent SQLite WAL databases, applies migrations and verifies the encryption key. Verified on Darwin arm64 with Go test, race, vet, and a binary smoke run through `version`, `serve`, `/healthz` and SIGTERM. Next implement browser authentication, Agent identity and durable commands.
