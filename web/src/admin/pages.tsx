@@ -408,7 +408,7 @@ export function Integration() {
           </section>
           <section className="section surface padded">
             <h2>{t("protocol")}</h2>
-            <code>{location.origin}/api/v1/agent/session</code>
+            <code>{location.origin}/api/agent/session</code>
             <p>
               <a
                 href="/api/v1/schemas/report-v1.json"
@@ -418,7 +418,7 @@ export function Integration() {
                 Report JSON Schema <ExternalLink size={14} />
               </a>
             </p>
-            <pre>{`curl -X POST '${location.origin}/api/v1/agent/session' \\\n  -H 'Authorization: Bearer YOUR_AGENT_TOKEN' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"instanceId":"worker-a","bootId":"NEW_PROCESS_UUID"}'`}</pre>
+            <pre>{`curl -X POST '${location.origin}/api/agent/session' \\\n  -H 'Authorization: Bearer YOUR_AGENT_TOKEN' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"instanceId":"worker-a","bootId":"NEW_PROCESS_UUID"}'`}</pre>
           </section>
         </>
       )}

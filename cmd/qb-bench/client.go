@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -27,7 +28,7 @@ func (a *api) request(ctx context.Context, method, path, token, key string, inpu
 		}
 		body = bytes.NewReader(payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, a.origin+"/api/v1"+path, body)
+	req, err := http.NewRequestWithContext(ctx, method, a.origin+apiPath(path), body)
 	if err != nil {
 		return nil, err
 	}
@@ -126,4 +127,11 @@ func (r *requests) call(a *api, ctx context.Context, name, method, path, token, 
 	}
 	r.mu.Unlock()
 	return code, err
+}
+
+func apiPath(path string) string {
+	if strings.HasPrefix(path, "/agent/") {
+		return "/api" + path
+	}
+	return "/api/v1" + path
 }

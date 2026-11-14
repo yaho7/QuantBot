@@ -51,7 +51,7 @@ func TestStreamPushesOnlyCommittedStrategyChanges(t *testing.T) {
 
 	send := func(method, path, body, token, cookie, csrf string, expected int) *http.Response {
 		t.Helper()
-		req, err := http.NewRequestWithContext(ctx, method, server.URL+"/api/v1"+path, strings.NewReader(body))
+		req, err := http.NewRequestWithContext(ctx, method, server.URL+apiPath(path), strings.NewReader(body))
 		if err != nil {
 			t.Fatal(err)
 		}

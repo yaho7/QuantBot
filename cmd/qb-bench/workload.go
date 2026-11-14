@@ -132,9 +132,6 @@ func (w *workload) controlCycle(ctx context.Context, worker agent, index int) er
 		return err
 	}
 	path := "/agent/commands/" + created.ID
-	if _, err := w.stats.call(w.api, ctx, "command_accept", "POST", path+"/accept", worker.session, "", nil, nil); err != nil {
-		return err
-	}
 	var claimed struct{ Permit string }
 	if _, err := w.stats.call(w.api, ctx, "command_claim", "POST", path+"/claim", worker.session, "", nil, &claimed); err != nil {
 		return err

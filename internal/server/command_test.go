@@ -30,7 +30,7 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 		`{"username":"admin","password":"paper-test-password"}`, origin, nil, "", 200))
 
 	request := func(method, path, body, token, key string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(method, origin+"/api/v1"+path, strings.NewReader(body))
+		req := httptest.NewRequest(method, origin+apiPath(path), strings.NewReader(body))
 		req.RemoteAddr = "127.0.0.1:40000"
 		if strings.HasPrefix(path, "/agent/") {
 			req.Header.Set("Authorization", "Bearer "+token)
@@ -79,16 +79,13 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 	agentBase := "/agent" + base
 	send("POST", strategyPath+"/commands", intent, "", "request-1", 200)
 	send("POST", strategyPath+"/commands", strings.Replace(intent, "true", "false", 1), "", "request-1", 409)
-	send("POST", agentBase+"/accept", "", agent.Session, "", 409)
+	send("POST", agentBase+"/claim", "", agent.Session, "", 409)
 	send("POST", base+"/confirm", "", "", "", 200)
 	send("POST", base+"/confirm", "", "", "", 200)
 	poll := send("GET", "/agent/commands?wait=0", "", agent.Session, "", 200)
 	if !strings.Contains(poll.Body.String(), first.ID) {
 		t.Fatal("confirmed command was not offered")
 	}
-	send("POST", agentBase+"/claim", "", agent.Session, "", 409)
-	send("POST", agentBase+"/accept", "", agent.Session, "", 200)
-	send("POST", agentBase+"/accept", "", agent.Session, "", 200)
 
 	var racers sync.WaitGroup
 	results := make(chan *httptest.ResponseRecorder, 16)
@@ -168,7 +165,7 @@ func TestPollingRevocationAndCancellation(t *testing.T) {
 	setup, cookie := parseSession(t, requestAuth(t, handler, "POST", "/setup",
 		`{"username":"admin","password":"paper-test-password"}`, origin, nil, "", 200))
 	call := func(method, path, body, token string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(method, origin+"/api/v1"+path, strings.NewReader(body))
+		req := httptest.NewRequest(method, origin+apiPath(path), strings.NewReader(body))
 		req.RemoteAddr = "127.0.0.1:50000"
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Origin", origin)

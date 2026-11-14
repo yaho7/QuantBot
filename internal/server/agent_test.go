@@ -21,7 +21,7 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 		`{"username":"admin","password":"paper-test-password"}`, origin, nil, "", 200))
 	send := func(method, path, body, bearer string, expected int) *httptest.ResponseRecorder {
 		t.Helper()
-		req := httptest.NewRequest(method, origin+"/api/v1"+path, strings.NewReader(body))
+		req := httptest.NewRequest(method, origin+apiPath(path), strings.NewReader(body))
 		req.RemoteAddr = "127.0.0.1:10000"
 		if body != "" {
 			req.Header.Set("Content-Type", "application/json")
@@ -127,4 +127,11 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 	if !strings.Contains(list.Body.String(), response.Strategy.ID) {
 		t.Fatal("archiving removed strategy history")
 	}
+}
+
+func apiPath(path string) string {
+	if strings.HasPrefix(path, "/agent/") {
+		return "/api" + path
+	}
+	return "/api/v1" + path
 }

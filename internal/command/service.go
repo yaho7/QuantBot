@@ -43,10 +43,8 @@ func (s *Service) RegisterBrowser(r chi.Router) {
 
 func (s *Service) RegisterAgent(r chi.Router) {
 	r.Get("/commands", s.pollCommands)
-	r.Post("/commands/{id}/accept", s.accept)
 	r.Post("/commands/{id}/claim", s.claim)
 	r.Post("/commands/{id}/result", s.result)
-	r.Post("/commands/{id}/reject", s.reject)
 }
 
 var (

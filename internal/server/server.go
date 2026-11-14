@@ -104,15 +104,16 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 	accounts := auth.New(stores.Control)
 	strategies := strategy.New(stores.Control, events.Publish)
 	controls := control.New(stores.Control, events.Publish)
+	router.Route("/api/agent", func(r chi.Router) {
+		strategies.RegisterAgent(r)
+		controls.RegisterAgent(r)
+		commands.RegisterAgent(r)
+		reports.RegisterAgent(r)
+	})
 	router.Route("/api/v1", func(r chi.Router) {
 		accounts.Register(r)
 		reports.RegisterSchema(r)
-		r.Route("/agent", func(r chi.Router) {
-			strategies.RegisterAgent(r)
-			controls.RegisterAgent(r)
-			commands.RegisterAgent(r)
-			reports.RegisterAgent(r)
-		})
+
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
 			notifications.Register(r)

@@ -133,35 +133,20 @@ func checkAgentTarget(ctx context.Context, q *controldb.Queries, agent strategy.
 	return err
 }
 
-func (s *Service) accept(w http.ResponseWriter, r *http.Request) {
-	cmd, err := s.withAgentCommand(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd *controldb.Command, now int64) error {
-		if err := checkAgentTarget(ctx, q, agent, *cmd, now); err != nil {
-			return err
-		}
-		if cmd.Status == accepted && cmd.AcceptedBy.String == agent.Digest {
-			return nil
-		}
-		if cmd.Status != pending {
-			return errState
-		}
-		cmd.AcceptedBy = sql.NullString{String: agent.Digest, Valid: true}
-		return transition(ctx, q, cmd, accepted, "agent:"+agent.InstanceID, "executor accepted", now)
-	})
-	if err != nil {
-		commandError(w, err)
-		return
-	}
-	httpapi.JSON(w, http.StatusOK, present(cmd))
-}
-
 func (s *Service) claim(w http.ResponseWriter, r *http.Request) {
 	permit := randomID()
 	cmd, err := s.withAgentCommand(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd *controldb.Command, now int64) error {
-		if cmd.Status != accepted || cmd.AcceptedBy.String != agent.Digest {
+		if cmd.Status != pending && (cmd.Status != accepted || cmd.AcceptedBy.String != agent.Digest) {
 			return errState
 		}
 		if err := checkAgentTarget(ctx, q, agent, *cmd, now); err != nil {
 			return err
+		}
+		if cmd.Status == pending {
+			cmd.AcceptedBy = sql.NullString{String: agent.Digest, Valid: true}
+			if err := transition(ctx, q, cmd, accepted, "agent:"+agent.InstanceID, "executor accepted", now); err != nil {
+				return err
+			}
 		}
 		if err := q.InsertExecutionPermit(ctx, controldb.InsertExecutionPermitParams{
 			CommandID: cmd.ID, Digest: auth.Digest(permit), IssuedAt: now,
@@ -227,33 +212,6 @@ func (s *Service) result(w http.ResponseWriter, r *http.Request) {
 		}
 		cmd.Receipt = sql.NullString{String: string(receipt), Valid: true}
 		return transition(ctx, q, cmd, input.Status, "agent:"+agent.InstanceID, "execution receipt recorded", now)
-	})
-	if err != nil {
-		commandError(w, err)
-		return
-	}
-	httpapi.JSON(w, http.StatusOK, present(cmd))
-}
-
-func (s *Service) reject(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		Reason string `json:"reason"`
-	}
-	if !httpapi.ReadJSON(w, r, &input, 4096) {
-		return
-	}
-	if len(input.Reason) == 0 || len(input.Reason) > 1024 {
-		commandError(w, invalid("Rejection requires a reason"))
-		return
-	}
-	cmd, err := s.withAgentCommand(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd *controldb.Command, now int64) error {
-		if !agent.Executor || cmd.Deadline <= now || cmd.AcceptedBy.Valid && cmd.AcceptedBy.String != agent.Digest {
-			return errState
-		}
-		if cmd.Status == rejected {
-			return nil
-		}
-		return transition(ctx, q, cmd, rejected, "agent:"+agent.InstanceID, input.Reason, now)
 	})
 	if err != nil {
 		commandError(w, err)

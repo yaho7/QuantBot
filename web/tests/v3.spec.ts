@@ -21,7 +21,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await dialog.getByRole("button", { name: "创建策略", exact: true }).click();
   await expect(dialog.locator(".secret code")).toContainText("qbt_");
   const token = await dialog.locator(".secret code").innerText();
-  const agent = await request.post("/api/v1/agent/session", {
+  const agent = await request.post("/api/agent/session", {
     headers: { Authorization: "Bearer " + token },
     data: { instanceId: "browser-worker", bootId: "browser-boot" },
   });
@@ -38,7 +38,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(page.getByText("当前会话 · browser-worker")).toBeVisible();
   expect(
     (
-      await request.put("/api/v1/agent/controls", {
+      await request.put("/api/agent/controls", {
         headers,
         data: {
           version: 1,
@@ -76,7 +76,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   };
   expect(
     (
-      await request.put("/api/v1/agent/controls/state", {
+      await request.put("/api/agent/controls/state", {
         headers,
         data: state,
       })
@@ -150,7 +150,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
       },
     });
   }
-  const upload = await request.post("/api/v1/agent/reports", {
+  const upload = await request.post("/api/agent/reports", {
     headers,
     data: { version: 1, records },
   });
@@ -174,26 +174,19 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await dialog.getByRole("button", { name: "确认下发", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   const commands = await (
-    await request.get("/api/v1/agent/commands?wait=0", { headers })
+    await request.get("/api/agent/commands?wait=0", { headers })
   ).json();
   expect(commands).toHaveLength(1);
   const commandId = commands[0].id;
-  expect(
-    (
-      await request.post("/api/v1/agent/commands/" + commandId + "/accept", {
-        headers,
-      })
-    ).ok(),
-  ).toBeTruthy();
   const permit = await (
-    await request.post("/api/v1/agent/commands/" + commandId + "/claim", {
+    await request.post("/api/agent/commands/" + commandId + "/claim", {
       headers,
     })
   ).json();
   expect(permit.permit).toBeTruthy();
   expect(
     (
-      await request.post("/api/v1/agent/commands/" + commandId + "/result", {
+      await request.post("/api/agent/commands/" + commandId + "/result", {
         headers,
         data: {
           permit: permit.permit,
@@ -212,7 +205,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   state.states.forEach((s) => (s.observedAt = Date.now()));
   expect(
     (
-      await request.put("/api/v1/agent/controls/state", {
+      await request.put("/api/agent/controls/state", {
         headers,
         data: state,
       })
@@ -241,7 +234,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
       localStorage.setItem("qb.appearance", mode);
     }, appearance);
     for (const width of [390, 430, 768, 1280, 1600]) {
-      await request.put("/api/v1/agent/heartbeat", { headers });
+      await request.put("/api/agent/heartbeat", { headers });
       await page.setViewportSize({ width, height: 1000 });
       for (const [label, path] of [
         ["home", "/"],

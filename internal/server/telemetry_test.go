@@ -32,7 +32,7 @@ func TestTelemetryPartialCommitSafeReplayAndSnapshot(t *testing.T) {
 
 	call := func(method, path, body, token string, status int) *httptest.ResponseRecorder {
 		t.Helper()
-		req := httptest.NewRequest(method, origin+"/api/v1"+path, strings.NewReader(body))
+		req := httptest.NewRequest(method, origin+apiPath(path), strings.NewReader(body))
 		req.RemoteAddr = "127.0.0.1:12345"
 		req.Header.Set("Content-Type", "application/json")
 		if strings.HasPrefix(path, "/agent/") {
