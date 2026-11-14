@@ -4,6 +4,43 @@
 
 package metricsdb
 
+type CapabilityLatest struct {
+	StrategyID   string
+	RecordID     string
+	CapabilityID string
+	Revision     int64
+	InstanceID   string
+	BootID       string
+	ObservedAt   int64
+	ReceivedAt   int64
+	Value        string
+	Links        string
+	Fingerprint  string
+}
+
+type CapabilityReceipt struct {
+	StrategyID   string
+	Revision     int64
+	CapabilityID string
+	RecordID     string
+	ReceivedAt   int64
+	Fingerprint  string
+}
+
+type CapabilitySample struct {
+	StrategyID   string
+	RecordID     string
+	CapabilityID string
+	Revision     int64
+	InstanceID   string
+	BootID       string
+	ObservedAt   int64
+	ReceivedAt   int64
+	Value        string
+	Links        string
+	Fingerprint  string
+}
+
 type LatestSample struct {
 	StrategyID string
 	InstanceID string
@@ -31,14 +68,16 @@ type Rollup struct {
 }
 
 type Sample struct {
-	StrategyID  string
-	ReportID    string
-	InstanceID  string
-	Kind        string
-	Series      string
-	ObservedAt  int64
-	Data        string
-	Fingerprint string
+	StrategyID   string
+	ReportID     string
+	InstanceID   string
+	Kind         string
+	Series       string
+	ObservedAt   int64
+	Data         string
+	Fingerprint  string
+	Associations string
+	ReceivedAt   int64
 }
 
 type SeriesCatalog struct {
@@ -47,12 +86,4 @@ type SeriesCatalog struct {
 	Kind       string
 	Series     string
 	ObservedAt int64
-}
-
-type Snapshot struct {
-	StrategyID string
-	InstanceID string
-	BootID     string
-	ObservedAt int64
-	Records    string
 }

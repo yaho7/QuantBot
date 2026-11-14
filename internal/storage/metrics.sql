@@ -6,8 +6,8 @@ INSERT INTO metric_definitions (strategy_id, name, definition) VALUES (?, ?, ?)
 ON CONFLICT (strategy_id, name) DO UPDATE SET definition = excluded.definition;
 
 -- name: InsertSample :execrows
-INSERT INTO samples (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (strategy_id, kind, report_id) DO NOTHING;
+INSERT INTO samples (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint, associations, received_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (strategy_id, kind, report_id) DO NOTHING;
 
 -- name: SampleFingerprint :one
 SELECT fingerprint FROM samples WHERE strategy_id = ? AND kind = ? AND report_id = ?;
@@ -21,18 +21,6 @@ WHERE (excluded.observed_at, excluded.report_id) > (latest_samples.observed_at, 
 -- name: ListLatestSamples :many
 SELECT * FROM latest_samples WHERE strategy_id = ? AND kind = ?
 ORDER BY observed_at DESC, report_id DESC LIMIT 1000;
-
--- name: GetSnapshot :one
-SELECT * FROM snapshots WHERE strategy_id = ? AND instance_id = ? AND boot_id = ?;
-
--- name: PutSnapshot :exec
-INSERT INTO snapshots (strategy_id, instance_id, boot_id, observed_at, records)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (strategy_id, instance_id, boot_id) DO UPDATE SET
-    observed_at = excluded.observed_at, records = excluded.records;
-
--- name: ListSnapshots :many
-SELECT * FROM snapshots WHERE strategy_id = ? ORDER BY observed_at DESC LIMIT 256;
 
 -- name: ListMetricDefinitions :many
 SELECT * FROM metric_definitions WHERE strategy_id = ? ORDER BY name LIMIT 1000;
@@ -83,13 +71,51 @@ DELETE FROM rollups WHERE (strategy_id, instance_id, kind, series, resolution, b
     ORDER BY old.bucket LIMIT 2000
 );
 
--- name: PruneSnapshots :execrows
-DELETE FROM snapshots WHERE (strategy_id, instance_id, boot_id) IN (
-    SELECT old.strategy_id, old.instance_id, old.boot_id FROM snapshots AS old WHERE old.observed_at < sqlc.arg(cutoff)
-    ORDER BY old.observed_at LIMIT 2000
-);
-
 -- name: ListSampleEvents :many
 SELECT * FROM samples WHERE strategy_id = ? AND kind = ?
 AND (observed_at, report_id) < (sqlc.arg(before_at), CAST(sqlc.arg(before_id) AS TEXT))
 ORDER BY observed_at DESC, report_id DESC LIMIT sqlc.arg(page_size);
+
+-- name: InsertCapabilitySample :execrows
+INSERT INTO capability_samples (strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;
+
+-- name: PutCapabilityLatest :execrows
+INSERT INTO capability_latest (strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(strategy_id,capability_id) DO UPDATE SET
+record_id=excluded.record_id, revision=excluded.revision, instance_id=excluded.instance_id, boot_id=excluded.boot_id,
+observed_at=excluded.observed_at, received_at=excluded.received_at, value=excluded.value, links=excluded.links, fingerprint=excluded.fingerprint
+WHERE (excluded.revision, excluded.observed_at, excluded.record_id) >
+(capability_latest.revision, capability_latest.observed_at, capability_latest.record_id);
+
+-- name: ReplayCapabilityData :many
+SELECT * FROM capability_samples WHERE strategy_id=? AND capability_id=?
+AND observed_at >= sqlc.arg(from_at) AND observed_at < sqlc.arg(to_at)
+AND (
+  observed_at < sqlc.arg(cursor_at) OR observed_at=sqlc.arg(cursor_at)
+  AND (record_id < sqlc.arg(cursor_id) OR record_id=sqlc.arg(cursor_id) AND revision < sqlc.arg(cursor_revision))
+)
+ORDER BY observed_at DESC, record_id DESC, revision DESC LIMIT sqlc.arg(page_size);
+
+-- name: PruneCapabilitySamples :execrows
+DELETE FROM capability_samples WHERE (strategy_id,revision,capability_id,record_id) IN (
+    SELECT s.strategy_id,s.revision,s.capability_id,s.record_id FROM capability_samples s
+    WHERE s.received_at < sqlc.arg(cutoff) ORDER BY s.received_at LIMIT 2000
+);
+
+-- name: InsertCapabilityReceipt :execrows
+INSERT INTO capability_receipts(strategy_id, revision, capability_id, record_id, received_at, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;
+
+-- name: CapabilityReceiptDigest :one
+SELECT fingerprint FROM capability_receipts WHERE strategy_id=? AND revision=? AND capability_id=? AND record_id=?;
+
+-- name: ListCapabilityLatest :many
+SELECT * FROM capability_latest WHERE strategy_id=? AND revision=? ORDER BY capability_id;
+
+-- name: PruneCapabilityReceipts :execrows
+DELETE FROM capability_receipts WHERE (strategy_id,revision,capability_id,record_id) IN (
+    SELECT s.strategy_id,s.revision,s.capability_id,s.record_id FROM capability_receipts s
+    WHERE s.received_at < sqlc.arg(cutoff) ORDER BY s.received_at LIMIT 2000
+);

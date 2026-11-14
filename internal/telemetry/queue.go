@@ -40,7 +40,7 @@ type metricQueue struct {
 type metricJob struct {
 	agent    strategy.Agent
 	records  []indexedRecord
-	snapshot *snapshot
+	declared []declaredWrite
 	done     chan metricResult
 }
 
@@ -126,13 +126,13 @@ func (q *metricQueue) persist(jobs []metricJob) {
 		queries := metricsdb.New(tx)
 		rollups := make(rollupBatch)
 		for i, job := range jobs {
-			if job.snapshot != nil {
-				ack, err := writeSnapshot(ctx, queries, job.agent, *job.snapshot)
+
+			for _, item := range job.declared {
+				result, err := writeDeclared(ctx, queries, job.agent, item)
 				if err != nil {
 					return err
 				}
-				results[i] = ack
-				continue
+				results[i].add(item.index, result)
 			}
 			for _, item := range job.records {
 				result, err := writeMetric(ctx, queries, job.agent, item.Record)

@@ -256,8 +256,8 @@ ORDER BY c.deadline LIMIT 128;
 SELECT * FROM audit WHERE id < ? ORDER BY id DESC LIMIT 100;
 
 -- name: InsertTradeEvent :execrows
-INSERT INTO trade_events (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;
+INSERT INTO trade_events (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint, associations, received_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;
 
 -- name: TradeEventFingerprint :one
 SELECT fingerprint FROM trade_events WHERE strategy_id = ? AND kind = ? AND report_id = ?;
@@ -285,3 +285,22 @@ SELECT count(*) FROM commands
 WHERE strategy_id=sqlc.arg(strategy_id) AND id<>sqlc.arg(command_id)
 AND status IN ('created','confirmation_required','pending','accepted','executing','unknown')
 AND (CAST(sqlc.arg(is_plan) AS BOOLEAN) OR id GLOB 'plan-*');
+
+-- name: RecordCapabilityState :execrows
+INSERT INTO capability_state_history (strategy_id,capability_id,revision,instance_id,boot_id,observed_at,received_at,value,available,reason)
+VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING;
+
+-- name: ReadCapabilityStateHistory :one
+SELECT * FROM capability_state_history WHERE strategy_id=? AND capability_id=? AND observed_at=? AND revision=?;
+
+-- name: ReplayCapabilityState :many
+SELECT * FROM capability_state_history WHERE strategy_id=? AND capability_id=?
+AND observed_at>=sqlc.arg(from_at) AND observed_at<sqlc.arg(to_at)
+AND (observed_at<sqlc.arg(cursor_at) OR observed_at=sqlc.arg(cursor_at) AND revision<sqlc.arg(cursor_revision))
+ORDER BY observed_at DESC,revision DESC LIMIT sqlc.arg(page_size);
+
+-- name: PruneCapabilityStates :execrows
+DELETE FROM capability_state_history WHERE (strategy_id,capability_id,observed_at,revision) IN (
+ SELECT h.strategy_id,h.capability_id,h.observed_at,h.revision FROM capability_state_history h
+ WHERE h.received_at<sqlc.arg(cutoff) ORDER BY h.received_at LIMIT 2000
+);

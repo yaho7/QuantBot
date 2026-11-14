@@ -33,11 +33,12 @@ var loadSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
 })
 
 type Record struct {
-	ID         string          `json:"id"`
-	Kind       string          `json:"kind"`
-	ObservedAt int64           `json:"observedAt"`
-	Data       json.RawMessage `json:"data"`
-	Series     string          `json:"-"`
+	ID           string          `json:"id"`
+	Kind         string          `json:"kind"`
+	ObservedAt   int64           `json:"observedAt"`
+	Data         json.RawMessage `json:"data"`
+	Series       string          `json:"-"`
+	Associations *Associations   `json:"associations,omitempty"`
 }
 
 const backfillWindow = 7 * 24 * time.Hour
@@ -67,8 +68,18 @@ func (s *Service) decodeRecord(raw json.RawMessage, now time.Time) (Record, erro
 	if err != nil {
 		return Record{}, err
 	}
+	var associations *Associations
+	if links, exists := value["associations"]; exists {
+		raw, err := json.Marshal(links)
+		if err != nil {
+			return Record{}, err
+		}
+		if err := json.Unmarshal(raw, &associations); err != nil {
+			return Record{}, err
+		}
+	}
 	body, err := json.Marshal(data)
-	return Record{ID: value["id"].(string), Kind: kind, ObservedAt: at, Data: body, Series: series}, err
+	return Record{ID: value["id"].(string), Kind: kind, ObservedAt: at, Data: body, Series: series, Associations: associations}, err
 }
 
 func critical(kind string) bool {
@@ -113,10 +124,7 @@ func recordSeries(kind string, data map[string]any, observedAt int64) (string, e
 		if err != nil || observedAt%(1000*interval) != 0 {
 			return "", errors.New("candle timestamp must align to the UTC interval start")
 		}
-		low, high := exact(field("low")), exact(field("high"))
-		opening, closePrice := exact(field("open")), exact(field("close"))
-		if low.Cmp(opening) > 0 || low.Cmp(closePrice) > 0 || high.Cmp(opening) < 0 ||
-			high.Cmp(closePrice) < 0 || exact(field("volume")).Sign() < 0 {
+		if !validCandle(field("open"), field("high"), field("low"), field("close"), field("volume")) {
 			return "", errors.New("invalid candle price range or volume")
 		}
 		data["intervalSeconds"] = interval
@@ -155,4 +163,10 @@ func statusKind(kind string) bool {
 		return true
 	}
 	return false
+}
+
+func validCandle(open, high, low, close, volume string) bool {
+	o, h, l, c, v := exact(open), exact(high), exact(low), exact(close), exact(volume)
+	return o != nil && h != nil && l != nil && c != nil && v != nil &&
+		l.Cmp(o) <= 0 && l.Cmp(c) <= 0 && h.Cmp(o) >= 0 && h.Cmp(c) >= 0 && v.Sign() >= 0
 }

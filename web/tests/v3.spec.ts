@@ -152,7 +152,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   }
   const upload = await request.post("/api/agent/reports", {
     headers,
-    data: { version: 1, records },
+    data: { records },
   });
   expect(upload.ok()).toBeTruthy();
   expect((await upload.json()).rejected).toBe(0);

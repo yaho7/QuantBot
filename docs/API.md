@@ -1,6 +1,6 @@
 # QuantBot v1 API
 
-The API is rooted at `/api/v1`. Browser requests use the administrator session cookie. Mutations require the same `Origin` and the `X-CSRF-Token` supplied by `GET /auth/session`. Agent requests use independent Bearer credentials. See [Agent protocol](AGENT_PROTOCOL.md) for reports, controls and command execution.
+The browser API is rooted at `/api/v1`. Agent routes use `/api/agent`. Browser requests use the administrator session cookie. Mutations require the same `Origin` and the `X-CSRF-Token` supplied by `GET /auth/session`. Agent requests use independent Bearer credentials. See [Agent protocol](AGENT_PROTOCOL.md) for reports, controls and command execution.
 
 | Path | Purpose |
 | --- | --- |
@@ -9,6 +9,7 @@ The API is rooted at `/api/v1`. Browser requests use the administrator session c
 | `/strategies`, `/strategies/{id}` | Strategy inventory and Agent instances |
 | `/strategies/{id}/controls` | Declared capabilities, desired intent and observed state |
 | `/strategies/{id}/series`, `/history`, `/telemetry`, `/records` | Discover and query monitoring data under the strategy path |
+| `/strategies/{id}/capabilities`, `/capability-data`, `/capabilities/{capability}/history` | Declared capabilities, latest data, health diagnostics and replay under the strategy path |
 | `/alerts` | Cross-strategy alert feed |
 | `POST /strategies/{id}/commands` | Submit a control action with an `Idempotency-Key` |
 | `GET /commands`, `GET /commands/{id}` | List commands or view one command and its transitions |

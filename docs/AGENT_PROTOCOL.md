@@ -71,11 +71,10 @@ The designated online executor with `command` scope calls `GET /api/agent/comman
 
 ## Telemetry
 
-Send `POST /api/agent/reports` with a current `report` session and JSON `{"version":1,"records":[…]}`. Each record has `id`, `kind`, `observedAt` (UTC Unix milliseconds) and `data`. A batch holds 1–250 records, up to 512 KiB. The service publishes the schema at `GET /api/v1/schemas/report-v1.json`. The schema defines status, connection, portfolio, equity, position, order, fill, performance, metric, OHLCV, signal, risk, alert and log. Monetary and quantity fields are decimal strings. A candle timestamp must align to its UTC interval. Metrics support seven days of backfill, and reports may be at most two minutes ahead of server time.
+Send `POST /api/agent/reports` with a current `report` session and JSON `{"records":[…]}`. Each record has `id`, `kind`, `observedAt` (UTC Unix milliseconds) and `data`. A batch holds 1–250 records, up to 512 KiB. The service publishes the schema at `GET /api/v1/schemas/report-v1.json`. The schema defines status, connection, portfolio, equity, position, order, fill, performance, metric, OHLCV, signal, risk, alert and log. Monetary and quantity fields are decimal strings. A candle timestamp must align to its UTC interval. Metrics support seven days of backfill, and reports may be at most two minutes ahead of server time.
 
 ```json
 {
-  "version": 1,
   "records": [
     {
       "id": "worker-a-equity-001",
@@ -91,9 +90,13 @@ Replace the example timestamp with the observation time. Use stable unique IDs w
 
 An HTTP 429 queue limit, HTTP 503 storage busy, HTTP 507 storage full, or missing response can occur after part of a mixed batch commits. Retry the original batch with unchanged IDs after the condition clears. A successful response is sent after all accepted records commit. A metric job already queued can still commit after client disconnect or shutdown.
 
-Send `PUT /api/agent/snapshot` with version 1, a snapshot `observedAt`, and 1–32 distinct state records (status, connection, portfolio, position or performance). The snapshot is an atomic per-boot view and is separate from the report history. Retrying the same snapshot is safe. The same timestamp with different content or an older snapshot receives HTTP 422.
+## Declared data and replay
 
-`PUT /api/agent/metric-definitions` accepts `{"version":1,"metrics":[{"name":"spread","label":"Spread","kind":"gauge"}]}`. Kinds are gauge, counter and ratio. Optional unit and description are presentation metadata. Update the named definitions using the same endpoint.
+For capability data, include the current `revision` and a `records` array. Each record includes a stable `id`, the `capabilityId`, UTC Unix milliseconds `observedAt`, and the declared `value`. Use `POST /api/agent/reports` for history-enabled metrics, parameter observations and states, `POST /api/agent/events` for declared events, and `PUT /api/agent/resources/{type}` for declared resources. The resource URL type is its capability ID. Do not combine standard and declared records in a single request. Standard events such as fills, signals and alerts may also be submitted to `/api/agent/events` in the standard report schema.
+
+An optional `associations` object carries explicit `account_id`, `symbol`, `signal_id`, `decision_id`, `order_id`, `command_id`, or `correlation_id`. Clients match only explicitly submitted IDs. A matching ID alone does not establish causality.
+
+Declared record IDs deduplicate within the combination of strategy, capability and revision. Conflicting duplicates are rejected, and expired revisions return HTTP 409. Current resource and event data are available in `/api/v1/strategies/{id}/capability-data`. A capability with `history: true` retains observations for 30 days with the original observation time, receive time, revision and identity. Query `/api/v1/strategies/{id}/capabilities/{capability}/history` for report, resource and event history. Add `source=state` for observations received through the state endpoint. Replay enumerates only saved observations, including those from previous revisions.
 
 ## Runnable status reports
 

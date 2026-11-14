@@ -185,7 +185,7 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 	seen := make(map[string]bool, len(input.States))
 	for _, state := range input.States {
 		if !controlID.MatchString(state.ID) || seen[state.ID] || len(state.Reason) > 512 ||
-			state.ObservedAt <= 0 || state.ObservedAt > now.Add(2*time.Minute).UnixMilli() {
+			state.ObservedAt < now.Add(-7*24*time.Hour).UnixMilli() || state.ObservedAt > now.Add(2*time.Minute).UnixMilli() {
 			fail(w, invalidInput("Invalid or duplicate control state"))
 			return
 		}
@@ -220,13 +220,35 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			value, err := json.Marshal(state.Value)
+			value, err := httpapi.CanonicalValue(state.Value)
 			if err != nil {
 				return err
 			}
 			var available int64
 			if state.Available == nil || *state.Available {
 				available = 1
+			}
+			if capability.History {
+				count, err := q.RecordCapabilityState(ctx, controldb.RecordCapabilityStateParams{
+					StrategyID: agent.StrategyID, CapabilityID: state.ID, Revision: input.Revision, InstanceID: agent.InstanceID, BootID: agent.BootID,
+					ObservedAt: state.ObservedAt, ReceivedAt: now.UnixMilli(), Value: string(value), Available: available, Reason: state.Reason,
+				})
+				if err != nil {
+					return err
+				}
+				if count == 0 {
+					old, err := q.ReadCapabilityStateHistory(ctx, controldb.ReadCapabilityStateHistoryParams{
+						StrategyID: agent.StrategyID, CapabilityID: state.ID, ObservedAt: state.ObservedAt, Revision: input.Revision,
+					})
+					if err != nil {
+						return err
+					}
+					if old.Value != string(value) || old.Available != available || old.Reason != state.Reason {
+						return invalidInput("State timestamp was reused with different data")
+					}
+					duplicate++
+					continue
+				}
 			}
 			switch {
 			case previous.ObservedAt > state.ObservedAt:

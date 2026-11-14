@@ -17,7 +17,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/telemetry"
 )
 
-func TestTelemetryPartialCommitSafeReplayAndSnapshot(t *testing.T) {
+func TestTelemetryPartialCommitAndSafeReplay(t *testing.T) {
 	ctx := t.Context()
 	stores, err := storage.Open(ctx, t.TempDir())
 	if err != nil {
@@ -60,7 +60,7 @@ func TestTelemetryPartialCommitSafeReplayAndSnapshot(t *testing.T) {
 	now := time.Now().UnixMilli()
 	fill := fmt.Sprintf(`{"id":"fill-a","kind":"fill","observedAt":%d,"data":{"accountId":"paper","orderId":"order-1","fillId":"broker-1","symbol":"BTC","side":"buy","quantity":"0.01","price":"20"}}`, now)
 	metric := fmt.Sprintf(`{"id":"metric-a","kind":"metric","observedAt":%d,"data":{"name":"spread","value":"0.001"}}`, now)
-	mixed := `{"version":1,"records":[` + fill + "," + metric + "]}"
+	mixed := `{"records":[` + fill + "," + metric + "]}"
 	// Cap SQLite pages, then submit a sample large enough to force SQLITE_FULL.
 	var pages int
 	if err := stores.Metrics.Write.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pages); err != nil {
@@ -95,7 +95,7 @@ func TestTelemetryPartialCommitSafeReplayAndSnapshot(t *testing.T) {
 	if ack.Inserted != 1 || ack.Duplicate != 1 || ack.Rejected != 0 {
 		t.Fatalf("unexpected retry ack: %+v", ack)
 	}
-	replay := `{"version":1,"records":[` + strings.Replace(fill, "fill-a", "new-envelope-id", 1) +
+	replay := `{"records":[` + strings.Replace(fill, "fill-a", "new-envelope-id", 1) +
 		"," + strings.Replace(metric, "0.001", "0.002", 1) + ",{}]}"
 	decodeTest(t, call("POST", "/agent/reports", replay, agent.Session, 200), &ack)
 	if ack.Inserted != 0 || ack.Duplicate != 1 || ack.Rejected != 2 {
@@ -103,17 +103,7 @@ func TestTelemetryPartialCommitSafeReplayAndSnapshot(t *testing.T) {
 	}
 	call("POST", "/agent/reports", mixed, created.Credential.Token, 401)
 	status := fmt.Sprintf(`{"id":"status-a","kind":"status","observedAt":%d,"data":{"state":"running"}}`, now)
-	snapshot := fmt.Sprintf(`{"version":1,"observedAt":%d,"records":[%s]}`, now, status)
-	decodeTest(t, call("PUT", "/agent/snapshot", snapshot, agent.Session, 200), &ack)
-	if ack.Inserted != 1 {
-		t.Fatalf("snapshot was not stored: %+v", ack)
-	}
-	decodeTest(t, call("PUT", "/agent/snapshot", snapshot, agent.Session, 200), &ack)
-	if ack.Duplicate != 1 {
-		t.Fatalf("snapshot retry was not deduplicated: %+v", ack)
-	}
-	call("PUT", "/agent/snapshot", strings.Replace(snapshot, "running", "stopped", 1), agent.Session, 422)
-	call("PUT", "/agent/metric-definitions", `{"version":1,"metrics":[{"name":"spread","kind":"gauge","label":"Spread"}]}`, agent.Session, 204)
+	call("POST", "/agent/reports", `{"records":[`+status+`]}`, agent.Session, 200)
 	path := "/strategies/" + created.Strategy.ID
 	var series struct {
 		Series []struct{ Kind, Series, InstanceID string }
@@ -129,7 +119,7 @@ func TestTelemetryPartialCommitSafeReplayAndSnapshot(t *testing.T) {
 	}
 	latest := call("GET", path+"/telemetry", "", "", 200)
 	if !strings.Contains(latest.Body.String(), `"state":"running"`) {
-		t.Fatalf("latest telemetry lost snapshot: %s", latest.Body)
+		t.Fatalf("latest telemetry lost state: %s", latest.Body)
 	}
 	feed := call("GET", path+"/records?kind=fill", "", "", 200)
 	if strings.Count(feed.Body.String(), "broker-1") < 1 || strings.Contains(feed.Body.String(), "new-envelope-id") {

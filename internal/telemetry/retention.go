@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/storage/metricsdb"
 )
 
@@ -34,6 +35,11 @@ func (s *Service) Maintain(ctx context.Context, dir string) {
 }
 
 func (s *Service) prune(ctx context.Context, now time.Time) error {
+	if err := pruneBatches(func() (int64, error) {
+		return controldb.New(s.stores.Control.Write).PruneCapabilityStates(ctx, now.Add(-30*24*time.Hour).UnixMilli())
+	}); err != nil {
+		return err
+	}
 	q := metricsdb.New(s.stores.Metrics.Write)
 	if err := pruneBatches(func() (int64, error) { return q.PruneSamples(ctx, now.Add(-rawRetention).UnixMilli()) }); err != nil {
 		return err
@@ -41,7 +47,10 @@ func (s *Service) prune(ctx context.Context, now time.Time) error {
 	if err := pruneBatches(func() (int64, error) { return q.PruneLogs(ctx, now.Add(-backfillWindow).UnixMilli()) }); err != nil {
 		return err
 	}
-	if err := pruneBatches(func() (int64, error) { return q.PruneSnapshots(ctx, now.Add(-rawRetention).UnixMilli()) }); err != nil {
+	if err := pruneBatches(func() (int64, error) { return q.PruneCapabilitySamples(ctx, now.Add(-30*24*time.Hour).UnixMilli()) }); err != nil {
+		return err
+	}
+	if err := pruneBatches(func() (int64, error) { return q.PruneCapabilityReceipts(ctx, now.Add(-30*24*time.Hour).UnixMilli()) }); err != nil {
 		return err
 	}
 	for _, item := range tiers {

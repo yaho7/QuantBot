@@ -117,7 +117,7 @@ func TestStreamPushesOnlyCommittedStrategyChanges(t *testing.T) {
 	var agent struct{ Session string }
 	read(send("POST", "/agent/session", `{"instanceId":"worker","bootId":"boot"}`, strategy.Credential.Token, "", "", 201), &agent)
 	at := time.Now().UnixMilli()
-	report := fmt.Sprintf(`{"version":1,"records":[{"id":"value","kind":"metric","observedAt":%d,"data":{"name":"test","value":"7"}}]}`, at)
+	report := fmt.Sprintf(`{"records":[{"id":"value","kind":"metric","observedAt":%d,"data":{"name":"test","value":"7"}}]}`, at)
 	send("POST", "/agent/reports", report, agent.Session, "", "", 200).Body.Close()
 	var sawStatus, sawMetric bool
 	for !sawStatus || !sawMetric {

@@ -47,9 +47,9 @@ func (s *Service) QueueDepth() int { return len(s.queue.jobs) }
 func (s *Service) WriteFailures() uint64 { return s.queue.failures.Load() }
 
 func (s *Service) RegisterAgent(r chi.Router) {
-	r.Post("/reports", s.authorized(s.reports))
-	r.Put("/snapshot", s.authorized(s.snapshot))
-	r.Put("/metric-definitions", s.authorized(s.defineMetrics))
+	r.Post("/reports", s.authorized(s.ingest("report")))
+	r.Post("/events", s.authorized(s.ingest("event")))
+	r.Put("/resources/{type}", s.authorized(s.ingest("resource")))
 }
 
 func (s *Service) RegisterSchema(r chi.Router) {
@@ -80,26 +80,41 @@ func (s *Service) authorized(handle func(http.ResponseWriter, *http.Request, str
 const maxBody = 512 << 10
 const maxRecords = 250
 
-func (s *Service) reports(w http.ResponseWriter, r *http.Request, agent strategy.Agent) {
-	var batch struct {
-		Version int               `json:"version"`
-		Records []json.RawMessage `json:"records"`
+func (s *Service) ingest(kind string) func(http.ResponseWriter, *http.Request, strategy.Agent) {
+	return func(w http.ResponseWriter, r *http.Request, agent strategy.Agent) {
+		var batch struct {
+			Revision *int64            `json:"revision,omitempty"`
+			Records  []json.RawMessage `json:"records"`
+		}
+		if !httpapi.ReadJSON(w, r, &batch, maxBody) {
+			return
+		}
+		if len(batch.Records) == 0 || len(batch.Records) > maxRecords || batch.Revision != nil && *batch.Revision < 1 {
+			httpapi.Error(w, 400, "invalid_batch", "Provide 1–250 records and a positive revision for capability data")
+			return
+		}
+		if batch.Revision != nil {
+			s.declared(w, r, agent, *batch.Revision, batch.Records, kind, chi.URLParam(r, "type"))
+			return
+		}
+		if kind == "resource" {
+			httpapi.Error(w, 400, "invalid_batch", "Resource updates require a capability revision")
+			return
+		}
+		s.standard(w, r, agent, batch.Records, kind)
 	}
-	if !httpapi.ReadJSON(w, r, &batch, maxBody) {
-		return
-	}
-	if batch.Version != 1 || len(batch.Records) == 0 || len(batch.Records) > maxRecords {
-		httpapi.Error(w, http.StatusBadRequest, "invalid_batch", "Provide version 1 and 1–250 records")
-		return
-	}
+}
 
+func (s *Service) standard(w http.ResponseWriter, r *http.Request, agent strategy.Agent, records []json.RawMessage, kind string) {
 	now := time.Now()
 	var trades, metrics []indexedRecord
 	var ack Ack
-	for i, raw := range batch.Records {
+	for i, raw := range records {
 		record, err := s.decodeRecord(raw, now)
 		if err != nil {
 			ack.add(i, firstLine(err.Error()))
+		} else if kind == "event" && !standardEvent(record.Kind) {
+			ack.add(i, "record is not a standard event")
 		} else if critical(record.Kind) {
 			trades = append(trades, indexedRecord{record, i})
 		} else {
@@ -153,55 +168,6 @@ func (s *Service) reports(w http.ResponseWriter, r *http.Request, agent strategy
 	writeAck(w, ack)
 }
 
-func (s *Service) snapshot(w http.ResponseWriter, r *http.Request, agent strategy.Agent) {
-	var input snapshot
-	if !httpapi.ReadJSON(w, r, &input, maxBody) {
-		return
-	}
-	now := time.Now()
-	if input.Version != 1 || len(input.Records) == 0 || len(input.Records) > 32 ||
-		input.ObservedAt < now.Add(-backfillWindow).UnixMilli() || input.ObservedAt > now.Add(2*time.Minute).UnixMilli() {
-		httpapi.Error(w, http.StatusBadRequest, "invalid_snapshot", "Provide a version 1 snapshot with a recent observation time and 1–32 records")
-		return
-	}
-	seen := make(map[[2]string]bool)
-	var ack Ack
-	for i, raw := range input.Records {
-		record, err := s.decodeRecord(raw, now)
-		if err != nil {
-			ack.add(i, firstLine(err.Error()))
-			continue
-		}
-		key := [2]string{record.Kind, record.Series}
-		if !statusKind(record.Kind) || record.ObservedAt > input.ObservedAt || seen[key] {
-			ack.add(i, "Snapshot records must be distinct state series observed at or before the snapshot time")
-			continue
-		}
-		seen[key] = true
-		input.Records[i], err = json.Marshal(record)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-	}
-	if ack.Rejected > 0 {
-		ack.Rejected = len(input.Records)
-		writeAck(w, ack)
-		return
-	}
-	if _, err := strategy.Authorize(r.Context(), controldb.New(s.stores.Control.Read), r.Header.Get("Authorization"), strategy.ReportScope); err != nil {
-		writeError(w, err)
-		return
-	}
-	slices.SortFunc(input.Records, func(a, b json.RawMessage) int { return strings.Compare(string(a), string(b)) })
-	ack, err := s.queue.submit(r.Context(), metricJob{agent: agent, snapshot: &input})
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	writeAck(w, ack)
-}
-
 func firstLine(message string) string {
 	if _, detail, ok := strings.Cut(message, "\n"); ok {
 		message, _, _ = strings.Cut(detail, "\n")
@@ -241,4 +207,8 @@ func writeError(w http.ResponseWriter, err error) {
 		slog.Error("telemetry storage", "error", err)
 		httpapi.Error(w, http.StatusServiceUnavailable, "storage_unavailable", "Telemetry storage unavailable")
 	}
+}
+
+func standardEvent(kind string) bool {
+	return critical(kind) || kind == "signal" || kind == "log"
 }

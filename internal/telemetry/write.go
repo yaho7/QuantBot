@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/storage/metricsdb"
@@ -60,6 +61,11 @@ func fingerprint(instance string, r Record) string {
 	hash := sha256.New()
 	fmt.Fprintf(hash, "%s\x00%d\x00", instance, r.ObservedAt)
 	hash.Write(r.Data)
+	if r.Associations != nil {
+		links, _ := json.Marshal(r.Associations)
+		hash.Write([]byte{0})
+		hash.Write(links)
+	}
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
@@ -79,9 +85,14 @@ func writeTrade(ctx context.Context, q *controldb.Queries, agent strategy.Agent,
 		instance = ""
 	}
 	hash := fingerprint(instance, r)
+	links, err := json.Marshal(r.Associations)
+	if err != nil {
+		return "", err
+	}
 	count, err := q.InsertTradeEvent(ctx, controldb.InsertTradeEventParams{
 		StrategyID: agent.StrategyID, InstanceID: agent.InstanceID, ReportID: r.ID,
 		Kind: r.Kind, Series: r.Series, ObservedAt: r.ObservedAt, Data: string(r.Data), Fingerprint: hash,
+		Associations: string(links), ReceivedAt: time.Now().UnixMilli(),
 	})
 	if err != nil || count == 1 {
 		return inserted, err
@@ -99,9 +110,14 @@ func writeTrade(ctx context.Context, q *controldb.Queries, agent strategy.Agent,
 
 func writeMetric(ctx context.Context, q *metricsdb.Queries, agent strategy.Agent, r Record) (string, error) {
 	hash := fingerprint(agent.InstanceID, r)
+	links, err := json.Marshal(r.Associations)
+	if err != nil {
+		return "", err
+	}
 	count, err := q.InsertSample(ctx, metricsdb.InsertSampleParams{
 		StrategyID: agent.StrategyID, InstanceID: agent.InstanceID, ReportID: r.ID,
 		Kind: r.Kind, Series: r.Series, ObservedAt: r.ObservedAt, Data: string(r.Data), Fingerprint: hash,
+		Associations: string(links), ReceivedAt: time.Now().UnixMilli(),
 	})
 	if err != nil {
 		return inserted, err
@@ -121,39 +137,4 @@ func writeMetric(ctx context.Context, q *metricsdb.Queries, agent strategy.Agent
 		Kind: r.Kind, Series: r.Series, ObservedAt: r.ObservedAt, Data: string(r.Data),
 	})
 	return inserted, err
-}
-
-type snapshot struct {
-	Version    int               `json:"version"`
-	ObservedAt int64             `json:"observedAt"`
-	Records    []json.RawMessage `json:"records"`
-}
-
-func writeSnapshot(ctx context.Context, q *metricsdb.Queries, agent strategy.Agent, input snapshot) (Ack, error) {
-	var ack Ack
-	body, err := json.Marshal(input.Records)
-	if err != nil {
-		return ack, err
-	}
-	old, err := q.GetSnapshot(ctx, metricsdb.GetSnapshotParams{StrategyID: agent.StrategyID, InstanceID: agent.InstanceID, BootID: agent.BootID})
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return ack, err
-	}
-	switch {
-	case old.ObservedAt == input.ObservedAt && old.Records == string(body):
-		ack.Duplicate = len(input.Records)
-	case old.ObservedAt >= input.ObservedAt:
-		ack.Rejected = len(input.Records)
-		ack.Errors = []Rejection{{Index: -1, Message: "snapshot observation is older or already has different data"}}
-	default:
-		err = q.PutSnapshot(ctx, metricsdb.PutSnapshotParams{
-			StrategyID: agent.StrategyID, InstanceID: agent.InstanceID, BootID: agent.BootID,
-			ObservedAt: input.ObservedAt, Records: string(body),
-		})
-		if err == nil {
-			ack.Inserted = len(input.Records)
-		}
-		return ack, err
-	}
-	return ack, nil
 }

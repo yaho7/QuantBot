@@ -9,6 +9,29 @@ import (
 	"context"
 )
 
+const capabilityReceiptDigest = `-- name: CapabilityReceiptDigest :one
+SELECT fingerprint FROM capability_receipts WHERE strategy_id=? AND revision=? AND capability_id=? AND record_id=?
+`
+
+type CapabilityReceiptDigestParams struct {
+	StrategyID   string
+	Revision     int64
+	CapabilityID string
+	RecordID     string
+}
+
+func (q *Queries) CapabilityReceiptDigest(ctx context.Context, arg CapabilityReceiptDigestParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, capabilityReceiptDigest,
+		arg.StrategyID,
+		arg.Revision,
+		arg.CapabilityID,
+		arg.RecordID,
+	)
+	var fingerprint string
+	err := row.Scan(&fingerprint)
+	return fingerprint, err
+}
+
 const getMetricDefinition = `-- name: GetMetricDefinition :one
 SELECT definition FROM metric_definitions WHERE strategy_id = ? AND name = ?
 `
@@ -53,43 +76,90 @@ func (q *Queries) GetRollup(ctx context.Context, arg GetRollupParams) (string, e
 	return summary, err
 }
 
-const getSnapshot = `-- name: GetSnapshot :one
-SELECT strategy_id, instance_id, boot_id, observed_at, records FROM snapshots WHERE strategy_id = ? AND instance_id = ? AND boot_id = ?
+const insertCapabilityReceipt = `-- name: InsertCapabilityReceipt :execrows
+INSERT INTO capability_receipts(strategy_id, revision, capability_id, record_id, received_at, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
 `
 
-type GetSnapshotParams struct {
-	StrategyID string
-	InstanceID string
-	BootID     string
+type InsertCapabilityReceiptParams struct {
+	StrategyID   string
+	Revision     int64
+	CapabilityID string
+	RecordID     string
+	ReceivedAt   int64
+	Fingerprint  string
 }
 
-func (q *Queries) GetSnapshot(ctx context.Context, arg GetSnapshotParams) (Snapshot, error) {
-	row := q.db.QueryRowContext(ctx, getSnapshot, arg.StrategyID, arg.InstanceID, arg.BootID)
-	var i Snapshot
-	err := row.Scan(
-		&i.StrategyID,
-		&i.InstanceID,
-		&i.BootID,
-		&i.ObservedAt,
-		&i.Records,
+func (q *Queries) InsertCapabilityReceipt(ctx context.Context, arg InsertCapabilityReceiptParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertCapabilityReceipt,
+		arg.StrategyID,
+		arg.Revision,
+		arg.CapabilityID,
+		arg.RecordID,
+		arg.ReceivedAt,
+		arg.Fingerprint,
 	)
-	return i, err
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const insertCapabilitySample = `-- name: InsertCapabilitySample :execrows
+INSERT INTO capability_samples (strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
+`
+
+type InsertCapabilitySampleParams struct {
+	StrategyID   string
+	RecordID     string
+	CapabilityID string
+	Revision     int64
+	InstanceID   string
+	BootID       string
+	ObservedAt   int64
+	ReceivedAt   int64
+	Value        string
+	Links        string
+	Fingerprint  string
+}
+
+func (q *Queries) InsertCapabilitySample(ctx context.Context, arg InsertCapabilitySampleParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, insertCapabilitySample,
+		arg.StrategyID,
+		arg.RecordID,
+		arg.CapabilityID,
+		arg.Revision,
+		arg.InstanceID,
+		arg.BootID,
+		arg.ObservedAt,
+		arg.ReceivedAt,
+		arg.Value,
+		arg.Links,
+		arg.Fingerprint,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const insertSample = `-- name: InsertSample :execrows
-INSERT INTO samples (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (strategy_id, kind, report_id) DO NOTHING
+INSERT INTO samples (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint, associations, received_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (strategy_id, kind, report_id) DO NOTHING
 `
 
 type InsertSampleParams struct {
-	StrategyID  string
-	ReportID    string
-	InstanceID  string
-	Kind        string
-	Series      string
-	ObservedAt  int64
-	Data        string
-	Fingerprint string
+	StrategyID   string
+	ReportID     string
+	InstanceID   string
+	Kind         string
+	Series       string
+	ObservedAt   int64
+	Data         string
+	Fingerprint  string
+	Associations string
+	ReceivedAt   int64
 }
 
 func (q *Queries) InsertSample(ctx context.Context, arg InsertSampleParams) (int64, error) {
@@ -102,11 +172,57 @@ func (q *Queries) InsertSample(ctx context.Context, arg InsertSampleParams) (int
 		arg.ObservedAt,
 		arg.Data,
 		arg.Fingerprint,
+		arg.Associations,
+		arg.ReceivedAt,
 	)
 	if err != nil {
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const listCapabilityLatest = `-- name: ListCapabilityLatest :many
+SELECT strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint FROM capability_latest WHERE strategy_id=? AND revision=? ORDER BY capability_id
+`
+
+type ListCapabilityLatestParams struct {
+	StrategyID string
+	Revision   int64
+}
+
+func (q *Queries) ListCapabilityLatest(ctx context.Context, arg ListCapabilityLatestParams) ([]CapabilityLatest, error) {
+	rows, err := q.db.QueryContext(ctx, listCapabilityLatest, arg.StrategyID, arg.Revision)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CapabilityLatest
+	for rows.Next() {
+		var i CapabilityLatest
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.RecordID,
+			&i.CapabilityID,
+			&i.Revision,
+			&i.InstanceID,
+			&i.BootID,
+			&i.ObservedAt,
+			&i.ReceivedAt,
+			&i.Value,
+			&i.Links,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listLatestSamples = `-- name: ListLatestSamples :many
@@ -285,7 +401,7 @@ func (q *Queries) ListRollups(ctx context.Context, arg ListRollupsParams) ([]Lis
 }
 
 const listSampleEvents = `-- name: ListSampleEvents :many
-SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint FROM samples WHERE strategy_id = ? AND kind = ?
+SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint, associations, received_at FROM samples WHERE strategy_id = ? AND kind = ?
 AND (observed_at, report_id) < (?3, CAST(?4 AS TEXT))
 ORDER BY observed_at DESC, report_id DESC LIMIT ?5
 `
@@ -322,6 +438,8 @@ func (q *Queries) ListSampleEvents(ctx context.Context, arg ListSampleEventsPara
 			&i.ObservedAt,
 			&i.Data,
 			&i.Fingerprint,
+			&i.Associations,
+			&i.ReceivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -369,37 +487,34 @@ func (q *Queries) ListSeries(ctx context.Context, strategyID string) ([]SeriesCa
 	return items, nil
 }
 
-const listSnapshots = `-- name: ListSnapshots :many
-SELECT strategy_id, instance_id, boot_id, observed_at, records FROM snapshots WHERE strategy_id = ? ORDER BY observed_at DESC LIMIT 256
+const pruneCapabilityReceipts = `-- name: PruneCapabilityReceipts :execrows
+DELETE FROM capability_receipts WHERE (strategy_id,revision,capability_id,record_id) IN (
+    SELECT s.strategy_id,s.revision,s.capability_id,s.record_id FROM capability_receipts s
+    WHERE s.received_at < ?1 ORDER BY s.received_at LIMIT 2000
+)
 `
 
-func (q *Queries) ListSnapshots(ctx context.Context, strategyID string) ([]Snapshot, error) {
-	rows, err := q.db.QueryContext(ctx, listSnapshots, strategyID)
+func (q *Queries) PruneCapabilityReceipts(ctx context.Context, cutoff int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneCapabilityReceipts, cutoff)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-	defer rows.Close()
-	var items []Snapshot
-	for rows.Next() {
-		var i Snapshot
-		if err := rows.Scan(
-			&i.StrategyID,
-			&i.InstanceID,
-			&i.BootID,
-			&i.ObservedAt,
-			&i.Records,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
+	return result.RowsAffected()
+}
+
+const pruneCapabilitySamples = `-- name: PruneCapabilitySamples :execrows
+DELETE FROM capability_samples WHERE (strategy_id,revision,capability_id,record_id) IN (
+    SELECT s.strategy_id,s.revision,s.capability_id,s.record_id FROM capability_samples s
+    WHERE s.received_at < ?1 ORDER BY s.received_at LIMIT 2000
+)
+`
+
+func (q *Queries) PruneCapabilitySamples(ctx context.Context, cutoff int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneCapabilitySamples, cutoff)
+	if err != nil {
+		return 0, err
 	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+	return result.RowsAffected()
 }
 
 const pruneLogs = `-- name: PruneLogs :execrows
@@ -453,15 +568,44 @@ func (q *Queries) PruneSamples(ctx context.Context, cutoff int64) (int64, error)
 	return result.RowsAffected()
 }
 
-const pruneSnapshots = `-- name: PruneSnapshots :execrows
-DELETE FROM snapshots WHERE (strategy_id, instance_id, boot_id) IN (
-    SELECT old.strategy_id, old.instance_id, old.boot_id FROM snapshots AS old WHERE old.observed_at < ?1
-    ORDER BY old.observed_at LIMIT 2000
-)
+const putCapabilityLatest = `-- name: PutCapabilityLatest :execrows
+INSERT INTO capability_latest (strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(strategy_id,capability_id) DO UPDATE SET
+record_id=excluded.record_id, revision=excluded.revision, instance_id=excluded.instance_id, boot_id=excluded.boot_id,
+observed_at=excluded.observed_at, received_at=excluded.received_at, value=excluded.value, links=excluded.links, fingerprint=excluded.fingerprint
+WHERE (excluded.revision, excluded.observed_at, excluded.record_id) >
+(capability_latest.revision, capability_latest.observed_at, capability_latest.record_id)
 `
 
-func (q *Queries) PruneSnapshots(ctx context.Context, cutoff int64) (int64, error) {
-	result, err := q.db.ExecContext(ctx, pruneSnapshots, cutoff)
+type PutCapabilityLatestParams struct {
+	StrategyID   string
+	RecordID     string
+	CapabilityID string
+	Revision     int64
+	InstanceID   string
+	BootID       string
+	ObservedAt   int64
+	ReceivedAt   int64
+	Value        string
+	Links        string
+	Fingerprint  string
+}
+
+func (q *Queries) PutCapabilityLatest(ctx context.Context, arg PutCapabilityLatestParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, putCapabilityLatest,
+		arg.StrategyID,
+		arg.RecordID,
+		arg.CapabilityID,
+		arg.Revision,
+		arg.InstanceID,
+		arg.BootID,
+		arg.ObservedAt,
+		arg.ReceivedAt,
+		arg.Value,
+		arg.Links,
+		arg.Fingerprint,
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -527,30 +671,69 @@ func (q *Queries) PutRollup(ctx context.Context, arg PutRollupParams) error {
 	return err
 }
 
-const putSnapshot = `-- name: PutSnapshot :exec
-INSERT INTO snapshots (strategy_id, instance_id, boot_id, observed_at, records)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT (strategy_id, instance_id, boot_id) DO UPDATE SET
-    observed_at = excluded.observed_at, records = excluded.records
+const replayCapabilityData = `-- name: ReplayCapabilityData :many
+SELECT strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint FROM capability_samples WHERE strategy_id=? AND capability_id=?
+AND observed_at >= ?3 AND observed_at < ?4
+AND (
+  observed_at < ?5 OR observed_at=?5
+  AND (record_id < ?6 OR record_id=?6 AND revision < ?7)
+)
+ORDER BY observed_at DESC, record_id DESC, revision DESC LIMIT ?8
 `
 
-type PutSnapshotParams struct {
-	StrategyID string
-	InstanceID string
-	BootID     string
-	ObservedAt int64
-	Records    string
+type ReplayCapabilityDataParams struct {
+	StrategyID     string
+	CapabilityID   string
+	FromAt         int64
+	ToAt           int64
+	CursorAt       int64
+	CursorID       string
+	CursorRevision int64
+	PageSize       int64
 }
 
-func (q *Queries) PutSnapshot(ctx context.Context, arg PutSnapshotParams) error {
-	_, err := q.db.ExecContext(ctx, putSnapshot,
+func (q *Queries) ReplayCapabilityData(ctx context.Context, arg ReplayCapabilityDataParams) ([]CapabilitySample, error) {
+	rows, err := q.db.QueryContext(ctx, replayCapabilityData,
 		arg.StrategyID,
-		arg.InstanceID,
-		arg.BootID,
-		arg.ObservedAt,
-		arg.Records,
+		arg.CapabilityID,
+		arg.FromAt,
+		arg.ToAt,
+		arg.CursorAt,
+		arg.CursorID,
+		arg.CursorRevision,
+		arg.PageSize,
 	)
-	return err
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CapabilitySample
+	for rows.Next() {
+		var i CapabilitySample
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.RecordID,
+			&i.CapabilityID,
+			&i.Revision,
+			&i.InstanceID,
+			&i.BootID,
+			&i.ObservedAt,
+			&i.ReceivedAt,
+			&i.Value,
+			&i.Links,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const sampleFingerprint = `-- name: SampleFingerprint :one

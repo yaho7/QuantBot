@@ -55,9 +55,8 @@ func (w *workload) agentCycle(ctx context.Context, worker agent, points int) err
 
 func (w *workload) upload(ctx context.Context, worker agent, batch []report) error {
 	body := struct {
-		Version int      `json:"version"`
 		Records []report `json:"records"`
-	}{1, batch}
+	}{batch}
 	for attempt := range 6 {
 		var ack struct{ Inserted, Duplicate, Rejected int }
 		code, err := w.stats.call(w.api, ctx, "reports", "POST", "/agent/reports", worker.session, "", body, &ack)

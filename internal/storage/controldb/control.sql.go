@@ -795,19 +795,21 @@ func (q *Queries) InsertExecutionPermit(ctx context.Context, arg InsertExecution
 }
 
 const insertTradeEvent = `-- name: InsertTradeEvent :execrows
-INSERT INTO trade_events (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
+INSERT INTO trade_events (strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint, associations, received_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING
 `
 
 type InsertTradeEventParams struct {
-	StrategyID  string
-	ReportID    string
-	InstanceID  string
-	Kind        string
-	Series      string
-	ObservedAt  int64
-	Data        string
-	Fingerprint string
+	StrategyID   string
+	ReportID     string
+	InstanceID   string
+	Kind         string
+	Series       string
+	ObservedAt   int64
+	Data         string
+	Fingerprint  string
+	Associations string
+	ReceivedAt   int64
 }
 
 func (q *Queries) InsertTradeEvent(ctx context.Context, arg InsertTradeEventParams) (int64, error) {
@@ -820,6 +822,8 @@ func (q *Queries) InsertTradeEvent(ctx context.Context, arg InsertTradeEventPara
 		arg.ObservedAt,
 		arg.Data,
 		arg.Fingerprint,
+		arg.Associations,
+		arg.ReceivedAt,
 	)
 	if err != nil {
 		return 0, err
@@ -828,7 +832,7 @@ func (q *Queries) InsertTradeEvent(ctx context.Context, arg InsertTradeEventPara
 }
 
 const latestOrders = `-- name: LatestOrders :many
-SELECT e.strategy_id, e.report_id, e.instance_id, e.kind, e.series, e.observed_at, e.data, e.fingerprint FROM trade_events e
+SELECT e.strategy_id, e.report_id, e.instance_id, e.kind, e.series, e.observed_at, e.data, e.fingerprint, e.associations, e.received_at FROM trade_events e
 WHERE e.strategy_id = ? AND e.kind = 'order' AND NOT EXISTS (
     SELECT 1 FROM trade_events newer
     WHERE newer.strategy_id = e.strategy_id AND newer.kind = e.kind
@@ -855,6 +859,8 @@ func (q *Queries) LatestOrders(ctx context.Context, strategyID string) ([]TradeE
 			&i.ObservedAt,
 			&i.Data,
 			&i.Fingerprint,
+			&i.Associations,
+			&i.ReceivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1356,7 +1362,7 @@ func (q *Queries) ListStrategies(ctx context.Context, includeArchived interface{
 }
 
 const listTradeEvents = `-- name: ListTradeEvents :many
-SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint FROM trade_events
+SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint, associations, received_at FROM trade_events
 WHERE kind = ?1 AND (?2 = '' OR strategy_id = ?2)
 AND (observed_at, report_id, strategy_id) < (?3, CAST(?4 AS TEXT), CAST(?5 AS TEXT))
 ORDER BY observed_at DESC, report_id DESC, strategy_id DESC LIMIT ?6
@@ -1396,6 +1402,8 @@ func (q *Queries) ListTradeEvents(ctx context.Context, arg ListTradeEventsParams
 			&i.ObservedAt,
 			&i.Data,
 			&i.Fingerprint,
+			&i.Associations,
+			&i.ReceivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1408,6 +1416,21 @@ func (q *Queries) ListTradeEvents(ctx context.Context, arg ListTradeEventsParams
 		return nil, err
 	}
 	return items, nil
+}
+
+const pruneCapabilityStates = `-- name: PruneCapabilityStates :execrows
+DELETE FROM capability_state_history WHERE (strategy_id,capability_id,observed_at,revision) IN (
+ SELECT h.strategy_id,h.capability_id,h.observed_at,h.revision FROM capability_state_history h
+ WHERE h.received_at<?1 ORDER BY h.received_at LIMIT 2000
+)
+`
+
+func (q *Queries) PruneCapabilityStates(ctx context.Context, cutoff int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneCapabilityStates, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const putControlRegistry = `-- name: PutControlRegistry :exec
@@ -1488,6 +1511,77 @@ func (q *Queries) PutDesiredState(ctx context.Context, arg PutDesiredStateParams
 	return err
 }
 
+const readCapabilityStateHistory = `-- name: ReadCapabilityStateHistory :one
+SELECT strategy_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, available, reason FROM capability_state_history WHERE strategy_id=? AND capability_id=? AND observed_at=? AND revision=?
+`
+
+type ReadCapabilityStateHistoryParams struct {
+	StrategyID   string
+	CapabilityID string
+	ObservedAt   int64
+	Revision     int64
+}
+
+func (q *Queries) ReadCapabilityStateHistory(ctx context.Context, arg ReadCapabilityStateHistoryParams) (CapabilityStateHistory, error) {
+	row := q.db.QueryRowContext(ctx, readCapabilityStateHistory,
+		arg.StrategyID,
+		arg.CapabilityID,
+		arg.ObservedAt,
+		arg.Revision,
+	)
+	var i CapabilityStateHistory
+	err := row.Scan(
+		&i.StrategyID,
+		&i.CapabilityID,
+		&i.Revision,
+		&i.InstanceID,
+		&i.BootID,
+		&i.ObservedAt,
+		&i.ReceivedAt,
+		&i.Value,
+		&i.Available,
+		&i.Reason,
+	)
+	return i, err
+}
+
+const recordCapabilityState = `-- name: RecordCapabilityState :execrows
+INSERT INTO capability_state_history (strategy_id,capability_id,revision,instance_id,boot_id,observed_at,received_at,value,available,reason)
+VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING
+`
+
+type RecordCapabilityStateParams struct {
+	StrategyID   string
+	CapabilityID string
+	Revision     int64
+	InstanceID   string
+	BootID       string
+	ObservedAt   int64
+	ReceivedAt   int64
+	Value        string
+	Available    int64
+	Reason       string
+}
+
+func (q *Queries) RecordCapabilityState(ctx context.Context, arg RecordCapabilityStateParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, recordCapabilityState,
+		arg.StrategyID,
+		arg.CapabilityID,
+		arg.Revision,
+		arg.InstanceID,
+		arg.BootID,
+		arg.ObservedAt,
+		arg.ReceivedAt,
+		arg.Value,
+		arg.Available,
+		arg.Reason,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const rememberAgentBoot = `-- name: RememberAgentBoot :execrows
 INSERT INTO agent_boots(strategy_id, instance_id, boot_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING
 `
@@ -1504,6 +1598,65 @@ func (q *Queries) RememberAgentBoot(ctx context.Context, arg RememberAgentBootPa
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const replayCapabilityState = `-- name: ReplayCapabilityState :many
+SELECT strategy_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, available, reason FROM capability_state_history WHERE strategy_id=? AND capability_id=?
+AND observed_at>=?3 AND observed_at<?4
+AND (observed_at<?5 OR observed_at=?5 AND revision<?6)
+ORDER BY observed_at DESC,revision DESC LIMIT ?7
+`
+
+type ReplayCapabilityStateParams struct {
+	StrategyID     string
+	CapabilityID   string
+	FromAt         int64
+	ToAt           int64
+	CursorAt       int64
+	CursorRevision int64
+	PageSize       int64
+}
+
+func (q *Queries) ReplayCapabilityState(ctx context.Context, arg ReplayCapabilityStateParams) ([]CapabilityStateHistory, error) {
+	rows, err := q.db.QueryContext(ctx, replayCapabilityState,
+		arg.StrategyID,
+		arg.CapabilityID,
+		arg.FromAt,
+		arg.ToAt,
+		arg.CursorAt,
+		arg.CursorRevision,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []CapabilityStateHistory
+	for rows.Next() {
+		var i CapabilityStateHistory
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.CapabilityID,
+			&i.Revision,
+			&i.InstanceID,
+			&i.BootID,
+			&i.ObservedAt,
+			&i.ReceivedAt,
+			&i.Value,
+			&i.Available,
+			&i.Reason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const revokeAgentToken = `-- name: RevokeAgentToken :execrows

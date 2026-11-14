@@ -78,7 +78,7 @@ func TestPersistentNotificationOutboxAndCredentialRotation(t *testing.T) {
 	}
 	record := controldb.InsertTradeEventParams{
 		StrategyID: "paper", ReportID: "event-1", Kind: "alert", Data: `{"severity":"warning","message":"paper alert"}`,
-		ObservedAt: time.Now().UnixMilli(), InstanceID: "operator", Fingerprint: "sample",
+		ObservedAt: time.Now().UnixMilli(), Associations: "null", InstanceID: "operator", Fingerprint: "sample",
 	}
 	for range 2 {
 		if _, err := query.InsertTradeEvent(ctx, record); err != nil {

@@ -60,6 +60,19 @@ type BrowserSession struct {
 	ExpiresAt int64
 }
 
+type CapabilityStateHistory struct {
+	StrategyID   string
+	CapabilityID string
+	Revision     int64
+	InstanceID   string
+	BootID       string
+	ObservedAt   int64
+	ReceivedAt   int64
+	Value        string
+	Available    int64
+	Reason       string
+}
+
 type Command struct {
 	ID         string
 	StrategyID string
@@ -186,14 +199,16 @@ type ThemeRevision struct {
 }
 
 type TradeEvent struct {
-	StrategyID  string
-	ReportID    string
-	InstanceID  string
-	Kind        string
-	Series      string
-	ObservedAt  int64
-	Data        string
-	Fingerprint string
+	StrategyID   string
+	ReportID     string
+	InstanceID   string
+	Kind         string
+	Series       string
+	ObservedAt   int64
+	Data         string
+	Fingerprint  string
+	Associations string
+	ReceivedAt   int64
 }
 
 type User struct {

@@ -99,3 +99,15 @@ func checkValue(decoder *json.Decoder, depth int) error {
 	_, err = decoder.Token()
 	return err
 }
+
+// CanonicalValue normalizes JSON object order without rounding numbers.
+func CanonicalValue(raw json.RawMessage) (json.RawMessage, error) {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return json.RawMessage("null"), nil
+	}
+	var value any
+	if err := Decode(raw, &value); err != nil {
+		return nil, err
+	}
+	return json.Marshal(value)
+}

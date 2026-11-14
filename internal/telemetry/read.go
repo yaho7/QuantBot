@@ -3,9 +3,7 @@ package telemetry
 import (
 	"cmp"
 	"context"
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"math"
 	"net/http"
 	"slices"
@@ -20,6 +18,8 @@ import (
 
 func (s *Service) RegisterBrowser(r chi.Router) {
 	r.Get("/strategies/{id}/series", s.series)
+	r.Get("/strategies/{id}/capability-data", s.latestDeclared)
+	r.Get("/strategies/{id}/capabilities/{capability}/history", s.replayDeclared)
 	r.Get("/strategies/{id}/history", s.history)
 	r.Get("/strategies/{id}/telemetry", s.latest)
 	r.Get("/strategies/{id}/records", s.records)
@@ -68,6 +68,7 @@ type readRecord struct {
 	InstanceID string `json:"instanceId"`
 	StrategyID string `json:"strategyId"`
 	SeriesKey  string `json:"series"`
+	ReceivedAt int64  `json:"receivedAt,omitempty"`
 }
 
 func (s *Service) latest(w http.ResponseWriter, r *http.Request) {
@@ -76,11 +77,6 @@ func (s *Service) latest(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	control := controldb.New(s.stores.Control.Read)
 	if _, err := control.GetStrategy(ctx, id); err != nil {
-		writeError(w, err)
-		return
-	}
-	instances, err := control.ListAgentInstances(ctx, id)
-	if err != nil {
 		writeError(w, err)
 		return
 	}
@@ -107,34 +103,6 @@ func (s *Service) latest(w http.ResponseWriter, r *http.Request) {
 		}
 		for _, row := range rows {
 			put(row.InstanceID, Record{ID: row.ReportID, Kind: row.Kind, Series: row.Series, ObservedAt: row.ObservedAt, Data: json.RawMessage(row.Data)})
-		}
-	}
-	for _, instance := range instances {
-		snapshot, err := metrics.GetSnapshot(ctx, metricsdb.GetSnapshotParams{StrategyID: id, InstanceID: instance.InstanceID, BootID: instance.BootID})
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		var records []Record
-		if err := json.Unmarshal([]byte(snapshot.Records), &records); err != nil {
-			writeError(w, err)
-			return
-		}
-		for _, record := range records {
-			var data map[string]any
-			if err := json.Unmarshal(record.Data, &data); err != nil {
-				writeError(w, err)
-				return
-			}
-			record.Series, err = recordSeries(record.Kind, data, record.ObservedAt)
-			if err != nil {
-				writeError(w, err)
-				return
-			}
-			put(instance.InstanceID, record)
 		}
 	}
 	for _, row := range orders {
@@ -211,8 +179,11 @@ func (s *Service) feed(w http.ResponseWriter, r *http.Request, strategyID, kind 
 			return
 		}
 		for _, row := range rows {
+			var links *Associations
+			_ = json.Unmarshal([]byte(row.Associations), &links)
 			items = append(items, readRecord{
-				Record:     Record{ID: row.ReportID, Kind: row.Kind, Series: row.Series, ObservedAt: row.ObservedAt, Data: json.RawMessage(row.Data)},
+				ReceivedAt: row.ReceivedAt,
+				Record:     Record{ID: row.ReportID, Kind: row.Kind, Series: row.Series, ObservedAt: row.ObservedAt, Data: json.RawMessage(row.Data), Associations: links},
 				InstanceID: row.InstanceID, StrategyID: row.StrategyID, SeriesKey: row.Series,
 			})
 		}
@@ -221,8 +192,11 @@ func (s *Service) feed(w http.ResponseWriter, r *http.Request, strategyID, kind 
 }
 
 func tradeRecord(row controldb.TradeEvent) readRecord {
+	var links *Associations
+	_ = json.Unmarshal([]byte(row.Associations), &links)
 	return readRecord{
-		Record:     Record{ID: row.ReportID, Kind: row.Kind, Series: row.Series, ObservedAt: row.ObservedAt, Data: json.RawMessage(row.Data)},
+		ReceivedAt: row.ReceivedAt,
+		Record:     Record{ID: row.ReportID, Kind: row.Kind, Series: row.Series, ObservedAt: row.ObservedAt, Data: json.RawMessage(row.Data), Associations: links},
 		InstanceID: row.InstanceID, StrategyID: row.StrategyID, SeriesKey: row.Series,
 	}
 }

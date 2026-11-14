@@ -10,7 +10,8 @@
       "enum": ["status", "connection", "portfolio", "position", "order", "fill", "equity", "performance", "metric", "ohlcv", "signal", "risk", "alert", "log"]
     },
     "observedAt": {"$ref": "#/$defs/stamp"},
-    "data": {"type": "object"}
+    "data": {"type": "object"},
+    "associations": {"$ref": "#/$defs/associations"}
   },
   "allOf": [
     {
@@ -71,6 +72,19 @@
     }
   ],
   "$defs": {
+    "associations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {"$ref": "#/$defs/key"},
+        "symbol": {"$ref": "#/$defs/key"},
+        "signal_id": {"$ref": "#/$defs/key"},
+        "decision_id": {"$ref": "#/$defs/key"},
+        "order_id": {"$ref": "#/$defs/key"},
+        "command_id": {"$ref": "#/$defs/key"},
+        "correlation_id": {"$ref": "#/$defs/key"}
+      }
+    },
     "key": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@-]{0,95}$"},
     "decimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]{0,23})(\\.[0-9]{1,18})?$"},
     "currency": {"type": "string", "pattern": "^[A-Z][A-Z0-9]{2,9}$"},
