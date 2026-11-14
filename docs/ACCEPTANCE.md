@@ -20,7 +20,7 @@ Requirements are in [AGENTS.md](../AGENTS.md). Update the evidence column after 
 
 ## Release verification
 
-- Go unit and race suites plus real HTTP integration. Run Python, JavaScript, Go and curl examples against a test service. Inject database contention, SQLITE_FULL, Agent retry and restart.
+- Go unit and race suites plus real HTTP integration. Python, JavaScript, Go and curl status examples ran successfully against a fresh native service. Cross-language command receipts still require release verification. Inject database contention, SQLITE_FULL, Agent retry and restart.
 - Frontend type and unit tests. Playwright at 390, 430, 768, 1280 and 1600 pixels, in light and dark, for login, home, strategy detail, controls, layout editing, admin, theme management and Sandbox. Review screenshots and verify interaction, keyboard behavior, sizing, clipping and overflow.
 - Reproducible load benchmark for idle, 10/100/1000 Agents, high-rate telemetry, mixed control, concurrent SSE, SQLite/history queries and theme switching. Record resource use, latency percentiles, throughput, queue depth, write rate, WAL size, retries and losses. Distinguish local results from the requested 2 vCPU/2 GB comparison environment.
 - Complete the 20-step release walkthrough in the task brief on fresh data. Replace the old packaging only after the new workflow builds and passes its smoke tests.
