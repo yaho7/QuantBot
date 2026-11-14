@@ -118,7 +118,15 @@ export function Code({ children, label }: { children: string; label?: string }) 
 }
 export function Dialog({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => { ref.current?.showModal(); }, []);
+  useEffect(() => {
+    const dialog = ref.current!;
+    const previousFocus = document.activeElement;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) previousFocus.focus({ preventScroll: true });
+    };
+  }, []);
   return <dialog ref={ref} aria-label={title} onCancel={(event) => { event.preventDefault(); close(); }}>
     <div className="dialog-head"><h2>{title}</h2><button className="icon-button" aria-label={t("dynamicControls.close")} onClick={close}><X size={20} /></button></div>
     <div className="dialog-content">{children}</div>

@@ -1,9 +1,12 @@
 # Console visual checks
 
-The layout project seeds a paper strategy in its own temporary QuantBot
-database. It checks the navigation breakpoint, page width, toolbar alignment,
-widget sizing, read-only editing, and command-detail access at narrow widths.
-Its report includes representative screenshots.
+The layout project uses a temporary QuantBot database with paper strategy
+telemetry and simulated commands. It checks nine viewport widths from 390 to
+1440 CSS pixels, including both sides of the 768px navigation breakpoint. It
+verifies toolbar and widget alignment, long amounts, permission action
+visibility, scroll cues, keyboard dismissal and focus return. Workbench
+screenshots cover desktop and mobile in English dark mode. The mobile settings
+baseline covers the open language picker in Chinese light mode.
 
 Run the layout checks with the bundled Chromium browser:
 

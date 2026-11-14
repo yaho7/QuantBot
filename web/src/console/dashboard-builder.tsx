@@ -125,7 +125,13 @@ function WidgetViewport({ title, children }: { title: string; children: ReactNod
   }, []);
   return <div className="widget-viewport" data-scroll-edges={edges}>
     <div className="widget-content" ref={viewport} tabIndex={edges ? 0 : undefined}
-      role={edges ? "region" : undefined} aria-label={edges ? title : undefined}>
+      role={edges ? "region" : undefined} aria-label={edges ? title : undefined} onKeyDown={(event) => {
+        if (event.target !== event.currentTarget || !["Home", "End"].includes(event.key)) return;
+        const node = event.currentTarget;
+        if (node.scrollHeight <= node.clientHeight) return;
+        event.preventDefault();
+        node.scrollTop = event.key === "Home" ? 0 : node.scrollHeight;
+      }}>
       <div className="widget-body" ref={content}>{children}</div>
     </div>
   </div>;
