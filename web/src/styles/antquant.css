@@ -1,0 +1,255 @@
+/* Visual reference: AntQuant's paper palette, serif financial figures, and
+   responsive navigation. QuantBot keeps its own routes and widget structure. */
+.workbench-shell.antquant-workbench[data-theme="lumina"],
+:root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="lumina"] {
+  --canvas: inherit;
+  --surface: inherit;
+  --raised: inherit;
+  --text: inherit;
+  --muted: inherit;
+  --line: inherit;
+  --accent: inherit;
+  --accent-soft: inherit;
+  --success: inherit;
+  --success-bg: inherit;
+  --warning: inherit;
+  --warning-bg: inherit;
+  --danger: inherit;
+  --danger-bg: inherit;
+  --theme-chart: #659892;
+  --radius: 12px;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: start;
+  background: var(--canvas);
+}
+
+:root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="lumina"] {
+  --theme-chart: #73aba2;
+}
+
+.antquant-workbench > main.container {
+  width: 100%;
+  max-width: 1216px;
+  min-width: 0;
+  padding: 8px clamp(18px, 3vw, 40px) 56px;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar {
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar-inner {
+  display: flex;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  height: 100%;
+  padding: 16px 5px 12px;
+  gap: 12px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .brand-icon,
+.admin-shell .brand-icon,
+.login-page .brand-icon {
+  border: 0;
+  box-shadow: none;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav {
+  flex: 1 0 auto;
+  align-self: stretch;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  min-height: 50px;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: 12px;
+  color: var(--muted);
+  white-space: normal;
+  text-align: center;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a span {
+  display: block;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a.active {
+  color: var(--text);
+  background: var(--accent-soft);
+  font-weight: 650;
+}
+
+.antquant-workbench .topbar .actions,
+.antquant-workbench .topbar .floating-tools {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .floating-tools {
+  position: static;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.antquant-workbench .topbar .admin-link {
+  width: 40px;
+  height: 40px;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+.antquant-workbench .topbar .admin-link:hover {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.antquant-workbench .topbar .admin-link span {
+  display: none;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] :is(.surface, .summary-card, .control-card),
+.admin-shell .admin-main .surface {
+  background: var(--surface);
+  box-shadow: none;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .strategy-card:hover {
+  transform: none;
+  border-color: color-mix(in srgb, var(--muted) 45%, var(--line));
+  box-shadow: none;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .widget::before {
+  content: none;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] :is(.summary-card > strong, .card-values strong, .equity-widget > strong) {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  font-weight: 500;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.workbench-shell.antquant-workbench[data-theme="lumina"] .summary-card > strong {
+  font-size: clamp(26px, 3vw, 35px);
+}
+
+.admin-shell .sidebar nav .nav-group a.active {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 650;
+}
+
+@media (min-width: 768px) {
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand {
+    flex: none;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand strong {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+
+@media (max-width: 767px) {
+  .workbench-shell.antquant-workbench[data-theme="lumina"] {
+    display: block;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar {
+    height: auto;
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--canvas) 92%, transparent);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar-inner {
+    height: auto;
+    min-height: 54px;
+    flex-direction: row;
+    justify-content: space-between;
+    gap: 4px;
+    overflow: visible;
+    padding: 4px 12px;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand {
+    flex: 1 1 auto;
+    gap: 7px;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand-icon {
+    width: 29px;
+    height: 29px;
+    border-radius: 8px;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand strong {
+    font-size: 14px;
+    letter-spacing: -.3px;
+  }
+  .antquant-workbench .topbar .actions,
+  .antquant-workbench .topbar .floating-tools {
+    flex-direction: row;
+  }
+  .antquant-workbench .topbar .actions :is(.admin-link, .icon-button, .text-button) {
+    width: 34px;
+    padding-inline: 0;
+    min-height: 40px;
+  }
+  .antquant-workbench .topbar .floating-tools .connection-dot {
+    display: none;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav {
+    position: fixed;
+    inset: auto 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+    width: auto;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 2px;
+    padding: 4px;
+    overflow: visible;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 15px;
+    box-shadow: 0 5px 18px #00000012;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a {
+    min-height: 45px;
+    padding-block: 4px;
+  }
+  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a svg {
+    display: block;
+    flex-shrink: 0;
+  }
+  .antquant-workbench > main.container {
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+}

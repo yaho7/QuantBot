@@ -1,7 +1,9 @@
 import {
+  createContext,
   lazy,
   Suspense,
   useCallback,
+  useContext,
   useEffect,
   useState,
   type ReactNode,
@@ -24,6 +26,7 @@ import {
   Database,
   LayoutDashboard,
   Menu,
+  Monitor,
   Moon,
   Paintbrush,
   Plug,
@@ -45,6 +48,7 @@ import {
 } from "../shared/api";
 import { ErrorView, Loading } from "../shared/ui";
 import { BrandIcon } from "../components/brand-icon";
+import "../styles/antquant.css";
 import { setLanguage, useLanguage, type Message } from "../shared/i18n";
 const Login = lazy(() =>
   import("./auth").then((module) => ({ default: module.Login })),
@@ -112,6 +116,8 @@ const management = [
   ],
 ] as const;
 
+const AppearanceTools = createContext<ReactNode>(null);
+
 function Root() {
   const session = useQuery({
     ...resource<Session>("/auth/session"),
@@ -151,35 +157,40 @@ function Root() {
       </Suspense>
     );
   setCSRF(session.data.csrf);
+  const themeIcons = { system: Monitor, light: Sun, dark: Moon } as const;
+  const appearance = mode === "light" || mode === "dark" ? mode : "system";
+  const ThemeIcon = themeIcons[appearance];
+  const tools = (
+    <div className="floating-tools" aria-label={t("appearance")}>
+      <span
+        className={"connection-dot " + (connected ? "online" : "")}
+        title={connected ? "SSE connected" : "Reconnecting"}
+      />
+      <button
+        className="icon-button"
+        aria-label={t("appearance") + ": " + t(appearance)}
+        title={t("appearance") + ": " + t(appearance)}
+        onClick={() =>
+          setMode(appearance === "system" ? "light" : appearance === "light" ? "dark" : "system")
+        }
+      >
+        <ThemeIcon size={17} />
+      </button>
+      <button
+        className="text-button"
+        onClick={() => setLanguage(lang === "zh" ? "en" : "zh")}
+      >
+        {lang === "zh" ? "EN" : "中文"}
+      </button>
+    </div>
+  );
   return (
-    <>
+    <AppearanceTools.Provider value={tools}>
       <Suspense fallback={<Loading />}>
         <Outlet />
       </Suspense>
-      <aside className="floating-tools" aria-label={t("appearance")}>
-        <span
-          className={"connection-dot " + (connected ? "online" : "")}
-          title={connected ? "SSE connected" : "Reconnecting"}
-        />
-        <button
-          className="icon-button"
-          aria-label={mode === "dark" ? t("light") : t("dark")}
-          onClick={() => setMode(mode === "dark" ? "light" : "dark")}
-        >
-          {mode === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
-        <button className="text-button" onClick={() => setMode("system")}>
-          {t("system")}
-        </button>
-        <button
-          className="text-button"
-          onClick={() => setLanguage(lang === "zh" ? "en" : "zh")}
-        >
-          {lang === "zh" ? "EN" : "中文"}
-        </button>
-      </aside>
       <Toaster position="top-center" richColors />
-    </>
+    </AppearanceTools.Provider>
   );
 }
 function Brand() {
@@ -208,6 +219,7 @@ function Logout() {
 }
 function Workbench() {
   const { t } = useLanguage();
+  const tools = useContext(AppearanceTools);
   const query = useQuery(activeTheme);
   const location = useLocation();
   const [failed, setFailed] = useState("");
@@ -215,6 +227,7 @@ function Workbench() {
   const identity = (theme?.id ?? "") + ":" + (theme?.revision ?? "");
   const fallback = !!query.error || (failed !== "" && failed === identity);
   const selected = fallback ? undefined : theme;
+  const antquant = selected?.builtin && selected.id === "lumina";
   const onFailure = useCallback(() => setFailed(identity), [identity]);
   const full =
     location.pathname === "/" &&
@@ -225,7 +238,7 @@ function Workbench() {
       value={fallback ? { cardView: "list" } : (selected?.presentation ?? {})}
     >
       <div
-        className="workbench-shell"
+        className={"workbench-shell" + (antquant ? " antquant-workbench" : "")}
         data-theme={selected?.id ?? "classic"}
         data-theme-palette={selected && !selected.builtin ? "" : undefined}
         data-theme-surface={selected?.presentation.surface}
@@ -237,13 +250,19 @@ function Workbench() {
             <nav aria-label={t("workbench")}>
               {monitor.map(([path, label, Icon]) => (
                 <NavLink end={path === "/"} key={path} to={path}>
-                  <Icon size={17} />
+                  <Icon size={18} />
                   <span>{t(label)}</span>
                 </NavLink>
               ))}
             </nav>
             <div className="actions">
-              <Link className="admin-link" to="/admin">
+              {antquant && tools}
+              <Link
+                className="admin-link"
+                to="/admin"
+                aria-label={t("admin")}
+                title={t("admin")}
+              >
                 <Settings size={17} />
                 <span>{t("admin")}</span>
               </Link>
@@ -272,12 +291,14 @@ function Workbench() {
             <Outlet />
           )}
         </main>
+        {!antquant && tools}
       </div>
     </ThemeContext.Provider>
   );
 }
 function AdminShell() {
   const { lang, t } = useLanguage();
+  const tools = useContext(AppearanceTools);
   const [open, setOpen] = useState(false);
   const location = useLocation();
   useEffect(() => setOpen(false), [location.pathname]);
@@ -346,6 +367,7 @@ function AdminShell() {
       <main className="admin-main">
         <Outlet />
       </main>
+      {tools}
     </div>
   );
 }

@@ -4,39 +4,41 @@
   color: var(--text);
   background: var(--canvas);
   font-synthesis: none;
-  --canvas: #f5f6f8;
-  --surface: #fff;
-  --raised: #f8f9fb;
-  --text: #263346;
-  --muted: #7b8797;
-  --line: #e6e9ef;
-  --accent: #4b76d8;
-  --accent-soft: #edf2fd;
-  --success: #269675;
-  --success-bg: #e8f6ef;
-  --warning: #b57d27;
-  --warning-bg: #fcf2de;
-  --danger: #c75363;
-  --danger-bg: #fcedef;
-  --radius: 14px;
+  --canvas: #fffcf0;
+  --surface: #faf5e5;
+  --raised: #f2ecdc;
+  --text: #100f0f;
+  --muted: #6f6a5e;
+  --line: #e6dfcc;
+  --accent: #29261d;
+  --accent-soft: #ebe5d3;
+  --accent-ink: #fffcf0;
+  --success: #536517;
+  --success-bg: #e8ecd6;
+  --warning: #845710;
+  --warning-bg: #f4e8c7;
+  --danger: #a52f27;
+  --danger-bg: #f6e1d7;
+  --radius: 12px;
   --gap: 16px;
 }
 :root[data-appearance="dark"] {
   color-scheme: dark;
-  --canvas: #1b212a;
-  --surface: #242c37;
-  --raised: #29323f;
-  --text: #d5dce8;
-  --muted: #91a0b4;
-  --line: #374151;
-  --accent: #81a9ff;
-  --accent-soft: #30405a;
-  --success: #6ac9a2;
-  --success-bg: #253e38;
-  --warning: #e3b66e;
-  --warning-bg: #453b2c;
-  --danger: #ee9a9e;
-  --danger-bg: #482f38;
+  --canvas: #100f0f;
+  --surface: #1c1b1a;
+  --raised: #252421;
+  --text: #ded9cb;
+  --muted: #a8a396;
+  --line: #34322d;
+  --accent: #ded9cb;
+  --accent-soft: #302e27;
+  --accent-ink: #100f0f;
+  --success: #a5b16a;
+  --success-bg: #292f1d;
+  --warning: #d8b05a;
+  --warning-bg: #342a16;
+  --danger: #e79184;
+  --danger-bg: #3a211c;
 }
 * {
   box-sizing: border-box;
@@ -97,12 +99,12 @@ textarea:focus-visible {
 }
 button.primary,
 .button.primary {
-  color: #fff;
-  background: #4b76d8;
-  border-color: #4b76d8;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 button.primary:hover {
-  background: #3c66c7;
+  background: color-mix(in srgb, var(--accent) 85%, var(--canvas));
 }
 input,
 select,
@@ -303,6 +305,10 @@ small {
   align-items: center;
   gap: 5px;
   flex: 1;
+  order: 1;
+}
+.topbar .actions {
+  order: 2;
 }
 .topbar nav a {
   display: flex;
