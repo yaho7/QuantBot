@@ -246,6 +246,17 @@ export type Diagnostics = {
   writeFailures: number;
   sseSubscribers: number;
   walBytes: Record<string, number>;
+  databaseBytes: Record<string, number>;
+  settings: {
+    sessionSeconds: number;
+    renewBeforeSeconds: number;
+    heartbeatSeconds: number;
+    offlineSeconds: number;
+    commandPollSeconds: number;
+    metricsQueue: number;
+    metricsBatch: number;
+    metricsFlushMilliseconds: number;
+  };
 };
 export const activeStates = [
   "created",

@@ -15,7 +15,10 @@ import (
 )
 
 const sessionOverlap = 60 * time.Second
-const sessionRenewalLead = 10 * time.Minute
+
+func SessionRenewalLead(ttl time.Duration) time.Duration {
+	return min(10*time.Minute, ttl/2)
+}
 
 type agentAuthError struct {
 	code, message string
@@ -195,7 +198,7 @@ func renewalAt(now time.Time, expiry int64, ttl time.Duration) *int64 {
 		// Renewal cannot extend a session that already reaches the token expiry.
 		return nil
 	}
-	lead := min(sessionRenewalLead, ttl/2)
+	lead := SessionRenewalLead(ttl)
 	next := max(now.Unix()+1, time.Unix(expiry, 0).Add(-lead).Unix())
 	return &next
 }

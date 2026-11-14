@@ -57,6 +57,12 @@ import { StrategyDetail, AllControls } from "./strategy";
 import { ActivityPage, AlertsPage } from "./activity";
 const ThemeAdmin = lazy(() => import("../admin/themes"));
 const Notifications = lazy(() => import("../admin/notifications"));
+const Storage = lazy(() =>
+  import("../admin/system").then((module) => ({ default: module.Storage })),
+);
+const SettingsPage = lazy(() =>
+  import("../admin/system").then((module) => ({ default: module.Settings })),
+);
 const AdminDashboard = lazy(() =>
   import("../admin/pages").then((module) => ({
     default: module.AdminDashboard,
@@ -399,6 +405,8 @@ const router = createBrowserRouter([
           { path: "integration", element: <Integration /> },
           { path: "audit", element: <Audit /> },
           { path: "security", element: <Security /> },
+          { path: "storage", element: <Storage /> },
+          { path: "settings", element: <SettingsPage /> },
         ],
       },
       { path: "*", element: <NotFound /> },

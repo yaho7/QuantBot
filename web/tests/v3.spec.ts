@@ -663,6 +663,14 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await card.getByRole("button", { name: "删除主题", exact: true }).click();
   await expect(card).toHaveCount(0);
 
+  await page.goto("/admin/storage");
+  await expect(page.getByRole("heading", { name: "备份与恢复" })).toBeVisible();
+  await expect(page.getByRole("row", { name: /control.db/ })).toContainText("MB");
+  await page.goto("/admin/settings");
+  await expect(page.getByRole("heading", { name: "当前服务配置" })).toBeVisible();
+  await expect(page.getByText("3,600秒", { exact: true })).toBeVisible();
+  await expect(page.getByText("45秒", { exact: true })).toBeVisible();
+
   for (const appearance of ["light", "dark"]) {
     await page.evaluate((mode) => {
       localStorage.setItem("qb.appearance", mode);
@@ -676,6 +684,8 @@ test("initialization, real reports, command receipt and responsive shells", asyn
         ["admin", "/admin/dashboard"],
         ["audit", "/admin/audit"],
         ["notifications", "/admin/notifications"],
+        ["storage", "/admin/storage"],
+        ["settings", "/admin/settings"],
         ["sandbox", "/admin/integration?strategy=" + id],
         ["themes", "/admin/themes"],
       ]) {
