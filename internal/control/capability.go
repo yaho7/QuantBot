@@ -175,22 +175,23 @@ func (c Capability) renderers() []string {
 		if !c.Writable {
 			return []string{"status"}
 		}
+		constraints := c.inputSchema().Constraints
 		switch c.ValueType {
 		case "boolean":
 			return []string{"switch"}
 		case "decimal":
-			if c.Constraints.Min != "" && c.Constraints.Max != "" && c.Constraints.Step != "" {
+			if constraints.Min != "" && constraints.Max != "" && constraints.Step != "" {
 				return []string{"slider", "number_input"}
 			}
 			return []string{"number_input"}
 		case "string":
-			if len(c.Constraints.Options) > 0 {
+			if len(constraints.Options) > 0 {
 				return []string{"select"}
 			}
 			return []string{"text"}
 		case "string_list":
 			return []string{"multiselect"}
-		case "object":
+		case "object", "array":
 			return []string{"form"}
 		}
 	}
@@ -209,6 +210,13 @@ func (c Capability) Renderer() string {
 		return ""
 	}
 	return renders[0]
+}
+
+func (c Capability) inputSchema() ValueSchema {
+	if c.InputSchema != nil {
+		return *c.InputSchema
+	}
+	return c.schema()
 }
 
 func (c Capability) Definition() Definition {
@@ -237,18 +245,17 @@ func (c Capability) Definition() Definition {
 	default:
 		d.Kind = Status
 	}
-	switch d.Kind {
-	case Slider, NumberInput:
-		d.Min, d.Max, d.Step = c.Constraints.Min, c.Constraints.Max, c.Constraints.Step
-	case Select, MultiSelect:
-		d.Options = c.Constraints.Options
-	case TextInput:
-		d.MaxLength = c.Constraints.MaxLength
-	case Form:
-		if c.InputSchema != nil {
-			d.Fields = c.InputSchema.formFields()
-		} else if c.ValueSchema != nil {
-			d.Fields = c.ValueSchema.formFields()
+	if c.IsControl() {
+		schema := c.inputSchema()
+		switch d.Kind {
+		case Slider, NumberInput:
+			d.Min, d.Max, d.Step = schema.Constraints.Min, schema.Constraints.Max, schema.Constraints.Step
+		case Select, MultiSelect:
+			d.Options = schema.Constraints.Options
+		case TextInput:
+			d.MaxLength = schema.Constraints.MaxLength
+		case Form:
+			d.Fields = schema.formFields()
 		}
 	}
 	return d
@@ -265,16 +272,16 @@ func (c Capability) ValidateValue(raw json.RawMessage, actual bool) error {
 		}
 		return errors.New("action status must be text or null")
 	}
-	if err := c.schema().check(raw); err != nil && (actual || c.Kind != "action") {
-		return err
+	if actual || c.Kind != "action" {
+		if err := c.schema().check(raw); err != nil || actual || c.InputSchema == nil {
+			return err
+		}
 	}
-	if !actual && c.InputSchema != nil {
-		return c.InputSchema.check(raw)
+	if c.Kind == "action" && len(c.AtomicBatch) > 0 {
+		// ValidateIntent checks all declared members against their input schemas.
+		return nil
 	}
-	if !actual && c.Kind == "action" && len(c.AtomicBatch) == 0 && !bytes.Equal(raw, []byte("null")) {
-		return errors.New("action without inputs requires null")
-	}
-	return nil
+	return c.inputSchema().check(raw)
 }
 
 func (v ValueSchema) validate(depth int) error {

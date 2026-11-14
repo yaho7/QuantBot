@@ -66,11 +66,10 @@ export function ControlCard({
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState<unknown>(
-    initialValue(control, control.actual?.value),
+    editValue(control, control.actual?.value),
   );
   const [key, setKey] = useState(crypto.randomUUID());
   const [inputError, setInputError] = useState(false);
-  const rawInput = usesJSONInput(control);
   const [command, setCommand] = useState<Command>();
   const readOnly =
     control.readOnly ||
@@ -151,13 +150,14 @@ export function ControlCard({
         <button
           disabled={blocked}
           onClick={() => {
-            const initial = initialValue(
-              control,
-              control.capability?.kind === "action"
-                ? undefined
-                : control.actual?.value,
+            setValue(
+              editValue(
+                control,
+                control.capability?.kind === "action"
+                  ? undefined
+                  : control.actual?.value,
+              ),
             );
-            setValue(rawInput ? JSON.stringify(initial, null, 2) : initial);
             setInputError(false);
             setKey(crypto.randomUUID());
             setCommand(undefined);
@@ -203,40 +203,25 @@ export function ControlCard({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              let input = value;
-              if (rawInput) {
-                try {
-                  input = JSON.parse(String(value));
-                } catch {
-                  setInputError(true);
-                  return;
-                }
+              try {
+                const input = submittedValue(control, value);
+                setInputError(false);
+                submit.mutate(input);
+              } catch {
+                setInputError(true);
               }
-              setInputError(false);
-              submit.mutate(input);
             }}
           >
             {control.description && <p>{control.description}</p>}
-            {rawInput ? (
-              <label>
-                {t("commandInput")}
-                <textarea
-                  rows={6}
-                  value={String(value)}
-                  onChange={(event) => setValue(event.target.value)}
-                />
-                {inputError && (
-                  <span className="error-text" role="alert">
-                    {t("invalidJSON")}
-                  </span>
-                )}
-              </label>
-            ) : (
-              <ControlInput
-                definition={control}
-                value={value}
-                onChange={setValue}
-              />
+            <ControlInput
+              definition={control}
+              value={value}
+              onChange={setValue}
+            />
+            {inputError && (
+              <span className="error-text" role="alert">
+                {t("invalidJSON")}
+              </span>
             )}
             {control.capability?.unit && (
               <small className="muted">{control.capability.unit}</small>
@@ -278,31 +263,49 @@ function usesJSONInput(definition: Definition) {
   );
 }
 
-function initialValue(d: Definition, actual: unknown): unknown {
+function editValue(d: Definition, actual: unknown): unknown {
+  const schema = d.capability?.input_schema ?? d.capability?.value_schema;
+  if (usesJSONInput(d)) {
+    const fallback =
+      schema?.type === "null"
+        ? null
+        : schema?.type === "boolean"
+          ? false
+          : schema?.type === "array" || schema?.type === "string_list"
+            ? []
+            : schema?.type === "object"
+              ? {}
+              : "";
+    return JSON.stringify(actual ?? fallback, null, 2);
+  }
+  if (d.kind === "form") {
+    const fields = (actual ?? {}) as Record<string, unknown>;
+    return Object.fromEntries(
+      (d.fields ?? []).map((field) => [
+        field.id,
+        editValue(field, fields[field.id]),
+      ]),
+    );
+  }
   if (actual !== undefined && actual !== null) return actual;
   if (d.kind === "button") return null;
   if (d.kind === "toggle") return false;
   if (d.kind === "multiSelect") return [];
+  return d.min ?? d.options?.[0]?.value ?? "";
+}
+
+function submittedValue(d: Definition, value: unknown): unknown {
+  if (usesJSONInput(d)) return JSON.parse(String(value));
   if (d.kind === "form") {
-    const schema = d.capability?.input_schema ?? d.capability?.value_schema;
-    if (usesJSONInput(d) && schema?.type !== "object") {
-      if (schema?.type === "array" || schema?.type === "string_list") return [];
-      if (schema?.type === "boolean") return false;
-      if (schema?.type === "null") return null;
-      return "";
-    }
+    const fields = value as Record<string, unknown>;
     return Object.fromEntries(
-      (d.fields ?? [])
-        .filter(
-          (field) =>
-            d.capability?.atomic_parameters?.length ||
-            !schema ||
-            schema.required?.includes(field.id),
-        )
-        .map((field) => [field.id, initialValue(field, undefined)]),
+      (d.fields ?? []).map((field) => [
+        field.id,
+        submittedValue(field, fields[field.id]),
+      ]),
     );
   }
-  return d.min ?? d.options?.[0]?.value ?? "";
+  return value;
 }
 function ControlInput({
   definition: d,
@@ -313,7 +316,20 @@ function ControlInput({
   value: unknown;
   onChange: (value: unknown) => void;
 }) {
+  const { t } = useLanguage();
   if (d.kind === "button") return null;
+  if (usesJSONInput(d)) {
+    return (
+      <label>
+        {d.capability?.kind === "parameter" ? d.title : t("commandInput")}
+        <textarea
+          rows={6}
+          value={String(value)}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+    );
+  }
   if (d.kind === "toggle")
     return (
       <label className="switch-label">
@@ -336,7 +352,7 @@ function ControlInput({
             definition={field}
             value={
               (value as Record<string, unknown> | null)?.[field.id] ??
-              initialValue(field, undefined)
+              editValue(field, undefined)
             }
             onChange={(next) =>
               onChange({ ...(value as object), [field.id]: next })

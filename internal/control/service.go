@@ -72,7 +72,6 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 			for _, id := range capability.AtomicBatch {
 				target := capabilities[id]
 				field := target.Definition()
-				field.Capability = nil
 				definition.Fields = append(definition.Fields, field)
 			}
 		}

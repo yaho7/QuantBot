@@ -59,7 +59,7 @@ Use `metric`, `state`, `parameter`, `action`, `resource` or `event`. Declare a s
 
 A capability with `stale_after_seconds` cannot be used for a command after that deadline. The optional `alert_suggestion` describes an inactive `stale`, `above` or `below` suggestion. The host can read the capability catalog, resolved renderer and diagnostics at `GET /api/v1/strategies/{id}/capabilities`.
 
-Writable parameters can link to a declared `action` via `command`. A claim returns both `controlId` and the operation's dispatch `command`. An action that can apply a whole parameter plan declares `atomic_parameters` containing the exact member IDs. The requested input is an object with all member values. QuantBot validates the full plan, requires confirmation and grants one permit and one receipt for the plan. The strategy implements the atomic application.
+Writable parameters can declare a separate `input_schema` for command validation and input generation. Actual observations are validated against `value_schema` or the declared value type and constraints. Parameter commands satisfy the value and input constraints. Writable parameters can link to a declared `action` via `command`. A claim returns both `controlId` and the operation's dispatch `command`. An action that can apply a whole parameter plan declares `atomic_parameters` containing the exact member IDs. The requested input is an object with all member values. QuantBot validates the full plan, requires confirmation and grants one permit and one receipt for the plan. The strategy implements the atomic application.
 
 ## Commands
 

@@ -53,3 +53,24 @@ func TestRejectsInvalidCapabilitySchemaAndRelationships(t *testing.T) {
 		}
 	}
 }
+
+func TestParameterInputConstraintsAreSeparateFromActual(t *testing.T) {
+	item := Capability{
+		ID: "exposure", Kind: "parameter", Title: "Exposure", Writable: true, ValueType: "decimal",
+		InputSchema: &ValueSchema{Type: "decimal", Constraints: Constraints{Min: "1", Max: "8", Step: "0.5"}},
+	}
+	if err := item.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	definition := item.Definition()
+	if definition.Kind != Slider || definition.Min != "1" || definition.Max != "8" || definition.Step != "0.5" {
+		t.Fatalf("renderer lost input constraints: %+v", definition)
+	}
+	outOfRange := json.RawMessage(`"8.5"`)
+	if err := definition.ValidateValue(outOfRange, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := definition.ValidateValue(outOfRange, false); err == nil {
+		t.Fatal("accepted command beyond declared input limits")
+	}
+}
