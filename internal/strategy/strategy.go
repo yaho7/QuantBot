@@ -47,6 +47,7 @@ type Service struct {
 	store      storage.Database
 	notify     realtime.Notify
 	sessionTTL time.Duration
+	sandbox    bool
 }
 
 func New(store storage.Database, notify realtime.Notify, ttl time.Duration) *Service {
@@ -54,6 +55,10 @@ func New(store storage.Database, notify realtime.Notify, ttl time.Duration) *Ser
 		ttl = config.DefaultAgentSessionTTL
 	}
 	return &Service{store: store, notify: notify, sessionTTL: ttl}
+}
+
+func NewSandbox(store storage.Database) *Service {
+	return &Service{store: store, sessionTTL: config.DefaultAgentSessionTTL, sandbox: true}
 }
 
 func (s *Service) RegisterBrowser(r chi.Router) {

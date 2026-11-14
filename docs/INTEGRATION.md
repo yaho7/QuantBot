@@ -4,6 +4,14 @@ Create a dedicated paper strategy in **Administration → Strategies**. Copy the
 
 Read the [Agent protocol](AGENT_PROTOCOL.md), [declaration and batch schemas](../internal/server/schemas/agent.json), and [standard report record schema](../internal/telemetry/schemas/report.json).
 
+## Validate in Sandbox
+
+In **Administration → Integration**, select a strategy and click **Copy AI integration prompt** in the Sandbox panel. QuantBot creates a private trial and issues a temporary key valid for 60 minutes. The prompt includes the strategy ID, scoped `/api/agent/sandbox/{id}` base URL, expiry and protocol links. Append the same relative paths as for production. Use the temporary credential locally and simulate the strategy and broker.
+
+The first connected instance becomes the Sandbox executor. Register a simulated button and publish its availability to queue a test command from this panel. The checklist covers session, heartbeat, capabilities, state, reports, events, resources, polling, claim and a successful result. Use the production prompt and a production credential after the trial passes.
+
+The administrator can extend the expiry to 60 minutes from the current time, issue a replacement key, or revoke the environment. The replaced key and its sessions stop working on rotation. Expiration and revocation close the trial. A restart discards the trial. The test databases are in memory, limited to approximately 4 MiB per trial. QuantBot allows eight active trials, 64 KiB per request, 120 requests per minute per trial, 600 per minute globally, three concurrent Agent requests per trial, and 12 globally. Honor `Retry-After` on HTTP 429.
+
 ## Try the protocol on a paper strategy
 
 From the repository root, set the endpoint and credential. Run one client per test strategy so each owns its capability registry.

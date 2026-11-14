@@ -1,3 +1,4 @@
+import { SandboxPanel } from "./sandbox";
 import { agentPrompt } from "./agent-prompt";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -407,6 +408,7 @@ export function Integration() {
               <button disabled={mutation.isPending}>{t("save")}</button>
             </form>
           </section>
+          <SandboxPanel key={id} strategyId={id} />
           <section className="section surface padded">
             <h2>{t("protocol")}</h2>
             <code>{location.origin}/api/agent/session</code>
@@ -420,14 +422,23 @@ export function Integration() {
               </a>
             </p>
             <p>
-              <a href="/api/agent/schemas/agent.json" target="_blank" rel="noreferrer">
+              <a
+                href="/api/agent/schemas/agent.json"
+                target="_blank"
+                rel="noreferrer"
+              >
                 {t("agentSchema")} <ExternalLink size={14} />
               </a>
             </p>
-            <button onClick={() => void navigator.clipboard.writeText(agentPrompt(location.origin))
-              .then(() => toast.success(t("copied")))
-              .catch(() => toast.error(t("copyFailed")))}>
-              <Copy size={16} /> {t("copyAgentPrompt")}
+            <button
+              onClick={() =>
+                void navigator.clipboard
+                  .writeText(agentPrompt(location.origin))
+                  .then(() => toast.success(t("copied")))
+                  .catch(() => toast.error(t("copyFailed")))
+              }
+            >
+              <Copy size={16} /> {t("copyProductionPrompt")}
             </button>
             <pre>{`curl -X POST '${location.origin}/api/agent/session' \\\n  -H 'Authorization: Bearer YOUR_AGENT_TOKEN' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"instanceId":"worker-a","bootId":"NEW_PROCESS_UUID"}'`}</pre>
           </section>

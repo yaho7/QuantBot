@@ -137,8 +137,24 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		if s.sandbox {
+			row, err := q.GetStrategy(ctx, token.StrategyID)
+			if err != nil {
+				return err
+			}
+			if row.ExecutorInstance.Valid && row.ExecutorInstance.String != input.InstanceID {
+				return errConflict
+			}
+		}
 		if err := registerBoot(ctx, q, token.StrategyID, input.InstanceID, input.BootID, now.Unix()); err != nil {
 			return err
+		}
+		if s.sandbox {
+			if err := changed(q.SelectExecutor(ctx, controldb.SelectExecutorParams{
+				StrategyID: token.StrategyID, InstanceID: sql.NullString{String: input.InstanceID, Valid: true},
+			})); err != nil {
+				return err
+			}
 		}
 		if token.ExpiresAt.Valid {
 			expiry = min(expiry, token.ExpiresAt.Int64)

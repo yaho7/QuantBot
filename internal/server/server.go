@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/yaho7/QuantBot/internal/agentapi"
 	"github.com/yaho7/QuantBot/internal/auth"
 	"github.com/yaho7/QuantBot/internal/command"
 	"github.com/yaho7/QuantBot/internal/config"
@@ -18,6 +19,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/notification"
 	"github.com/yaho7/QuantBot/internal/realtime"
+	"github.com/yaho7/QuantBot/internal/sandbox"
 	"github.com/yaho7/QuantBot/internal/secrets"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
@@ -57,8 +59,11 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	if err != nil {
 		return err
 	}
+	sandboxes := sandbox.New(ctx, stores.Control)
+	defer sandboxes.Close()
 	maintenance, cancelMaintenance := context.WithCancel(ctx)
 	var maintained sync.WaitGroup
+	maintained.Go(func() { sandboxes.Maintain(maintenance) })
 	maintained.Go(func() { notifications.Run(maintenance) })
 	maintained.Go(func() { events.Run(maintenance) })
 	maintained.Go(func() { commands.Maintain(maintenance) })
@@ -73,7 +78,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           routes(stores, cfg, commands, reports, events, notifications, themes),
+		Handler:           routes(stores, cfg, commands, reports, events, notifications, themes, sandboxes),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -98,7 +103,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 }
 
-func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus, notifications *notification.Service, themes *theme.Service) http.Handler {
+func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus, notifications *notification.Service, themes *theme.Service, sandboxes *sandbox.Service) http.Handler {
 	router := chi.NewRouter()
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
 	router.Use(origins.Guard)
@@ -107,10 +112,8 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 	controls := control.New(stores.Control, events.Publish)
 	layouts := dashboard.New(stores.Control)
 	router.Route("/api/agent", func(r chi.Router) {
-		strategies.RegisterAgent(r)
-		controls.RegisterAgent(r)
-		commands.RegisterAgent(r)
-		reports.RegisterAgent(r)
+		agentapi.Register(r, strategies, controls, commands, reports)
+		sandboxes.RegisterAgent(r)
 		reports.RegisterSchema(r)
 		r.Get("/schemas/agent.json", serveAgentSchema)
 	})
@@ -119,6 +122,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
+			sandboxes.RegisterBrowser(r)
 			layouts.Register(r)
 			notifications.Register(r)
 			themes.Register(r)

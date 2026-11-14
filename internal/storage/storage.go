@@ -63,12 +63,57 @@ func Open(ctx context.Context, dir string) (*Stores, error) {
 
 func (stores *Stores) Close() error {
 	var errs []error
-	for _, pool := range []*sql.DB{stores.Metrics.Read, stores.Metrics.Write, stores.Control.Read, stores.Control.Write} {
-		if pool != nil {
-			errs = append(errs, pool.Close())
+	for _, db := range []Database{stores.Metrics, stores.Control} {
+		if db.Read != nil && db.Read != db.Write {
+			errs = append(errs, db.Read.Close())
+		}
+		if db.Write != nil {
+			errs = append(errs, db.Write.Close())
 		}
 	}
-	return errors.Join(append(errs, stores.lock.Close())...)
+	if stores.lock != nil {
+		errs = append(errs, stores.lock.Close())
+	}
+	return errors.Join(errs...)
+}
+
+// OpenSandbox uses a single connection for each bounded, private database.
+// Keeping each pool on one connection serializes access to the in-memory store.
+func OpenSandbox(ctx context.Context) (*Stores, error) {
+	stores := &Stores{}
+	var err error
+	stores.Control, err = openSandboxDatabase(ctx, "control")
+	if err == nil {
+		stores.Metrics, err = openSandboxDatabase(ctx, "metrics")
+	}
+	if err != nil {
+		return nil, errors.Join(err, stores.Close())
+	}
+	return stores, nil
+}
+
+func openSandboxDatabase(ctx context.Context, name string) (Database, error) {
+	const pageLimit = 512
+	db, err := sql.Open("sqlite3", ":memory:?_foreign_keys=on&_txlock=immediate")
+	if err != nil {
+		return Database{}, err
+	}
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	var limit int
+	if _, err = db.ExecContext(ctx, "PRAGMA page_size = 4096"); err == nil {
+		err = db.QueryRowContext(ctx, fmt.Sprintf("PRAGMA max_page_count = %d", pageLimit)).Scan(&limit)
+	}
+	if err == nil && limit != pageLimit {
+		err = fmt.Errorf("sandbox %s database page limit is %d", name, limit)
+	}
+	if err == nil {
+		err = migrate(ctx, db, name)
+	}
+	if err != nil {
+		return Database{}, errors.Join(err, db.Close())
+	}
+	return Database{Read: db, Write: db}, nil
 }
 
 func openPrivateFile(path string) (*os.File, error) {

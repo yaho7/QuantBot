@@ -14,6 +14,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/notification"
 	"github.com/yaho7/QuantBot/internal/realtime"
+	"github.com/yaho7/QuantBot/internal/sandbox"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/telemetry"
 	"github.com/yaho7/QuantBot/internal/theme"
@@ -120,7 +121,9 @@ func testRoutes(t *testing.T, stores *storage.Stores, cfg config.Config, command
 	if err != nil {
 		t.Fatal(err)
 	}
-	return routes(stores, cfg, commands, reports, realtime.New(), notification.New(stores.Control, [32]byte{}), themes)
+	sandboxes := sandbox.New(t.Context(), stores.Control)
+	t.Cleanup(sandboxes.Close)
+	return routes(stores, cfg, commands, reports, realtime.New(), notification.New(stores.Control, [32]byte{}), themes, sandboxes)
 }
 
 func requestAuth(t *testing.T, handler http.Handler, method, path, body, origin string, cookie *http.Cookie, csrf string, expected int) *httptest.ResponseRecorder {
