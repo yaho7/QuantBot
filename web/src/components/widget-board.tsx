@@ -49,6 +49,8 @@ import { ControlCard } from "../app/control";
 import { DataTable, History, useTelemetryValues } from "../app/strategy";
 import { capabilityCatalog, CapabilityWidget } from "./capability-widget";
 
+import { WidgetResize } from "./widget-resize";
+
 const icons = { Activity, Bell, ChartNoAxesCombined, SlidersHorizontal };
 
 export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
@@ -217,6 +219,7 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
                         (entry) => entry.id === widget.controlId,
                       )?.title
                   }
+                  resize={(value) => update(widget.id, value)}
                   configure={() => setSettings(widget.id)}
                   remove={() =>
                     change(
@@ -381,6 +384,7 @@ function SortableWidget({
   editing,
   title,
   configure,
+  resize,
   remove,
   children,
 }: {
@@ -388,6 +392,7 @@ function SortableWidget({
   editing: boolean;
   title?: string;
   configure: () => void;
+  resize: (value: Partial<Widget>) => void;
   remove: () => void;
   children: ReactNode;
 }) {
@@ -400,12 +405,14 @@ function SortableWidget({
       className={
         "surface widget size-" +
         widget.size +
+        (widget.height ? " widget-height-set" : "") +
         (sortable.isDragging ? " dragging" : "")
       }
       style={{
         transform: CSS.Transform.toString(sortable.transform),
         transition: sortable.transition,
         borderTopColor: widget.color,
+        height: widget.height ? widget.height + "px" : undefined,
       }}
       data-widget={widget.id}
     >
@@ -456,6 +463,7 @@ function SortableWidget({
         )}
       </header>
       <div className="widget-body">{children}</div>
+      {editing && <WidgetResize widget={widget} commit={resize} />}
     </article>
   );
 }

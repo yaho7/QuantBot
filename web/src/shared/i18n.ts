@@ -13,6 +13,7 @@ const messages = {
   icon: ["图标", "Icon"],
   showDescription: ["显示说明", "Show description"],
   detailed: ["详细模式", "Detailed view"],
+  resizeWidget: ["拖动调整大小，方向键微调", "Drag to resize, or use arrow keys"],
   dragWidget: ["拖动组件", "Drag widget"],
   addChannel: ["添加通知渠道", "Add channel"],
   editChannel: ["编辑渠道", "Edit channel"],

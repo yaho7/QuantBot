@@ -27,6 +27,7 @@ type Widget struct {
 	Icon        string `json:"icon,omitempty"`
 	Color       string `json:"color,omitempty"`
 	Size        string `json:"size"`
+	Height      int    `json:"height,omitempty"`
 	Description bool   `json:"description"`
 	Detailed    bool   `json:"detailed"`
 }
@@ -92,6 +93,7 @@ func validate(input Layout) error {
 		if !widgetIDPattern.MatchString(widget.ID) || seen[widget.ID] || len(widget.StrategyID) > 96 || widget.StrategyID == "" ||
 			!slices.Contains([]string{"control", "capability", "equity", "chart", "positions", "activity"}, widget.Type) ||
 			!slices.Contains([]string{"small", "medium", "large", "full"}, widget.Size) ||
+			widget.Height != 0 && (widget.Height < 120 || widget.Height > 1200 || widget.Height%8 != 0) ||
 			len(widget.Label) > 160 || len(widget.Icon) > 64 || widget.Icon != "" && !keyPattern.MatchString(widget.Icon) ||
 			widget.Color != "" && !colorPattern.MatchString(widget.Color) ||
 			hasSource && !keyPattern.MatchString(widget.ControlID) ||

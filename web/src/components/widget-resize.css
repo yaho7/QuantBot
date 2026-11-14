@@ -1,0 +1,21 @@
+.widget:has(> .widget-resize-handle) { position: relative; }
+.widget-resize-handle {
+  position: absolute; right: 0; bottom: 0; z-index: 3;
+  width: 36px; height: 36px; min-height: 36px;
+  display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 10px 0 10px 0;
+  background: var(--raised); color: var(--muted);
+  cursor: nwse-resize; touch-action: none; user-select: none;
+}
+.widget-resize-handle:hover, .widget-resize-handle:focus-visible { color: var(--accent); }
+.widget-resize-outline {
+  display: none; position: fixed; z-index: 10000; pointer-events: none;
+  border: 2px solid #528463; border-radius: 14px;
+  background: #52846312; box-sizing: border-box; contain: strict;
+}
+.widget.widget-height-set { min-height: 120px; }
+.widget.widget-height-set > .widget-body { min-height: 0; flex: 1; overflow: auto; }
+.widget:has(> .widget-resize-handle) > .widget-body { padding-bottom: 36px; }
+@media (pointer: coarse) {
+  .widget-resize-handle { width: 44px; height: 44px; }
+}

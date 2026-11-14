@@ -152,6 +152,7 @@ export type Widget = {
   icon?: string;
   color?: string;
   size: "small" | "medium" | "large" | "full";
+  height?: number;
   description: boolean;
   detailed: boolean;
 };
