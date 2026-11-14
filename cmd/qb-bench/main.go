@@ -27,6 +27,7 @@ type options struct {
 	points   int
 	streams  int
 	control  int
+	themes   int
 	history  int
 	parallel int
 	idle     time.Duration
@@ -40,6 +41,7 @@ func main() {
 	flag.IntVar(&o.points, "points", 1, "records per report")
 	flag.IntVar(&o.streams, "streams", 0, "simultaneous SSE subscribers")
 	flag.IntVar(&o.control, "controls", 0, "command cycles alongside telemetry")
+	flag.IntVar(&o.themes, "themes", 0, "theme switch and read-back cycles alongside telemetry")
 	flag.IntVar(&o.history, "history", 20, "history queries after the workload")
 	flag.IntVar(&o.parallel, "parallel", 32, "maximum concurrent Agents")
 	flag.DurationVar(&o.idle, "idle", time.Second, "idle measurement window")
@@ -63,7 +65,7 @@ type diagnostics struct {
 }
 
 func run(o options) error {
-	if o.binary == "" || o.agents < 0 || o.agents > 10000 || o.parallel < 1 || o.points < 1 || o.points > 250 || o.cycles < 0 {
+	if o.binary == "" || o.agents < 0 || o.agents > 10000 || o.parallel < 1 || o.points < 1 || o.points > 250 || o.cycles < 0 || o.themes < 0 {
 		return fmt.Errorf("provide a binary and valid workload bounds")
 	}
 	path, err := filepath.Abs(o.binary)
@@ -204,7 +206,20 @@ func run(o options) error {
 			})
 		})
 	}
-	if len(agents) == 0 && o.control == 0 {
+	if o.themes > 0 {
+		workers.Go(func() {
+			run(func() error {
+				for i := range o.themes {
+					id := []string{"classic", "lumina"}[i%2]
+					if err := w.themeCycle(ctx, id); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+		})
+	}
+	if len(agents) == 0 && o.control == 0 && o.themes == 0 {
 		select {
 		case <-time.After(o.idle):
 		case <-ctx.Done():
@@ -240,7 +255,8 @@ func run(o options) error {
 	result := map[string]any{
 		"platform": runtime.GOOS + "/" + runtime.GOARCH, "serverGomaxprocs": 2,
 		"agents": o.agents, "cycles": o.cycles, "recordsPerReport": o.points, "controls": o.control,
-		"streams": o.streams, "elapsedSeconds": elapsed.Seconds(), "requestsPerSecond": float64(total) / elapsed.Seconds(),
+		"streams": o.streams, "themeSwitches": o.themes,
+		"elapsedSeconds": elapsed.Seconds(), "requestsPerSecond": float64(total) / elapsed.Seconds(),
 		"writesPerSecond":  float64(after.Samples-before.Samples) / elapsed.Seconds(),
 		"cpuPercent":       100 * (after.CpuSeconds - before.CpuSeconds) / elapsed.Seconds(),
 		"queuePeakSampled": peakQueue, "before": before, "after": after, "latency": latencies,

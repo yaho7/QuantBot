@@ -1,0 +1,101 @@
+{
+  "after": {
+    "OnlineAgents": 101,
+    "Samples": 30000,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 500,
+    "PeakRssBytes": 174440448,
+    "HeapBytes": 19971040,
+    "CpuSeconds": 3.495625,
+    "WalBytes": {
+      "control": 4152992,
+      "metrics": 5763912
+    }
+  },
+  "agents": 100,
+  "before": {
+    "OnlineAgents": 101,
+    "Samples": 0,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 500,
+    "PeakRssBytes": 116543488,
+    "HeapBytes": 85036744,
+    "CpuSeconds": 0.201512,
+    "WalBytes": {
+      "control": 4132392,
+      "metrics": 111272
+    }
+  },
+  "controls": 100,
+  "cpuPercent": 162.8359975267296,
+  "cycles": 30,
+  "duplicateAck": 1300,
+  "elapsedSeconds": 2.022963626,
+  "insertedAck": 30000,
+  "latency": {
+    "command_claim": {
+      "Count": 100,
+      "P50Ms": 1.528042,
+      "P95Ms": 10.978208,
+      "P99Ms": 24.253875
+    },
+    "command_create": {
+      "Count": 100,
+      "P50Ms": 1.566417,
+      "P95Ms": 9.317708,
+      "P99Ms": 14.191459
+    },
+    "command_result": {
+      "Count": 100,
+      "P50Ms": 1.51675,
+      "P95Ms": 8.078,
+      "P99Ms": 10.797459
+    },
+    "heartbeat": {
+      "Count": 3000,
+      "P50Ms": 2.214667,
+      "P95Ms": 12.074125,
+      "P99Ms": 17.938208
+    },
+    "history": {
+      "Count": 20,
+      "P50Ms": 0.133125,
+      "P95Ms": 0.322,
+      "P99Ms": 0.322
+    },
+    "reports": {
+      "Count": 3130,
+      "P50Ms": 26.004083,
+      "P95Ms": 42.961917,
+      "P99Ms": 49.560333
+    },
+    "themeRead": {
+      "Count": 250,
+      "P50Ms": 0.614792,
+      "P95Ms": 5.949333,
+      "P99Ms": 8.911708
+    },
+    "themeSwitch": {
+      "Count": 250,
+      "P50Ms": 1.2465,
+      "P95Ms": 8.531625,
+      "P99Ms": 15.176667
+    }
+  },
+  "persistedDelta": 30000,
+  "platform": "linux/arm64",
+  "queuePeakSampled": 34,
+  "recordsPerReport": 10,
+  "rejected": 0,
+  "requestErrors": 0,
+  "requestsPerSecond": 3435.553615831548,
+  "retries": 0,
+  "sentRecords": 30000,
+  "serverGomaxprocs": 2,
+  "streams": 500,
+  "themeSwitches": 250,
+  "workloadErrors": 0,
+  "writesPerSecond": 14829.727838121791
+}

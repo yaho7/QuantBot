@@ -8,7 +8,7 @@ go build -o /tmp/qb-bench ./cmd/qb-bench
 /tmp/qb-bench -binary /tmp/quantbot -agents 1000 -cycles 10 -parallel 128
 ```
 
-The driver starts an isolated service, creates strategies and sessions over HTTP, simulates reporting Agents and checks acknowledged counts against persisted samples. It cleans up the process and data directory on exit. It uses GOMAXPROCS=2. Every 23rd report is replayed unchanged to verify duplicate handling. Other flags include `-points`, `-streams`, `-controls`, `-history` and `-idle`.
+The driver starts an isolated service, creates strategies and sessions over HTTP, simulates reporting Agents and checks acknowledged counts against persisted samples. It cleans up the process and data directory on exit. It uses GOMAXPROCS=2. Every 23rd report is replayed unchanged to verify duplicate handling. Other flags include `-points`, `-streams`, `-controls`, `-history`, `-themes` and `-idle`.
 
 ## Local run on 2026-11-14
 
@@ -43,4 +43,24 @@ The table reports medians from three alternating runs per driver on the same Dar
 
 Keep mattn/go-sqlite3 for the higher measured throughput and lower measured memory on this workload. Raw results are in [benchmarks/sqlite](benchmarks/sqlite). [mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) · [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite@v1.62.0)
 
-The requested 2 vCPU/2 GB VPS comparison, long-duration soak and theme-switch benchmark remain pending.
+## Linux run with a CPU and memory limit
+
+Linux arm64 in Docker Desktop, limited to 2 CPUs and 2 GiB RAM. The load driver and service shared the limit. The host used local storage, so these numbers do not measure network or disk performance on a hosted VPS.
+
+```sh
+docker run --rm --platform linux/arm64 --cpus 2 --memory 2g \
+  -v "$PWD:/src:ro" -w /src golang:1.26-bookworm bash -ec '
+  go build -o /tmp/quantbot ./cmd/quantbot
+  go build -o /tmp/qb-bench ./cmd/qb-bench
+  /tmp/qb-bench -binary /tmp/quantbot -agents 1000 -cycles 10 -parallel 128
+  /tmp/qb-bench -binary /tmp/quantbot -agents 100 -cycles 5 -points 200 -parallel 50 -history 50
+  /tmp/qb-bench -binary /tmp/quantbot -agents 100 -cycles 30 -points 10 -parallel 50 -controls 100 -streams 500 -themes 250'
+```
+
+| Workload | Persisted records | Writes/s | History P95 ms | Peak RSS MiB |
+| --- | --- | --- | --- | --- |
+| 1000 Agents | 10,000 | 3,360 | 0.12 | 159 |
+| High-rate writes and history | 100,000 | 22,576 | 0.28 | 155 |
+| Telemetry, commands, SSE and themes | 30,000 | 14,830 | 0.32 | 166 |
+
+The mixed run completed 100 command lifecycles and held 500 SSE subscribers. It switched between Classic and Lumina 250 times and read back the selection after every change. Theme activation took 8.53 ms at P95 and 15.18 ms at P99. All workloads matched the expected sample counts with no request errors or retries. See [raw results](benchmarks/linux-2cpu) for CPU, P50/P95/P99, queue peaks, WAL sizes and duplicate acknowledgements. These are short load tests; no long-duration soak was run.

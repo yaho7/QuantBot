@@ -23,6 +23,21 @@ type workload struct {
 	seq      atomic.Int64
 }
 
+func (w *workload) themeCycle(ctx context.Context, id string) error {
+	input := map[string]string{"id": id}
+	if _, err := w.stats.call(w.api, ctx, "themeSwitch", "PUT", "/admin/themes/active", "", "", input, nil); err != nil {
+		return err
+	}
+	var active struct{ ID string }
+	if _, err := w.stats.call(w.api, ctx, "themeRead", "GET", "/theme", "", "", nil, &active); err != nil {
+		return err
+	}
+	if active.ID != id {
+		return fmt.Errorf("expected active theme %q, got %q", id, active.ID)
+	}
+	return nil
+}
+
 type report struct {
 	ID   string            `json:"id"`
 	Kind string            `json:"kind"`

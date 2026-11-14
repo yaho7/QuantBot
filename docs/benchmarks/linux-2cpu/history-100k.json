@@ -1,0 +1,71 @@
+{
+  "after": {
+    "OnlineAgents": 100,
+    "Samples": 100000,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 0,
+    "PeakRssBytes": 162639872,
+    "HeapBytes": 2868616,
+    "CpuSeconds": 6.422358,
+    "WalBytes": {
+      "control": 4132392,
+      "metrics": 5409592
+    }
+  },
+  "agents": 100,
+  "before": {
+    "OnlineAgents": 100,
+    "Samples": 0,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 0,
+    "PeakRssBytes": 92766208,
+    "HeapBytes": 72321656,
+    "CpuSeconds": 0.170016,
+    "WalBytes": {
+      "control": 4132392,
+      "metrics": 111272
+    }
+  },
+  "controls": 0,
+  "cpuPercent": 141.15126535031823,
+  "cycles": 5,
+  "duplicateAck": 4200,
+  "elapsedSeconds": 4.429533086,
+  "insertedAck": 100000,
+  "latency": {
+    "heartbeat": {
+      "Count": 500,
+      "P50Ms": 9.606292,
+      "P95Ms": 40.245459,
+      "P99Ms": 54.059209
+    },
+    "history": {
+      "Count": 50,
+      "P50Ms": 0.122792,
+      "P95Ms": 0.279916,
+      "P99Ms": 0.327917
+    },
+    "reports": {
+      "Count": 521,
+      "P50Ms": 391.345584,
+      "P95Ms": 521.212042,
+      "P99Ms": 545.052084
+    }
+  },
+  "persistedDelta": 100000,
+  "platform": "linux/arm64",
+  "queuePeakSampled": 40,
+  "recordsPerReport": 200,
+  "rejected": 0,
+  "requestErrors": 0,
+  "requestsPerSecond": 241.78620617712662,
+  "retries": 0,
+  "sentRecords": 100000,
+  "serverGomaxprocs": 2,
+  "streams": 0,
+  "themeSwitches": 0,
+  "workloadErrors": 0,
+  "writesPerSecond": 22575.74287368129
+}
