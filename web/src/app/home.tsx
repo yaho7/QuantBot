@@ -221,6 +221,7 @@ export function Home() {
                   key={strategy.id}
                   strategy={strategy}
                   view={view}
+                  portfolio={portfolio}
                 />
               ))}
             </div>
@@ -370,14 +371,37 @@ function AbnormalCount({ strategies }: { strategies: Strategy[] }) {
 const StrategyCard = memo(function StrategyCard({
   strategy,
   view,
+  portfolio = false,
 }: {
   strategy: Strategy;
   view: string;
+  portfolio?: boolean;
 }) {
   const { t } = useLanguage();
   const values = useTelemetryValues(strategy.id);
   const error = values.records.some(
     (r) => r.kind === "status" && r.data.state === "error",
+  );
+  if (portfolio && view === "list") return (
+    <Link className="portfolio-strategy-row" to={"/strategies/" + strategy.id}>
+      <span className="portfolio-strategy-identity">
+        <strong>{strategy.name}</strong>
+        <span className="muted">
+          <span className={"connection-dot " + (strategy.online ? "online" : "")} />
+          {error ? t("abnormal") : t(strategy.online ? "online" : "offline")}
+          {" · "}{strategy.group || t(strategy.mode)}
+        </span>
+      </span>
+      <span className="portfolio-strategy-value">
+        <strong>{hasEquity ? decimalText(values.equity?.data.value) : "—"}{" "}
+          <small>{String(values.equity?.data.currency ?? "")}</small>
+        </strong>
+        <span className={String(values.performance?.data.dailyPnl).startsWith("-") ? "danger" : "muted"}>
+          {hasPnl ? t("dailyPnl") + " " + decimalText(values.performance?.data.dailyPnl) : t("missing")}
+        </span>
+      </span>
+      <ArrowUpRight size={16} className="muted" />
+    </Link>
   );
   return (
     <article className={"strategy-card surface " + (error ? "has-error" : "")}>
