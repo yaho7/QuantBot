@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useSyncExternalStore } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import {
   DndContext,
@@ -28,7 +28,6 @@ import {
   Trash2,
   Undo2,
 } from "lucide-react";
-import { toast } from "sonner";
 import type { ReactNode } from "react";
 import {
   api,
@@ -53,10 +52,22 @@ import { WidgetResize } from "./widget-resize";
 
 const icons = { Activity, Bell, ChartNoAxesCombined, SlidersHorizontal };
 
+const mobileLayout = matchMedia("(max-width: 600px)");
 export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
+  const viewport = useSyncExternalStore(
+    (listener) => { mobileLayout.addEventListener("change", listener); return () => mobileLayout.removeEventListener("change", listener); },
+    () => mobileLayout.matches ? "mobile" : "desktop",
+  );
+  const [lockedDevice, setLockedDevice] = useState<string>();
+  const device = lockedDevice ?? viewport;
+  return <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device}
+    onEditing={(active) => setLockedDevice(active ? device : undefined)} />;
+
+}
+function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: string; device: string; onEditing: (active: boolean) => void }) {
   const { t } = useLanguage();
   const surface = strategyId ? "strategy" : "overview";
-  const layout = layoutResource(strategyId);
+  const layout = layoutResource(strategyId, device);
   const saved = useQuery(layout);
   const strategies = useQuery(resource<Strategy[]>("/strategies"));
   const available = (strategies.data ?? []).filter(
@@ -78,6 +89,7 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Widget[]>([]);
   const [revision, setRevision] = useState(0);
+  const [acknowledged, setAcknowledged] = useState("");
   const [history, setHistory] = useState<Widget[][]>([]);
   const [adding, setAdding] = useState(false);
   const [settings, setSettings] = useState("");
@@ -92,25 +104,29 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
     }),
   );
   const save = useMutation({
-    mutationFn: () =>
-      api<Layout>(layout.queryKey[0]!, "PUT", {
-        version: 1,
-        revision,
-        widgets: draft,
-      }),
-    onSuccess: (value) => {
+    mutationFn: (input: { revision: number; widgets: Widget[] }) =>
+      api<Layout>(layout.queryKey[0]!, "PUT", { version: 1, ...input }),
+    onSuccess: (value, input) => {
+      setAcknowledged(JSON.stringify(input.widgets));
       client.setQueryData(layout.queryKey, value);
-      setEditing(false);
-      setHistory([]);
-      toast.success(t("save"));
+      setRevision(value.revision);
     },
   });
+  const dirty = JSON.stringify(draft) !== acknowledged;
+  useEffect(() => {
+    if (!editing || !dirty || save.isPending || save.isError) return;
+    const timer = setTimeout(() => save.mutate({ revision, widgets: draft }), 500);
+    return () => clearTimeout(timer);
+  }, [editing, dirty, draft, revision, save.isPending, save.isError]);
   const change = (next: Widget[]) => {
+    if (!save.isPending) save.reset();
     setHistory((previous) => [...previous.slice(-29), draft]);
     setDraft(next);
   };
   function beginEdit() {
+    onEditing(true);
     setDraft(structuredClone(effective));
+    setAcknowledged(JSON.stringify(effective));
     setRevision(saved.data?.revision ?? 0);
     setHistory([]);
     setEditing(true);
@@ -126,7 +142,7 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
   return (
     <section className="section widget-section">
       <div className="section-heading">
-        <h2>{t("widgets")}</h2>
+        <h2>{t("widgets")} <small className="muted">{t(device === "mobile" ? "mobileLayout" : "desktopLayout")}</small></h2>
         <div className="actions">
           {editing ? (
             <>
@@ -135,6 +151,7 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
                 aria-label={t("undo")}
                 disabled={!history.length || save.isPending}
                 onClick={() => {
+                  save.reset();
                   setDraft(history.at(-1)!);
                   setHistory(history.slice(0, -1));
                 }}
@@ -154,21 +171,22 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
                 {t("add")}
               </button>
               <button
-                disabled={save.isPending}
+                disabled={save.isPending || dirty}
                 onClick={() => {
                   setEditing(false);
+                  onEditing(false);
                   setSettings("");
                   setAdding(false);
                 }}
               >
-                {t("cancel")}
+                {t("done")}
               </button>
               <button
                 className="primary"
                 disabled={save.isPending}
-                onClick={() => save.mutate()}
+                onClick={() => save.mutate({ revision, widgets: draft })}
               >
-                {t("save")}
+                {save.isPending ? t("savingLayout") : dirty ? t("save") : t("savedLayout")}
               </button>
             </>
           ) : (
@@ -320,6 +338,7 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
                     onChange={(e) =>
                       update(widget.id, {
                         size: e.target.value as Widget["size"],
+                        width: undefined,
                       })
                     }
                   >
@@ -413,6 +432,7 @@ function SortableWidget({
         transition: sortable.transition,
         borderTopColor: widget.color,
         height: widget.height ? widget.height + "px" : undefined,
+        ...({ "--widget-width": widget.width } as import("react").CSSProperties),
       }}
       data-widget={widget.id}
     >

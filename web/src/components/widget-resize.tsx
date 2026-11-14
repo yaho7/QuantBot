@@ -22,7 +22,7 @@ export function WidgetResize({ widget, commit }: {
         event.preventDefault();
         event.stopPropagation();
         if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-          commit({ size: sizes[Math.max(0, Math.min(3, index + (event.key === "ArrowRight" ? 1 : -1)))]! });
+          commit({ width: Math.max(12, Math.min(100, (widget.width ?? [25, 50, 67, 100][index]!) + (event.key === "ArrowRight" ? 1 : -1))) });
         } else {
           const height = event.currentTarget.closest("article")!.getBoundingClientRect().height;
           commit({ height: Math.max(120, Math.min(1200, Math.round(height / 8) * 8 + (event.key === "ArrowDown" ? 8 : -8))) });
@@ -39,30 +39,22 @@ export function WidgetResize({ widget, commit }: {
         const rect = card.getBoundingClientRect();
         const gridRect = grid.getBoundingClientRect();
         const style = getComputedStyle(grid);
-        const columns = style.gridTemplateColumns.split(" ").length;
-        const gap = parseFloat(style.columnGap) || 0;
-        const unit = (gridRect.width + gap) / columns;
-        const spans = columns <= 4 ? [2, 4, 4, 4] : columns <= 8 ? [4, 4, 8, 8] : [3, 6, 8, 12];
-        const widths = spans.map(span => span * unit - gap);
+        const minimum = parseInt(style.getPropertyValue("--minimum-width")) || 12;
+        const percent = () => Math.max(minimum, Math.min(100, Math.round((width + 12) / gridRect.width * 100)));
         const startX = event.clientX, startY = event.clientY;
         const id = event.pointerId;
         let width = rect.width, height = rect.height, frame = 0;
         const previous = { height: card.style.height, gridColumn: card.style.gridColumn };
-        const closestSize = () => {
-          const distances = widths.map(w => Math.abs(w - width));
-          const current = sizes.indexOf(widget.size);
-          return distances[current] === Math.min(...distances) ? current : distances.indexOf(Math.min(...distances));
-        };
         card.dataset.resizing = "true";
         const paint = () => {
           frame = 0;
-          card.style.gridColumn = "span " + spans[closestSize()];
+          card.style.gridColumn = "span " + percent();
           card.style.height = Math.round(height / 8) * 8 + "px";
         };
         handle.setPointerCapture(id);
         const move = (e: PointerEvent) => {
           if (e.pointerId !== id) return;
-          width = Math.max(widths[0]!, Math.min(gridRect.width, rect.width + e.clientX - startX));
+          width = Math.max(gridRect.width * minimum / 100 - 12, Math.min(gridRect.width - 12, rect.width + e.clientX - startX));
           height = Math.max(120, Math.min(1200, rect.height + e.clientY - startY));
           if (!frame) frame = requestAnimationFrame(paint);
         };
@@ -85,10 +77,10 @@ export function WidgetResize({ widget, commit }: {
         const finish = (e: PointerEvent) => {
           if (e.pointerId !== id) return;
           move(e);
-          const best = closestSize();
+          const nextWidth = percent();
           const changed = Math.abs(e.clientX - startX) > 3 || Math.abs(e.clientY - startY) > 3;
           cancel();
-          if (changed) commit({ size: sizes[best]!, height: Math.round(height / 8) * 8 });
+          if (changed) commit({ width: nextWidth, height: Math.round(height / 8) * 8 });
         };
         handle.addEventListener("pointermove", move);
         handle.addEventListener("pointerup", finish);

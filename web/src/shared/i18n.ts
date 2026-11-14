@@ -1,6 +1,11 @@
 import { useSyncExternalStore } from "react";
 
 const messages = {
+  mobileLayout: ["手机布局", "Mobile layout"],
+  desktopLayout: ["桌面布局", "Desktop layout"],
+  savingLayout: ["正在保存…", "Saving…"],
+  savedLayout: ["已自动保存", "Saved automatically"],
+  done: ["完成", "Done"],
   language: ["语言", "Language"],
   palette: ["配色", "Color palette"],
   forest: ["森林绿", "Forest"],

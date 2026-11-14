@@ -153,13 +153,14 @@ export type Widget = {
   color?: string;
   size: "small" | "medium" | "large" | "full";
   height?: number;
+  width?: number;
   description: boolean;
   detailed: boolean;
 };
 
-export function layoutResource(strategyId?: string) {
+export function layoutResource(strategyId?: string, device = "desktop") {
   return resource<Layout>(
-    "/layouts/" + (strategyId ? "strategy-" + strategyId : "workbench"),
+    "/layouts/" + (strategyId ? "strategy-" + strategyId : "workbench") + (device === "mobile" ? "-mobile" : ""),
   );
 }
 

@@ -25,26 +25,43 @@
 .widget[data-resizing="true"] > .widget-body {
   min-height: 0; flex: 1; overflow: auto;
 }
+
 .widget-section { container-type: inline-size; }
 .workbench-shell .widget-section .widget-grid {
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  --minimum-width: 12;
+  grid-template-columns: repeat(100, minmax(0, 1fr));
+  gap: 16px 0;
   overflow-anchor: none;
 }
-.workbench-shell .widget-grid .widget.size-small { grid-column: span 3; }
-.workbench-shell .widget-grid .widget.size-medium { grid-column: span 6; }
-.workbench-shell .widget-grid .widget.size-large { grid-column: span 8; }
-.workbench-shell .widget-grid .widget.size-full { grid-column: span 12; }
+.workbench-shell .widget-grid .widget { margin-inline: 6px; }
+.workbench-shell .widget-grid .widget.size-small { --default-width: 25; }
+.workbench-shell .widget-grid .widget.size-medium { --default-width: 50; }
+.workbench-shell .widget-grid .widget.size-large { --default-width: 67; }
+.workbench-shell .widget-grid .widget.size-full { --default-width: 100; }
+.workbench-shell .widget-grid .widget[class*="size-"] {
+  grid-column: span max(var(--minimum-width), var(--widget-width, var(--default-width)));
+}
 @container (max-width: 900px) {
-  .workbench-shell .widget-section .widget-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
-  .workbench-shell .widget-grid .widget.size-small,
-  .workbench-shell .widget-grid .widget.size-medium { grid-column: span 4; }
-  .workbench-shell .widget-grid .widget.size-large,
-  .workbench-shell .widget-grid .widget.size-full { grid-column: span 8; }
+  .workbench-shell .widget-section .widget-grid { --minimum-width: 25; }
 }
 @container (max-width: 540px) {
-  .workbench-shell .widget-section .widget-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .workbench-shell .widget-grid .widget.size-small { grid-column: span 2; }
+  .workbench-shell .widget-section .widget-grid { --minimum-width: 50; }
   .workbench-shell .widget-grid .widget.size-medium,
-  .workbench-shell .widget-grid .widget.size-large,
-  .workbench-shell .widget-grid .widget.size-full { grid-column: span 4; }
+  .workbench-shell .widget-grid .widget.size-large { --default-width: 100; }
 }
+/* Scroll shadows fade naturally at the start/end; input methods stay available. */
+.widget .widget-body, .widget .table-scroll {
+  scrollbar-width: none;
+  background:
+    linear-gradient(var(--surface) 30%, transparent) center top / 100% 24px local,
+    linear-gradient(transparent, var(--surface) 70%) center bottom / 100% 24px local,
+    radial-gradient(farthest-side at 50% 0, #00000012, transparent) center top / 100% 10px scroll,
+    radial-gradient(farthest-side at 50% 100%, #00000012, transparent) center bottom / 100% 10px scroll;
+  background-repeat: no-repeat;
+}
+.widget .widget-body::-webkit-scrollbar, .widget .table-scroll::-webkit-scrollbar { display: none; }
+html, .table-scroll, .topbar-inner, .sidebar nav {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar, .table-scroll::-webkit-scrollbar,
+.topbar-inner::-webkit-scrollbar, .sidebar nav::-webkit-scrollbar { display: none; }
