@@ -78,7 +78,7 @@ export function SandboxPanel({ strategyId, endpoint, prompt, preview, disabled }
   }, [data, passedNotice]);
 
   const production = t("sandbox.inQuantbotJsonOnTheStrategyHost", { endpoint: endpoint, strategyId: strategyId });
-  return <Panel title={t("onboarding.oneClickAiIntegrationTest")}
+  return <Panel className="sandbox-panel" title={t("onboarding.oneClickAiIntegrationTest")}
     action={<button className="button primary" type="button" disabled={disabled || copy.isPending}
       onClick={() => { setNow(Date.now()); copy.mutate(); }}>
       <Copy size={16} /> {copy.isPending ? t("sandbox.generatingTestPrompt") : t("sandbox.copyAiIntegrationPrompt")}

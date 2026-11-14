@@ -1,25 +1,33 @@
 import { label, t, type Message } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bot, Database, ExternalLink, KeyRound, Server, SunMoon } from "lucide-react";
+import { ArrowLeft, Bot, Check, Database, ExternalLink, KeyRound, LogOut, Server, SlidersHorizontal, SunMoon } from "lucide-react";
 import type { Theme } from "./theme";
+import { LanguagePicker } from "./language-picker";
 import { useState } from "react";
 import { api, MIN_PASSWORD_LENGTH, type Alert, type System, type TelegramSettings } from "./api";
 import { CategoryPicker } from "./onboarding";
-import { ErrorNotice, Field, Loading, PageTitle, Panel, Table, categoryText, severityText, useData, when } from "./ui";
+import { ActionPopover, ErrorNotice, Field, Loading, PageTitle, Panel, Table, TextLink, categoryText, severityText, useData, when } from "./ui";
 
 export function TelegramPage() {
   const config = useData<TelegramSettings>("telegram");
   const alerts = useData<Alert[]>("alerts?limit=100");
   const [category, setCategory] = useState("");
   return <>
+    <a className="back-link" href="#system"><ArrowLeft size={15} aria-hidden="true" />{t("app.settings")}</a>
     <PageTitle title={t("settings.notificationsAndTelegram")} sub={t("settings.configureTheBotAuthorizedUsersAndNotification")} />
     <div className="stack">
       <ErrorNotice error={config.error} />
       {config.data ? <TelegramForm config={config.data} /> : config.isPending ? <Loading /> : null}
       <Panel title={t("settings.notificationHistory")}>
-        <div className="toolbar"><select aria-label={t("settings.notificationCategory")} value={category} onChange={(e) => setCategory(e.target.value)}>
-          <option value="">{t("settings.allCategories")}</option>{Object.entries(categoryText).map(([value, label]) =>
-            <option key={value} value={value}>{t(label)}</option>)}</select></div>
+        <div className="list-filters">
+          <ActionPopover label={t("settings.notificationCategory")} trigger={<SlidersHorizontal size={17} aria-hidden="true" />}>
+            {(close) => notificationFilters.map(([key, name]) => <button key={key} type="button" aria-pressed={category === key}
+              onClick={() => { setCategory(key); close(); }}>
+              <span>{t(name)}</span>{category === key && <Check size={15} aria-hidden="true" />}
+            </button>)}
+          </ActionPopover>
+          <span>{label(categoryText[category], t("settings.allCategories"))}</span>
+        </div>
         <ErrorNotice error={alerts.error} />
         {alerts.isPending ? <Loading /> : <Table columns={[t("marketChart.time"), t("settings.category"), t("settings.severity"), t("app.notifications")]}
           empty={!alerts.data?.some((item) => !category || item.category === category)}>
@@ -31,6 +39,8 @@ export function TelegramPage() {
     </div>
   </>;
 }
+
+const notificationFilters: Array<[string, Message]> = [["", "settings.allCategories"], ...Object.entries(categoryText)];
 
 function TelegramForm({ config }: { config: TelegramSettings }) {
   const client = useQueryClient();
@@ -97,7 +107,11 @@ function TelegramForm({ config }: { config: TelegramSettings }) {
 
 const countLabels: Record<string, Message> = { strategies: "app.strategies", archived: "overview.archived", metrics: "settings.metricSamples", events: "settings.events", reports: "settings.standardRecords", commands: "operations.command" };
 
-export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: Theme) => void }) {
+const themeNames: Record<Theme, Message> = { system: "settings.systemDefault", light: "settings.light", dark: "settings.dark" };
+
+export function SystemPage({ theme, onTheme, onSignOut, signingOut }: {
+  theme: Theme; onTheme: (theme: Theme) => void; onSignOut: () => void; signingOut: boolean;
+}) {
   const system = useData<System>("system");
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
@@ -106,14 +120,19 @@ export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: 
     onSuccess: () => { setCurrent(""); setNext(""); },
   });
   return <>
-    <PageTitle title={t("settings.systemSettings")} sub={t("settings.administratorSecurityServiceVersionAndDataStorage")}
-      action={<a className="button secondary" href="#api">{t("app.apiIntegration")}</a>} />
+    <PageTitle title={t("settings.systemSettings")} />
     <div className="settings-grid">
       <div className="stack">
-        <Panel title={t("settings.appearance")} action={<SunMoon size={21} aria-hidden="true" />}>
-          <Field label={t("settings.theme")}><select value={theme} onChange={(e) => onTheme(e.target.value as Theme)}>
-            <option value="system">{t("settings.systemDefault")}</option><option value="light">{t("settings.light")}</option><option value="dark">{t("settings.dark")}</option>
-          </select></Field>
+        <Panel title={t("settings.appearance")}>
+          <div className="setting-row"><span>{t("app.language")}</span><LanguagePicker /></div>
+          <div className="setting-row"><span>{t("settings.theme")} <small>{t(themeNames[theme])}</small></span>
+            <ActionPopover label={t("settings.theme")} trigger={<SunMoon size={19} aria-hidden="true" />}>
+              {(close) => (Object.keys(themeNames) as Theme[]).map((value) => <button key={value} type="button"
+                aria-pressed={theme === value} onClick={() => { onTheme(value); close(); }}>
+                <span>{t(themeNames[value])}</span>{theme === value && <Check size={15} aria-hidden="true" />}
+              </button>)}
+            </ActionPopover>
+          </div>
         </Panel>
         <Panel title={t("settings.administratorPassword")} action={<KeyRound size={21} />}>
           <form className="stack" onSubmit={(e) => { e.preventDefault(); password.mutate(); }}>
@@ -128,6 +147,10 @@ export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: 
         </Panel>
       </div>
       <div className="stack">
+        <Panel title={t("settings.integrations")}>
+          <div className="setting-row"><TextLink href="#telegram">{t("settings.notificationsAndTelegram")}</TextLink></div>
+          <div className="setting-row"><TextLink href="#api">{t("app.apiIntegration")}</TextLink></div>
+        </Panel>
         <Panel title={t("settings.serviceAndUpdates")} action={<Server size={21} />}>
           <dl className="detail-list"><dt>{t("settings.currentVersion")}</dt><dd>{system.data?.version ?? "—"}</dd>
             <dt>{t("settings.publicUrl")}</dt><dd>{system.data?.public_url ?? location.origin}</dd>
@@ -143,6 +166,9 @@ export function SystemPage({ theme, onTheme }: { theme: Theme; onTheme: (theme: 
               <div key={key}><span>{label(countLabels[key], key)}</span><strong>{count.toLocaleString()}</strong></div>)}</div>
           </> : system.isPending ? <Loading /> : null}
         </Panel>
+        <div><button type="button" className="button quiet" onClick={onSignOut} disabled={signingOut}>
+          <LogOut size={16} aria-hidden="true" />{t("app.signOut")}
+        </button></div>
       </div>
     </div>
   </>;

@@ -21,6 +21,7 @@ test("keeps the first-time form stable and accepts an eight-character password",
   await page.getByLabel("确认密码").fill("qb-pass8");
   await page.getByRole("button", { name: "创建管理员" }).click();
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  await page.getByRole("link", { name: "设置", exact: true }).click();
   await page.getByRole("button", { name: "退出登录" }).click();
   await expect(page.getByRole("heading", { name: "登录 QuantBot" })).toBeVisible();
   await expect(page.getByRole("button", { name: "创建管理员" })).toHaveCount(0);

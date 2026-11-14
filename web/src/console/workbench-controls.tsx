@@ -44,7 +44,7 @@ export function WorkbenchControl({ widget, strategy, registry, ready, expanded, 
     const connected = strategy.status !== "offline" ? agent?.runtime.broker_connected : null;
     return <div className="widget-stat">
       <strong className={strategy.status === "online" ? "pnl-gain" : strategy.status === "abnormal" ? "widget-availability" : ""}>{t(statusText[strategy.status])}</strong>
-      <div>{t("workbenchControls.brokerConnection")} · {connected == null ? t("operations.unknown") : connected ? t("settings.connected") : t("strategy.disconnected")}</div>
+      <div>{t("workbenchControls.brokerConnection")} {connected == null ? t("operations.unknown") : connected ? t("settings.connected") : t("strategy.disconnected")}</div>
       {expanded && agent && <span className="subtle">{t("onboarding.instance")}{" "}{agent.instance_id}</span>}
     </div>;
   }

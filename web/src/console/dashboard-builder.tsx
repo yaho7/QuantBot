@@ -1,6 +1,6 @@
 import { label, t } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, ArrowUp, Ellipsis, GripVertical, LockKeyhole, PencilLine, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Ellipsis, GripVertical, LayoutTemplate, LockKeyhole, PencilLine, Plus, RotateCcw, Save, Trash2, Undo2 } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import GridLayout, { collides, useContainerWidth, verticalCompactor, type Layout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
@@ -8,7 +8,7 @@ import { api, strategyApi, strategyPath, type Detail, type Strategy } from "./ap
 import { availabilityLabel, bucketOptions, candleKey, candleSelection, candleSource, chartName, componentName, marketComponent, metricSource, seriesComponent, seriesKey, seriesSelection, timeOptions, type BoardWidget, type Breakpoint, type Candidate, type ChartCatalog, type Dashboard, type GridPosition, type Series, type Widget } from "./dashboard-types";
 import { type ControlRegistryView } from "./dynamic-controls";
 import { controlWidgets, WorkbenchControl } from "./workbench-controls";
-import { Dialog, Empty, ErrorNotice, Field, Loading, useData, when } from "./ui";
+import { ActionPopover, Dialog, Empty, ErrorNotice, Field, Loading, useData, when } from "./ui";
 
 const WidgetData = lazy(() => import("./widget-data"));
 
@@ -225,23 +225,30 @@ export default function DashboardBuilder({ strategy, workbenchContext, focus }: 
         {workbenchContext ?? <h2>{t("dashboardBuilder.dashboard")}</h2>}
         {draft && <span className="editor-mode"><LockKeyhole size={13} aria-hidden="true" />{t("dashboardBuilder.previewMode")}</span>}
       </div>
-      {!draft && <button type="button" className="button quiet" disabled={!board.data || catalog.isPending}
-        onClick={() => setDraft({ ...current, widgets: withPlacements(widgets) })}><PencilLine size={15} aria-hidden="true" /> {t("dashboardBuilder.editLayout")}</button>}
+      {!draft && <button type="button" className="icon-button" disabled={!board.data || catalog.isPending}
+        aria-label={t("dashboardBuilder.editLayout")} title={t("dashboardBuilder.editLayout")}
+        onClick={() => setDraft({ ...current, widgets: withPlacements(widgets) })}><PencilLine size={17} aria-hidden="true" /></button>}
     </header>
     {draft && <div className="dashboard-editor">
       <div className="toolbar">
-        <button type="button" className="button secondary" disabled={!editable || widgets.length >= 24 ||
-          (!components.some(eligible) && !addableControls.length)} onClick={() => setAdd(true)}><Plus size={17} /> {t("dashboardBuilder.addWidget")}</button>
-        <select aria-label={t("dashboardBuilder.applyLayoutTemplate")} value="" disabled={!editable} onChange={(event) => {
-          edit(event.target.value === "monitoring" ? [...builtin, ...charts] :
-            [...controls, ...charts.filter((widget) => widget.component === "accounts")].slice(0, 24));
-        }}><option value="" disabled>{t("dashboardBuilder.layoutTemplate")}</option>
-          <option value="monitoring">{t("dashboardBuilder.monitoring")}</option><option value="controls">{t("dashboardBuilder.controls")}</option>
-        </select>
-        <button type="button" className="button quiet" disabled={!editable || !undo.length} onClick={() => {
+        <button type="button" className="icon-button" aria-label={t("dashboardBuilder.addWidget")} title={t("dashboardBuilder.addWidget")}
+          disabled={!editable || widgets.length >= 24 || (!components.some(eligible) && !addableControls.length)}
+          onClick={() => setAdd(true)}><Plus size={19} aria-hidden="true" /></button>
+        <ActionPopover label={t("dashboardBuilder.layoutTemplate")} trigger={<LayoutTemplate size={17} aria-hidden="true" />}>
+          {(close) => <>
+            <button type="button" disabled={!editable} onClick={() => { edit([...builtin, ...charts]); close(); }}>{t("dashboardBuilder.monitoring")}</button>
+            <button type="button" disabled={!editable} onClick={() => {
+              edit([...controls, ...charts.filter((widget) => widget.component === "accounts")].slice(0, 24)); close();
+            }}>{t("dashboardBuilder.controls")}</button>
+            <button type="button" disabled={!editable} onClick={() => { edit(defaults); close(); }}>
+              {t("dashboardBuilder.restoreDefaults")}<RotateCcw size={15} aria-hidden="true" />
+            </button>
+          </>}
+        </ActionPopover>
+        <button type="button" className="icon-button" aria-label={t("dashboardBuilder.undo")} title={t("dashboardBuilder.undo")}
+          disabled={!editable || !undo.length} onClick={() => {
           setDraft(undo.at(-1) ?? null); setUndo(undo.slice(0, -1));
-        }}>{t("dashboardBuilder.undo")}</button>
-        <button type="button" className="button quiet" disabled={!editable} onClick={() => edit(defaults)}>{t("dashboardBuilder.restoreDefaults")}</button>
+        }}><Undo2 size={17} aria-hidden="true" /></button>
       </div>
       <div className="toolbar dashboard-editor-save">
         <button type="button" className="button quiet" disabled={!editable} onClick={() => {

@@ -1,7 +1,7 @@
 import { i18n, label, t, type Message } from "../i18n";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, ArrowUpRight, Check, Copy, Inbox, LoaderCircle, X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { api, type CommandState, type Mode, type Parameter, type Scalar, type Status } from "./api";
 
 export const statusText: Record<Status, Message> = { online: "onboarding.online", offline: "onboarding.offline", abnormal: "ui.unhealthy" };
@@ -56,6 +56,18 @@ export function Brand() {
 }
 export function PageTitle({ title, sub, action }: { title: string; sub?: string; action?: ReactNode }) {
   return <header className="page-title"><div><h1>{title}</h1>{sub && <p>{sub}</p>}</div>{action}</header>;
+}
+export function ActionPopover({ label, trigger, className = "icon-button", children }: {
+  label: string; trigger: ReactNode; className?: string; children: (close: () => void) => ReactNode;
+}) {
+  const id = useId();
+  const panel = useRef<HTMLDivElement>(null);
+  return <>
+    <button type="button" className={className} popoverTarget={id} aria-label={label} title={label}>{trigger}</button>
+    <div id={id} ref={panel} popover="auto" className="action-popover" role="group" aria-label={label}>
+      {children(() => panel.current?.hidePopover())}
+    </div>
+  </>;
 }
 export function Panel({ title, hint, action, children, className = "" }: {
   title?: string; hint?: string; action?: ReactNode; children: ReactNode; className?: string;

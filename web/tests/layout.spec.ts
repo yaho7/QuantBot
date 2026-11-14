@@ -25,14 +25,14 @@ test("aligns workbench controls and keeps the grid inside each supported viewpor
   expect(queued.ok()).toBeTruthy();
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   await page.goto("/ui/#workbench");
-  await expect(page.getByLabel("当前策略")).toHaveValue(strategy.id);
+  await expect(page.getByRole("button", { name: "当前策略" })).toContainText(strategy.name);
   const grid = page.locator(".workbench-grid");
   const entry = grid.locator('[data-widget="builtin-entry"]');
   const program = grid.locator('[data-widget="builtin-program"]');
   const risk = grid.locator('[data-widget="builtin-risk"]');
-  const selection = page.locator(".workbench-tools select");
-  const add = page.locator(".workbench-tools button");
-  for (const [width, height] of [[1280, 800], [768, 1024], [390, 844], [430, 932], [640, 900], [1024, 800], [1440, 900]] as const) {
+  const selection = page.locator(".strategy-picker");
+  const edit = page.locator(".dashboard-heading > .icon-button");
+  for (const [width, height] of [[1280, 800], [768, 1024], [390, 844], [430, 932], [640, 900], [767, 900], [840, 900], [1024, 800], [1440, 900]] as const) {
     await page.setViewportSize({ width, height });
     await expect(entry).toBeVisible();
     const activeNav = page.locator(width >= 768 ? ".top-nav" : ".bottom-nav");
@@ -42,7 +42,7 @@ test("aligns workbench controls and keeps the grid inside each supported viewpor
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
     await expect.poll(async () => {
       const selectBox = (await selection.boundingBox())!;
-      const addBox = (await add.boundingBox())!;
+      const addBox = (await edit.boundingBox())!;
       return Math.abs(selectBox.y + selectBox.height - addBox.y - addBox.height);
     }).toBeLessThan(1);
     await expect.poll(async () => {
@@ -51,7 +51,8 @@ test("aligns workbench controls and keeps the grid inside each supported viewpor
       return Math.abs(control.width / panel.width - (width >= 768 ? 0.5 : 1));
     }).toBeLessThan(0.03);
     await expect.poll(async () => Math.abs((await program.boundingBox())!.y - (await risk.boundingBox())!.y)).toBeLessThan(2);
-    await page.locator(".language-picker").selectOption("en");
+    await page.evaluate(() => localStorage.setItem("quantbot.language", "en"));
+    await page.reload();
     await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await expect(entry.getByText("Reported entry permission")).toBeVisible();
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(width);
@@ -62,7 +63,8 @@ test("aligns workbench controls and keeps the grid inside each supported viewpor
         await expect(page).toHaveScreenshot(`workbench-${width}-en-dark.png`, { animations: "disabled", maxDiffPixelRatio: 0.001 });
       }
     }
-    await page.locator(".language-picker").selectOption("zh-CN");
+    await page.evaluate(() => localStorage.setItem("quantbot.language", "zh-CN"));
+    await page.reload();
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   }
   await page.getByRole("button", { name: "编辑布局" }).click();
@@ -70,10 +72,11 @@ test("aligns workbench controls and keeps the grid inside each supported viewpor
   await expect(program.getByText("在线", { exact: true })).toBeVisible();
   await expect(entry.getByRole("button", { name: "暂停新开仓" })).toHaveCount(0);
   await page.getByRole("button", { name: "放弃修改" }).click();
-  await page.getByLabel("当前策略").selectOption("");
+  await page.getByRole("button", { name: "当前策略" }).click();
+  await page.getByRole("link", { name: "全部策略", exact: true }).click();
   await expect(page).toHaveURL(/#workbench\/all$/);
   await page.goto("/ui/#workbench");
-  await expect(page.getByLabel("当前策略")).toHaveValue("");
+  await expect(page.getByRole("button", { name: "当前策略" })).toHaveText("全部策略");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/ui/#operations");

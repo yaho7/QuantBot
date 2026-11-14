@@ -8,6 +8,7 @@ test("creates a strategy, connects over HTTP and confirms the applied entry stat
   await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await expect(page.getByRole("heading", { name: "工作台" })).toBeVisible();
+  await page.getByRole("link", { name: "策略", exact: true }).click();
   await page.getByRole("button", { name: "添加策略", exact: true }).last().click();
   const dialog = page.getByRole("dialog");
   await dialog.getByLabel("策略名称").fill("Web 回归策略");
@@ -149,12 +150,14 @@ test("serves the original brand and remembers the appearance setting", async ({ 
   await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
   await page.getByRole("button", { name: "登录", exact: true }).click();
   await page.getByRole("link", { name: "设置", exact: true }).click();
-  const theme = page.getByLabel("主题");
-  await theme.selectOption("light");
+  const theme = page.getByRole("button", { name: "主题", exact: true });
+  await theme.click();
+  await page.getByRole("button", { name: "浅色", exact: true }).click();
   await expect(page.locator("html")).toHaveCSS("background-color", "rgb(255, 252, 240)");
   await page.reload();
-  await expect(theme).toHaveValue("light");
-  await theme.selectOption("system");
+  await theme.click();
+  await expect(page.getByRole("button", { name: "浅色", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "跟随系统", exact: true }).click();
   await expect(page.locator("html")).toHaveCSS("background-color", "rgb(16, 15, 15)");
   await page.emulateMedia({ colorScheme: "light" });
   await expect(page.locator("html")).toHaveCSS("background-color", "rgb(255, 252, 240)");
@@ -379,7 +382,8 @@ test("copies a working Sandbox configuration and reports validation without reve
 
 test("switches the interface and copied integration prompt between Chinese and English", async ({ page }) => {
   await page.goto("/ui/");
-  await page.getByLabel("语言").selectOption("en");
+  await page.getByRole("button", { name: "语言" }).click();
+  await page.getByRole("button", { name: "English" }).click();
   await expect(page.getByRole("heading", { name: "Sign in to QuantBot" })).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await page.getByLabel("Username").fill("admin");
@@ -395,7 +399,11 @@ test("switches the interface and copied integration prompt between Chinese and E
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("Integrate my trading program");
   await page.reload();
   await expect(page.getByRole("heading", { name: "One-click AI integration test" })).toBeVisible();
-  await page.getByLabel("Language").selectOption("zh-CN");
+  await expect(page.getByRole("button", { name: "Language" })).toHaveCount(0);
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Language" }).click();
+  await page.getByRole("button", { name: "简体中文" }).click();
+  await page.goto(`/ui/#strategy/${strategy.id}/api`);
   await expect(page.getByRole("heading", { name: "AI 一键接入测试" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "主导航" }).getByRole("link", { name: "工作台" })).toBeVisible();
 });

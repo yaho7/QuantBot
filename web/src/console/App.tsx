@@ -5,7 +5,7 @@ import { Toaster } from "sonner";
 import { CommandFeedback } from "./command-feedback";
 import { QuickSearch } from "./quick-search";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Bell, CircleHelp, ClipboardList, LayoutDashboard, LayoutGrid, LogOut, Settings } from "lucide-react";
+import { ClipboardList, LayoutDashboard, LayoutGrid, Settings } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { api, ApiError, MIN_PASSWORD_LENGTH, readSession, sessionKey } from "./api";
 import { ApiPage, CreateStrategy } from "./onboarding";
@@ -22,7 +22,6 @@ const nav = [
   { key: "workbench", title: "app.workbench", icon: LayoutDashboard },
   { key: "strategies", title: "app.strategies", icon: LayoutGrid },
   { key: "operations", title: "app.operations", icon: ClipboardList },
-  { key: "telegram", title: "app.notifications", icon: Bell },
   { key: "system", title: "app.settings", icon: Settings },
 ] as const;
 
@@ -150,6 +149,7 @@ export function App() {
     mutationFn: () => api("logout", "POST"),
     onSuccess: () => {
       client.clear();
+      history.replaceState(null, "", "#workbench");
       location.reload();
     },
   });
@@ -157,42 +157,42 @@ export function App() {
   if (session.data === null) return <Login hash={hash} />;
   if (!actor) return <main className="login"><ConnectionError error={session.error} retry={() => void session.refetch()} /></main>;
   const [section, id, tab] = hash.slice(1).split("/");
-  const page = section === "strategy" ? "strategies" : ["overview", "api"].includes(section ?? "") || nav.some((item) => item.key === section) ? section : "workbench";
+  const page = section === "strategy" ? "strategies" : ["overview", "api", "telegram"].includes(section ?? "") || nav.some((item) => item.key === section) ? section : "workbench";
+  const activeNav = ["api", "telegram"].includes(page ?? "") ? "system" : page;
   const add = () => setAdding(true);
   return <DarkMode value={dark}>
     <a className="skip-link" href="#main" onClick={(event) => {
       event.preventDefault();
       document.getElementById("main")?.focus();
     }}>{t("app.skipToContent")}</a>
-    <header className="topbar console-topbar">
-      <a href="#workbench" aria-label={t("app.quantbotWorkbench")}><Brand /></a>
-      <nav className="top-nav" aria-label={t("app.mainNavigation")}>
-        {nav.map(({ key, title: label, icon: Icon }) => <a href={`#${key}`}
-          key={key} aria-current={page === key ? "page" : undefined}>
-          <Icon size={16} /><span>{t(label)}</span></a>)}
+    <div className="console-shell">
+      <header className="console-topbar">
+        <a href="#workbench" aria-label={t("app.quantbotWorkbench")}><Brand /></a>
+        <nav className="top-nav" aria-label={t("app.mainNavigation")}>
+          {nav.map(({ key, title: label, icon: Icon }) => <a href={`#${key}`}
+            key={key} aria-current={activeNav === key ? "page" : undefined} title={t(label)}>
+            <Icon size={16} aria-hidden="true" /><span>{t(label)}</span></a>)}
+        </nav>
+        <div className="console-search">
+          <QuickSearch strategyId={id && (section === "strategy" || section === "workbench") ? decodeURIComponent(id) : undefined} />
+        </div>
+      </header>
+      <nav className="bottom-nav" aria-label={t("app.mobileNavigation")}>
+        {nav.map(({ key, title, icon: Icon }) => <a key={key} href={`#${key}`}
+          aria-current={activeNav === key ? "page" : undefined}><Icon size={19} aria-hidden="true" /><span>{t(title)}</span></a>)}
       </nav>
-      <div className="top-actions">
-        <LanguagePicker />
-        <QuickSearch strategyId={id && (section === "strategy" || section === "workbench") ? decodeURIComponent(id) : undefined} />
-        <a className="icon-button" href="https://github.com/yaho7/QuantBot/blob/main/PROTOCOL.md" target="_blank" rel="noreferrer" aria-label={t("app.apiDocumentation")} title={t("app.apiDocumentation")}><CircleHelp size={18} /></a>
-        <button className="icon-button" onClick={() => logout.mutate()} aria-label={t("app.signOut")} title={t("app.signOut")}><LogOut size={18} /></button>
-      </div>
-    </header>
-    <nav className="bottom-nav" aria-label={t("app.mobileNavigation")}>
-      {nav.map(({ key, title, icon: Icon }) => <a key={key} href={`#${key}`}
-        aria-current={page === key ? "page" : undefined}><Icon size={19} /><span>{t(title)}</span></a>)}
-    </nav>
-    <main id="main" className="page" tabIndex={-1}>
-      <ErrorNotice error={logout.error} />
-      {page === "workbench" && <Suspense fallback={<Loading />}><Workbench add={add} focus={tab ? decodeURIComponent(tab) : undefined} strategyId={id ? decodeURIComponent(id) : undefined} /></Suspense>}
-      {page === "overview" && <OverviewPage add={add} />}
-      {page === "strategies" && (section === "strategy" && id ?
-        <StrategyPage key={id} strategyId={decodeURIComponent(id)} tab={tab} /> : <StrategiesPage add={add} />)}
-      {page === "api" && <ApiPage strategyId={id ? decodeURIComponent(id) : undefined} />}
-      {page === "operations" && <OperationsPage commandId={id} />}
-      {page === "telegram" && <TelegramPage />}
-      {page === "system" && <SystemPage theme={theme} onTheme={setTheme} />}
-    </main>
+      <main id="main" className="page" tabIndex={-1}>
+        <ErrorNotice error={logout.error} />
+        {page === "workbench" && <Suspense fallback={<Loading />}><Workbench focus={tab ? decodeURIComponent(tab) : undefined} strategyId={id ? decodeURIComponent(id) : undefined} /></Suspense>}
+        {page === "overview" && <OverviewPage add={add} />}
+        {page === "strategies" && (section === "strategy" && id ?
+          <StrategyPage key={id} strategyId={decodeURIComponent(id)} tab={tab} /> : <StrategiesPage add={add} />)}
+        {page === "api" && <ApiPage strategyId={id ? decodeURIComponent(id) : undefined} />}
+        {page === "operations" && <OperationsPage commandId={id} />}
+        {page === "telegram" && <TelegramPage />}
+        {page === "system" && <SystemPage theme={theme} onTheme={setTheme} onSignOut={() => logout.mutate()} signingOut={logout.isPending} />}
+      </main>
+    </div>
     <CommandFeedback />
     <Toaster theme={dark ? "dark" : "light"} position="top-right" />
     {adding && <CreateStrategy close={() => setAdding(false)} />}

@@ -1,8 +1,8 @@
 import { label, t } from "../i18n";
-import { Activity, ArrowDownLeft, ArrowUpRight, CircleAlert, CircleOff, Plus, Radio, Search } from "lucide-react";
+import { Activity, ArrowDownLeft, ArrowUpRight, CircleAlert, CircleOff, Plus, Radio, Search, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
 import { strategyPath, type Overview, type Strategy } from "./api";
-import { CommandBadge, Empty, ErrorNotice, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, observed, relative, useData, when } from "./ui";
+import { ActionPopover, CommandBadge, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, observed, relative, useData, when } from "./ui";
 
 export function StrategyTable({ rows }: { rows: Strategy[] }) {
   return <div className="strategy-table"><Table columns={[t("onboarding.strategyName"), t("onboarding.tradingMode"), t("onboarding.group"), t("onboarding.connection"), t("overview.lastSeen"), ""]} empty={!rows.length}>
@@ -90,10 +90,15 @@ export function StrategiesPage({ add }: { add: () => void }) {
   return <>
     <PageTitle title={t("app.strategies")} sub={t("overview.manageStrategyIdentityGroupsAndApiIntegration")} action={<button className="button primary" onClick={add}><Plus size={18} /> {t("onboarding.addStrategy")}</button>} />
     <Panel>
-      <div className="toolbar strategy-filters"><div className="search"><Search size={16} /><input type="search" name="strategy-search" aria-label={t("overview.searchStrategies")} placeholder={t("overview.searchNamesTagsOrStrategyIds")} value={term} onChange={(e) => setTerm(e.target.value)} /></div>
-        <select aria-label={t("overview.filterGroups")} value={group} onChange={(e) => setGroup(e.target.value)}><option value="">{t("overview.allGroups")}</option>
-          {groups.map((item) => <option key={item}>{item}</option>)}</select>
-        <label className="checkbox"><input type="checkbox" name="archived" checked={archived} onChange={(e) => { setGroup(""); setArchived(e.target.checked); }} /> {t("overview.archived")}</label>
+      <div className="list-filters strategy-filters"><div className="search"><Search size={16} aria-hidden="true" /><input type="search" name="strategy-search" aria-label={t("overview.searchStrategies")} placeholder={t("overview.searchNamesTagsOrStrategyIds")} value={term} onChange={(e) => setTerm(e.target.value)} /></div>
+        <ActionPopover label={t("overview.filterStrategies")} trigger={<SlidersHorizontal size={17} aria-hidden="true" />}>
+          {() => <div className="stack popover-fields">
+            <Field label={t("overview.filterGroups")}><select value={group} onChange={(e) => setGroup(e.target.value)}><option value="">{t("overview.allGroups")}</option>
+              {groups.map((item) => <option key={item}>{item}</option>)}</select></Field>
+            <label className="checkbox"><input type="checkbox" name="archived" checked={archived} onChange={(e) => { setGroup(""); setArchived(e.target.checked); }} /> {t("overview.archived")}</label>
+          </div>}
+        </ActionPopover>
+        {(group || archived) && <span className="list-filter-summary">{[group, archived && t("overview.archived")].filter(Boolean).join(" · ")}</span>}
       </div>
       <ErrorNotice error={query.error} />{query.isPending ? <Loading /> :
         !result?.length ? <Empty title={term || group ? t("overview.noMatchingStrategies") : archived ? t("overview.noArchivedStrategies") : t("overview.noStrategies")} /> :

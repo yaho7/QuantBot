@@ -118,7 +118,7 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
       if (compact) {
         const account = data.accounts?.[0];
         return <div className="widget-stat"><div className="widget-amount"><strong>{money(account?.equity)}</strong>{account && <span>{account.currency}</span>}</div>
-          {account && <span>{t("overview.dailyPL")} {money(account.daily_pnl, account.currency)}</span>}</div>;
+          {account && <span>{t("overview.dailyPL")} {money(account.daily_pnl)}</span>}</div>;
       }
       if (widget.chart === "table") return <Accounts rows={data.accounts ?? []} />;
       return data.accounts?.length ? <div className="value-grid">{data.accounts.map((item) =>

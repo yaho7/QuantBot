@@ -1,11 +1,11 @@
 import { label, t, type Message } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CircleAlert } from "lucide-react";
+import { Check, ChevronRight, CircleAlert, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 import { DynamicControls, type ControlRegistryView } from "./dynamic-controls";
 import { submitted } from "./command-feedback";
 import { api, readSession, sessionKey, strategyApi, strategyPath, type Capability, type Command, type Detail, type Scalar, type Strategy } from "./api";
-import { Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, ParameterInput, Table, stateText, useData, when } from "./ui";
+import { ActionPopover, Code, CommandBadge, Dialog, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, ParameterInput, Table, stateText, useData, when } from "./ui";
 
 const actions: Record<string, Message> = {
   pause_entry: "operations.pauseNewEntries", resume_entry: "operations.resumeNewEntries", refresh: "operations.refreshMonitoring",
@@ -14,6 +14,7 @@ const actions: Record<string, Message> = {
 };
 const shadow = new Set(["pause_entry", "resume_entry"]);
 const safe = new Set(["refresh"]);
+const statusFilters: Array<[string, Message]> = [["", "operations.allStatuses"], ...Object.entries(stateText)];
 
 export function ControlPanel({ strategy }: { strategy: Detail }) {
   const [selected, setSelected] = useState<Capability | null>(null);
@@ -230,8 +231,15 @@ export function OperationTable({ strategyId, compact = false, selected, close }:
   const names = Object.fromEntries((strategies.data ?? []).map((s) => [s.id, s.name]));
   const rows = commands.data ?? [];
   return <>
-    {!compact && <div className="toolbar"><select aria-label={t("operations.filterCommandStatus")} value={state} onChange={(e) => { setState(e.target.value); setCursor([]); }}>
-      <option value="">{t("operations.allStatuses")}</option>{Object.entries(stateText).map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}</select></div>}
+    {!compact && <div className="list-filters">
+      <ActionPopover label={t("operations.filterCommandStatus")} trigger={<SlidersHorizontal size={17} aria-hidden="true" />}>
+        {(close) => statusFilters.map(([key, name]) =>
+          <button key={key} type="button" aria-pressed={state === key} onClick={() => { setState(key); setCursor([]); close(); }}>
+            <span>{t(name)}</span>{state === key && <Check size={15} aria-hidden="true" />}
+          </button>)}
+      </ActionPopover>
+      <span>{label(stateText[state as keyof typeof stateText], t("operations.allStatuses"))}</span>
+    </div>}
     <ErrorNotice error={commands.error} />
     {commands.isPending ? <Loading /> : <Table className={compact ? "operations-table compact" : "operations-table"} columns={[t("operations.command"), ...(compact ? [] : [t("app.strategies")]), t("onboarding.status"), t("operations.requestedBy"), t("operations.createdAt"), t("onboarding.actions")]} empty={!rows.length}>
       {rows.map((item) => {
@@ -243,7 +251,8 @@ export function OperationTable({ strategyId, compact = false, selected, close }:
           {!compact && <td className="operation-strategy">{strategyLink}</td>}
           <td className="operation-status"><CommandBadge state={item.state} /></td>
           <td className="operation-actor mono subtle">{item.actor}</td><td className="operation-time">{when(item.created_at)}</td>
-          <td><button className="button quiet" onClick={() => setInspect(item.id)}>{t("operations.details")}</button></td>
+          <td><button type="button" className="icon-button" aria-label={t("operations.details")} title={t("operations.details")}
+            onClick={() => setInspect(item.id)}><ChevronRight size={17} aria-hidden="true" /></button></td>
         </tr>;
       })}
     </Table>}

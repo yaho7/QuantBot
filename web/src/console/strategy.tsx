@@ -1,12 +1,12 @@
 import { label, t } from "../i18n";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Activity, ArrowLeft, ArrowRight, CloudOff, Shield } from "lucide-react";
+import { Activity, ArrowLeft, ArrowRight, Check, ChevronDown, CloudOff, Shield, SlidersHorizontal } from "lucide-react";
 import { lazy, Suspense, useState } from "react";
 import { api, strategyApi, strategyPath, workbenchPath, type Detail, type EventRecord, type StrategySettings } from "./api";
 import { StrategyFields, TokenPanel } from "./onboarding";
 import { ControlPanel } from "./operations";
 import { Accounts, Fills, Orders, Performance, Positions } from "./telemetry-views";
-import { Empty, ErrorNotice, Field, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, observed, relative, severityText, useData, when } from "./ui";
+import { ActionPopover, Empty, ErrorNotice, Field, Loading, PageTitle, Panel, StatusBadge, Table, TextLink, categoryText, modeText, money, observed, relative, severityText, useData, when } from "./ui";
 
 const DashboardBuilder = lazy(() => import("./dashboard-builder"));
 
@@ -24,6 +24,7 @@ export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab
   const snapshot = strategy.snapshot;
   const times = snapshot?.section_observed_at;
   const offline = strategy.status === "offline";
+  const sectionTitle = tabs.find(([key]) => key === tab)?.[1];
   return <>
     <a className="back-link" href="#strategies"><ArrowLeft size={15} /> {t("strategy.strategyList")}</a>
     <PageTitle title={strategy.name} sub={[label(modeText[strategy.mode]), strategy.group, strategy.description].filter(Boolean).join(" · ")}
@@ -32,11 +33,13 @@ export function StrategyPage({ strategyId, tab = "" }: { strategyId: string; tab
     <nav className="tabs" aria-label={t("strategy.strategyDetails")}>
       {tabs.map(([key, label]) => <a key={key} href={strategyPath(strategyId, key)} aria-current={tab === key ? "page" : undefined}>{t(label)}</a>)}
     </nav>
-    <label className="field mobile-strategy-tabs"><span>{t("strategy.strategyDetails")}</span>
-      <select value={tabs.some(([key]) => key === tab) ? tab : ""} onChange={(event) => { location.hash = strategyPath(strategyId, event.target.value); }}>
-        {tabs.map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}
-      </select>
-    </label>
+    <div className="mobile-strategy-tabs">
+      <ActionPopover className="button secondary" label={t("strategy.strategyDetails")}
+        trigger={<>{t(sectionTitle ?? "strategy.strategyDetails")} <ChevronDown size={15} aria-hidden="true" /></>}>
+        {(close) => tabs.map(([key, label]) => <a key={key} href={strategyPath(strategyId, key)} onClick={close}
+          aria-current={tab === key ? "page" : undefined}>{t(label)}{tab === key && <Check size={15} aria-hidden="true" />}</a>)}
+      </ActionPopover>
+    </div>
     <ErrorNotice error={query.error} />
     {!tab && <StrategyOverview strategy={strategy} />}
     {tab === "charts" && <Suspense fallback={<Loading />}><DashboardBuilder strategy={strategy} /></Suspense>}
@@ -98,11 +101,18 @@ function Events({ strategyId }: { strategyId: string }) {
   const path = `events?strategy_id=${strategyId}&limit=200&start=${encodeURIComponent(new Date(Date.now() - Number(days) * 86_400_000).toISOString().slice(0, 10) + "T00:00:00Z")}${category ? `&category=${category}` : ""}`;
   const events = useData<EventRecord[]>(path);
   return <Panel title={t("strategy.reportedEventsAndLogs")}>
-    <div className="toolbar"><select aria-label={t("strategy.category")} value={category} onChange={(e) => setCategory(e.target.value)}>
-      <option value="">{t("settings.allCategories")}</option>{["trade", "open", "close", "risk", "warning", "error", "log", "alert", "custom"].map((key) =>
-        <option value={key} key={key}>{label(categoryText[key])}</option>)}</select>
-      <select aria-label={t("dashboardBuilder.timeRange")} value={days} onChange={(e) => setDays(e.target.value)}><option value="1">{t("strategy.lastDay")}</option>
-        <option value="7">{t("strategy.last7Days")}</option><option value="30">{t("strategy.last30Days")}</option><option value="365">{t("strategy.lastYear")}</option></select></div>
+    <div className="list-filters">
+      <ActionPopover label={t("strategy.filterEvents")} trigger={<SlidersHorizontal size={17} aria-hidden="true" />}>
+        {() => <div className="stack popover-fields">
+          <Field label={t("strategy.category")}><select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="">{t("settings.allCategories")}</option>{["trade", "open", "close", "risk", "warning", "error", "log", "alert", "custom"].map((key) =>
+              <option value={key} key={key}>{label(categoryText[key])}</option>)}</select></Field>
+          <Field label={t("dashboardBuilder.timeRange")}><select value={days} onChange={(e) => setDays(e.target.value)}>
+            <option value="1">{t("strategy.lastDay")}</option><option value="7">{t("strategy.last7Days")}</option>
+            <option value="30">{t("strategy.last30Days")}</option><option value="365">{t("strategy.lastYear")}</option></select></Field>
+        </div>}
+      </ActionPopover>
+    </div>
     <ErrorNotice error={events.error} />{events.isPending ? <Loading /> : <Table columns={[t("marketChart.time"), t("settings.category"), t("strategy.level"), t("marketChart.content")]} empty={!events.data?.length}>
       {events.data?.map((item) => <tr key={item.id}><td>{when(item.occurred_at)}</td><td>{label(categoryText[item.category], item.category)}</td>
         <td>{label(severityText[item.severity])}</td><td className="wrap">{item.message}</td></tr>)}

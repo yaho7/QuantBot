@@ -341,13 +341,15 @@ export function ApiPage({ strategyId }: { strategyId?: string }) {
   const endpoint = valid ? `${parsed!.origin}/api/agent` : defaultEndpoint;
   return <>
     <PageTitle title={t("app.apiIntegration")} sub={t("onboarding.registerAgentsReportDataAndReceiveCommands")} action={<a href={`${docs}/PROTOCOL.md`} target="_blank" rel="noreferrer" className="button secondary"><BookOpen size={16} /> {t("onboarding.githubDocumentation")}</a>} />
-    <div className="stack">
+    <div className="api-sections">
       <AgentPrompt endpoint={endpoint} strategyId={strategyId} />
-      <Panel title={t("onboarding.connectionDetails")}>
+      <Panel title={t("onboarding.connectionDetails")} className="api-connection">
         <Field label={t("onboarding.customEndpoint")} hint={t("onboarding.enterTheFullEndpointReachableFromThe")}>
-          <input type="url" placeholder={defaultEndpoint} value={customEndpoint} onChange={(event) => setCustomEndpoint(event.target.value)} />
+          <input type="url" name="agent-endpoint" autoComplete="off" spellCheck={false} aria-invalid={!!entered && !valid}
+            aria-describedby={entered && !valid ? "endpoint-error" : undefined} placeholder={defaultEndpoint}
+            value={customEndpoint} onChange={(event) => setCustomEndpoint(event.target.value)} />
         </Field>
-        {entered && !valid && <p role="alert" className="notice error">{t("onboarding.enterHttpsYourHostApiAgentHttp")}</p>}
+        {entered && !valid && <p id="endpoint-error" role="alert" className="notice error">{t("onboarding.enterHttpsYourHostApiAgentHttp")}</p>}
         <KeyValue label="Endpoint" value={endpoint} />
         {strategyId && <KeyValue label={t("onboarding.strategyId")} value={strategyId} />}
         {strategyId ? <a className="text-link" href={strategyPath(strategyId, "api")}>{t("onboarding.manageTokensAndDiagnostics")}{" "}<ChevronRight size={14} /></a>
