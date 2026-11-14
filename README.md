@@ -29,7 +29,7 @@ Open the [local console](http://127.0.0.1:23456/) and create an administrator. C
 - [Agent protocol and request lifecycle](docs/AGENT_PROTOCOL.md)
 - [Integration guide](docs/INTEGRATION.md) · [Troubleshooting](docs/TROUBLESHOOTING.md)
 - [Agent OpenAPI 3.1](docs/openapi.json) · [JSON Schema](internal/server/schemas/agent.json)
-- [Telegram setup, commands, and notifications](docs/TELEGRAM.md)
+- [Telegram, Feishu, WeCom and DingTalk notifications](docs/NOTIFICATIONS.md)
 - [Docker, Linux, HTTPS, backups, and upgrades](docs/DEPLOYMENT.md)
 - [Architecture and safety boundaries](docs/ARCHITECTURE.md) · [Console localization](web/LOCALIZATION.md)
 

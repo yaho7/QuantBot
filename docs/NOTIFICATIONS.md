@@ -17,7 +17,9 @@ The library's MIT notice is distributed in [tx7do-go-utils-notify.txt](licenses/
 
 ## Configuration and delivery
 
-Use the authenticated `/api/admin/notifications` API to list channels or create a channel. A channel has a name, provider, enabled state, an event list and write-only credentials. Select any combination of `alert`, `risk`, `fill` and `command`. Telegram credentials use `token` and `chatId`. Group bot credentials use `webhook` and optional `secret`.
+Open **Administration → Notifications** to add and test a channel. A channel has a name, provider, enabled state, an event list and write-only credentials. Select any combination of `alert`, `risk`, `fill` and `command`. To set up Telegram, create a bot with BotFather, start a private chat with it or add it to the destination group or channel, then enter its token and the destination's chat ID in QuantBot. For group webhooks, create a custom bot in the destination group and enter its webhook URL and signing secret, if applicable. Use **Test delivery** and check the delivery history before relying on a channel.
+
+The authenticated `/api/admin/notifications` API provides the same configuration. Telegram credentials use `token` and `chatId`. Group bot credentials use `webhook` and optional `secret`.
 
 Use `PUT /api/admin/notifications/{id}` to update a channel. Omitting credentials keeps the existing destination. Changing credentials stops pending sends to that channel so queued messages cannot follow the new destination. `POST /api/admin/notifications/{id}/test` queues a fixed test message, even for a disabled channel. Check `GET /api/admin/notifications/{id}/deliveries` for delivery status, attempt count and errors. Delete a channel with `DELETE /api/admin/notifications/{id}`.
 
