@@ -129,7 +129,7 @@ func checkTarget(ctx context.Context, q *controldb.Queries, cmd controldb.Comman
 		return executor, definition, err
 	}
 	actual, err := q.GetControlState(ctx, controldb.GetControlStateParams{StrategyID: cmd.StrategyID, ControlID: cmd.ControlID})
-	if definition.Disabled || definition.IsReadOnly() || errors.Is(err, sql.ErrNoRows) || err == nil && actual.Available != 1 {
+	if definition.Disabled || definition.IsReadOnly() || errors.Is(err, sql.ErrNoRows) || err == nil && (actual.Available != 1 || definition.Capability != nil && definition.Capability.Expired(actual.ObservedAt, time.Now())) {
 		return executor, definition, errUnavailable
 	}
 	return executor, definition, err

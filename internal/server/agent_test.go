@@ -78,20 +78,19 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 	send("PUT", "/agent/heartbeat", "", sessionA, 401)
 	send("POST", "/agent/session", bootA, response.Credential.Token, 409)
 	send("PUT", "/agent/heartbeat", "", sessionB, 200)
-	const registry = `{"version":1,"baseRevision":0,"controls":[{"id":"entry","kind":"toggle","title":"Allow entry","risk":"high"},{"id":"size","kind":"slider","title":"Size","min":"0.1","max":"1.0","step":"0.1"}]}`
-	send("PUT", "/agent/controls", registry, sessionA, 401)
-	send("PUT", "/agent/controls", registry, sessionB, 200)
-	duplicate := send("PUT", "/agent/controls", registry, sessionB, 200)
+	const registry = `{"revision":0,"capabilities":[{"id":"entry","kind":"parameter","value_type":"boolean","writable":true,"title":"Allow entry","risk":"high"},{"id":"size","kind":"parameter","value_type":"decimal","writable":true,"title":"Size","constraints":{"min":"0.1","max":"1.0","step":"0.1"}}]}`
+	send("PUT", "/agent/capabilities", registry, sessionA, 401)
+	send("PUT", "/agent/capabilities", registry, sessionB, 200)
+	duplicate := send("PUT", "/agent/capabilities", registry, sessionB, 200)
 	if !strings.Contains(duplicate.Body.String(), `"revision":1`) {
 		t.Fatal("identical retry changed registry revision")
 	}
-	send("GET", "/agent/controls", "", sessionB, 200)
-	send("PUT", "/agent/controls", `{"version":1,"baseRevision":0,"controls":[]}`, sessionB, 409)
+	send("PUT", "/agent/capabilities", `{"revision":0,"capabilities":[]}`, sessionB, 409)
 	now := time.Now().UnixMilli()
-	send("PUT", "/agent/controls/state", fmt.Sprintf(`{"version":1,"revision":1,"states":[{"id":"size","available":true,"observedAt":%d,"value":"0.25"}]}`, now), sessionB, 400)
-	actual := fmt.Sprintf(`{"version":1,"revision":1,"states":[{"id":"entry","available":false,"reason":"risk lock","observedAt":%d,"value":false},{"id":"size","available":true,"observedAt":%d,"value":"0.2"}]}`, now, now)
-	send("PUT", "/agent/controls/state", actual, sessionB, 200)
-	duplicate = send("PUT", "/agent/controls/state", actual, sessionB, 200)
+	send("PUT", "/agent/state", fmt.Sprintf(`{"revision":1,"states":[{"id":"size","available":true,"observedAt":%d,"value":"0.25"}]}`, now), sessionB, 400)
+	actual := fmt.Sprintf(`{"revision":1,"states":[{"id":"entry","available":false,"reason":"risk lock","observedAt":%d,"value":false},{"id":"size","available":true,"observedAt":%d,"value":"0.2"}]}`, now, now)
+	send("PUT", "/agent/state", actual, sessionB, 200)
+	duplicate = send("PUT", "/agent/state", actual, sessionB, 200)
 	if !strings.Contains(duplicate.Body.String(), `"duplicate":2`) {
 		t.Fatal("identical state retry was not deduplicated")
 	}

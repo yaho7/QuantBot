@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/auth"
+	"github.com/yaho7/QuantBot/internal/control"
 	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
@@ -122,25 +123,36 @@ func (s *Service) withAgentCommand(r *http.Request, work agentWork) (controldb.C
 	return cmd, err
 }
 
-func checkAgentTarget(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd controldb.Command, now int64) error {
+func checkAgentTarget(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd controldb.Command, now int64) (control.Definition, error) {
 	if !agent.Executor || cmd.Deadline <= now {
-		return errState
+		return control.Definition{}, errState
 	}
-	executor, _, err := checkTarget(ctx, q, cmd)
+	executor, definition, err := checkTarget(ctx, q, cmd)
 	if err == nil && executor.Digest != agent.Digest {
-		return errExecutor
+		return definition, errExecutor
 	}
-	return err
+	if err == nil {
+		if validation := control.ValidateIntent(ctx, q, cmd.StrategyID, definition, json.RawMessage(cmd.Input), time.UnixMilli(now), cmd.ID); validation != nil {
+			err = errUnavailable
+		}
+	}
+	return definition, err
 }
 
 func (s *Service) claim(w http.ResponseWriter, r *http.Request) {
 	permit := randomID()
+	var dispatch string
 	cmd, err := s.withAgentCommand(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd *controldb.Command, now int64) error {
 		if cmd.Status != pending && (cmd.Status != accepted || cmd.AcceptedBy.String != agent.Digest) {
 			return errState
 		}
-		if err := checkAgentTarget(ctx, q, agent, *cmd, now); err != nil {
+		definition, err := checkAgentTarget(ctx, q, agent, *cmd, now)
+		if err != nil {
 			return err
+		}
+		dispatch = definition.ID
+		if definition.Capability != nil {
+			dispatch = definition.Capability.Dispatch()
 		}
 		if cmd.Status == pending {
 			cmd.AcceptedBy = sql.NullString{String: agent.Digest, Valid: true}
@@ -162,8 +174,9 @@ func (s *Service) claim(w http.ResponseWriter, r *http.Request) {
 	}
 	httpapi.JSON(w, http.StatusOK, struct {
 		view
-		Permit string `json:"permit"`
-	}{present(cmd), permit})
+		Permit  string `json:"permit"`
+		Command string `json:"command"`
+	}{present(cmd), permit, dispatch})
 }
 
 func (s *Service) result(w http.ResponseWriter, r *http.Request) {

@@ -84,6 +84,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var identity Agent
+	var revision int64
 	err := storage.WithTx(ctx, s.store.Write, func(tx *sql.Tx) error {
 		q := controldb.New(tx)
 		token, err := liveToken(ctx, q, tokenDigest, now.Unix())
@@ -104,6 +105,14 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		identity, err = authorizeDigest(ctx, q, sessionDigest, 0)
+		if err != nil {
+			return err
+		}
+		registry, err := q.GetControlRegistry(ctx, token.StrategyID)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		revision = registry.Revision
 		return err
 	})
 	if err != nil {
@@ -113,8 +122,9 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	s.notify.Emit(identity.StrategyID, realtime.Status)
 	httpapi.JSON(w, http.StatusCreated, struct {
 		Agent
-		Session string `json:"session"`
-	}{identity, session})
+		Session  string `json:"session"`
+		Revision int64  `json:"revision"`
+	}{identity, session, revision})
 }
 
 func liveToken(ctx context.Context, q *controldb.Queries, digest string, now int64) (controldb.AgentToken, error) {

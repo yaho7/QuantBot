@@ -35,6 +35,7 @@ type Option struct {
 }
 
 type Definition struct {
+	Capability     *Capability       `json:"capability,omitempty"`
 	ID             string            `json:"id"`
 	Kind           string            `json:"kind"`
 	Title          string            `json:"title"`
@@ -128,6 +129,9 @@ func (d Definition) validate(field bool) error {
 			seen[option.Value] = true
 		}
 	case Form:
+		if d.Capability != nil {
+			return nil
+		}
 		if len(d.Fields) == 0 || len(d.Fields) > 16 {
 			return errors.New("form requires 1–16 fields")
 		}
@@ -163,6 +167,9 @@ func parseDecimal(input string) (*big.Rat, error) {
 }
 
 func (d Definition) ValidateValue(raw json.RawMessage, actual bool) error {
+	if d.Capability != nil {
+		return d.Capability.ValidateValue(raw, actual)
+	}
 	if len(raw) == 0 {
 		return errors.New("value is required")
 	}

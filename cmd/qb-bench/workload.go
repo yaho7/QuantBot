@@ -115,12 +115,12 @@ func (w *workload) prepareControl(ctx context.Context) (agent, error) {
 		map[string]string{"instanceId": worker.instance}, nil); err != nil {
 		return agent{}, err
 	}
-	definition := json.RawMessage(`{"version":1,"baseRevision":0,"controls":[{"id":"pause","kind":"toggle","title":"Pause entries"}]}`)
-	if _, err := w.api.call(ctx, "PUT", "/agent/controls", worker.session, "", definition, nil); err != nil {
+	definition := json.RawMessage(`{"revision":0,"capabilities":[{"id":"pause","kind":"parameter","value_type":"boolean","writable":true,"title":"Pause entries"}]}`)
+	if _, err := w.api.call(ctx, "PUT", "/agent/capabilities", worker.session, "", definition, nil); err != nil {
 		return agent{}, err
 	}
-	actual := json.RawMessage(fmt.Sprintf(`{"version":1,"revision":1,"states":[{"id":"pause","available":true,"observedAt":%d,"value":false}]}`, time.Now().UnixMilli()))
-	_, err = w.api.call(ctx, "PUT", "/agent/controls/state", worker.session, "", actual, nil)
+	actual := json.RawMessage(fmt.Sprintf(`{"revision":1,"states":[{"id":"pause","available":true,"observedAt":%d,"value":false}]}`, time.Now().UnixMilli()))
+	_, err = w.api.call(ctx, "PUT", "/agent/state", worker.session, "", actual, nil)
 	return worker, err
 }
 

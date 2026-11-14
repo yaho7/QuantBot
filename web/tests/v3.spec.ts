@@ -38,15 +38,16 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(page.getByText("当前会话 · browser-worker")).toBeVisible();
   expect(
     (
-      await request.put("/api/agent/controls", {
+      await request.put("/api/agent/capabilities", {
         headers,
         data: {
-          version: 1,
-          baseRevision: 0,
-          controls: [
+          revision: 0,
+          capabilities: [
             {
               id: "allow-entry",
-              kind: "toggle",
+              kind: "parameter",
+              value_type: "boolean",
+              writable: true,
               title: "允许新开仓",
               description: "策略将保留本地风控检查。",
               risk: "high",
@@ -54,11 +55,11 @@ test("initialization, real reports, command receipt and responsive shells", asyn
             },
             {
               id: "rsi",
-              kind: "slider",
+              kind: "parameter",
+              value_type: "decimal",
+              writable: true,
               title: "RSI 周期",
-              min: "5",
-              max: "50",
-              step: "1",
+              constraints: { min: "5", max: "50", step: "1" },
             },
           ],
         },
@@ -67,7 +68,6 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   ).toBeTruthy();
   const now = Date.now();
   const state = {
-    version: 1,
     revision: 1,
     states: [
       { id: "allow-entry", value: false, available: true, observedAt: now },
@@ -76,7 +76,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   };
   expect(
     (
-      await request.put("/api/agent/controls/state", {
+      await request.put("/api/agent/state", {
         headers,
         data: state,
       })
@@ -205,7 +205,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   state.states.forEach((s) => (s.observedAt = Date.now()));
   expect(
     (
-      await request.put("/api/agent/controls/state", {
+      await request.put("/api/agent/state", {
         headers,
         data: state,
       })

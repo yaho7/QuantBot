@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/auth"
+	"github.com/yaho7/QuantBot/internal/control"
 	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
@@ -63,7 +64,10 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		if err := definition.ValidateValue(input.Input, false); err != nil {
+		if definition.Capability != nil && len(definition.Capability.AtomicBatch) > 0 {
+			cmd.ID = "plan-" + cmd.ID
+		}
+		if err := control.ValidateIntent(ctx, q, strategyID, definition, input.Input, time.Now(), cmd.ID); err != nil {
 			return invalid(err.Error())
 		}
 		if _, err := q.GetActiveControlCommand(ctx, controldb.GetActiveControlCommandParams{StrategyID: strategyID, ControlID: input.ControlID}); err == nil {
@@ -94,7 +98,8 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		}
 		cmd.Status = created
 		response = http.StatusCreated
-		if definition.RequiresConfirmation() || account.Mode == "live" {
+		if definition.RequiresConfirmation() || account.Mode == "live" || definition.Capability != nil &&
+			definition.Capability.Command != "" && definition.Capability.Command != definition.ID {
 			return transition(ctx, q, &cmd, confirmation, actor, "confirmation required by policy", cmd.CreatedAt)
 		}
 		return enqueue(ctx, q, &cmd, actor, cmd.CreatedAt)
@@ -161,8 +166,12 @@ func (s *Service) browserAction(w http.ResponseWriter, r *http.Request) {
 			if cmd.Deadline <= now {
 				return errState
 			}
-			if _, _, err := checkTarget(ctx, q, cmd); err != nil {
+			_, definition, err := checkTarget(ctx, q, cmd)
+			if err != nil {
 				return err
+			}
+			if err := control.ValidateIntent(ctx, q, cmd.StrategyID, definition, json.RawMessage(cmd.Input), time.Now(), cmd.ID); err != nil {
+				return errUnavailable
 			}
 			cmd.Deadline = time.Now().Add(queueTTL).UnixMilli()
 			return enqueue(ctx, q, &cmd, actor, now)

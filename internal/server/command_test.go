@@ -65,9 +65,9 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 	var agent struct{ Session string }
 	decodeTest(t, send("POST", "/agent/session", `{"instanceId":"worker","bootId":"boot-1"}`, created.Credential.Token, "", 201), &agent)
 	send("PUT", "/admin"+strategyPath+"/executor", `{"instanceId":"worker"}`, "", "", 204)
-	send("PUT", "/agent/controls", `{"version":1,"baseRevision":0,"controls":[{"id":"entry","kind":"toggle","title":"Allow entries"}]}`, agent.Session, "", 200)
-	actual := fmt.Sprintf(`{"version":1,"revision":1,"states":[{"id":"entry","value":false,"available":true,"observedAt":%d}]}`, time.Now().UnixMilli())
-	send("PUT", "/agent/controls/state", actual, agent.Session, "", 200)
+	send("PUT", "/agent/capabilities", `{"revision":0,"capabilities":[{"id":"entry","kind":"parameter","value_type":"boolean","writable":true,"title":"Allow entries"}]}`, agent.Session, "", 200)
+	actual := fmt.Sprintf(`{"revision":1,"states":[{"id":"entry","value":false,"available":true,"observedAt":%d}]}`, time.Now().UnixMilli())
+	send("PUT", "/agent/state", actual, agent.Session, "", 200)
 
 	const intent = `{"controlId":"entry","revision":1,"input":true}`
 	var first struct{ ID, Status string }

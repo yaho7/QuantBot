@@ -119,6 +119,26 @@ func (q *Queries) CountAgentInstances(ctx context.Context, strategyID string) (i
 	return count, err
 }
 
+const countConflictingPlanCommands = `-- name: CountConflictingPlanCommands :one
+SELECT count(*) FROM commands
+WHERE strategy_id=?1 AND id<>?2
+AND status IN ('created','confirmation_required','pending','accepted','executing','unknown')
+AND (CAST(?3 AS BOOLEAN) OR id GLOB 'plan-*')
+`
+
+type CountConflictingPlanCommandsParams struct {
+	StrategyID string
+	CommandID  string
+	IsPlan     bool
+}
+
+func (q *Queries) CountConflictingPlanCommands(ctx context.Context, arg CountConflictingPlanCommandsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countConflictingPlanCommands, arg.StrategyID, arg.CommandID, arg.IsPlan)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createAdmin = `-- name: CreateAdmin :execrows
 INSERT INTO users (id, username, password_hash, created_at)
 VALUES (1, ?, ?, ?) ON CONFLICT DO NOTHING

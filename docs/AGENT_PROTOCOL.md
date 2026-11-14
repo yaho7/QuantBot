@@ -30,30 +30,36 @@ A new session replaces the previous session for the same strategy and instance. 
 
 Call `PUT /api/agent/heartbeat` with the session Bearer token and no body. The response contains the effective identity, executor assignment, session expiry and last-seen time. Use a heartbeat interval shorter than the 45-second presence window, such as 15 seconds. HTTP 401 requires checking the credential and creating a fresh session. An archived strategy cannot reconnect.
 
-## Dynamic controls
+## Capability registration
 
-The designated executor with both `control` and `command` scopes publishes a registry with `PUT /api/agent/controls`. First read `GET /api/agent/controls` to obtain the current revision, or use zero for a new strategy. A registry change replaces the full list and increments the revision. An identical retry from the same boot with the current or immediately preceding base revision returns the saved revision. A conflicting update returns HTTP 409. A new boot republishes against the current revision before reporting state.
+The session response includes the strategy's current `revision`. Submit a complete registry at `PUT /api/agent/capabilities` with that revision. A new strategy starts at revision zero. An identical retry from the same process returns the committed revision. A conflicting write returns HTTP 409. On a new boot, republish before writing state. Capability registration does not write user layout preferences.
+
+Use `metric`, `state`, `parameter`, `action`, `resource` or `event`. Declare a stable `id`, `kind`, `title`, `value_type`, and optional `description`, `group`, `unit`, `precision`, `constraints`, `history` and `presentation`. The first read-only registry may be registered by an Agent with control scope. A registry with writable capabilities requires the designated executor.
 
 ```json
 {
-  "version": 1,
-  "baseRevision": 0,
-  "controls": [
+  "revision": 0,
+  "capabilities": [
     {
       "id": "allow-entry",
-      "kind": "toggle",
+      "kind": "parameter",
       "title": "Allow new entries",
+      "value_type": "boolean",
+      "writable": true,
       "risk": "high",
       "confirm": true,
-      "timeoutSeconds": 30
+      "timeout_seconds": 30,
+      "presentation": {"suggested": true, "surface": ["strategy"], "preferred_renderer": "switch", "default_size": "medium", "order": 10}
     }
   ]
 }
 ```
 
-Kinds are `button`, `toggle`, `slider`, `numberInput`, `textInput`, `select`, `multiSelect`, `status`, `metricDisplay`, and `form`. Numeric values, ranges, and steps are decimal strings. Options are objects with `value` and `label`. Forms contain a `fields` array of input definitions. Button input is JSON null. Use `readOnly` and `disabled` for static constraints.
+`PUT /api/agent/state` takes the committed `revision` and `states`. Entries contain `id`, `value`, `observedAt` in UTC Unix milliseconds, optional boolean `available` and optional `reason`. Use availability and reason to report local safety locks. Updates validate and commit atomically. Duplicate observations and stale observations are counted. A changed registry clears old current values. An action may report availability with `value: null`. This endpoint reports observations and never applies parameter changes.
 
-`PUT /api/agent/controls/state` takes `version: 1`, the committed `revision`, and `states`. Each entry has `id`, `value`, `available`, `observedAt` in UTC Unix milliseconds, and optional `reason`. Use availability and reason to report local safety locks. State batches validate and commit atomically. Replays return duplicate counts, older observations return stale counts, and conflicting values for the same timestamp are rejected. Registry changes clear previous actual state. Actual state and availability come from the Agent.
+A capability with `stale_after_seconds` cannot be used for a command after that deadline. The optional `alert_suggestion` describes an inactive `stale`, `above` or `below` suggestion. The host can read the capability catalog, resolved renderer and diagnostics at `GET /api/v1/strategies/{id}/capabilities`.
+
+Writable parameters can link to a declared `action` via `command`. A claim returns both `controlId` and the operation's dispatch `command`. An action that can apply a whole parameter plan declares `atomic_parameters` containing the exact member IDs. The requested input is an object with all member values. QuantBot validates the full plan, requires confirmation and grants one permit and one receipt for the plan. The strategy implements the atomic application.
 
 ## Commands
 

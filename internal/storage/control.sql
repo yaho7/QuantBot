@@ -279,3 +279,9 @@ WHERE e.strategy_id = ? AND e.kind = 'order' AND NOT EXISTS (
 
 -- name: FillFingerprint :one
 SELECT fingerprint FROM trade_events WHERE strategy_id = ? AND series = ? AND kind = 'fill';
+
+-- name: CountConflictingPlanCommands :one
+SELECT count(*) FROM commands
+WHERE strategy_id=sqlc.arg(strategy_id) AND id<>sqlc.arg(command_id)
+AND status IN ('created','confirmation_required','pending','accepted','executing','unknown')
+AND (CAST(sqlc.arg(is_plan) AS BOOLEAN) OR id GLOB 'plan-*');

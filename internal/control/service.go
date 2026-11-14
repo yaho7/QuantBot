@@ -28,13 +28,13 @@ func New(store storage.Database, notify realtime.Notify) *Service {
 }
 
 func (s *Service) RegisterAgent(r chi.Router) {
-	r.Get("/controls", s.agentRegistry)
-	r.Put("/controls", s.register)
-	r.Put("/controls/state", s.state)
+	r.Put("/capabilities", s.register)
+	r.Put("/state", s.state)
 }
 
 func (s *Service) RegisterBrowser(r chi.Router) {
 	r.Get("/strategies/{id}/controls", s.list)
+	r.Get("/strategies/{id}/capabilities", s.browserCapabilities)
 }
 
 type invalidInput string
@@ -48,48 +48,74 @@ var (
 
 func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Version      int           `json:"version"`
-		BaseRevision int64         `json:"baseRevision"`
-		Controls     *[]Definition `json:"controls"`
+		Revision     *int64        `json:"revision"`
+		Capabilities *[]Capability `json:"capabilities"`
 	}
 	if !httpapi.ReadJSON(w, r, &input, 256<<10) {
 		return
 	}
-	if input.Version != 1 || input.BaseRevision < 0 || input.Controls == nil || len(*input.Controls) > 128 {
-		fail(w, invalidInput("Provide version 1, a nonnegative base revision, and at most 128 controls"))
+	if input.Revision == nil || *input.Revision < 0 || input.Capabilities == nil || len(*input.Capabilities) > 128 {
+		fail(w, invalidInput("Provide the current revision and at most 128 capabilities"))
 		return
 	}
-	definitions := make(map[string]string, len(*input.Controls))
-	for _, definition := range *input.Controls {
-		if _, exists := definitions[definition.ID]; exists {
-			fail(w, invalidInput("Duplicate control ID"))
-			return
-		}
-		if err := definition.Validate(); err != nil {
-			fail(w, invalidInput(fmt.Sprintf("Control %q: %v", definition.ID, err)))
-			return
+	capabilities, err := resolveCapabilities(*input.Capabilities)
+	if err != nil {
+		fail(w, invalidInput(err.Error()))
+		return
+	}
+	definitions := make(map[string]string, len(capabilities))
+	writable := false
+	for id, capability := range capabilities {
+		writable = writable || capability.Writable
+		definition := capability.Definition()
+		if len(capability.AtomicBatch) > 0 {
+			for _, id := range capability.AtomicBatch {
+				target := capabilities[id]
+				field := target.Definition()
+				field.Capability = nil
+				definition.Fields = append(definition.Fields, field)
+			}
 		}
 		body, err := json.Marshal(definition)
 		if err != nil {
 			fail(w, err)
 			return
 		}
-		definitions[definition.ID] = string(body)
+		definitions[id] = string(body)
 	}
 	var revision int64
-	err := s.agentTransaction(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent) error {
+	err = s.agentTransaction(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent) error {
 		registry, err := q.GetControlRegistry(ctx, agent.StrategyID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		revision = registry.Revision
+		owner := registry.InstanceID == agent.InstanceID && registry.BootID == agent.BootID
+		if writable && !agent.Executor || revision > 0 && !agent.Executor && !owner && registry.InstanceID != agent.InstanceID {
+			return ErrExecutorRequired
+		}
+		if !agent.Executor && revision > 0 {
+			rows, err := q.ListControlDefinitions(ctx, agent.StrategyID)
+			if err != nil {
+				return err
+			}
+			for _, row := range rows {
+				var definition Definition
+				if err := json.Unmarshal([]byte(row.Definition), &definition); err != nil {
+					return err
+				}
+				if !definition.IsReadOnly() {
+					return ErrExecutorRequired
+				}
+			}
+		}
 		if registry.Revision > 0 && registry.InstanceID == agent.InstanceID && registry.BootID == agent.BootID {
 			equal, err := identicalRegistry(ctx, q, agent.StrategyID, definitions)
-			if err != nil || equal && (input.BaseRevision == revision || input.BaseRevision == revision-1) {
+			if err != nil || equal && (*input.Revision == revision || *input.Revision == revision-1) {
 				return err
 			}
 		}
-		if revision != input.BaseRevision {
+		if revision != *input.Revision {
 			return ErrRegistryChanged
 		}
 		revision++
@@ -145,21 +171,20 @@ type actualState struct {
 
 func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 	var input struct {
-		Version  int           `json:"version"`
 		Revision int64         `json:"revision"`
 		States   []actualState `json:"states"`
 	}
 	if !httpapi.ReadJSON(w, r, &input, 256<<10) {
 		return
 	}
-	if input.Version != 1 || input.Revision <= 0 || len(input.States) == 0 || len(input.States) > 128 {
-		fail(w, invalidInput("Provide version 1, a registry revision and 1–128 states"))
+	if input.Revision <= 0 || len(input.States) == 0 || len(input.States) > 128 {
+		fail(w, invalidInput("Provide a capability revision and 1–128 states"))
 		return
 	}
 	now := time.Now()
 	seen := make(map[string]bool, len(input.States))
 	for _, state := range input.States {
-		if !controlID.MatchString(state.ID) || seen[state.ID] || state.Available == nil || len(state.Reason) > 512 ||
+		if !controlID.MatchString(state.ID) || seen[state.ID] || len(state.Reason) > 512 ||
 			state.ObservedAt <= 0 || state.ObservedAt > now.Add(2*time.Minute).UnixMilli() {
 			fail(w, invalidInput("Invalid or duplicate control state"))
 			return
@@ -181,6 +206,13 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return err
 			}
+			capability := definition.Capability
+			if capability == nil || capability.Kind == "resource" || capability.Kind == "event" {
+				return invalidInput("Capability does not accept current state")
+			}
+			if capability.Writable && !agent.Executor {
+				return ErrExecutorRequired
+			}
 			if err := definition.ValidateValue(state.Value, true); err != nil {
 				return invalidInput(fmt.Sprintf("Control %q: %v", state.ID, err))
 			}
@@ -193,7 +225,7 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 			var available int64
-			if *state.Available {
+			if state.Available == nil || *state.Available {
 				available = 1
 			}
 			switch {
@@ -244,9 +276,6 @@ func (s *Service) agentTransaction(r *http.Request, work func(context.Context, *
 		if err != nil {
 			return err
 		}
-		if !agent.Executor {
-			return ErrExecutorRequired
-		}
 		id = agent.StrategyID
 		return work(ctx, q, agent)
 	})
@@ -277,16 +306,6 @@ type controlView struct {
 
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	s.writeRegistry(w, r.Context(), chi.URLParam(r, "id"))
-}
-
-func (s *Service) agentRegistry(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	agent, err := strategy.Authorize(ctx, controldb.New(s.store.Read), r.Header.Get("Authorization"), strategy.ControlScope)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	s.writeRegistry(w, ctx, agent.StrategyID)
 }
 
 func (s *Service) writeRegistry(w http.ResponseWriter, ctx context.Context, id string) {
@@ -338,7 +357,14 @@ func (s *Service) writeRegistry(w http.ResponseWriter, ctx context.Context, id s
 			if err := json.Unmarshal([]byte(row.Definition), &definition); err != nil {
 				return err
 			}
-			view.Controls = append(view.Controls, controlView{definition, actual[row.ControlID], desired[row.ControlID]})
+			if state := actual[row.ControlID]; state != nil && definition.Capability != nil && definition.Capability.Expired(state.ObservedAt, time.Now()) {
+				available := false
+				state.Available = &available
+				state.Reason = "expired"
+			}
+			if definition.Capability == nil || definition.Capability.IsControl() {
+				view.Controls = append(view.Controls, controlView{definition, actual[row.ControlID], desired[row.ControlID]})
+			}
 		}
 		return nil
 	})
