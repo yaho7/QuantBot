@@ -7,7 +7,182 @@ package controldb
 
 import (
 	"context"
+	"database/sql"
 )
+
+const adminExists = `-- name: AdminExists :one
+SELECT EXISTS (SELECT 1 FROM users WHERE id = 1)
+`
+
+func (q *Queries) AdminExists(ctx context.Context) (bool, error) {
+	row := q.db.QueryRowContext(ctx, adminExists)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const appendAudit = `-- name: AppendAudit :exec
+INSERT INTO audit (at, actor, action, strategy_id, command_id, details)
+VALUES (?, ?, ?, ?, ?, ?)
+`
+
+type AppendAuditParams struct {
+	At         int64
+	Actor      string
+	Action     string
+	StrategyID sql.NullString
+	CommandID  sql.NullString
+	Details    string
+}
+
+func (q *Queries) AppendAudit(ctx context.Context, arg AppendAuditParams) error {
+	_, err := q.db.ExecContext(ctx, appendAudit,
+		arg.At,
+		arg.Actor,
+		arg.Action,
+		arg.StrategyID,
+		arg.CommandID,
+		arg.Details,
+	)
+	return err
+}
+
+const changeAdminPassword = `-- name: ChangeAdminPassword :execrows
+UPDATE users SET password_hash = ?1
+WHERE id = 1 AND password_hash = ?2
+`
+
+type ChangeAdminPasswordParams struct {
+	NewHash string
+	OldHash string
+}
+
+func (q *Queries) ChangeAdminPassword(ctx context.Context, arg ChangeAdminPasswordParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, changeAdminPassword, arg.NewHash, arg.OldHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const createAdmin = `-- name: CreateAdmin :execrows
+INSERT INTO users (id, username, password_hash, created_at)
+VALUES (1, ?, ?, ?) ON CONFLICT DO NOTHING
+`
+
+type CreateAdminParams struct {
+	Username     string
+	PasswordHash string
+	CreatedAt    int64
+}
+
+func (q *Queries) CreateAdmin(ctx context.Context, arg CreateAdminParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, createAdmin, arg.Username, arg.PasswordHash, arg.CreatedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const createBrowserSession = `-- name: CreateBrowserSession :exec
+INSERT INTO browser_sessions (digest, user_id, csrf, created_at, expires_at)
+VALUES (?, ?, ?, ?, ?)
+`
+
+type CreateBrowserSessionParams struct {
+	Digest    string
+	UserID    int64
+	Csrf      string
+	CreatedAt int64
+	ExpiresAt int64
+}
+
+func (q *Queries) CreateBrowserSession(ctx context.Context, arg CreateBrowserSessionParams) error {
+	_, err := q.db.ExecContext(ctx, createBrowserSession,
+		arg.Digest,
+		arg.UserID,
+		arg.Csrf,
+		arg.CreatedAt,
+		arg.ExpiresAt,
+	)
+	return err
+}
+
+const deleteBrowserSession = `-- name: DeleteBrowserSession :execrows
+DELETE FROM browser_sessions WHERE digest = ?
+`
+
+func (q *Queries) DeleteBrowserSession(ctx context.Context, digest string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, deleteBrowserSession, digest)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const deleteBrowserSessions = `-- name: DeleteBrowserSessions :exec
+DELETE FROM browser_sessions WHERE user_id = ?
+`
+
+func (q *Queries) DeleteBrowserSessions(ctx context.Context, userID int64) error {
+	_, err := q.db.ExecContext(ctx, deleteBrowserSessions, userID)
+	return err
+}
+
+const deleteExpiredBrowserSessions = `-- name: DeleteExpiredBrowserSessions :exec
+DELETE FROM browser_sessions WHERE expires_at <= ?
+`
+
+func (q *Queries) DeleteExpiredBrowserSessions(ctx context.Context, expiresAt int64) error {
+	_, err := q.db.ExecContext(ctx, deleteExpiredBrowserSessions, expiresAt)
+	return err
+}
+
+const getAdmin = `-- name: GetAdmin :one
+SELECT id, username, password_hash, created_at FROM users WHERE id = 1
+`
+
+func (q *Queries) GetAdmin(ctx context.Context) (User, error) {
+	row := q.db.QueryRowContext(ctx, getAdmin)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.PasswordHash,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getBrowserSession = `-- name: GetBrowserSession :one
+SELECT u.id AS user_id, u.username, s.csrf, s.expires_at
+FROM browser_sessions s JOIN users u ON u.id = s.user_id
+WHERE s.digest = ? AND s.expires_at > ?
+`
+
+type GetBrowserSessionParams struct {
+	Digest    string
+	ExpiresAt int64
+}
+
+type GetBrowserSessionRow struct {
+	UserID    int64
+	Username  string
+	Csrf      string
+	ExpiresAt int64
+}
+
+func (q *Queries) GetBrowserSession(ctx context.Context, arg GetBrowserSessionParams) (GetBrowserSessionRow, error) {
+	row := q.db.QueryRowContext(ctx, getBrowserSession, arg.Digest, arg.ExpiresAt)
+	var i GetBrowserSessionRow
+	err := row.Scan(
+		&i.UserID,
+		&i.Username,
+		&i.Csrf,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
 
 const getSetting = `-- name: GetSetting :one
 SELECT value FROM settings WHERE key = ?
@@ -18,6 +193,59 @@ func (q *Queries) GetSetting(ctx context.Context, key string) (string, error) {
 	var value string
 	err := row.Scan(&value)
 	return value, err
+}
+
+const limitBrowserSessions = `-- name: LimitBrowserSessions :exec
+DELETE FROM browser_sessions AS old WHERE old.user_id = ?1 AND old.digest IN (
+    SELECT recent.digest FROM browser_sessions AS recent WHERE recent.user_id = ?1
+    ORDER BY created_at DESC, rowid DESC LIMIT -1 OFFSET 128
+)
+`
+
+func (q *Queries) LimitBrowserSessions(ctx context.Context, userID int64) error {
+	_, err := q.db.ExecContext(ctx, limitBrowserSessions, userID)
+	return err
+}
+
+const listBrowserSessions = `-- name: ListBrowserSessions :many
+SELECT created_at, expires_at, digest = ?1 AS is_current
+FROM browser_sessions WHERE user_id = ?2 AND expires_at > ?3
+ORDER BY created_at DESC LIMIT 128
+`
+
+type ListBrowserSessionsParams struct {
+	CurrentDigest string
+	UserID        int64
+	Now           int64
+}
+
+type ListBrowserSessionsRow struct {
+	CreatedAt int64
+	ExpiresAt int64
+	IsCurrent bool
+}
+
+func (q *Queries) ListBrowserSessions(ctx context.Context, arg ListBrowserSessionsParams) ([]ListBrowserSessionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listBrowserSessions, arg.CurrentDigest, arg.UserID, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBrowserSessionsRow
+	for rows.Next() {
+		var i ListBrowserSessionsRow
+		if err := rows.Scan(&i.CreatedAt, &i.ExpiresAt, &i.IsCurrent); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const setSetting = `-- name: SetSetting :exec

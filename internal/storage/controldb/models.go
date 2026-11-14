@@ -4,7 +4,36 @@
 
 package controldb
 
+import (
+	"database/sql"
+)
+
+type Audit struct {
+	ID         int64
+	At         int64
+	Actor      string
+	Action     string
+	StrategyID sql.NullString
+	CommandID  sql.NullString
+	Details    string
+}
+
+type BrowserSession struct {
+	Digest    string
+	UserID    int64
+	Csrf      string
+	CreatedAt int64
+	ExpiresAt int64
+}
+
 type Setting struct {
 	Key   string
 	Value string
+}
+
+type User struct {
+	ID           int64
+	Username     string
+	PasswordHash string
+	CreatedAt    int64
 }

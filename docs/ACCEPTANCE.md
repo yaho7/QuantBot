@@ -4,7 +4,7 @@ Requirements are in [AGENTS.md](../AGENTS.md). Update the evidence column after 
 
 | Product capability observed in 2.2 | QuantBot 3.0 acceptance scenario | 3.0 evidence |
 | --- | --- | --- |
-| First-run setup, password changes, sessions, reverse proxy | Initialize once, log in, verify CSRF, limits, session revocation, trusted HTTPS proxy and remote HTTP rejection | Pending |
+| First-run setup, password changes, sessions, reverse proxy | Initialize once, log in, verify CSRF, limits, session revocation, trusted HTTPS proxy and remote HTTP rejection | Go handler integration and native HTTP setup/login-session/logout smoke. Race and vet passed. Browser and reverse-proxy deployment QA pending. |
 | Stable strategy identity, groups, management, archive and scoped credentials | Create strategy, issue scopes, rotate/revoke credential while polling, archive and retain history | Pending |
 | Agent lifecycle, online state, single executor | Exercise duplicate instance, boot change, network delay, disconnect and persisted reconnect | Pending |
 | Fourteen reports and history, account/strategy comparison, candles and trade markers | Validate every report, decimal precision, duplicate/conflict behavior, mixed DB retries, all rollup resolutions, OHLCV and history budgets | Pending |
@@ -27,4 +27,4 @@ Requirements are in [AGENTS.md](../AGENTS.md). Update the evidence column after 
 
 ## Checkpoint
 
-Stage A design and upstream reference review are recorded in [ARCHITECTURE.md](ARCHITECTURE.md). The Go service foundation now opens two independent SQLite WAL databases, applies migrations and verifies the encryption key. Verified on Darwin arm64 with Go test, race, vet, and a binary smoke run through `version`, `serve`, `/healthz` and SIGTERM. Next implement browser authentication, Agent identity and durable commands.
+Stage A design and upstream reference review are recorded in [ARCHITECTURE.md](ARCHITECTURE.md). The Go service foundation now opens two independent SQLite WAL databases, applies migrations and verifies the encryption key. Verified on Darwin arm64 with Go test, race, vet, and a binary smoke run through `version`, `serve`, `/healthz` and SIGTERM. Browser authentication is implemented with Argon2id, persisted HttpOnly sessions, CSRF, bounded login attempts and explicitly trusted proxies. Next implement strategy identity, scoped tokens, Agent sessions and durable commands.

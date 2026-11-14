@@ -9,7 +9,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/yaho7/QuantBot/internal/auth"
 	"github.com/yaho7/QuantBot/internal/config"
+	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/secrets"
 	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
@@ -34,7 +36,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           routes(stores),
+		Handler:           routes(stores, cfg),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -59,8 +61,12 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 }
 
-func routes(stores *storage.Stores) http.Handler {
+func routes(stores *storage.Stores, cfg config.Config) http.Handler {
 	router := chi.NewRouter()
+	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
+	router.Use(origins.Guard)
+	accounts := auth.New(stores.Control)
+	router.Route("/api/v1", accounts.Register)
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
