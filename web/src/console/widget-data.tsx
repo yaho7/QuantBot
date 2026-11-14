@@ -125,8 +125,12 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
         <div key={`${item.account_id}/${item.currency}`}><span>{item.account_id} · {item.currency}</span>
           <strong>{money(item.equity, item.currency)}</strong><span>{t("telemetryViews.availableCash")}{" "}{money(item.cash, item.currency)}</span></div>)}</div> : <Empty />;
     case "positions":
-      return <div className="stack"><h3>{t("strategy.strategyPositions")}</h3><Positions rows={data.strategy_positions ?? []} />
-        <h3>{t("strategy.brokerAccountPositions")}</h3><Positions rows={data.broker_positions ?? []} /></div>;
+      return <div className="widget-tables">
+        <section><h4>{t("strategy.strategyPositions")}</h4>{data.strategy_positions?.length ?
+          <Positions rows={data.strategy_positions} /> : <p>{t("ui.noData")}</p>}</section>
+        <section><h4>{t("strategy.brokerAccountPositions")}</h4>{data.broker_positions?.length ?
+          <Positions rows={data.broker_positions} /> : <p>{t("ui.noData")}</p>}</section>
+      </div>;
     case "position_mix": {
       const groups = new Map<string, Map<string, number>>();
       for (const position of data.strategy_positions ?? []) {
@@ -145,8 +149,12 @@ function StandardData({ widget, strategy, registry, compact, editing }: {
     }
     case "orders":
       if (compact) return <strong>{data.open_orders?.length ?? 0} {t("widgetData.openOrders")}</strong>;
-      return <div className="stack"><h3>{t("strategy.openOrders")}</h3><OpenOrders rows={data.open_orders ?? []} {...{ strategy, registry, editing }} />
-        <h3>{t("strategy.completedOrders")}</h3><Orders rows={data.completed_orders ?? []} /></div>;
+      return <div className="widget-tables">
+        <section><h4>{t("strategy.openOrders")}</h4>{data.open_orders?.length ?
+          <OpenOrders rows={data.open_orders} {...{ strategy, registry, editing }} /> : <p>{t("ui.noData")}</p>}</section>
+        <section><h4>{t("strategy.completedOrders")}</h4>{data.completed_orders?.length ?
+          <Orders rows={data.completed_orders} /> : <p>{t("ui.noData")}</p>}</section>
+      </div>;
     case "order_status": {
       const counts = new Map<string, number>();
       for (const order of [...(data.open_orders ?? []), ...(data.completed_orders ?? [])]) {

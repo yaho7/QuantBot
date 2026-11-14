@@ -22,9 +22,7 @@ export default function Workbench({ strategyId, focus, add }: { strategyId?: str
     try { localStorage.setItem(selectionKey, strategyId); } catch { /* Storage may be disabled. */ }
   }, [active, remembered, strategyId]);
   return <div className="workbench-page">
-    <div className="workbench-heading">
-      <PageTitle title={t("app.workbench")} />
-      <div className="workbench-tools">
+    <PageTitle title={t("app.workbench")} action={<div className="workbench-tools">
         <Field label={t("workbench.currentStrategy")}>
           <select value={selected ?? ""} onChange={(event) => { location.hash = workbenchPath(event.target.value || "all"); }}>
             <option value="">{t("workbench.allStrategies")}</option>
@@ -33,8 +31,7 @@ export default function Workbench({ strategyId, focus, add }: { strategyId?: str
           </select>
         </Field>
         <button type="button" className="button secondary" onClick={add}><Plus size={16} /> {t("onboarding.addStrategy")}</button>
-      </div>
-    </div>
+      </div>} />
     <ErrorNotice error={overview.error} />
     {selected ? <StrategyWorkbench key={selected} strategyId={selected} focus={focus} /> : overview.isPending ? <Loading /> :
       active.length ? <div className="summary-grid workbench-strategies">{active.map((item) => <Panel key={item.id} title={item.name}
@@ -54,12 +51,12 @@ function StrategyWorkbench({ strategyId, focus }: { strategyId: string; focus?: 
   return <>
     <ErrorNotice error={detail.error} />
     {detail.isPending && <Loading />}
-    {detail.data && <>
-      <div className="workbench-status">
-        <div className="workbench-identity"><strong dir="auto" title={detail.data.name}>{detail.data.name}</strong><StatusBadge status={detail.data.status} /></div>
-        <a className="text-link" href={strategyPath(strategyId)}>{t("strategy.strategyDetails")} <ArrowUpRight size={15} /></a>
+    {detail.data && <DashboardBuilder strategy={detail.data} focus={focus} workbenchContext={<>
+      <div className="workbench-identity">
+        <h2 dir="auto" title={detail.data.name}>{detail.data.name}</h2>
+        <StatusBadge status={detail.data.status} />
       </div>
-      <DashboardBuilder strategy={detail.data} workbench focus={focus} />
-    </>}
+      <a className="text-link" href={strategyPath(strategyId)}>{t("strategy.strategyDetails")} <ArrowUpRight size={15} aria-hidden="true" /></a>
+    </>} />}
   </>;
 }

@@ -96,7 +96,8 @@ export function EntryControl({ strategy, registry, ready, preview = false, compa
     <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>;
   return <div className="entry-control">
     <div className="entry-overview">
-      <div><span>{values[3][0]}</span><strong>{values[3][1]}</strong></div>
+      <div><span>{values[3][0]}</span>
+        <strong className={control.effective_entry_enabled === true ? "pnl-gain" : control.effective_entry_enabled === false ? "pnl-loss" : ""}>{values[3][1]}</strong></div>
       <span className={`badge ${awaitingApply ? "waiting" : "online"}`} role="status">{sync}</span>
     </div>
     {(!compact || !widget) && facts}

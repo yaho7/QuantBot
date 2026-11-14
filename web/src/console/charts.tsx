@@ -36,10 +36,9 @@ export function TimeSeries({ series, chart, unit, height, minimum = 2 }: {
   return <Graphic height={height} label={t("charts.historicalTimeSeries")} option={{
     color: palette.series, textStyle: { color: palette.ink }, animation: false,
     legend: { show: data.length > 1, top: 0, type: "scroll", textStyle: { color: palette.ink } },
-    grid: { top: data.length > 1 ? 42 : 24, left: 4, right: 12, bottom: 42, containLabel: true },
+    grid: { top: data.length > 1 ? 42 : 24, left: 4, right: 12, bottom: 16, containLabel: true },
     tooltip: { trigger: "axis", renderMode: "richText", backgroundColor: palette.surface, textStyle: { color: palette.ink } },
-    dataZoom: [{ type: "inside", filterMode: "none", zoomOnMouseWheel: "ctrl", moveOnMouseMove: false }, { type: "slider", height: 16, bottom: 4,
-      borderColor: palette.border, backgroundColor: palette.surface, textStyle: { color: palette.muted } }],
+    dataZoom: [{ type: "inside", filterMode: "none", zoomOnMouseWheel: "ctrl", moveOnMouseMove: false }],
     xAxis: { type: "time", ...axis, splitNumber: 5, axisLabel: { ...axis.axisLabel, hideOverlap: true } },
     yAxis: { type: "value", scale: true, name: unit, nameTextStyle: { color: palette.muted },
       splitLine: { lineStyle: { color: palette.border } }, ...axis },

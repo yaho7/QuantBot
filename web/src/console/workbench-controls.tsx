@@ -4,7 +4,7 @@ import { type Detail } from "./api";
 import { type ControlWidget } from "./dashboard-types";
 import { DynamicControl, type ControlRegistryView } from "./dynamic-controls";
 import { CommandDialog, EntryControl, entryBinding, OperationView } from "./operations";
-import { Empty, StatusBadge } from "./ui";
+import { Empty, statusText } from "./ui";
 
 function referenceId(prefix: string, ref: string) {
   const key = `${prefix}-${ref}`;
@@ -42,8 +42,9 @@ export function WorkbenchControl({ widget, strategy, registry, ready, expanded, 
   if (widget.kind === "program") {
     const agent = strategy.instances.find((item) => item.instance_id === strategy.executor_id) ?? strategy.instances[0];
     const connected = strategy.status !== "offline" ? agent?.runtime.broker_connected : null;
-    return <div className="widget-stat"><StatusBadge status={strategy.status} />
-      <div>{t("workbenchControls.brokerConnection")}{" "}{connected == null ? t("operations.unknown") : connected ? t("settings.connected") : t("strategy.disconnected")}</div>
+    return <div className="widget-stat">
+      <strong className={strategy.status === "online" ? "pnl-gain" : strategy.status === "abnormal" ? "widget-availability" : ""}>{t(statusText[strategy.status])}</strong>
+      <div>{t("workbenchControls.brokerConnection")} · {connected == null ? t("operations.unknown") : connected ? t("settings.connected") : t("strategy.disconnected")}</div>
       {expanded && agent && <span className="subtle">{t("onboarding.instance")}{" "}{agent.instance_id}</span>}
     </div>;
   }
@@ -62,7 +63,7 @@ export function WorkbenchControl({ widget, strategy, registry, ready, expanded, 
     <button type="button" className="button secondary" onClick={() => setOpen(true)}
       disabled={!ready || !!strategy.archived_at || !strategy.executor_online ||
         (strategy.mode === "live" && risky && !strategy.live_trading_enabled)}>
-      {t("dynamicControls.run")}{" "}{capability.label}
+      <span>{t("dynamicControls.run")}{" "}{capability.label}</span>
     </button>
     {open && <CommandDialog {...{ capability, strategy }} close={() => setOpen(false)} />}
   </div>;

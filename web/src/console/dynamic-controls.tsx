@@ -84,11 +84,10 @@ export function DynamicControl({ strategy, registry, definition, operation, expa
   return <article className={widget ? "control-card widget-control" : "control-card"}>
     {!widget && <div><span className="control-icon">{definition.type === "form" ? <ListChecks size={17} /> : <CircleDot size={17} />}</span>
       <h4>{definition.label}</h4></div>}
-    {!compact && definition.description && <p>{definition.description}</p>}
-    {preview && definition.type === "button" && <p>{t("dashboardBuilder.previewMode")}</p>}
     {definition.type !== "button" && <p className="actual-value">
       {report?.value_stale ? t("dynamicControls.lastReported") : t("dynamicControls.actualValue")} <strong>{actual(definition, report?.value)}</strong>
     </p>}
+    {(!widget || expanded || definition.type === "button") && !compact && definition.description && <p>{definition.description}</p>}
     {report?.unavailable_reason && <p role="status">{controlReason(report.unavailable_reason)}</p>}
     {!preview && (inline && selected === undefined ? <Invocation key={registry.revision} {...{ strategy, definition, report, operation, close }}
       revision={registry.revision} inline /> : definition.type !== "readonly" && <button type="button" className="button secondary"
@@ -133,6 +132,7 @@ function Invocation({ strategy, definition, report, revision, close, operation, 
   const content = currentCommand ? operation(currentCommand, inline ? dismiss : close) : <form className="stack"
       onSubmit={(e) => { e.preventDefault(); create.mutate(); }}>
       {!inline && <p className="subtle">{t("dynamicControls.targetStrategy")}{" "}{strategy.name} {t("dynamicControls.registryRevisionText")}{" "}{revision}</p>}
+      {!inline && definition.description && <p className="subtle">{definition.description}</p>}
       {!inline && definition.type !== "button" && <div className="notice">
         {report.value_stale ? t("dynamicControls.lastReported") : t("dynamicControls.valueReportedByStrategy")} {actual(definition, report.value)}
         {report.value_observed_at && ` · ${when(report.value_observed_at)}`}
