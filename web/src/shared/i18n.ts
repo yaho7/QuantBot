@@ -148,6 +148,7 @@ const messages = {
   size: ["组件尺寸", "Widget size"],
   loading: ["正在加载", "Loading"],
   noControls: ["策略尚未注册控件", "No controls registered"],
+  relatedRecords: ["关联记录", "Related records"],
   capability: ["声明式能力", "Declared capability"],
   capabilityMissing: ["能力当前未注册", "Capability is not registered"],
   staleData: ["数据已过期", "Data is stale"],

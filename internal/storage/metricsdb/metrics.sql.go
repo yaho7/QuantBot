@@ -32,6 +32,74 @@ func (q *Queries) CapabilityReceiptDigest(ctx context.Context, arg CapabilityRec
 	return fingerprint, err
 }
 
+const findAssociatedSamples = `-- name: FindAssociatedSamples :many
+WITH matching AS (
+    SELECT report_id, kind, series, observed_at, received_at, data AS value, associations, 0 AS revision
+    FROM samples AS s WHERE s.strategy_id = ?1 AND json_extract(s.associations, ?2) = ?3
+    ORDER BY observed_at DESC, report_id DESC LIMIT 50
+), declared AS (
+    SELECT record_id AS report_id, '' AS kind, capability_id AS series, observed_at, received_at, value, links AS associations, revision
+    FROM capability_samples AS cs WHERE cs.strategy_id = ?1 AND json_extract(cs.links, ?2) = ?3
+    UNION
+    SELECT record_id, '', capability_id, observed_at, received_at, value, links, revision
+    FROM capability_latest AS cl WHERE cl.strategy_id = ?1 AND json_extract(cl.links, ?2) = ?3
+    ORDER BY observed_at DESC, report_id DESC LIMIT 50
+)
+SELECT report_id, kind, series, observed_at, received_at, value, associations, revision FROM matching
+UNION ALL
+SELECT report_id, kind, series, observed_at, received_at, value, associations, revision FROM declared
+ORDER BY observed_at DESC, report_id DESC LIMIT 50
+`
+
+type FindAssociatedSamplesParams struct {
+	StrategyID  string
+	JsonPath    interface{}
+	Association string
+}
+
+type FindAssociatedSamplesRow struct {
+	ReportID     string
+	Kind         string
+	Series       string
+	ObservedAt   int64
+	ReceivedAt   int64
+	Value        string
+	Associations string
+	Revision     int64
+}
+
+func (q *Queries) FindAssociatedSamples(ctx context.Context, arg FindAssociatedSamplesParams) ([]FindAssociatedSamplesRow, error) {
+	rows, err := q.db.QueryContext(ctx, findAssociatedSamples, arg.StrategyID, arg.JsonPath, arg.Association)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindAssociatedSamplesRow
+	for rows.Next() {
+		var i FindAssociatedSamplesRow
+		if err := rows.Scan(
+			&i.ReportID,
+			&i.Kind,
+			&i.Series,
+			&i.ObservedAt,
+			&i.ReceivedAt,
+			&i.Value,
+			&i.Associations,
+			&i.Revision,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMetricDefinition = `-- name: GetMetricDefinition :one
 SELECT definition FROM metric_definitions WHERE strategy_id = ? AND name = ?
 `

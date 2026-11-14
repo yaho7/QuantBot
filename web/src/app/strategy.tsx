@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -24,6 +24,7 @@ const WidgetBoard = lazy(() => import("../components/widget-board"));
 import { Page } from "./App";
 import { ControlPanel } from "./control";
 import { ActivityPage } from "./activity";
+import { RelatedRecords } from "../components/related-records";
 
 export function useTelemetryValues(id: string) {
   const query = useQuery(resource<Datum[]>("/strategies/" + id + "/telemetry"));
@@ -308,10 +309,12 @@ export function DataTable({
   title,
   rows,
   maxColumns = 10,
+  renderCell,
 }: {
   title: string;
   rows: Record<string, unknown>[];
   maxColumns?: number;
+  renderCell?: (key: string, value: unknown) => ReactNode;
 }) {
   const { t } = useLanguage();
   const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))].slice(
@@ -335,7 +338,9 @@ export function DataTable({
               {rows.map((row, i) => (
                 <tr key={i}>
                   {keys.map((key) => (
-                    <td key={key}>{shown(row[key])}</td>
+                    <td key={key}>
+                      {renderCell?.(key, row[key]) ?? shown(row[key])}
+                    </td>
                   ))}
                 </tr>
               ))}
@@ -374,6 +379,10 @@ function RecordFeed({ id }: { id: string }) {
               <time>{timestamp(row.observedAt)}</time>
               <span>
                 {String(row.data.message ?? JSON.stringify(row.data))}
+                <RelatedRecords
+                  strategyId={id}
+                  associations={row.associations}
+                />
               </span>
             </div>
           ))

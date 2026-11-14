@@ -10,6 +10,7 @@ import {
 import { useLanguage } from "../shared/i18n";
 import { Badge, ErrorView, Loading, shown, timestamp } from "../shared/ui";
 import { DataTable } from "../app/strategy";
+import { RelatedRecords } from "./related-records";
 
 const Chart = lazy(() => import("./chart"));
 const emptyRecords: CapabilityRecord[] = [];
@@ -122,15 +123,22 @@ export function CapabilityWidget({
         <DataTable
           title=""
           maxColumns={40}
+          renderCell={(key, value) =>
+            key === "Related IDs" && value && typeof value === "object" ? (
+              <RelatedRecords
+                strategyId={strategyId}
+                associations={value as Record<string, string>}
+              />
+            ) : undefined
+          }
           rows={
             capability.kind === "event" && capability.history
               ? (records.length ? records : record ? [record] : []).map(
                   (item) => {
-                    const { value, associations = {} } = item;
                     return {
-                      observedAt: timestamp(item.observedAt),
-                      ...asRow(value),
-                      ...associations,
+                      "Observed at": timestamp(item.observedAt),
+                      ...asRow(item.value),
+                      "Related IDs": item.associations,
                     };
                   },
                 )
@@ -141,7 +149,7 @@ export function CapabilityWidget({
                     : [value]
                 ).map((item) => ({
                   ...asRow(item),
-                  ...record?.associations,
+                  "Related IDs": record?.associations,
                 }))
           }
         />
@@ -157,6 +165,10 @@ export function CapabilityWidget({
           {detailed && recent && (
             <time className="muted">{timestamp(recent.observedAt)}</time>
           )}
+          <RelatedRecords
+            strategyId={strategyId}
+            associations={record?.associations}
+          />
         </div>
       )}
       {stale && <Badge tone="warning">{t("staleData")}</Badge>}

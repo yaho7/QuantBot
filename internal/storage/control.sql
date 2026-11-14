@@ -304,3 +304,8 @@ DELETE FROM capability_state_history WHERE (strategy_id,capability_id,observed_a
  SELECT h.strategy_id,h.capability_id,h.observed_at,h.revision FROM capability_state_history h
  WHERE h.received_at<sqlc.arg(cutoff) ORDER BY h.received_at LIMIT 2000
 );
+
+-- name: FindAssociatedTrades :many
+SELECT * FROM trade_events
+WHERE strategy_id = @strategy_id AND json_extract(associations, @json_path) = @association
+ORDER BY observed_at DESC, report_id DESC LIMIT 50;

@@ -359,6 +359,14 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   ).toBeVisible();
   await expect(widget("策略原始信号")).toContainText("真实信号");
   await expect(widget("策略原始信号")).toContainText("order-paper-42");
+  await widget("策略原始信号")
+    .getByRole("button", { name: "order_id order-paper-42" })
+    .click();
+  await expect(dialog.getByRole("heading", { name: "关联记录" })).toBeVisible();
+  await expect(dialog).toContainText("真实信号");
+  await expect(dialog).not.toContainText("声明式行情延迟");
+  await page.keyboard.press("Escape");
+
   await expect(
     page.getByRole("status").filter({ hasText: "策略健康" }),
   ).toContainText("健康检查异常");

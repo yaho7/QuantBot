@@ -288,6 +288,52 @@ func (q *Queries) FillFingerprint(ctx context.Context, arg FillFingerprintParams
 	return fingerprint, err
 }
 
+const findAssociatedTrades = `-- name: FindAssociatedTrades :many
+SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint, associations, received_at FROM trade_events
+WHERE strategy_id = ?1 AND json_extract(associations, ?2) = ?3
+ORDER BY observed_at DESC, report_id DESC LIMIT 50
+`
+
+type FindAssociatedTradesParams struct {
+	StrategyID  string
+	JsonPath    interface{}
+	Association string
+}
+
+func (q *Queries) FindAssociatedTrades(ctx context.Context, arg FindAssociatedTradesParams) ([]TradeEvent, error) {
+	rows, err := q.db.QueryContext(ctx, findAssociatedTrades, arg.StrategyID, arg.JsonPath, arg.Association)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TradeEvent
+	for rows.Next() {
+		var i TradeEvent
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.ReportID,
+			&i.InstanceID,
+			&i.Kind,
+			&i.Series,
+			&i.ObservedAt,
+			&i.Data,
+			&i.Fingerprint,
+			&i.Associations,
+			&i.ReceivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getActiveControlCommand = `-- name: GetActiveControlCommand :one
 SELECT id FROM commands WHERE strategy_id = ? AND control_id = ?
 AND status IN ('created','confirmation_required','pending','accepted','executing','unknown')

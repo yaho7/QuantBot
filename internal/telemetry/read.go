@@ -23,6 +23,7 @@ func (s *Service) RegisterBrowser(r chi.Router) {
 	r.Get("/strategies/{id}/history", s.history)
 	r.Get("/strategies/{id}/telemetry", s.latest)
 	r.Get("/strategies/{id}/records", s.records)
+	r.Get("/strategies/{id}/related", s.related)
 	r.Get("/alerts", s.alerts)
 }
 

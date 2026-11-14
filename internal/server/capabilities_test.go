@@ -81,7 +81,7 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 		t.Fatal(stateHistory.Body)
 	}
 
-	report := fmt.Sprintf(`{"revision":1,"records":[{"id":"metric1","capabilityId":"latency","value":"1.001","observedAt":%d}]}`, now)
+	report := fmt.Sprintf(`{"revision":1,"records":[{"id":"metric1","capabilityId":"latency","value":"1.001","observedAt":%d,"associations":{"correlation_id":"trace1"}}]}`, now)
 	resource := fmt.Sprintf(`{"revision":1,"records":[{"id":"position1","value":{"symbol":"BTC"},"observedAt":%d,"associations":{"account_id":"paper","signal_id":"signal1","correlation_id":"trace1"}}]}`, now)
 	event := fmt.Sprintf(`{"revision":1,"records":[{"id":"signal1","capabilityId":"signal","value":{"symbol":"BTC"},"observedAt":%d}]}`, now)
 	for _, p := range []struct{ method, path, body string }{
@@ -106,6 +106,18 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 		!strings.Contains(history.Body.String(), `"revision":1`) {
 		t.Fatal(history.Body)
 	}
+	fill := fmt.Sprintf(`{"records":[{"id":"paper-fill","kind":"fill","observedAt":%d,"associations":{"correlation_id":"trace1"},"data":{"accountId":"paper","fillId":"fill1","orderId":"order1","symbol":"BTC","side":"buy","quantity":"1","price":"10"}}]}`, now)
+	call("POST", "/agent/events", fill, worker.Session, 200)
+	matches := call("GET", path+"/related?field=correlation_id&value=trace1", "", "", 200)
+	for _, id := range []string{"paper-fill", "metric1", "position1"} {
+		if !strings.Contains(matches.Body.String(), `"id":"`+id+`"`) {
+			t.Fatalf("related record %q missing: %s", id, matches.Body)
+		}
+	}
+	if strings.Contains(matches.Body.String(), `"id":"signal1"`) {
+		t.Fatalf("included an event without an explicit match: %s", matches.Body)
+	}
+	call("GET", path+"/related?field=data.orderId&value=trace1", "", "", 400)
 	fresh := time.Now().UnixMilli()
 	call("PUT", "/agent/state", fmt.Sprintf(`{"revision":1,"states":[{"id":"limit","value":"2","observedAt":%d}]}`, fresh), worker.Session, 200)
 	call("POST", path+"/commands", `{"controlId":"apply","revision":1,"input":{"limit":"3","extra":true}}`, "", 400)

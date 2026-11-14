@@ -83,6 +83,7 @@ export type Datum = {
   instanceId: string;
   strategyId: string;
   data: Record<string, unknown>;
+  associations?: Record<string, string>;
 };
 export type Command = {
   id: string;

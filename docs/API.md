@@ -10,6 +10,7 @@ The browser API is rooted at `/api/v1`. Agent routes use `/api/agent`. Browser r
 | `/strategies/{id}/controls` | Declared capabilities, desired intent and observed state |
 | `/strategies/{id}/series`, `/history`, `/telemetry`, `/records` | Discover and query monitoring data under the strategy path |
 | `/strategies/{id}/capabilities`, `/capability-data`, `/capabilities/{capability}/history` | Declared capabilities, latest data, health diagnostics and replay under the strategy path |
+| `GET /strategies/{id}/related?field=order_id&value=...` | Find up to 50 records with the same explicit association field and value within a strategy. |
 | `GET /layouts/{key}`, `PUT /layouts/{key}` | Read or save the administrator’s layout. Use `workbench` or `strategy-{id}`. Writes use the current layout revision. |
 | `/alerts` | Cross-strategy alert feed |
 | `POST /strategies/{id}/commands` | Submit a control action with an `Idempotency-Key` |
@@ -32,3 +33,5 @@ The service publishes invalidations after commit, coalesces updates every 125 ms
 ## Suggested components
 
 A declaration with `presentation.suggested` and an applicable surface provides a default widget. The browser uses the backend’s resolved renderer, the default size and the declared order. Administrators can add a declared capability manually or edit, move, resize and remove suggested widgets. Saved preferences take precedence. A saved widget whose capability disappears keeps its slot and shows an unavailable state. Restoring the capability with the same ID restores the saved widget. A hidden widget stays hidden until it is added again or the layout is reset.
+
+In declared widgets and standard event feeds, select a reported association to view matching resource, event and metric observations. The view matches the selected field and ID exactly.

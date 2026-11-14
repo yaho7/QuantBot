@@ -119,3 +119,21 @@ DELETE FROM capability_receipts WHERE (strategy_id,revision,capability_id,record
     SELECT s.strategy_id,s.revision,s.capability_id,s.record_id FROM capability_receipts s
     WHERE s.received_at < sqlc.arg(cutoff) ORDER BY s.received_at LIMIT 2000
 );
+
+-- name: FindAssociatedSamples :many
+WITH matching AS (
+    SELECT report_id, kind, series, observed_at, received_at, data AS value, associations, 0 AS revision
+    FROM samples AS s WHERE s.strategy_id = @strategy_id AND json_extract(s.associations, @json_path) = @association
+    ORDER BY observed_at DESC, report_id DESC LIMIT 50
+), declared AS (
+    SELECT record_id AS report_id, '' AS kind, capability_id AS series, observed_at, received_at, value, links AS associations, revision
+    FROM capability_samples AS cs WHERE cs.strategy_id = @strategy_id AND json_extract(cs.links, @json_path) = @association
+    UNION
+    SELECT record_id, '', capability_id, observed_at, received_at, value, links, revision
+    FROM capability_latest AS cl WHERE cl.strategy_id = @strategy_id AND json_extract(cl.links, @json_path) = @association
+    ORDER BY observed_at DESC, report_id DESC LIMIT 50
+)
+SELECT * FROM matching
+UNION ALL
+SELECT * FROM declared
+ORDER BY observed_at DESC, report_id DESC LIMIT 50;
