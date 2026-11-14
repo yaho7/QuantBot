@@ -25,11 +25,7 @@ func (e invalid) Error() string { return string(e) }
 func (s *Service) Register(r chi.Router) {
 	r.Get("/theme", s.active)
 	r.Get("/admin/themes", s.list)
-	r.Post("/admin/themes", s.upload)
 	r.Put("/admin/themes/active", s.activate)
-	r.Put("/admin/themes/{id}/settings", s.configuration)
-	r.Post("/admin/themes/{id}/rollback", s.rollback)
-	r.Delete("/admin/themes/{id}", s.remove)
 }
 
 func (s *Service) active(w http.ResponseWriter, r *http.Request) {
@@ -38,35 +34,13 @@ func (s *Service) active(w http.ResponseWriter, r *http.Request) {
 	view, err := s.getActive(r.Context(), controldb.New(s.store.Read))
 	if err != nil {
 		slog.Warn("theme selection unavailable", "error", err)
-		view = builtin(BuiltinClassic)
+		view = builtin(BuiltinClassical)
 	}
 	httpapi.JSON(w, http.StatusOK, view)
 }
 
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	q := controldb.New(s.store.Read)
-	active, err := s.getActive(r.Context(), q)
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	rows, err := q.ListThemes(r.Context())
-	if err != nil {
-		fail(w, err)
-		return
-	}
-	themes := []instance{builtin(BuiltinLumina), builtin(BuiltinClassic)}
-	for _, row := range rows {
-		item, err := s.readInstance(controldb.GetThemeRow(row))
-		if err != nil {
-			fail(w, err)
-			return
-		}
-		themes = append(themes, item)
-	}
-	httpapi.JSON(w, http.StatusOK, map[string]any{"active": active.ID, "themes": themes})
+	httpapi.JSON(w, http.StatusOK, map[string]any{"active": BuiltinClassical, "themes": []instance{builtin(BuiltinClassical)}})
 }
 
 func (s *Service) upload(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +74,7 @@ func (s *Service) activate(w http.ResponseWriter, r *http.Request) {
 	if !httpapi.ReadJSON(w, r, &input, 4096) {
 		return
 	}
-	if !identifier.MatchString(input.ID) {
+	if input.ID != BuiltinClassical {
 		fail(w, invalid("Invalid theme ID"))
 		return
 	}
@@ -109,19 +83,7 @@ func (s *Service) activate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	err := storage.WithTx(ctx, s.store.Write, func(tx *sql.Tx) error {
 		q := controldb.New(tx)
-		if input.ID != BuiltinLumina && input.ID != BuiltinClassic {
-			row, err := q.GetTheme(ctx, input.ID)
-			if err != nil {
-				return err
-			}
-			item, err := s.readInstance(row)
-			if err != nil {
-				return err
-			}
-			if !item.Available {
-				return invalid("Theme is missing its entry or is incompatible")
-			}
-		}
+
 		if err := setActive(ctx, q, input.ID); err != nil {
 			return err
 		}
@@ -217,7 +179,7 @@ func (s *Service) remove(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	ctx, id := r.Context(), chi.URLParam(r, "id")
-	if !identifier.MatchString(id) || id == BuiltinLumina || id == BuiltinClassic {
+	if !identifier.MatchString(id) || id == BuiltinClassical {
 		fail(w, invalid("Only installed theme packages can be deleted"))
 		return
 	}
@@ -235,7 +197,7 @@ func (s *Service) remove(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		if active == id {
-			if err := setActive(ctx, q, BuiltinClassic); err != nil {
+			if err := setActive(ctx, q, BuiltinClassical); err != nil {
 				return err
 			}
 		}

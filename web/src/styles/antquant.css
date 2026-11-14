@@ -1,7 +1,7 @@
 /* The workbench borrows Wealthfolio's portfolio hierarchy and quiet surfaces.
    Navigation follows the compact rail and mobile tabs introduced with AntQuant. */
-.workbench-shell.antquant-workbench[data-theme="lumina"],
-:root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="lumina"] {
+.workbench-shell.antquant-workbench[data-theme="classical"],
+:root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="classical"] {
   --canvas: #f6f7f6;
   --surface: #fff;
   --raised: #eef0ee;
@@ -25,7 +25,7 @@
   background: var(--canvas);
 }
 
-:root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="lumina"] {
+:root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="classical"] {
   --canvas: #151917;
   --surface: #202622;
   --raised: #28302a;
@@ -45,7 +45,7 @@
   padding: 8px clamp(18px, 3vw, 40px) 56px;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar {
+.workbench-shell.antquant-workbench[data-theme="classical"] .topbar {
   position: sticky;
   top: 0;
   height: 100dvh;
@@ -54,7 +54,7 @@
   backdrop-filter: none;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar-inner {
+.workbench-shell.antquant-workbench[data-theme="classical"] .topbar-inner {
   display: flex;
   flex-direction: column;
   flex-wrap: nowrap;
@@ -65,7 +65,7 @@
   scrollbar-width: thin;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .brand-icon,
+.workbench-shell.antquant-workbench[data-theme="classical"] .brand-icon,
 .admin-shell .brand-icon,
 .login-page .brand-icon {
   border: 0;
@@ -74,13 +74,13 @@
   color: var(--accent-ink);
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand-icon {
+.workbench-shell.antquant-workbench[data-theme="classical"] .topbar .brand-icon {
   width: 40px;
   height: 40px;
   border-radius: 12px;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav {
+.workbench-shell.antquant-workbench[data-theme="classical"] .topbar nav {
   flex: 1 0 auto;
   align-self: stretch;
   justify-content: flex-start;
@@ -88,7 +88,7 @@
   gap: 3px;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a {
+.workbench-shell.antquant-workbench[data-theme="classical"] .topbar nav a {
   display: flex;
   width: 100%;
   flex-direction: column;
@@ -103,13 +103,13 @@
   text-align: center;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a span {
+.workbench-shell.antquant-workbench[data-theme="classical"] .topbar nav a span {
   display: block;
   font-size: 10px;
   line-height: 1.25;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a.active {
+.workbench-shell.antquant-workbench[data-theme="classical"] .topbar nav a.active {
   color: var(--text);
   background: var(--accent-soft);
   font-weight: 650;
@@ -121,7 +121,7 @@
   gap: 2px;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .floating-tools {
+.workbench-shell.antquant-workbench[data-theme="classical"] .topbar .floating-tools {
   position: static;
   padding: 0;
   background: transparent;
@@ -147,28 +147,28 @@
   display: none;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] :is(.surface, .summary-card, .control-card),
+.workbench-shell.antquant-workbench[data-theme="classical"] :is(.surface, .summary-card, .control-card),
 .admin-shell .admin-main .surface {
   background: var(--surface);
   box-shadow: none;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .strategy-card:hover {
+.workbench-shell.antquant-workbench[data-theme="classical"] .strategy-card:hover {
   transform: none;
   border-color: color-mix(in srgb, var(--muted) 45%, var(--line));
   box-shadow: none;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .widget::before {
+.workbench-shell.antquant-workbench[data-theme="classical"] .widget::before {
   content: none;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] :is(.summary-card > strong, .card-values strong, .equity-widget > strong) {
+.workbench-shell.antquant-workbench[data-theme="classical"] :is(.summary-card > strong, .card-values strong, .equity-widget > strong) {
   font-weight: 610;
   font-variant-numeric: lining-nums tabular-nums;
 }
 
-.workbench-shell.antquant-workbench[data-theme="lumina"] .summary-card > strong {
+.workbench-shell.antquant-workbench[data-theme="classical"] .summary-card > strong {
   font-size: clamp(26px, 3vw, 35px);
 }
 
@@ -232,7 +232,7 @@
   min-width: 0;
   padding: clamp(16px, 3vw, 28px);
 }
-.workbench-shell.antquant-workbench[data-theme="lumina"] .portfolio-hero {
+.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-hero {
   background: linear-gradient(var(--surface) 45%, color-mix(in srgb, var(--theme-chart) 9%, var(--surface)));
 }
 .portfolio-toolbar {
@@ -326,10 +326,10 @@
 }
 
 @media (min-width: 768px) {
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar .brand {
     flex: none;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand strong {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar .brand strong {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -339,17 +339,17 @@
 }
 
 @media (max-width: 767px) {
-  .workbench-shell.antquant-workbench[data-theme="lumina"] {
+  .workbench-shell.antquant-workbench[data-theme="classical"] {
     display: block;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar {
     height: auto;
     border-bottom: 1px solid var(--line);
     background: color-mix(in srgb, var(--canvas) 92%, transparent);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar-inner {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar-inner {
     height: auto;
     min-height: 54px;
     flex-direction: row;
@@ -358,16 +358,16 @@
     overflow: visible;
     padding: 4px 12px;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar .brand {
     flex: 1 1 auto;
     gap: 7px;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand-icon {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar .brand-icon {
     width: 29px;
     height: 29px;
     border-radius: 8px;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar .brand strong {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar .brand strong {
     font-size: 14px;
     letter-spacing: -.3px;
   }
@@ -383,7 +383,7 @@
   .antquant-workbench .topbar .floating-tools .connection-dot {
     display: none;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar nav {
     position: fixed;
     inset: auto 10px calc(10px + env(safe-area-inset-bottom)) 10px;
     width: auto;
@@ -397,11 +397,11 @@
     border-radius: 15px;
     box-shadow: 0 5px 18px #00000012;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar nav a {
     min-height: 45px;
     padding-block: 4px;
   }
-  .workbench-shell.antquant-workbench[data-theme="lumina"] .topbar nav a svg {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .topbar nav a svg {
     display: block;
     flex-shrink: 0;
   }

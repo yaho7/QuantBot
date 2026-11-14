@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -64,11 +63,7 @@ type instance struct {
 }
 
 func builtin(id string) instance {
-	name := "Lumina"
-	cardView := "compact"
-	if id == BuiltinClassic {
-		name, cardView = "Classic", "list"
-	}
+	name, cardView := "Classical", "list"
 	return instance{
 		ID: id, Builtin: true, Available: true,
 		Manifest:     Manifest{ID: id, Name: name, Engine: Engine, Type: "declarative"},
@@ -307,49 +302,10 @@ func (s *Service) removeDirectory(dir string) {
 }
 
 func (s *Service) getActive(ctx context.Context, q *controldb.Queries) (instance, error) {
-	active, err := activeTheme(ctx, q)
-	if err != nil {
-		return instance{}, err
-	}
-	if active == BuiltinLumina || active == BuiltinClassic {
-		return builtin(active), nil
-	}
-	row, err := q.GetTheme(ctx, active)
-	if err == nil {
-		var view instance
-		view, err = s.readInstance(row)
-		if err == nil && view.Available {
-			return view, nil
-		}
-		if err == nil {
-			err = fmt.Errorf("incompatible theme or missing entry")
-		}
-	}
-	slog.Warn("active theme fallback", "theme", active, "error", err)
-	return builtin(BuiltinClassic), nil
+	return builtin(BuiltinClassical), nil
 }
 
 // CheckActive validates the configured theme without creating data directories.
 func CheckActive(ctx context.Context, db *sql.DB, dir, version string) (string, error) {
-	q := controldb.New(db)
-	active, err := activeTheme(ctx, q)
-	if errors.Is(err, sql.ErrNoRows) {
-		return BuiltinLumina, nil
-	}
-	if err != nil {
-		return "", err
-	}
-	if active == BuiltinLumina || active == BuiltinClassic {
-		return active, nil
-	}
-	row, err := q.GetTheme(ctx, active)
-	if err != nil {
-		return "", err
-	}
-	service := &Service{dir: filepath.Join(dir, "themes"), version: version}
-	view, err := service.readInstance(row)
-	if err == nil && !view.Available {
-		err = fmt.Errorf("active theme %q is incompatible or its entry is missing", active)
-	}
-	return active, err
+	return BuiltinClassical, nil
 }

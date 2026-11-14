@@ -10,8 +10,7 @@ import (
 )
 
 const Engine = "quantbot-theme-v1"
-const BuiltinLumina = "lumina"
-const BuiltinClassic = "classic"
+const BuiltinClassical = "classical"
 
 type Manifest struct {
 	ID          string `json:"id"`
@@ -32,7 +31,7 @@ var identifier = regexp.MustCompile(`^[a-z][a-z0-9-]{0,47}$`)
 var versionPattern = regexp.MustCompile(`^(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})\.(0|[1-9][0-9]{0,5})$`)
 
 func (m Manifest) validate(current string) error {
-	if !identifier.MatchString(m.ID) || m.ID == BuiltinLumina || m.ID == BuiltinClassic {
+	if !identifier.MatchString(m.ID) || m.ID == BuiltinClassical {
 		return errors.New("theme ID is invalid or reserved")
 	}
 	if strings.TrimSpace(m.Name) == "" || len(m.Name) > 100 || strings.TrimSpace(m.Author) == "" ||

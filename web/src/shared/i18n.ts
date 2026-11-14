@@ -1,6 +1,13 @@
 import { useSyncExternalStore } from "react";
 
 const messages = {
+  language: ["语言", "Language"],
+  palette: ["配色", "Color palette"],
+  forest: ["森林绿", "Forest"],
+  ocean: ["海蓝", "Ocean"],
+  violet: ["紫罗兰", "Violet"],
+  amber: ["琥珀", "Amber"],
+  graphite: ["石墨", "Graphite"],
   widgets: ["我的组件", "My widgets"],
   widgetsHint: [
     "编辑布局，添加策略指标、图表和控制组件。",

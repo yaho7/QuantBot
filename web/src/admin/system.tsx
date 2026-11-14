@@ -1,3 +1,4 @@
+import { DisplayPreferences } from "../components/display-preferences";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Page } from "../app/App";
@@ -97,6 +98,7 @@ export function Settings() {
   const settings = query.data?.settings;
   return (
     <Page title={t("settings")}>
+      <DisplayPreferences />
       {query.isPending ? (
         <Loading />
       ) : query.error ? (

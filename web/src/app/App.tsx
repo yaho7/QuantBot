@@ -50,7 +50,8 @@ import { ErrorView, Loading } from "../shared/ui";
 import { BrandIcon } from "../components/brand-icon";
 import "../styles/antquant.css";
 import "../styles/wealthfolio.css";
-import { setLanguage, useLanguage, type Message } from "../shared/i18n";
+import { usePalette } from "../shared/preferences";
+import { useLanguage, type Message } from "../shared/i18n";
 const Login = lazy(() =>
   import("./auth").then((module) => ({ default: module.Login })),
 );
@@ -120,12 +121,13 @@ const management = [
 const AppearanceTools = createContext<ReactNode>(null);
 
 function Root() {
+  usePalette();
   const session = useQuery({
     ...resource<Session>("/auth/session"),
     retry: false,
   });
   const connected = useRealtime(!!session.data);
-  const { lang, t } = useLanguage();
+  const { t } = useLanguage();
   const [mode, setMode] = useState(
     localStorage.getItem("qb.appearance") ?? "system",
   );
@@ -177,12 +179,6 @@ function Root() {
       >
         <ThemeIcon size={17} />
       </button>
-      <button
-        className="text-button"
-        onClick={() => setLanguage(lang === "zh" ? "en" : "zh")}
-      >
-        {lang === "zh" ? "EN" : "中文"}
-      </button>
     </div>
   );
   return (
@@ -228,7 +224,7 @@ function Workbench() {
   const identity = (theme?.id ?? "") + ":" + (theme?.revision ?? "");
   const fallback = !!query.error || (failed !== "" && failed === identity);
   const selected = fallback ? undefined : theme;
-  const antquant = selected?.builtin && selected.id === "lumina";
+  const antquant = fallback || !selected || selected.id === "classical";
   const onFailure = useCallback(() => setFailed(identity), [identity]);
   const full =
     location.pathname === "/" &&
@@ -240,7 +236,7 @@ function Workbench() {
     >
       <div
         className={"workbench-shell" + (antquant ? " antquant-workbench" : "")}
-        data-theme={selected?.id ?? "classic"}
+        data-theme={selected?.id ?? "classical"}
         data-theme-palette={selected && !selected.builtin ? "" : undefined}
         data-theme-surface={selected?.presentation.surface}
         style={themeStyle(selected)}
@@ -260,9 +256,9 @@ function Workbench() {
               {antquant && tools}
               <Link
                 className="admin-link"
-                to="/admin"
-                aria-label={t("admin")}
-                title={t("admin")}
+                to="/admin/settings"
+                aria-label={t("settings")}
+                title={t("settings")}
               >
                 <Settings size={17} />
                 <span>{t("admin")}</span>
