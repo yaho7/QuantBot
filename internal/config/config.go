@@ -21,6 +21,7 @@ type Config struct {
 	PublicOrigin    string
 	TrustedProxies  []netip.Prefix
 	LoopbackGateway netip.Addr
+	Profiling       bool
 	CommandPoll     time.Duration
 	MetricsQueue    int
 	MetricsBatch    int
@@ -72,6 +73,12 @@ func Load() (Config, error) {
 		config.LoopbackGateway, err = dockerGateway()
 		if err != nil {
 			return Config{}, fmt.Errorf("QB_DOCKER_LOOPBACK: %w", err)
+		}
+	}
+	if value := os.Getenv("QB_ENABLE_PPROF"); value != "" {
+		config.Profiling, err = strconv.ParseBool(value)
+		if err != nil {
+			return Config{}, fmt.Errorf("QB_ENABLE_PPROF: %w", err)
 		}
 	}
 	if value := os.Getenv("QB_AGENT_SESSION_TTL"); value != "" {

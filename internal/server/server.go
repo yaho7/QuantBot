@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/http/pprof"
 	"sync"
 	"time"
 
@@ -127,6 +128,14 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 			notifications.Register(r)
 			themes.Register(r)
 			r.Get("/admin/diagnostics", diagnostics(stores, reports, events, cfg))
+			if cfg.Profiling {
+				r.Route("/admin/pprof", func(r chi.Router) {
+					r.Get("/profile", pprof.Profile)
+					for _, name := range []string{"allocs", "block", "goroutine", "heap", "mutex", "threadcreate"} {
+						r.Get("/"+name, pprof.Handler(name).ServeHTTP)
+					}
+				})
+			}
 			r.Get("/events", func(w http.ResponseWriter, r *http.Request) {
 				events.Stream(w, r, accounts.SessionActive)
 			})

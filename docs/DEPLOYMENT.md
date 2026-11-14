@@ -30,6 +30,8 @@ systemctl --user enable --now quantbot
 
 The default native listener is `127.0.0.1:23456`. Set `QB_LISTEN` to change the bind address. Configure `QB_PUBLIC_ORIGIN` and `QB_TRUSTED_PROXIES` for HTTPS reverse proxies. Other settings include `QB_AGENT_SESSION_TTL`, `QB_COMMAND_POLL`, `QB_METRICS_QUEUE`, `QB_METRICS_BATCH` and `QB_METRICS_FLUSH`.
 
+For performance diagnosis, set `QB_ENABLE_PPROF=true` and request a Go profile such as `/api/admin/pprof/heap` or `/api/admin/pprof/profile?seconds=10` with an administrator session. Profiles are disabled by default.
+
 Upgrade the container with `docker compose pull && docker compose up -d`. Retain the existing 3.0 volume. Start with fresh data when moving from the Python edition to 3.0.
 
 ## Go data backup and restore

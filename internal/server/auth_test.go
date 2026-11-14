@@ -87,6 +87,37 @@ func TestPublicTransportRequiresTrustedProxyAndHost(t *testing.T) {
 	send("192.0.2.10", "quantbot.example", "https", 200)
 }
 
+func TestProfilingRequiresOptInAndAdministratorSession(t *testing.T) {
+	const origin = "http://127.0.0.1:23456"
+	const path = "/api/admin/pprof/heap"
+	for _, enabled := range []bool{false, true} {
+		handler := newAuthTestServer(t, config.Config{Profiling: enabled})
+		_, cookie := parseSession(t, requestAuth(t, handler, "POST", "/setup",
+			`{"username":"admin","password":"paper-test-password"}`, origin, nil, "", 200))
+		for _, test := range []struct {
+			cookie *http.Cookie
+			status int
+		}{{nil, 404}, {cookie, 404}} {
+			if enabled {
+				test.status = 401
+				if test.cookie != nil {
+					test.status = 200
+				}
+			}
+			req := httptest.NewRequest("GET", origin+path, nil)
+			req.RemoteAddr = "127.0.0.1:12345"
+			if test.cookie != nil {
+				req.AddCookie(test.cookie)
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != test.status {
+				t.Errorf("enabled=%t authenticated=%t: got %d want %d", enabled, test.cookie != nil, rec.Code, test.status)
+			}
+		}
+	}
+}
+
 func TestDockerLoopbackRequiresBridgePeerAndLocalHost(t *testing.T) {
 	handler := newAuthTestServer(t, config.Config{LoopbackGateway: netip.MustParseAddr("172.18.0.1")})
 	for _, test := range []struct {
