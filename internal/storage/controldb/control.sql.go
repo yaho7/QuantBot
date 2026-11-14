@@ -208,6 +208,15 @@ func (q *Queries) DeleteBrowserSessions(ctx context.Context, userID int64) error
 	return err
 }
 
+const deleteControlDefinitions = `-- name: DeleteControlDefinitions :exec
+DELETE FROM control_definitions WHERE strategy_id = ?
+`
+
+func (q *Queries) DeleteControlDefinitions(ctx context.Context, strategyID string) error {
+	_, err := q.db.ExecContext(ctx, deleteControlDefinitions, strategyID)
+	return err
+}
+
 const deleteExpiredBrowserSessions = `-- name: DeleteExpiredBrowserSessions :exec
 DELETE FROM browser_sessions WHERE expires_at <= ?
 `
@@ -215,6 +224,54 @@ DELETE FROM browser_sessions WHERE expires_at <= ?
 func (q *Queries) DeleteExpiredBrowserSessions(ctx context.Context, expiresAt int64) error {
 	_, err := q.db.ExecContext(ctx, deleteExpiredBrowserSessions, expiresAt)
 	return err
+}
+
+const getActiveExecutor = `-- name: GetActiveExecutor :one
+SELECT a.digest, a.strategy_id, a.instance_id, a.boot_id, a.token_id, a.expires_at, i.last_seen
+FROM strategies s
+JOIN agent_instances i ON i.strategy_id = s.id AND i.instance_id = s.executor_instance
+JOIN agent_sessions a ON a.strategy_id = i.strategy_id AND a.instance_id = i.instance_id AND a.boot_id = i.boot_id
+JOIN agent_tokens t ON t.id = a.token_id
+WHERE s.id = ?1 AND s.archived_at IS NULL
+AND a.expires_at > ?2 AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?2)
+AND i.last_seen > ?3 AND (t.scopes & ?4) = ?4
+`
+
+type GetActiveExecutorParams struct {
+	StrategyID string
+	Now        int64
+	SeenAfter  int64
+	Scope      int64
+}
+
+type GetActiveExecutorRow struct {
+	Digest     string
+	StrategyID string
+	InstanceID string
+	BootID     string
+	TokenID    string
+	ExpiresAt  int64
+	LastSeen   int64
+}
+
+func (q *Queries) GetActiveExecutor(ctx context.Context, arg GetActiveExecutorParams) (GetActiveExecutorRow, error) {
+	row := q.db.QueryRowContext(ctx, getActiveExecutor,
+		arg.StrategyID,
+		arg.Now,
+		arg.SeenAfter,
+		arg.Scope,
+	)
+	var i GetActiveExecutorRow
+	err := row.Scan(
+		&i.Digest,
+		&i.StrategyID,
+		&i.InstanceID,
+		&i.BootID,
+		&i.TokenID,
+		&i.ExpiresAt,
+		&i.LastSeen,
+	)
+	return i, err
 }
 
 const getAdmin = `-- name: GetAdmin :one
@@ -281,6 +338,62 @@ func (q *Queries) GetBrowserSession(ctx context.Context, arg GetBrowserSessionPa
 		&i.Username,
 		&i.Csrf,
 		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getControlDefinition = `-- name: GetControlDefinition :one
+SELECT strategy_id, control_id, definition FROM control_definitions WHERE strategy_id = ? AND control_id = ?
+`
+
+type GetControlDefinitionParams struct {
+	StrategyID string
+	ControlID  string
+}
+
+func (q *Queries) GetControlDefinition(ctx context.Context, arg GetControlDefinitionParams) (ControlDefinition, error) {
+	row := q.db.QueryRowContext(ctx, getControlDefinition, arg.StrategyID, arg.ControlID)
+	var i ControlDefinition
+	err := row.Scan(&i.StrategyID, &i.ControlID, &i.Definition)
+	return i, err
+}
+
+const getControlRegistry = `-- name: GetControlRegistry :one
+SELECT strategy_id, revision, instance_id, boot_id, updated_at FROM control_registries WHERE strategy_id = ?
+`
+
+func (q *Queries) GetControlRegistry(ctx context.Context, strategyID string) (ControlRegistry, error) {
+	row := q.db.QueryRowContext(ctx, getControlRegistry, strategyID)
+	var i ControlRegistry
+	err := row.Scan(
+		&i.StrategyID,
+		&i.Revision,
+		&i.InstanceID,
+		&i.BootID,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getControlState = `-- name: GetControlState :one
+SELECT strategy_id, control_id, value, available, reason, observed_at FROM control_states WHERE strategy_id = ? AND control_id = ?
+`
+
+type GetControlStateParams struct {
+	StrategyID string
+	ControlID  string
+}
+
+func (q *Queries) GetControlState(ctx context.Context, arg GetControlStateParams) (ControlState, error) {
+	row := q.db.QueryRowContext(ctx, getControlState, arg.StrategyID, arg.ControlID)
+	var i ControlState
+	err := row.Scan(
+		&i.StrategyID,
+		&i.ControlID,
+		&i.Value,
+		&i.Available,
+		&i.Reason,
+		&i.ObservedAt,
 	)
 	return i, err
 }
@@ -383,6 +496,21 @@ func (q *Queries) GetStrategy(ctx context.Context, id string) (Strategy, error) 
 		&i.ExecutorInstance,
 	)
 	return i, err
+}
+
+const insertControlDefinition = `-- name: InsertControlDefinition :exec
+INSERT INTO control_definitions (strategy_id, control_id, definition) VALUES (?, ?, ?)
+`
+
+type InsertControlDefinitionParams struct {
+	StrategyID string
+	ControlID  string
+	Definition string
+}
+
+func (q *Queries) InsertControlDefinition(ctx context.Context, arg InsertControlDefinitionParams) error {
+	_, err := q.db.ExecContext(ctx, insertControlDefinition, arg.StrategyID, arg.ControlID, arg.Definition)
+	return err
 }
 
 const limitBrowserSessions = `-- name: LimitBrowserSessions :exec
@@ -517,6 +645,67 @@ func (q *Queries) ListBrowserSessions(ctx context.Context, arg ListBrowserSessio
 	return items, nil
 }
 
+const listControlDefinitions = `-- name: ListControlDefinitions :many
+SELECT strategy_id, control_id, definition FROM control_definitions WHERE strategy_id = ? ORDER BY control_id
+`
+
+func (q *Queries) ListControlDefinitions(ctx context.Context, strategyID string) ([]ControlDefinition, error) {
+	rows, err := q.db.QueryContext(ctx, listControlDefinitions, strategyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ControlDefinition
+	for rows.Next() {
+		var i ControlDefinition
+		if err := rows.Scan(&i.StrategyID, &i.ControlID, &i.Definition); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listControlStates = `-- name: ListControlStates :many
+SELECT strategy_id, control_id, value, available, reason, observed_at FROM control_states WHERE strategy_id = ? ORDER BY control_id
+`
+
+func (q *Queries) ListControlStates(ctx context.Context, strategyID string) ([]ControlState, error) {
+	rows, err := q.db.QueryContext(ctx, listControlStates, strategyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ControlState
+	for rows.Next() {
+		var i ControlState
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.ControlID,
+			&i.Value,
+			&i.Available,
+			&i.Reason,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listStrategies = `-- name: ListStrategies :many
 SELECT s.id, s.name, s.group_name, s.mode, s.created_at, s.archived_at, s.executor_instance, CAST(COALESCE((SELECT max(i.last_seen) FROM agent_instances i WHERE i.strategy_id = s.id), 0) AS INTEGER) AS last_seen
 FROM strategies s
@@ -564,6 +753,59 @@ func (q *Queries) ListStrategies(ctx context.Context, includeArchived interface{
 		return nil, err
 	}
 	return items, nil
+}
+
+const putControlRegistry = `-- name: PutControlRegistry :exec
+INSERT INTO control_registries (strategy_id, revision, instance_id, boot_id, updated_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (strategy_id) DO UPDATE SET revision = excluded.revision, instance_id = excluded.instance_id,
+    boot_id = excluded.boot_id, updated_at = excluded.updated_at
+`
+
+type PutControlRegistryParams struct {
+	StrategyID string
+	Revision   int64
+	InstanceID string
+	BootID     string
+	UpdatedAt  int64
+}
+
+func (q *Queries) PutControlRegistry(ctx context.Context, arg PutControlRegistryParams) error {
+	_, err := q.db.ExecContext(ctx, putControlRegistry,
+		arg.StrategyID,
+		arg.Revision,
+		arg.InstanceID,
+		arg.BootID,
+		arg.UpdatedAt,
+	)
+	return err
+}
+
+const putControlState = `-- name: PutControlState :exec
+INSERT INTO control_states (strategy_id, control_id, value, available, reason, observed_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (strategy_id, control_id) DO UPDATE SET value = excluded.value,
+    available = excluded.available, reason = excluded.reason, observed_at = excluded.observed_at
+`
+
+type PutControlStateParams struct {
+	StrategyID string
+	ControlID  string
+	Value      string
+	Available  int64
+	Reason     string
+	ObservedAt int64
+}
+
+func (q *Queries) PutControlState(ctx context.Context, arg PutControlStateParams) error {
+	_, err := q.db.ExecContext(ctx, putControlState,
+		arg.StrategyID,
+		arg.ControlID,
+		arg.Value,
+		arg.Available,
+		arg.Reason,
+		arg.ObservedAt,
+	)
+	return err
 }
 
 const rememberAgentBoot = `-- name: RememberAgentBoot :execrows

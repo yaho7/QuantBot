@@ -29,3 +29,28 @@ A new session replaces the previous session for the same strategy and instance. 
 ## Heartbeat
 
 Call `PUT /api/v1/agent/heartbeat` with the session Bearer token and no body. The response contains the effective identity, executor assignment, session expiry and last-seen time. Use a heartbeat interval shorter than the 45-second presence window, such as 15 seconds. HTTP 401 requires checking the credential and creating a fresh session. An archived strategy cannot reconnect.
+
+## Dynamic controls
+
+The designated executor with both `control` and `command` scopes publishes a registry with `PUT /api/v1/agent/controls`. First read `GET /api/v1/agent/controls` to obtain the current revision, or use zero for a new strategy. A registry change replaces the full list and increments the revision. An identical retry from the same boot with the current or immediately preceding base revision returns the saved revision. A conflicting update returns HTTP 409. A new boot republishes against the current revision before reporting state.
+
+```json
+{
+  "version": 1,
+  "baseRevision": 0,
+  "controls": [
+    {
+      "id": "allow-entry",
+      "kind": "toggle",
+      "title": "Allow new entries",
+      "risk": "high",
+      "confirm": true,
+      "timeoutSeconds": 30
+    }
+  ]
+}
+```
+
+Kinds are `button`, `toggle`, `slider`, `numberInput`, `textInput`, `select`, `multiSelect`, `status`, `metricDisplay`, and `form`. Numeric values, ranges, and steps are decimal strings. Options are objects with `value` and `label`. Forms contain a `fields` array of input definitions. Button input is JSON null. Use `readOnly` and `disabled` for static constraints.
+
+`PUT /api/v1/agent/controls/state` takes `version: 1`, the committed `revision`, and `states`. Each entry has `id`, `value`, `available`, `observedAt` in UTC Unix milliseconds, and optional `reason`. Use availability and reason to report local safety locks. State batches validate and commit atomically. Replays return duplicate counts, older observations return stale counts, and conflicting values for the same timestamp are rejected. Registry changes clear previous actual state. Actual state and availability come from the Agent.

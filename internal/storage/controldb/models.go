@@ -60,6 +60,29 @@ type BrowserSession struct {
 	ExpiresAt int64
 }
 
+type ControlDefinition struct {
+	StrategyID string
+	ControlID  string
+	Definition string
+}
+
+type ControlRegistry struct {
+	StrategyID string
+	Revision   int64
+	InstanceID string
+	BootID     string
+	UpdatedAt  int64
+}
+
+type ControlState struct {
+	StrategyID string
+	ControlID  string
+	Value      string
+	Available  int64
+	Reason     string
+	ObservedAt int64
+}
+
 type Setting struct {
 	Key   string
 	Value string

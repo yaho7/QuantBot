@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/auth"
 	"github.com/yaho7/QuantBot/internal/config"
+	"github.com/yaho7/QuantBot/internal/control"
 	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/secrets"
 	"github.com/yaho7/QuantBot/internal/storage"
@@ -68,12 +69,17 @@ func routes(stores *storage.Stores, cfg config.Config) http.Handler {
 	router.Use(origins.Guard)
 	accounts := auth.New(stores.Control)
 	strategies := strategy.New(stores.Control)
+	controls := control.New(stores.Control)
 	router.Route("/api/v1", func(r chi.Router) {
 		accounts.Register(r)
-		r.Route("/agent", strategies.RegisterAgent)
+		r.Route("/agent", func(r chi.Router) {
+			strategies.RegisterAgent(r)
+			controls.RegisterAgent(r)
+		})
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
 			strategies.RegisterBrowser(r)
+			controls.RegisterBrowser(r)
 		})
 	})
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

@@ -134,3 +134,45 @@ AND (t.expires_at IS NULL OR t.expires_at > sqlc.arg(now)) AND s.archived_at IS 
 -- name: UpdateAgentHeartbeat :execrows
 UPDATE agent_instances SET last_seen = sqlc.arg(now)
 WHERE strategy_id = sqlc.arg(strategy_id) AND instance_id = sqlc.arg(instance_id) AND boot_id = sqlc.arg(boot_id);
+
+-- name: GetControlRegistry :one
+SELECT * FROM control_registries WHERE strategy_id = ?;
+
+-- name: PutControlRegistry :exec
+INSERT INTO control_registries (strategy_id, revision, instance_id, boot_id, updated_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (strategy_id) DO UPDATE SET revision = excluded.revision, instance_id = excluded.instance_id,
+    boot_id = excluded.boot_id, updated_at = excluded.updated_at;
+
+-- name: ListControlDefinitions :many
+SELECT * FROM control_definitions WHERE strategy_id = ? ORDER BY control_id;
+
+-- name: GetControlDefinition :one
+SELECT * FROM control_definitions WHERE strategy_id = ? AND control_id = ?;
+
+-- name: DeleteControlDefinitions :exec
+DELETE FROM control_definitions WHERE strategy_id = ?;
+
+-- name: InsertControlDefinition :exec
+INSERT INTO control_definitions (strategy_id, control_id, definition) VALUES (?, ?, ?);
+
+-- name: GetControlState :one
+SELECT * FROM control_states WHERE strategy_id = ? AND control_id = ?;
+
+-- name: ListControlStates :many
+SELECT * FROM control_states WHERE strategy_id = ? ORDER BY control_id;
+
+-- name: PutControlState :exec
+INSERT INTO control_states (strategy_id, control_id, value, available, reason, observed_at)
+VALUES (?, ?, ?, ?, ?, ?)
+ON CONFLICT (strategy_id, control_id) DO UPDATE SET value = excluded.value,
+    available = excluded.available, reason = excluded.reason, observed_at = excluded.observed_at;
+
+-- name: GetActiveExecutor :one
+SELECT a.digest, a.strategy_id, a.instance_id, a.boot_id, a.token_id, a.expires_at, i.last_seen
+FROM strategies s
+JOIN agent_instances i ON i.strategy_id = s.id AND i.instance_id = s.executor_instance
+JOIN agent_sessions a ON a.strategy_id = i.strategy_id AND a.instance_id = i.instance_id AND a.boot_id = i.boot_id
+JOIN agent_tokens t ON t.id = a.token_id
+WHERE s.id = sqlc.arg(strategy_id) AND s.archived_at IS NULL
+AND a.expires_at > sqlc.arg(now) AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > sqlc.arg(now))
+AND i.last_seen > sqlc.arg(seen_after) AND (t.scopes & sqlc.arg(scope)) = sqlc.arg(scope);

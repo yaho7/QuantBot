@@ -2,10 +2,12 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/yaho7/QuantBot/internal/config"
 )
@@ -76,9 +78,34 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 	send("PUT", "/agent/heartbeat", "", sessionA, 401)
 	send("POST", "/agent/session", bootA, response.Credential.Token, 409)
 	send("PUT", "/agent/heartbeat", "", sessionB, 200)
+	const registry = `{"version":1,"baseRevision":0,"controls":[{"id":"entry","kind":"toggle","title":"Allow entry","risk":"high"},{"id":"size","kind":"slider","title":"Size","min":"0.1","max":"1.0","step":"0.1"}]}`
+	send("PUT", "/agent/controls", registry, sessionA, 401)
+	send("PUT", "/agent/controls", registry, sessionB, 200)
+	duplicate := send("PUT", "/agent/controls", registry, sessionB, 200)
+	if !strings.Contains(duplicate.Body.String(), `"revision":1`) {
+		t.Fatal("identical retry changed registry revision")
+	}
+	send("GET", "/agent/controls", "", sessionB, 200)
+	send("PUT", "/agent/controls", `{"version":1,"baseRevision":0,"controls":[]}`, sessionB, 409)
+	now := time.Now().UnixMilli()
+	send("PUT", "/agent/controls/state", fmt.Sprintf(`{"version":1,"revision":1,"states":[{"id":"size","available":true,"observedAt":%d,"value":"0.25"}]}`, now), sessionB, 400)
+	actual := fmt.Sprintf(`{"version":1,"revision":1,"states":[{"id":"entry","available":false,"reason":"risk lock","observedAt":%d,"value":false},{"id":"size","available":true,"observedAt":%d,"value":"0.2"}]}`, now, now)
+	send("PUT", "/agent/controls/state", actual, sessionB, 200)
+	duplicate = send("PUT", "/agent/controls/state", actual, sessionB, 200)
+	if !strings.Contains(duplicate.Body.String(), `"duplicate":2`) {
+		t.Fatal("identical state retry was not deduplicated")
+	}
+	view := send("GET", "/strategies/"+response.Strategy.ID+"/controls", "", "", 200)
+	if !strings.Contains(view.Body.String(), `"current":true`) || !strings.Contains(view.Body.String(), `"reason":"risk lock"`) {
+		t.Fatalf("control view lost actual state: %s", view.Body)
+	}
 	send("PUT", "/agent/heartbeat", "", response.Credential.Token, 401)
 	send("DELETE", admin+"/tokens/"+response.Credential.ID, "", "", 204)
 	send("PUT", "/agent/heartbeat", "", sessionB, 401)
+	view = send("GET", "/strategies/"+response.Strategy.ID+"/controls", "", "", 200)
+	if !strings.Contains(view.Body.String(), `"current":false`) {
+		t.Fatal("revoked executor remains current")
+	}
 
 	newToken := send("POST", admin+"/tokens", `{"label":"report only","scopes":["report"]}`, "", 201)
 	var scoped struct{ Token string }

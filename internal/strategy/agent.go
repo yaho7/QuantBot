@@ -183,3 +183,10 @@ func (s *Service) heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	httpapi.JSON(w, http.StatusOK, agent)
 }
+
+func ActiveExecutor(ctx context.Context, q *controldb.Queries, strategyID string, scope int64) (controldb.GetActiveExecutorRow, error) {
+	now := time.Now()
+	return q.GetActiveExecutor(ctx, controldb.GetActiveExecutorParams{
+		StrategyID: strategyID, Now: now.Unix(), SeenAfter: now.Add(-PresenceTTL).Unix(), Scope: scope,
+	})
+}
