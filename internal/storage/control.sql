@@ -265,8 +265,8 @@ SELECT fingerprint FROM trade_events WHERE strategy_id = ? AND kind = ? AND repo
 -- name: ListTradeEvents :many
 SELECT * FROM trade_events
 WHERE kind = sqlc.arg(kind) AND (sqlc.arg(strategy_id) = '' OR strategy_id = sqlc.arg(strategy_id))
-AND observed_at < sqlc.arg(before_at)
-ORDER BY observed_at DESC, report_id DESC, strategy_id LIMIT sqlc.arg(page_size);
+AND (observed_at, report_id, strategy_id) < (sqlc.arg(before_at), CAST(sqlc.arg(before_id) AS TEXT), CAST(sqlc.arg(before_strategy) AS TEXT))
+ORDER BY observed_at DESC, report_id DESC, strategy_id DESC LIMIT sqlc.arg(page_size);
 
 -- name: LatestOrders :many
 SELECT e.* FROM trade_events e

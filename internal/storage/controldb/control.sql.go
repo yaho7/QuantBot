@@ -1338,15 +1338,17 @@ func (q *Queries) ListStrategies(ctx context.Context, includeArchived interface{
 const listTradeEvents = `-- name: ListTradeEvents :many
 SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint FROM trade_events
 WHERE kind = ?1 AND (?2 = '' OR strategy_id = ?2)
-AND observed_at < ?3
-ORDER BY observed_at DESC, report_id DESC, strategy_id LIMIT ?4
+AND (observed_at, report_id, strategy_id) < (?3, CAST(?4 AS TEXT), CAST(?5 AS TEXT))
+ORDER BY observed_at DESC, report_id DESC, strategy_id DESC LIMIT ?6
 `
 
 type ListTradeEventsParams struct {
-	Kind       string
-	StrategyID interface{}
-	BeforeAt   int64
-	PageSize   int64
+	Kind           string
+	StrategyID     interface{}
+	BeforeAt       int64
+	BeforeID       string
+	BeforeStrategy string
+	PageSize       int64
 }
 
 func (q *Queries) ListTradeEvents(ctx context.Context, arg ListTradeEventsParams) ([]TradeEvent, error) {
@@ -1354,6 +1356,8 @@ func (q *Queries) ListTradeEvents(ctx context.Context, arg ListTradeEventsParams
 		arg.Kind,
 		arg.StrategyID,
 		arg.BeforeAt,
+		arg.BeforeID,
+		arg.BeforeStrategy,
 		arg.PageSize,
 	)
 	if err != nil {

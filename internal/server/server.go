@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -45,14 +46,12 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 	defer reports.Close()
 	maintenance, cancelMaintenance := context.WithCancel(ctx)
-	maintained := make(chan struct{})
-	go func() {
-		defer close(maintained)
-		commands.Maintain(maintenance)
-	}()
+	var maintained sync.WaitGroup
+	maintained.Go(func() { commands.Maintain(maintenance) })
+	maintained.Go(func() { reports.Maintain(maintenance, cfg.DataDir) })
 	defer func() {
 		cancelMaintenance()
-		<-maintained
+		maintained.Wait()
 	}()
 
 	listener, err := (&net.ListenConfig{}).Listen(startup, "tcp", cfg.Listen)
@@ -106,6 +105,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 			strategies.RegisterBrowser(r)
 			controls.RegisterBrowser(r)
 			commands.RegisterBrowser(r)
+			reports.RegisterBrowser(r)
 		})
 	})
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {

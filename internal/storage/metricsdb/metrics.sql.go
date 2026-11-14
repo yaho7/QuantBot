@@ -25,6 +25,34 @@ func (q *Queries) GetMetricDefinition(ctx context.Context, arg GetMetricDefiniti
 	return definition, err
 }
 
+const getRollup = `-- name: GetRollup :one
+SELECT summary FROM rollups WHERE strategy_id = ? AND instance_id = ? AND kind = ?
+AND series = ? AND resolution = ? AND bucket = ?
+`
+
+type GetRollupParams struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	Resolution int64
+	Bucket     int64
+}
+
+func (q *Queries) GetRollup(ctx context.Context, arg GetRollupParams) (string, error) {
+	row := q.db.QueryRowContext(ctx, getRollup,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.Kind,
+		arg.Series,
+		arg.Resolution,
+		arg.Bucket,
+	)
+	var summary string
+	err := row.Scan(&summary)
+	return summary, err
+}
+
 const getSnapshot = `-- name: GetSnapshot :one
 SELECT strategy_id, instance_id, boot_id, observed_at, records FROM snapshots WHERE strategy_id = ? AND instance_id = ? AND boot_id = ?
 `
@@ -149,6 +177,198 @@ func (q *Queries) ListMetricDefinitions(ctx context.Context, strategyID string) 
 	return items, nil
 }
 
+const listRawSeries = `-- name: ListRawSeries :many
+SELECT observed_at, report_id, data FROM samples WHERE strategy_id = ? AND instance_id = ? AND kind = ?
+AND series = ? AND observed_at >= ?5 AND observed_at < ?6
+ORDER BY observed_at, report_id LIMIT ?7
+`
+
+type ListRawSeriesParams struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	StartAt    int64
+	EndAt      int64
+	Maximum    int64
+}
+
+type ListRawSeriesRow struct {
+	ObservedAt int64
+	ReportID   string
+	Data       string
+}
+
+func (q *Queries) ListRawSeries(ctx context.Context, arg ListRawSeriesParams) ([]ListRawSeriesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRawSeries,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.Kind,
+		arg.Series,
+		arg.StartAt,
+		arg.EndAt,
+		arg.Maximum,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRawSeriesRow
+	for rows.Next() {
+		var i ListRawSeriesRow
+		if err := rows.Scan(&i.ObservedAt, &i.ReportID, &i.Data); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listRollups = `-- name: ListRollups :many
+SELECT bucket, summary FROM rollups WHERE strategy_id = ? AND instance_id = ? AND kind = ?
+AND series = ? AND resolution = ? AND bucket >= ?6 AND bucket < ?7
+ORDER BY bucket LIMIT ?8
+`
+
+type ListRollupsParams struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	Resolution int64
+	StartAt    int64
+	EndAt      int64
+	Maximum    int64
+}
+
+type ListRollupsRow struct {
+	Bucket  int64
+	Summary string
+}
+
+func (q *Queries) ListRollups(ctx context.Context, arg ListRollupsParams) ([]ListRollupsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listRollups,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.Kind,
+		arg.Series,
+		arg.Resolution,
+		arg.StartAt,
+		arg.EndAt,
+		arg.Maximum,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRollupsRow
+	for rows.Next() {
+		var i ListRollupsRow
+		if err := rows.Scan(&i.Bucket, &i.Summary); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSampleEvents = `-- name: ListSampleEvents :many
+SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint FROM samples WHERE strategy_id = ? AND kind = ?
+AND (observed_at, report_id) < (?3, CAST(?4 AS TEXT))
+ORDER BY observed_at DESC, report_id DESC LIMIT ?5
+`
+
+type ListSampleEventsParams struct {
+	StrategyID string
+	Kind       string
+	BeforeAt   int64
+	BeforeID   string
+	PageSize   int64
+}
+
+func (q *Queries) ListSampleEvents(ctx context.Context, arg ListSampleEventsParams) ([]Sample, error) {
+	rows, err := q.db.QueryContext(ctx, listSampleEvents,
+		arg.StrategyID,
+		arg.Kind,
+		arg.BeforeAt,
+		arg.BeforeID,
+		arg.PageSize,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Sample
+	for rows.Next() {
+		var i Sample
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.ReportID,
+			&i.InstanceID,
+			&i.Kind,
+			&i.Series,
+			&i.ObservedAt,
+			&i.Data,
+			&i.Fingerprint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSeries = `-- name: ListSeries :many
+SELECT strategy_id, instance_id, kind, series, observed_at FROM series_catalog WHERE strategy_id = ? ORDER BY kind, series, instance_id LIMIT 1000
+`
+
+func (q *Queries) ListSeries(ctx context.Context, strategyID string) ([]SeriesCatalog, error) {
+	rows, err := q.db.QueryContext(ctx, listSeries, strategyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SeriesCatalog
+	for rows.Next() {
+		var i SeriesCatalog
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.InstanceID,
+			&i.Kind,
+			&i.Series,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSnapshots = `-- name: ListSnapshots :many
 SELECT strategy_id, instance_id, boot_id, observed_at, records FROM snapshots WHERE strategy_id = ? ORDER BY observed_at DESC LIMIT 256
 `
@@ -182,6 +402,72 @@ func (q *Queries) ListSnapshots(ctx context.Context, strategyID string) ([]Snaps
 	return items, nil
 }
 
+const pruneLogs = `-- name: PruneLogs :execrows
+DELETE FROM samples WHERE (strategy_id, kind, report_id) IN (
+    SELECT old.strategy_id, old.kind, old.report_id FROM samples AS old WHERE old.kind = 'log' AND old.observed_at < ?1
+    ORDER BY old.observed_at LIMIT 2000
+)
+`
+
+func (q *Queries) PruneLogs(ctx context.Context, cutoff int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneLogs, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const pruneRollups = `-- name: PruneRollups :execrows
+DELETE FROM rollups WHERE (strategy_id, instance_id, kind, series, resolution, bucket) IN (
+    SELECT old.strategy_id, old.instance_id, old.kind, old.series, old.resolution, old.bucket FROM rollups AS old
+    WHERE old.resolution = ?1 AND old.bucket < ?2
+    ORDER BY old.bucket LIMIT 2000
+)
+`
+
+type PruneRollupsParams struct {
+	Resolution int64
+	Cutoff     int64
+}
+
+func (q *Queries) PruneRollups(ctx context.Context, arg PruneRollupsParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneRollups, arg.Resolution, arg.Cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const pruneSamples = `-- name: PruneSamples :execrows
+DELETE FROM samples WHERE (strategy_id, kind, report_id) IN (
+    SELECT old.strategy_id, old.kind, old.report_id FROM samples AS old WHERE old.observed_at < ?1
+    ORDER BY old.observed_at LIMIT 2000
+)
+`
+
+func (q *Queries) PruneSamples(ctx context.Context, cutoff int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneSamples, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const pruneSnapshots = `-- name: PruneSnapshots :execrows
+DELETE FROM snapshots WHERE (strategy_id, instance_id, boot_id) IN (
+    SELECT old.strategy_id, old.instance_id, old.boot_id FROM snapshots AS old WHERE old.observed_at < ?1
+    ORDER BY old.observed_at LIMIT 2000
+)
+`
+
+func (q *Queries) PruneSnapshots(ctx context.Context, cutoff int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneSnapshots, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const putLatestSample = `-- name: PutLatestSample :exec
 INSERT INTO latest_samples (strategy_id, instance_id, kind, series, report_id, observed_at, data)
 VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT (strategy_id, instance_id, kind, series)
@@ -208,6 +494,35 @@ func (q *Queries) PutLatestSample(ctx context.Context, arg PutLatestSampleParams
 		arg.ReportID,
 		arg.ObservedAt,
 		arg.Data,
+	)
+	return err
+}
+
+const putRollup = `-- name: PutRollup :exec
+INSERT INTO rollups(strategy_id, instance_id, kind, series, resolution, bucket, summary)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(strategy_id, instance_id, kind, series, resolution, bucket) DO UPDATE SET summary = excluded.summary
+`
+
+type PutRollupParams struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	Resolution int64
+	Bucket     int64
+	Summary    string
+}
+
+func (q *Queries) PutRollup(ctx context.Context, arg PutRollupParams) error {
+	_, err := q.db.ExecContext(ctx, putRollup,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.Kind,
+		arg.Series,
+		arg.Resolution,
+		arg.Bucket,
+		arg.Summary,
 	)
 	return err
 }
@@ -268,5 +583,30 @@ type SetMetricDefinitionParams struct {
 
 func (q *Queries) SetMetricDefinition(ctx context.Context, arg SetMetricDefinitionParams) error {
 	_, err := q.db.ExecContext(ctx, setMetricDefinition, arg.StrategyID, arg.Name, arg.Definition)
+	return err
+}
+
+const touchSeries = `-- name: TouchSeries :exec
+INSERT INTO series_catalog(strategy_id, instance_id, kind, series, observed_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(strategy_id, instance_id, kind, series) DO UPDATE SET observed_at = excluded.observed_at
+WHERE excluded.observed_at > series_catalog.observed_at
+`
+
+type TouchSeriesParams struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	ObservedAt int64
+}
+
+func (q *Queries) TouchSeries(ctx context.Context, arg TouchSeriesParams) error {
+	_, err := q.db.ExecContext(ctx, touchSeries,
+		arg.StrategyID,
+		arg.InstanceID,
+		arg.Kind,
+		arg.Series,
+		arg.ObservedAt,
+	)
 	return err
 }

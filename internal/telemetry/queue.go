@@ -122,6 +122,7 @@ func (q *metricQueue) persist(jobs []metricJob) {
 	results := make([]Ack, len(jobs))
 	err := storage.WithTx(ctx, q.write, func(tx *sql.Tx) error {
 		queries := metricsdb.New(tx)
+		rollups := make(rollupBatch)
 		for i, job := range jobs {
 			if job.snapshot != nil {
 				ack, err := writeSnapshot(ctx, queries, job.agent, *job.snapshot)
@@ -136,10 +137,15 @@ func (q *metricQueue) persist(jobs []metricJob) {
 				if err != nil {
 					return err
 				}
+				if result == inserted && aggregatable(item.Kind) {
+					if err := rollups.add(ctx, queries, job.agent, item.Record); err != nil {
+						return err
+					}
+				}
 				results[i].add(item.index, result)
 			}
 		}
-		return nil
+		return rollups.persist(ctx, queries)
 	})
 	if err != nil {
 		q.failures.Add(uint64(len(jobs)))

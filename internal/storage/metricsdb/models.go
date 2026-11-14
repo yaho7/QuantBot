@@ -20,6 +20,16 @@ type MetricDefinition struct {
 	Definition string
 }
 
+type Rollup struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	Resolution int64
+	Bucket     int64
+	Summary    string
+}
+
 type Sample struct {
 	StrategyID  string
 	ReportID    string
@@ -29,6 +39,14 @@ type Sample struct {
 	ObservedAt  int64
 	Data        string
 	Fingerprint string
+}
+
+type SeriesCatalog struct {
+	StrategyID string
+	InstanceID string
+	Kind       string
+	Series     string
+	ObservedAt int64
 }
 
 type Snapshot struct {

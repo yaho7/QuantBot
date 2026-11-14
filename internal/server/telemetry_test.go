@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -113,4 +114,25 @@ func TestTelemetryPartialCommitSafeReplayAndSnapshot(t *testing.T) {
 	}
 	call("PUT", "/agent/snapshot", strings.Replace(snapshot, "running", "stopped", 1), agent.Session, 422)
 	call("PUT", "/agent/metric-definitions", `{"version":1,"metrics":[{"name":"spread","kind":"gauge","label":"Spread"}]}`, agent.Session, 204)
+	path := "/strategies/" + created.Strategy.ID
+	var series struct {
+		Series []struct{ Kind, Series, InstanceID string }
+	}
+	decodeTest(t, call("GET", path+"/series", "", "", 200), &series)
+	if len(series.Series) != 1 || series.Series[0].Kind != "metric" || series.Series[0].InstanceID != "worker" {
+		t.Fatalf("missing persisted metric series: %+v", series.Series)
+	}
+	historyPath := fmt.Sprintf("%s/history?instanceId=worker&kind=metric&from=%d&to=%d&points=200&series=%s", path, now-1, now+1, url.QueryEscape(series.Series[0].Series))
+	history := call("GET", historyPath, "", "", 200)
+	if !strings.Contains(history.Body.String(), `"close":"0.001"`) {
+		t.Fatalf("history lost exact metric value: %s", history.Body)
+	}
+	latest := call("GET", path+"/telemetry", "", "", 200)
+	if !strings.Contains(latest.Body.String(), `"state":"running"`) {
+		t.Fatalf("latest telemetry lost snapshot: %s", latest.Body)
+	}
+	feed := call("GET", path+"/records?kind=fill", "", "", 200)
+	if strings.Count(feed.Body.String(), "broker-1") < 1 || strings.Contains(feed.Body.String(), "new-envelope-id") {
+		t.Fatalf("invalid fill feed: %s", feed.Body)
+	}
 }
