@@ -19,7 +19,8 @@ import (
 
 func TestTelemetryPartialCommitAndSafeReplay(t *testing.T) {
 	ctx := t.Context()
-	stores, err := storage.Open(ctx, t.TempDir())
+	dir := t.TempDir()
+	stores, err := storage.Open(ctx, dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,6 +89,25 @@ func TestTelemetryPartialCommitAndSafeReplay(t *testing.T) {
 		t.Fatalf("partially committed metrics transaction: %v", err)
 	}
 	if _, err := stores.Metrics.Write.ExecContext(ctx, "PRAGMA max_page_count = 1073741823"); err != nil {
+		t.Fatal(err)
+	}
+	// A separate SQLite connection holds the metrics write lock. Critical control
+	// writes remain available and a retry after contention keeps the original IDs.
+	locked, err := sql.Open("sqlite3", (&url.URL{Scheme: "file", Path: dir + "/metrics.db", RawQuery: "mode=rw&_txlock=immediate"}).String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer locked.Close()
+	tx, err := locked.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	call("PUT", "/agent/heartbeat", "", agent.Session, 200)
+	if busy := call("POST", "/agent/reports", mixed, agent.Session, 503); !strings.Contains(busy.Body.String(), "storage_busy") {
+		t.Fatal(busy.Body)
+	}
+	if err := tx.Rollback(); err != nil {
 		t.Fatal(err)
 	}
 	var ack telemetry.Ack
