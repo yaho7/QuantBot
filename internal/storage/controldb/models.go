@@ -126,6 +126,13 @@ type ExecutionPermit struct {
 	IssuedAt  int64
 }
 
+type InstalledTheme struct {
+	ID               string
+	Revision         string
+	PreviousRevision string
+	UpdatedAt        int64
+}
+
 type NotificationChannel struct {
 	ID        string
 	Name      string
@@ -169,6 +176,13 @@ type Strategy struct {
 	CreatedAt        int64
 	ArchivedAt       sql.NullInt64
 	ExecutorInstance sql.NullString
+}
+
+type ThemeRevision struct {
+	ThemeID       string
+	Revision      string
+	Bundle        string
+	Configuration string
 }
 
 type TradeEvent struct {

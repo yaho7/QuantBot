@@ -15,6 +15,7 @@ The API is rooted at `/api/v1`. Browser requests use the administrator session c
 | `POST /commands/{id}/confirm`, `/cancel`, `/reconcile` | Apply an authorized state transition |
 | `/admin/strategies` and per-strategy `/executor` and `/tokens` | Manage strategies and credentials |
 | `/admin/notifications` and per-channel `/test` and `/deliveries` | Encrypted channel configuration, test messages and delivery status |
+| `/theme`, `/admin/themes` and per-theme settings and rollback | Versioned theme installation and active workbench presentation |
 | `/admin/audit` | Read recent audit events |
 | `/events` | Subscribe to strategy/topic invalidations |
 

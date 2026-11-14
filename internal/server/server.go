@@ -22,6 +22,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/strategy"
 	"github.com/yaho7/QuantBot/internal/telemetry"
+	"github.com/yaho7/QuantBot/internal/theme"
 	"github.com/yaho7/QuantBot/web"
 )
 
@@ -50,8 +51,12 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	defer reports.Close()
-	maintenance, cancelMaintenance := context.WithCancel(ctx)
 	notifications := notification.New(stores.Control, key)
+	themes, err := theme.New(stores.Control, cfg.DataDir, "3.0.0")
+	if err != nil {
+		return err
+	}
+	maintenance, cancelMaintenance := context.WithCancel(ctx)
 	var maintained sync.WaitGroup
 	maintained.Go(func() { notifications.Run(maintenance) })
 	maintained.Go(func() { events.Run(maintenance) })
@@ -67,7 +72,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           routes(stores, cfg, commands, reports, events, notifications),
+		Handler:           routes(stores, cfg, commands, reports, events, notifications, themes),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -92,7 +97,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 }
 
-func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus, notifications *notification.Service) http.Handler {
+func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus, notifications *notification.Service, themes *theme.Service) http.Handler {
 	router := chi.NewRouter()
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
 	router.Use(origins.Guard)
@@ -111,6 +116,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
 			notifications.Register(r)
+			themes.Register(r)
 			r.Get("/admin/diagnostics", diagnostics(stores, reports, events, cfg.DataDir))
 			r.Get("/events", func(w http.ResponseWriter, r *http.Request) {
 				events.Stream(w, r, accounts.SessionActive)
@@ -121,6 +127,8 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 			reports.RegisterBrowser(r)
 		})
 	})
+	router.Get("/theme-assets/{id}/{revision}/*", themes.Assets)
+	router.Head("/theme-assets/{id}/{revision}/*", themes.Assets)
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
 		defer cancel()
