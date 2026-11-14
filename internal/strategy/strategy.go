@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/auth"
+	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/storage"
@@ -31,7 +32,6 @@ const (
 )
 
 const (
-	SessionTTL  = 15 * time.Minute
 	PresenceTTL = 45 * time.Second
 )
 
@@ -44,12 +44,16 @@ var (
 )
 
 type Service struct {
-	store  storage.Database
-	notify realtime.Notify
+	store      storage.Database
+	notify     realtime.Notify
+	sessionTTL time.Duration
 }
 
-func New(store storage.Database, notify realtime.Notify) *Service {
-	return &Service{store: store, notify: notify}
+func New(store storage.Database, notify realtime.Notify, ttl time.Duration) *Service {
+	if ttl <= 0 {
+		ttl = config.DefaultAgentSessionTTL
+	}
+	return &Service{store: store, notify: notify, sessionTTL: ttl}
 }
 
 func (s *Service) RegisterBrowser(r chi.Router) {
@@ -63,6 +67,7 @@ func (s *Service) RegisterBrowser(r chi.Router) {
 	r.Put("/admin/strategies/{id}/executor", s.executor)
 	r.Get("/admin/strategies/{id}/tokens", s.tokens)
 	r.Post("/admin/strategies/{id}/tokens", s.issueToken)
+	r.Put("/admin/strategies/{id}/tokens/{token}", s.updateTokenScopes)
 	r.Delete("/admin/strategies/{id}/tokens/{token}", s.revokeToken)
 }
 
@@ -289,9 +294,10 @@ func appendAudit(ctx context.Context, q *controldb.Queries, actor, action, id st
 }
 
 func httpError(w http.ResponseWriter, err error) {
+	if WriteAuthError(w, err) {
+		return
+	}
 	switch {
-	case errors.Is(err, ErrUnauthorized):
-		httpapi.Error(w, http.StatusUnauthorized, "invalid_agent", ErrUnauthorized.Error())
 	case errors.Is(err, sql.ErrNoRows):
 		httpapi.Error(w, http.StatusNotFound, "not_found", "Resource was not found")
 	case errors.Is(err, errConflict), errors.Is(err, errBootRetired), errors.Is(err, errInstanceLimit):

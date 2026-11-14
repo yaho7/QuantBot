@@ -90,14 +90,15 @@ func randomID() string {
 }
 
 func commandError(w http.ResponseWriter, err error) {
+	if strategy.WriteAuthError(w, err) {
+		return
+	}
 	var bad invalid
 	switch {
 	case errors.As(err, &bad):
 		httpapi.Error(w, http.StatusBadRequest, "invalid_command", err.Error())
 	case errors.Is(err, sql.ErrNoRows):
 		httpapi.Error(w, http.StatusNotFound, "not_found", "Command or control was not found")
-	case errors.Is(err, strategy.ErrUnauthorized):
-		httpapi.Error(w, http.StatusUnauthorized, "invalid_agent", err.Error())
 	case errors.Is(err, errState), errors.Is(err, errIdempotency), errors.Is(err, errActive),
 		errors.Is(err, control.ErrRegistryChanged), errors.Is(err, errExecutor), errors.Is(err, errUnavailable):
 		httpapi.Error(w, http.StatusConflict, "state_conflict", err.Error())

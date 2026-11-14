@@ -32,6 +32,13 @@ Use the existing HTTP client and startup lifecycle with bounded I/O and retries.
 
 Use POST /api/agent/session with a stable instanceId and a new bootId per process.
 Use its short-lived session Bearer and PUT /api/agent/heartbeat every 15 seconds.
+The offline threshold is 45 seconds. Use renewAt to renew in the background,
+normally ten minutes before the one-hour session expires. Use the original
+Agent token, same instanceId and same bootId. Serialize refreshes, then atomically
+replace the session. Use exponential backoff and jitter for transient failures.
+Handle session_expired by refreshing once or using a newer stored session.
+Treat Agent token revocation, expiration, archive and scope errors separately.
+Keep heartbeats, renewal and command execution independent.
 Use PUT /api/agent/capabilities at startup and when the declaration changes.
 Only the designated executor can publish the strategy registry. Declare real metrics, states,
 parameters, actions, resources and events. Use
@@ -52,3 +59,5 @@ Declare atomic_parameters only when the strategy can apply the whole plan in
 one atomic operation. Trial the integration with a dedicated paper strategy
 and simulated operations before enabling production credentials.
 ```
+
+A Go strategy can embed the [session client](../agent/session.go) using its existing HTTP client. Start `Client.Run(ctx)` in a background task and use `Client.Do` for Agent calls. After a transport failure, use the endpoint’s idempotency rules and the local execution journal.

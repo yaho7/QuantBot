@@ -12,19 +12,22 @@ import (
 	"time"
 )
 
+const DefaultAgentSessionTTL = time.Hour
+
 type Config struct {
-	Listen         string
-	DataDir        string
-	PublicOrigin   string
-	TrustedProxies []netip.Prefix
-	CommandPoll    time.Duration
-	MetricsQueue   int
-	MetricsBatch   int
-	MetricsFlush   time.Duration
+	AgentSessionTTL time.Duration
+	Listen          string
+	DataDir         string
+	PublicOrigin    string
+	TrustedProxies  []netip.Prefix
+	CommandPoll     time.Duration
+	MetricsQueue    int
+	MetricsBatch    int
+	MetricsFlush    time.Duration
 }
 
 func Load() (Config, error) {
-	config := Config{Listen: "127.0.0.1:23456", DataDir: "data", CommandPoll: 25 * time.Second,
+	config := Config{AgentSessionTTL: DefaultAgentSessionTTL, Listen: "127.0.0.1:23456", DataDir: "data", CommandPoll: 25 * time.Second,
 		MetricsQueue: 128, MetricsBatch: 16, MetricsFlush: 12 * time.Millisecond}
 	if value, ok := os.LookupEnv("QB_LISTEN"); ok {
 		config.Listen = value
@@ -63,6 +66,13 @@ func Load() (Config, error) {
 			}
 			config.TrustedProxies = append(config.TrustedProxies, prefix.Masked())
 		}
+	}
+	if value := os.Getenv("QB_AGENT_SESSION_TTL"); value != "" {
+		ttl, err := time.ParseDuration(value)
+		if err != nil || ttl < time.Second || ttl%time.Second != 0 {
+			return Config{}, fmt.Errorf("QB_AGENT_SESSION_TTL must be a positive whole-second duration")
+		}
+		config.AgentSessionTTL = ttl
 	}
 	if value := os.Getenv("QB_COMMAND_POLL"); value != "" {
 		poll, err := time.ParseDuration(value)

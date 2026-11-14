@@ -23,12 +23,14 @@ type AgentInstance struct {
 }
 
 type AgentSession struct {
-	Digest     string
-	StrategyID string
-	InstanceID string
-	BootID     string
-	TokenID    string
-	ExpiresAt  int64
+	Digest            string
+	StrategyID        string
+	InstanceID        string
+	BootID            string
+	TokenID           string
+	ExpiresAt         int64
+	PreviousDigest    sql.NullString
+	PreviousExpiresAt int64
 }
 
 type AgentToken struct {

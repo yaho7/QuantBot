@@ -103,7 +103,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
 	router.Use(origins.Guard)
 	accounts := auth.New(stores.Control)
-	strategies := strategy.New(stores.Control, events.Publish)
+	strategies := strategy.New(stores.Control, events.Publish, cfg.AgentSessionTTL)
 	controls := control.New(stores.Control, events.Publish)
 	layouts := dashboard.New(stores.Control)
 	router.Route("/api/agent", func(r chi.Router) {

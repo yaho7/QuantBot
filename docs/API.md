@@ -16,7 +16,7 @@ The browser API is rooted at `/api`. Agent routes use `/api/agent`. Browser requ
 | `POST /strategies/{id}/commands` | Submit a control action with an `Idempotency-Key` |
 | `GET /commands`, `GET /commands/{id}` | List commands or view one command and its transitions |
 | `POST /commands/{id}/confirm`, `/cancel`, `/reconcile` | Apply an authorized state transition |
-| `/admin/strategies` and per-strategy `/executor` and `/tokens` | Manage strategies and credentials |
+| `/admin/strategies` and per-strategy `/executor` and `/tokens` | Manage strategies and credentials. `PUT /admin/strategies/{id}/tokens/{token}` replaces the token scopes and applies them to existing sessions immediately. |
 | `/admin/notifications` and per-channel `/test` and `/deliveries` | Encrypted channel configuration, test messages and delivery status |
 | `/theme`, `/admin/themes` and per-theme settings and rollback | Versioned theme installation and active workbench presentation |
 | `/admin/audit` | Read recent audit events |

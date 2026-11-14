@@ -22,13 +22,15 @@ Content-Type: application/json
 
 `instanceId` persists across process restarts. Generate a new unpredictable `bootId` for each process start. Reuse that boot ID when renewing the session. IDs are 1–96 characters and use ASCII letters, digits, dots, underscores, colons or hyphens, beginning with a letter or digit.
 
-The response is HTTP 201 with `strategyId`, `instanceId`, `bootId`, `lastSeen`, `executor`, `expiresAt`, and `session`. Times are UTC Unix seconds. Present the returned session as `Authorization: Bearer qbs_…` on subsequent requests. A session expires after 15 minutes or at credential expiration, whichever occurs first.
+The response is HTTP 201 with `strategyId`, `instanceId`, `bootId`, `lastSeen`, `executor`, `expiresAt`, `renewAt`, and `session`. Times are UTC Unix seconds. Present the returned session as `Authorization: Bearer qbs_…` on subsequent requests. The default TTL is one hour. Configure it with `QB_AGENT_SESSION_TTL` such as `1h`. Session expiry never exceeds the Agent credential’s expiration. The default Agent credential is long lived and can be revoked at any time.
 
-A new session replaces the previous session for the same strategy and instance. A new boot retires the previous boot permanently and invalidates its session. A retired boot attempting registration receives HTTP 409. Persist execution receipts independently of session renewal.
+Renew in the background at `renewAt`, normally ten minutes before expiry. For shorter server TTLs the lead is capped at half the TTL. A null `renewAt` means renewal cannot extend the session beyond the credential’s expiration. Call `POST /api/agent/session` again using the original Agent token and the same `instanceId` and current `bootId`. Serialize renewal and atomically replace the client’s session only after success. On renewal with the same token and boot, the preceding session remains valid for up to 60 seconds and never beyond its original expiry. Executor assignment, process start time and command execution are independent of renewal. A new boot retires prior credentials for that instance, and a retired boot receives HTTP 409. A new Agent token invalidates the previous session when it takes over the same instance.
+
+Retry transient network failures, HTTP 429 and 5xx with bounded exponential backoff and jitter. On `session_expired`, refresh once or retry with the newer session already installed by another request. Treat `agent_token_revoked`, `agent_token_expired`, `invalid_agent_token` and `strategy_archived` as permanent. HTTP 403 `insufficient_scope` requires an authorized credential. Revocation, archive and scope changes take effect immediately on both session credentials. Keep the execution journal and receipt retry independent of the session.
 
 ## Heartbeat
 
-Call `PUT /api/agent/heartbeat` with the session Bearer token and no body. The response contains the effective identity, executor assignment, session expiry and last-seen time. Use a heartbeat interval shorter than the 45-second presence window, such as 15 seconds. HTTP 401 requires checking the credential and creating a fresh session. An archived strategy cannot reconnect.
+Call `PUT /api/agent/heartbeat` with the session Bearer token and no body. The response contains the effective identity, executor assignment, session expiry and last-seen time. Use a heartbeat interval shorter than the 45-second presence window, such as 15 seconds. HTTP 401 includes a code that distinguishes session recovery from credential failure. An archived strategy cannot reconnect.
 
 ## Capability registration
 

@@ -185,10 +185,11 @@ func writeAck(w http.ResponseWriter, ack Ack) {
 }
 
 func writeError(w http.ResponseWriter, err error) {
+	if strategy.WriteAuthError(w, err) {
+		return
+	}
 	var sqliteErr sqlite3.Error
 	switch {
-	case errors.Is(err, strategy.ErrUnauthorized):
-		httpapi.Error(w, http.StatusUnauthorized, "invalid_agent", err.Error())
 	case errors.Is(err, errQueueFull):
 		w.Header().Set("Retry-After", "1")
 		httpapi.Error(w, http.StatusTooManyRequests, "queue_full", "Telemetry capacity is full. Retry with the same record IDs.")

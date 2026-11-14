@@ -128,6 +128,25 @@ func (s *Service) issueToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Service) updateTokenScopes(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Scopes []string `json:"scopes"`
+	}
+	if !httpapi.ReadJSON(w, r, &input, 4096) {
+		return
+	}
+	mask := scopeMask(input.Scopes)
+	if mask == 0 {
+		httpapi.Error(w, http.StatusBadRequest, "invalid_token", "Provide unique scopes")
+		return
+	}
+	s.change(w, r, "strategy.token_scopes_changed", func(ctx context.Context, q *controldb.Queries, id string) error {
+		return changed(q.UpdateAgentTokenScopes(ctx, controldb.UpdateAgentTokenScopesParams{
+			Scopes: mask, TokenID: chi.URLParam(r, "token"), StrategyID: id,
+		}))
+	})
+}
+
 func (s *Service) revokeToken(w http.ResponseWriter, r *http.Request) {
 	s.change(w, r, "strategy.token_revoked", func(ctx context.Context, q *controldb.Queries, id string) error {
 		return changed(q.RevokeAgentToken(ctx, controldb.RevokeAgentTokenParams{

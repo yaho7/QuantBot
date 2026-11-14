@@ -608,26 +608,6 @@ func (q *Queries) PruneLogs(ctx context.Context, cutoff int64) (int64, error) {
 	return result.RowsAffected()
 }
 
-const pruneObsoleteCapabilityLatest = `-- name: PruneObsoleteCapabilityLatest :execrows
-DELETE FROM capability_latest
-WHERE strategy_id = ?1 AND capability_id = ?2
-AND revision < ?3
-`
-
-type PruneObsoleteCapabilityLatestParams struct {
-	StrategyID    string
-	CapabilityID  string
-	SinceRevision int64
-}
-
-func (q *Queries) PruneObsoleteCapabilityLatest(ctx context.Context, arg PruneObsoleteCapabilityLatestParams) (int64, error) {
-	result, err := q.db.ExecContext(ctx, pruneObsoleteCapabilityLatest, arg.StrategyID, arg.CapabilityID, arg.SinceRevision)
-	if err != nil {
-		return 0, err
-	}
-	return result.RowsAffected()
-}
-
 const pruneRollups = `-- name: PruneRollups :execrows
 DELETE FROM rollups WHERE (strategy_id, instance_id, kind, series, resolution, bucket) IN (
     SELECT old.strategy_id, old.instance_id, old.kind, old.series, old.resolution, old.bucket FROM rollups AS old

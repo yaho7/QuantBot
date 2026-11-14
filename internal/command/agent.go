@@ -128,7 +128,7 @@ func checkAgentTarget(ctx context.Context, q *controldb.Queries, agent strategy.
 		return control.Definition{}, errState
 	}
 	executor, definition, err := checkTarget(ctx, q, cmd)
-	if err == nil && executor.Digest != agent.Digest {
+	if err == nil && executor.TokenID != agent.TokenID {
 		return definition, errExecutor
 	}
 	if err == nil {
@@ -143,7 +143,7 @@ func (s *Service) claim(w http.ResponseWriter, r *http.Request) {
 	permit := randomID()
 	var dispatch string
 	cmd, err := s.withAgentCommand(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd *controldb.Command, now int64) error {
-		if cmd.Status != pending && (cmd.Status != accepted || cmd.AcceptedBy.String != agent.Digest) {
+		if cmd.Status != pending && (cmd.Status != accepted || cmd.AcceptedBy.String != agent.TokenID) {
 			return errState
 		}
 		definition, err := checkAgentTarget(ctx, q, agent, *cmd, now)
@@ -155,7 +155,7 @@ func (s *Service) claim(w http.ResponseWriter, r *http.Request) {
 			dispatch = definition.Capability.Dispatch()
 		}
 		if cmd.Status == pending {
-			cmd.AcceptedBy = sql.NullString{String: agent.Digest, Valid: true}
+			cmd.AcceptedBy = sql.NullString{String: agent.TokenID, Valid: true}
 			if err := transition(ctx, q, cmd, accepted, "agent:"+agent.InstanceID, "executor accepted", now); err != nil {
 				return err
 			}

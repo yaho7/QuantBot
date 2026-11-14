@@ -111,6 +111,26 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 	if success != 1 || permit == "" {
 		t.Fatalf("got %d execution grants", success)
 	}
+	previous := agent.Session
+	decodeTest(t, send("POST", "/agent/session", `{"instanceId":"worker","bootId":"boot-1"}`, created.Credential.Token, "", 201), &agent)
+	if previous == agent.Session {
+		t.Fatal("renewal did not rotate the credential")
+	}
+	send("PUT", "/agent/heartbeat", "", previous, "", 200)
+	if _, err := stores.Control.Write.ExecContext(ctx, "UPDATE agent_sessions SET previous_expires_at=0"); err != nil {
+		t.Fatal(err)
+	}
+	if expired := send("PUT", "/agent/heartbeat", "", previous, "", 401); !strings.Contains(expired.Body.String(), "session_expired") {
+		t.Fatal(expired.Body)
+	}
+	var stale int
+	if err := stores.Control.Read.QueryRowContext(ctx, "SELECT count(*) FROM commands c JOIN agent_sessions a ON a.strategy_id=c.strategy_id AND a.instance_id=c.instance_id WHERE c.id=? AND c.accepted_by IS NOT a.token_id", first.ID).Scan(&stale); err != nil || stale != 0 {
+		t.Fatalf("renewed session lost command authority: count=%d err=%v", stale, err)
+	}
+	current := send("GET", base, "", "", "", 200)
+	if !strings.Contains(current.Body.String(), `"status":"executing"`) {
+		t.Fatalf("renewal interrupted the granted command: %s", current.Body)
+	}
 	if err := stores.Close(); err != nil {
 		t.Fatal(err)
 	}

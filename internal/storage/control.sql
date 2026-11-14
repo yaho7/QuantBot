@@ -83,10 +83,13 @@ VALUES (?, ?, ?, ?, ?, ?, ?);
 SELECT id, strategy_id, label, scopes, created_at, expires_at, revoked_at
 FROM agent_tokens WHERE strategy_id = ? ORDER BY created_at DESC, id LIMIT 256;
 
--- name: GetLiveAgentToken :one
-SELECT t.* FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
-WHERE t.digest = sqlc.arg(digest) AND t.revoked_at IS NULL AND s.archived_at IS NULL
-AND (t.expires_at IS NULL OR t.expires_at > sqlc.arg(now));
+-- name: FindAgentToken :one
+SELECT t.*, s.archived_at FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
+WHERE t.digest = ?;
+
+-- name: UpdateAgentTokenScopes :execrows
+UPDATE agent_tokens SET scopes = sqlc.arg(scopes) WHERE id = sqlc.arg(token_id)
+AND strategy_id = sqlc.arg(strategy_id) AND revoked_at IS NULL;
 
 -- name: RevokeAgentToken :execrows
 UPDATE agent_tokens SET revoked_at = sqlc.arg(now)
@@ -115,21 +118,24 @@ ON CONFLICT(strategy_id, instance_id) DO UPDATE SET boot_id = excluded.boot_id,
 INSERT INTO agent_boots(strategy_id, instance_id, boot_id) VALUES (?, ?, ?) ON CONFLICT DO NOTHING;
 
 -- name: UpsertAgentSession :exec
-INSERT INTO agent_sessions(digest, strategy_id, instance_id, boot_id, token_id, expires_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO agent_sessions(digest, strategy_id, instance_id, boot_id, token_id, expires_at, previous_expires_at)
+VALUES (?, ?, ?, ?, ?, ?, sqlc.arg(overlap_until))
 ON CONFLICT(strategy_id, instance_id) DO UPDATE SET
+    previous_digest = CASE WHEN agent_sessions.boot_id = excluded.boot_id AND agent_sessions.token_id = excluded.token_id THEN agent_sessions.digest END,
+    previous_expires_at = CASE WHEN agent_sessions.boot_id = excluded.boot_id AND agent_sessions.token_id = excluded.token_id
+        THEN min(agent_sessions.expires_at, excluded.previous_expires_at) ELSE 0 END,
     digest = excluded.digest, boot_id = excluded.boot_id,
     token_id = excluded.token_id, expires_at = excluded.expires_at;
 
--- name: GetLiveAgentSession :one
-SELECT a.strategy_id, a.instance_id, a.boot_id, a.token_id, a.expires_at,
-    t.scopes, s.executor_instance, i.last_seen
+-- name: FindAgentSession :one
+SELECT a.strategy_id, a.instance_id, a.boot_id, a.token_id,
+    CAST(CASE WHEN a.digest = sqlc.arg(digest) THEN a.expires_at ELSE a.previous_expires_at END AS INTEGER) AS expires_at,
+    t.scopes, t.expires_at AS token_expires_at, t.revoked_at, s.archived_at, s.executor_instance, i.last_seen
 FROM agent_sessions a
 JOIN agent_tokens t ON t.id = a.token_id
 JOIN strategies s ON s.id = a.strategy_id
 JOIN agent_instances i ON i.strategy_id = a.strategy_id AND i.instance_id = a.instance_id AND i.boot_id = a.boot_id
-WHERE a.digest = sqlc.arg(digest) AND a.expires_at > sqlc.arg(now) AND t.revoked_at IS NULL
-AND (t.expires_at IS NULL OR t.expires_at > sqlc.arg(now)) AND s.archived_at IS NULL;
+WHERE a.digest = sqlc.arg(digest) OR a.previous_digest = sqlc.arg(digest);
 
 -- name: UpdateAgentHeartbeat :execrows
 UPDATE agent_instances SET last_seen = sqlc.arg(now)
@@ -249,7 +255,7 @@ WHERE c.status IN ('confirmation_required','pending','accepted','executing') AND
     OR i.last_seen <= sqlc.arg(seen_after)
     OR a.digest IS NULL OR a.expires_at <= sqlc.arg(now) OR t.revoked_at IS NOT NULL
     OR t.expires_at <= sqlc.arg(now) OR (t.scopes & 8) = 0
-    OR (c.status IN ('accepted','executing') AND a.digest IS NOT c.accepted_by)
+    OR (c.status IN ('accepted','executing') AND a.token_id IS NOT c.accepted_by)
 )
 ORDER BY c.deadline LIMIT 128;
 

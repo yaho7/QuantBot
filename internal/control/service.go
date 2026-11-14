@@ -416,6 +416,9 @@ func (s *Service) writeRegistry(w http.ResponseWriter, ctx context.Context, id s
 }
 
 func fail(w http.ResponseWriter, err error) {
+	if strategy.WriteAuthError(w, err) {
+		return
+	}
 	var invalid invalidInput
 	switch {
 	case errors.As(err, &invalid):
@@ -424,8 +427,6 @@ func fail(w http.ResponseWriter, err error) {
 		httpapi.Error(w, http.StatusConflict, "registry_changed", err.Error())
 	case errors.Is(err, ErrExecutorRequired):
 		httpapi.Error(w, http.StatusForbidden, "executor_required", err.Error())
-	case errors.Is(err, strategy.ErrUnauthorized):
-		httpapi.Error(w, http.StatusUnauthorized, "invalid_agent", err.Error())
 	case errors.Is(err, sql.ErrNoRows):
 		httpapi.Error(w, http.StatusNotFound, "not_found", "Control or strategy not found")
 	default:

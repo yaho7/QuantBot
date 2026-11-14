@@ -293,6 +293,84 @@ func (q *Queries) FillFingerprint(ctx context.Context, arg FillFingerprintParams
 	return fingerprint, err
 }
 
+const findAgentSession = `-- name: FindAgentSession :one
+SELECT a.strategy_id, a.instance_id, a.boot_id, a.token_id,
+    CAST(CASE WHEN a.digest = ?1 THEN a.expires_at ELSE a.previous_expires_at END AS INTEGER) AS expires_at,
+    t.scopes, t.expires_at AS token_expires_at, t.revoked_at, s.archived_at, s.executor_instance, i.last_seen
+FROM agent_sessions a
+JOIN agent_tokens t ON t.id = a.token_id
+JOIN strategies s ON s.id = a.strategy_id
+JOIN agent_instances i ON i.strategy_id = a.strategy_id AND i.instance_id = a.instance_id AND i.boot_id = a.boot_id
+WHERE a.digest = ?1 OR a.previous_digest = ?1
+`
+
+type FindAgentSessionRow struct {
+	StrategyID       string
+	InstanceID       string
+	BootID           string
+	TokenID          string
+	ExpiresAt        int64
+	Scopes           int64
+	TokenExpiresAt   sql.NullInt64
+	RevokedAt        sql.NullInt64
+	ArchivedAt       sql.NullInt64
+	ExecutorInstance sql.NullString
+	LastSeen         int64
+}
+
+func (q *Queries) FindAgentSession(ctx context.Context, digest string) (FindAgentSessionRow, error) {
+	row := q.db.QueryRowContext(ctx, findAgentSession, digest)
+	var i FindAgentSessionRow
+	err := row.Scan(
+		&i.StrategyID,
+		&i.InstanceID,
+		&i.BootID,
+		&i.TokenID,
+		&i.ExpiresAt,
+		&i.Scopes,
+		&i.TokenExpiresAt,
+		&i.RevokedAt,
+		&i.ArchivedAt,
+		&i.ExecutorInstance,
+		&i.LastSeen,
+	)
+	return i, err
+}
+
+const findAgentToken = `-- name: FindAgentToken :one
+SELECT t.id, t.strategy_id, t.digest, t.label, t.scopes, t.created_at, t.expires_at, t.revoked_at, s.archived_at FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
+WHERE t.digest = ?
+`
+
+type FindAgentTokenRow struct {
+	ID         string
+	StrategyID string
+	Digest     string
+	Label      string
+	Scopes     int64
+	CreatedAt  int64
+	ExpiresAt  sql.NullInt64
+	RevokedAt  sql.NullInt64
+	ArchivedAt sql.NullInt64
+}
+
+func (q *Queries) FindAgentToken(ctx context.Context, digest string) (FindAgentTokenRow, error) {
+	row := q.db.QueryRowContext(ctx, findAgentToken, digest)
+	var i FindAgentTokenRow
+	err := row.Scan(
+		&i.ID,
+		&i.StrategyID,
+		&i.Digest,
+		&i.Label,
+		&i.Scopes,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
 const findAssociatedTrades = `-- name: FindAssociatedTrades :many
 SELECT strategy_id, report_id, instance_id, kind, series, observed_at, data, fingerprint, associations, received_at FROM trade_events
 WHERE strategy_id = ?1 AND json_extract(associations, ?2) = ?3
@@ -606,76 +684,6 @@ func (q *Queries) GetExecutionPermit(ctx context.Context, commandID string) (str
 	return digest, err
 }
 
-const getLiveAgentSession = `-- name: GetLiveAgentSession :one
-SELECT a.strategy_id, a.instance_id, a.boot_id, a.token_id, a.expires_at,
-    t.scopes, s.executor_instance, i.last_seen
-FROM agent_sessions a
-JOIN agent_tokens t ON t.id = a.token_id
-JOIN strategies s ON s.id = a.strategy_id
-JOIN agent_instances i ON i.strategy_id = a.strategy_id AND i.instance_id = a.instance_id AND i.boot_id = a.boot_id
-WHERE a.digest = ?1 AND a.expires_at > ?2 AND t.revoked_at IS NULL
-AND (t.expires_at IS NULL OR t.expires_at > ?2) AND s.archived_at IS NULL
-`
-
-type GetLiveAgentSessionParams struct {
-	Digest string
-	Now    int64
-}
-
-type GetLiveAgentSessionRow struct {
-	StrategyID       string
-	InstanceID       string
-	BootID           string
-	TokenID          string
-	ExpiresAt        int64
-	Scopes           int64
-	ExecutorInstance sql.NullString
-	LastSeen         int64
-}
-
-func (q *Queries) GetLiveAgentSession(ctx context.Context, arg GetLiveAgentSessionParams) (GetLiveAgentSessionRow, error) {
-	row := q.db.QueryRowContext(ctx, getLiveAgentSession, arg.Digest, arg.Now)
-	var i GetLiveAgentSessionRow
-	err := row.Scan(
-		&i.StrategyID,
-		&i.InstanceID,
-		&i.BootID,
-		&i.TokenID,
-		&i.ExpiresAt,
-		&i.Scopes,
-		&i.ExecutorInstance,
-		&i.LastSeen,
-	)
-	return i, err
-}
-
-const getLiveAgentToken = `-- name: GetLiveAgentToken :one
-SELECT t.id, t.strategy_id, t.digest, t.label, t.scopes, t.created_at, t.expires_at, t.revoked_at FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
-WHERE t.digest = ?1 AND t.revoked_at IS NULL AND s.archived_at IS NULL
-AND (t.expires_at IS NULL OR t.expires_at > ?2)
-`
-
-type GetLiveAgentTokenParams struct {
-	Digest string
-	Now    sql.NullInt64
-}
-
-func (q *Queries) GetLiveAgentToken(ctx context.Context, arg GetLiveAgentTokenParams) (AgentToken, error) {
-	row := q.db.QueryRowContext(ctx, getLiveAgentToken, arg.Digest, arg.Now)
-	var i AgentToken
-	err := row.Scan(
-		&i.ID,
-		&i.StrategyID,
-		&i.Digest,
-		&i.Label,
-		&i.Scopes,
-		&i.CreatedAt,
-		&i.ExpiresAt,
-		&i.RevokedAt,
-	)
-	return i, err
-}
-
 const getSetting = `-- name: GetSetting :one
 SELECT value FROM settings WHERE key = ?
 `
@@ -702,7 +710,7 @@ WHERE c.status IN ('confirmation_required','pending','accepted','executing') AND
     OR i.last_seen <= ?3
     OR a.digest IS NULL OR a.expires_at <= ?4 OR t.revoked_at IS NOT NULL
     OR t.expires_at <= ?4 OR (t.scopes & 8) = 0
-    OR (c.status IN ('accepted','executing') AND a.digest IS NOT c.accepted_by)
+    OR (c.status IN ('accepted','executing') AND a.token_id IS NOT c.accepted_by)
 )
 ORDER BY c.deadline LIMIT 128
 `
@@ -1869,6 +1877,25 @@ func (q *Queries) UpdateAgentHeartbeat(ctx context.Context, arg UpdateAgentHeart
 	return result.RowsAffected()
 }
 
+const updateAgentTokenScopes = `-- name: UpdateAgentTokenScopes :execrows
+UPDATE agent_tokens SET scopes = ?1 WHERE id = ?2
+AND strategy_id = ?3 AND revoked_at IS NULL
+`
+
+type UpdateAgentTokenScopesParams struct {
+	Scopes     int64
+	TokenID    string
+	StrategyID string
+}
+
+func (q *Queries) UpdateAgentTokenScopes(ctx context.Context, arg UpdateAgentTokenScopesParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updateAgentTokenScopes, arg.Scopes, arg.TokenID, arg.StrategyID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const updateStrategy = `-- name: UpdateStrategy :execrows
 UPDATE strategies SET name = ?, group_name = ? WHERE id = ? AND archived_at IS NULL
 `
@@ -1915,20 +1942,24 @@ func (q *Queries) UpsertAgentInstance(ctx context.Context, arg UpsertAgentInstan
 }
 
 const upsertAgentSession = `-- name: UpsertAgentSession :exec
-INSERT INTO agent_sessions(digest, strategy_id, instance_id, boot_id, token_id, expires_at)
-VALUES (?, ?, ?, ?, ?, ?)
+INSERT INTO agent_sessions(digest, strategy_id, instance_id, boot_id, token_id, expires_at, previous_expires_at)
+VALUES (?, ?, ?, ?, ?, ?, ?7)
 ON CONFLICT(strategy_id, instance_id) DO UPDATE SET
+    previous_digest = CASE WHEN agent_sessions.boot_id = excluded.boot_id AND agent_sessions.token_id = excluded.token_id THEN agent_sessions.digest END,
+    previous_expires_at = CASE WHEN agent_sessions.boot_id = excluded.boot_id AND agent_sessions.token_id = excluded.token_id
+        THEN min(agent_sessions.expires_at, excluded.previous_expires_at) ELSE 0 END,
     digest = excluded.digest, boot_id = excluded.boot_id,
     token_id = excluded.token_id, expires_at = excluded.expires_at
 `
 
 type UpsertAgentSessionParams struct {
-	Digest     string
-	StrategyID string
-	InstanceID string
-	BootID     string
-	TokenID    string
-	ExpiresAt  int64
+	Digest       string
+	StrategyID   string
+	InstanceID   string
+	BootID       string
+	TokenID      string
+	ExpiresAt    int64
+	OverlapUntil int64
 }
 
 func (q *Queries) UpsertAgentSession(ctx context.Context, arg UpsertAgentSessionParams) error {
@@ -1939,6 +1970,7 @@ func (q *Queries) UpsertAgentSession(ctx context.Context, arg UpsertAgentSession
 		arg.BootID,
 		arg.TokenID,
 		arg.ExpiresAt,
+		arg.OverlapUntil,
 	)
 	return err
 }

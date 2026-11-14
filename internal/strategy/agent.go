@@ -14,12 +14,47 @@ import (
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 )
 
+const sessionOverlap = 60 * time.Second
+const sessionRenewalLead = 10 * time.Minute
+
+type agentAuthError struct {
+	code, message string
+}
+
+func (e agentAuthError) Error() string { return e.message }
+func (e agentAuthError) Unwrap() error { return ErrUnauthorized }
+
+var (
+	errSessionExpired = agentAuthError{"session_expired", "Agent session expired or was replaced"}
+	errTokenInvalid   = agentAuthError{"invalid_agent_token", "Agent token was not recognized"}
+	errTokenRevoked   = agentAuthError{"agent_token_revoked", "Agent token was revoked"}
+	errTokenExpired   = agentAuthError{"agent_token_expired", "Agent token expired"}
+	errArchived       = agentAuthError{"strategy_archived", "Strategy was archived"}
+	errScope          = agentAuthError{"insufficient_scope", "Agent credential lacks the required scope"}
+)
+
+func WriteAuthError(w http.ResponseWriter, err error) bool {
+	var detail agentAuthError
+	switch {
+	case errors.As(err, &detail):
+		status := http.StatusUnauthorized
+		if detail == errScope {
+			status = http.StatusForbidden
+		}
+		httpapi.Error(w, status, detail.code, detail.message)
+	case errors.Is(err, ErrUnauthorized):
+		httpapi.Error(w, http.StatusUnauthorized, "invalid_agent", err.Error())
+	default:
+		return false
+	}
+	return true
+}
+
 type Agent struct {
 	StrategyID string `json:"strategyId"`
 	InstanceID string `json:"instanceId"`
 	BootID     string `json:"bootId"`
 	TokenID    string `json:"-"`
-	Digest     string `json:"-"`
 	ExpiresAt  int64  `json:"expiresAt"`
 	Executor   bool   `json:"executor"`
 	LastSeen   int64  `json:"lastSeen"`
@@ -34,17 +69,28 @@ func Authorize(ctx context.Context, q *controldb.Queries, authorization string, 
 }
 
 func authorizeDigest(ctx context.Context, q *controldb.Queries, key string, scope int64) (Agent, error) {
-	row, err := q.GetLiveAgentSession(ctx, controldb.GetLiveAgentSessionParams{Digest: key, Now: time.Now().Unix()})
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && row.Scopes&scope != scope) {
-		return Agent{}, ErrUnauthorized
+	now := time.Now().Unix()
+	row, err := q.FindAgentSession(ctx, key)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Agent{}, errSessionExpired
 	}
 	if err != nil {
 		return Agent{}, err
 	}
+	if err := validateToken(row.ArchivedAt, row.RevokedAt, row.TokenExpiresAt, now); err != nil {
+		return Agent{}, err
+	}
+	if row.ExpiresAt <= now {
+		return Agent{}, errSessionExpired
+	}
+	if row.Scopes&scope != scope {
+		return Agent{}, errScope
+	}
+
 	return Agent{
 		StrategyID: row.StrategyID, InstanceID: row.InstanceID, BootID: row.BootID, TokenID: row.TokenID,
 		ExpiresAt: row.ExpiresAt, Executor: row.ExecutorInstance.String == row.InstanceID && row.Scopes&CommandScope != 0,
-		LastSeen: row.LastSeen, Digest: key,
+		LastSeen: row.LastSeen,
 	}, nil
 }
 
@@ -63,7 +109,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := bearer(r.Header.Get("Authorization"), "qbt_")
 	if raw == "" {
-		httpError(w, ErrUnauthorized)
+		httpError(w, errTokenInvalid)
 		return
 	}
 	if !httpapi.ReadJSON(w, r, &input, 4096) {
@@ -75,7 +121,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 	now := time.Now()
-	expiry := now.Add(SessionTTL).Unix()
+	expiry := now.Add(s.sessionTTL).Unix()
 	session := "qbs_" + random(32)
 	tokenDigest := digest(raw)
 	// Reject unauthenticated traffic before it reaches the single writer.
@@ -100,7 +146,7 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		sessionDigest := digest(session)
 		if err := q.UpsertAgentSession(ctx, controldb.UpsertAgentSessionParams{
 			Digest: sessionDigest, StrategyID: token.StrategyID, InstanceID: input.InstanceID,
-			BootID: input.BootID, TokenID: token.ID, ExpiresAt: expiry,
+			BootID: input.BootID, TokenID: token.ID, ExpiresAt: expiry, OverlapUntil: now.Add(sessionOverlap).Unix(),
 		}); err != nil {
 			return err
 		}
@@ -124,17 +170,42 @@ func (s *Service) connect(w http.ResponseWriter, r *http.Request) {
 		Agent
 		Session  string `json:"session"`
 		Revision int64  `json:"revision"`
-	}{identity, session, revision})
+		RenewAt  *int64 `json:"renewAt"`
+	}{identity, session, revision, renewalAt(now, expiry, s.sessionTTL)})
 }
 
-func liveToken(ctx context.Context, q *controldb.Queries, digest string, now int64) (controldb.AgentToken, error) {
-	token, err := q.GetLiveAgentToken(ctx, controldb.GetLiveAgentTokenParams{
-		Digest: digest, Now: sql.NullInt64{Int64: now, Valid: true},
-	})
+func renewalAt(now time.Time, expiry int64, ttl time.Duration) *int64 {
+	if now.Add(ttl).Unix() > expiry {
+		// Renewal cannot extend a session that already reaches the token expiry.
+		return nil
+	}
+	lead := min(sessionRenewalLead, ttl/2)
+	next := max(now.Unix()+1, time.Unix(expiry, 0).Add(-lead).Unix())
+	return &next
+}
+
+func liveToken(ctx context.Context, q *controldb.Queries, digest string, now int64) (controldb.FindAgentTokenRow, error) {
+	token, err := q.FindAgentToken(ctx, digest)
 	if errors.Is(err, sql.ErrNoRows) {
-		err = ErrUnauthorized
+		err = errTokenInvalid
+	}
+	if err == nil {
+		err = validateToken(token.ArchivedAt, token.RevokedAt, token.ExpiresAt, now)
 	}
 	return token, err
+}
+
+func validateToken(archived, revoked, expires sql.NullInt64, now int64) error {
+	switch {
+	case archived.Valid:
+		return errArchived
+	case revoked.Valid:
+		return errTokenRevoked
+	case expires.Valid && expires.Int64 <= now:
+		return errTokenExpired
+	default:
+		return nil
+	}
 }
 
 func registerBoot(ctx context.Context, q *controldb.Queries, strategyID, instanceID, bootID string, now int64) error {

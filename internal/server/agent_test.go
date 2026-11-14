@@ -57,11 +57,15 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 		t.Helper()
 		rec := send("POST", "/agent/session", body, token, 201)
 		var result struct {
-			Session  string
-			Executor bool
+			Session            string
+			Executor           bool
+			ExpiresAt, RenewAt int64
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &result); err != nil || result.Session == "" {
 			t.Fatalf("invalid Agent session: %v", err)
+		}
+		if result.ExpiresAt < time.Now().Add(time.Hour-5*time.Second).Unix() || result.ExpiresAt-result.RenewAt != 600 {
+			t.Fatalf("unexpected session schedule: expiry=%d renewal=%d", result.ExpiresAt, result.RenewAt)
 		}
 		return result.Session, result.Executor
 	}
@@ -77,6 +81,12 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 	}
 	send("PUT", "/agent/heartbeat", "", sessionA, 401)
 	send("POST", "/agent/session", bootA, response.Credential.Token, 409)
+	send("PUT", "/agent/heartbeat", "", sessionB, 200)
+	send("PUT", admin+"/tokens/"+response.Credential.ID, `{"scopes":["command","control","report"]}`, "", 204)
+	if missing := send("PUT", "/agent/heartbeat", "", sessionB, 403); !strings.Contains(missing.Body.String(), "insufficient_scope") {
+		t.Fatal(missing.Body)
+	}
+	send("PUT", admin+"/tokens/"+response.Credential.ID, `{"scopes":["command","control","report","heartbeat"]}`, "", 204)
 	send("PUT", "/agent/heartbeat", "", sessionB, 200)
 	const registry = `{"revision":0,"capabilities":[{"id":"entry","kind":"parameter","value_type":"boolean","writable":true,"title":"Allow entry","risk":"high"},{"id":"size","kind":"parameter","value_type":"decimal","writable":true,"title":"Size","constraints":{"min":"0.1","max":"1.0","step":"0.1"}}]}`
 	send("PUT", "/agent/capabilities", registry, sessionA, 401)
@@ -100,7 +110,9 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 	}
 	send("PUT", "/agent/heartbeat", "", response.Credential.Token, 401)
 	send("DELETE", admin+"/tokens/"+response.Credential.ID, "", "", 204)
-	send("PUT", "/agent/heartbeat", "", sessionB, 401)
+	if revoked := send("PUT", "/agent/heartbeat", "", sessionB, 401); !strings.Contains(revoked.Body.String(), "agent_token_revoked") {
+		t.Fatal(revoked.Body)
+	}
 	view = send("GET", "/strategies/"+response.Strategy.ID+"/controls", "", "", 200)
 	if !strings.Contains(view.Body.String(), `"current":false`) {
 		t.Fatal("revoked executor remains current")
@@ -115,7 +127,7 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 	if executor {
 		t.Fatal("report-only credential acquired executor authority")
 	}
-	send("PUT", "/agent/heartbeat", "", reportSession, 401)
+	send("PUT", "/agent/heartbeat", "", reportSession, 403)
 	send("DELETE", admin, "", "", 204)
 	send("POST", "/agent/session", bootB, scoped.Token, 401)
 	list := send(http.MethodGet, "/strategies", "", "", 200)
@@ -125,6 +137,40 @@ func TestStrategyAndAgentIdentity(t *testing.T) {
 	list = send(http.MethodGet, "/admin/strategies", "", "", 200)
 	if !strings.Contains(list.Body.String(), response.Strategy.ID) {
 		t.Fatal("archiving removed strategy history")
+	}
+}
+
+func TestConfiguredAgentSessionTTL(t *testing.T) {
+	handler := newAuthTestServer(t, config.Config{AgentSessionTTL: 6 * time.Minute})
+	const origin = "http://127.0.0.1:23456"
+	setup, cookie := parseSession(t, requestAuth(t, handler, "POST", "/setup",
+		`{"username":"admin","password":"paper-test-password"}`, origin, nil, "", 200))
+	req := httptest.NewRequest(http.MethodPost, origin+"/api/admin/strategies", strings.NewReader(`{"name":"TTL","mode":"paper"}`))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", origin)
+	req.Header.Set("X-CSRF-Token", setup.CSRF)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != 201 {
+		t.Fatal(rec.Body)
+	}
+	var created struct{ Credential struct{ Token string } }
+	decodeTest(t, rec, &created)
+	req = httptest.NewRequest(http.MethodPost, origin+"/api/agent/session", strings.NewReader(`{"instanceId":"worker","bootId":"boot"}`))
+	req.RemoteAddr = "127.0.0.1:12345"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+created.Credential.Token)
+	rec = httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != 201 {
+		t.Fatal(rec.Body)
+	}
+	var session struct{ ExpiresAt, RenewAt, LastSeen int64 }
+	decodeTest(t, rec, &session)
+	if session.ExpiresAt-session.LastSeen != 360 || session.ExpiresAt-session.RenewAt != 180 {
+		t.Fatalf("unexpected short session: %+v", session)
 	}
 }
 
