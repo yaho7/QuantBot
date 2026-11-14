@@ -26,4 +26,21 @@ Darwin arm64, Mac18,5, 12 CPU cores and 16 GiB RAM. This local run uses two Go e
 
 All seven workloads completed with matching sent and persisted record counts, zero rejected records and zero workload errors. The mixed-control run completes 100 command lifecycles alongside 30,000 telemetry records. The SSE workload holds 500 subscribers alongside 100 reporting Agents. Exact P50/P95/P99, CPU, WAL sizes, sampled queue depths and counters are recorded in the adjacent JSON artifacts.
 
-The requested 2 vCPU/2 GB VPS comparison, long-duration soak, SQLite driver comparison and theme-switch benchmark remain pending. The service currently uses mattn/go-sqlite3 with CGO. A release claim requires the remaining measurements and deployment checks.
+## SQLite driver comparison
+
+Two temporary builds used the same HTTP workload and schema from `387fd27`. The alternate build selected `modernc.org/sqlite v1.62.0` with CGO disabled and mapped its connection settings and error codes. Both runs used WAL, FULL durability, immediate writer transactions, one writer, four readers and GOMAXPROCS=2. No alternate driver is required to build QuantBot.
+
+```sh
+/tmp/qb-bench -binary /tmp/quantbot -agents 100 -cycles 5 -points 200 -parallel 50 -history 50
+```
+
+The table reports medians from three alternating runs per driver on the same Darwin arm64 host. Every run persisted all 100,000 unique records and correctly acknowledged 4,200 replays.
+
+| SQLite driver | Writes/s | Report P95 ms | History P95 ms | Peak RSS MiB |
+| --- | --- | --- | --- | --- |
+| mattn/go-sqlite3 v1.14.53 | 27,941 | 430.04 | 0.18 | 159.7 |
+| modernc.org/sqlite v1.62.0 | 22,838 | 513.88 | 0.21 | 170.9 |
+
+Keep mattn/go-sqlite3 for the higher measured throughput and lower measured memory on this workload. Raw results are in [benchmarks/sqlite](benchmarks/sqlite). [mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) · [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite@v1.62.0)
+
+The requested 2 vCPU/2 GB VPS comparison, long-duration soak and theme-switch benchmark remain pending.
