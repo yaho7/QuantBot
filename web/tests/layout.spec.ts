@@ -164,3 +164,29 @@ test("aligns workbench controls and keeps the grid inside each supported viewpor
     await expect(page).toHaveScreenshot("settings-390-zh-light.png", { animations: "disabled", maxDiffPixelRatio: 0.001 });
   }
 });
+
+test("animates page navigation and honors reduced motion", async ({ page }) => {
+  expect((await page.request.post("/api/admin/login", {
+    data: { username: "admin", password: "browser-test-password" },
+  })).ok()).toBeTruthy();
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/ui/#operations");
+  await expect(page.getByRole("heading", { name: "操作记录" })).toBeVisible();
+  const settings = page.getByRole("link", { name: "设置", exact: true });
+  const operations = page.getByRole("link", { name: "操作记录", exact: true });
+  await page.evaluate(() => {
+    const main = document.querySelector("main")!;
+    const animate = main.animate.bind(main);
+    main.animate = (...args) => {
+      main.dataset.motion = String(Number(main.dataset.motion ?? "0") + 1);
+      return animate(...args);
+    };
+  });
+  await settings.click();
+  await expect(page.getByRole("heading", { name: "系统设置" })).toBeVisible();
+  await expect(page.locator("main")).toHaveAttribute("data-motion", "1");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await operations.click();
+  await expect(page.getByRole("heading", { name: "操作记录" })).toBeVisible();
+  await expect(page.locator("main")).toHaveAttribute("data-motion", "1");
+});

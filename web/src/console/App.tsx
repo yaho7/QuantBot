@@ -6,7 +6,7 @@ import { CommandFeedback } from "./command-feedback";
 import { QuickSearch } from "./quick-search";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList, LayoutDashboard, LayoutGrid, Settings } from "lucide-react";
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api, ApiError, MIN_PASSWORD_LENGTH, readSession, sessionKey } from "./api";
 import { ApiPage, CreateStrategy } from "./onboarding";
 import { OperationsPage } from "./operations";
@@ -144,6 +144,22 @@ export function App() {
   const [adding, setAdding] = useState(false);
   const { theme, setTheme, dark } = useTheme();
   const actor = session.data?.actor;
+  const main = useRef<HTMLElement>(null);
+  const previousPage = useRef<string | null>(null);
+  const [section, id, tab] = hash.slice(1).split("/");
+  const page = section === "strategy" ? "strategies" : ["overview", "api", "telegram"].includes(section ?? "") || nav.some((item) => item.key === section) ? section : "workbench";
+  const view = actor ? section === "strategy" && id ? `strategy/${id}/${tab ?? ""}` : page! : null;
+  useLayoutEffect(() => {
+    const previous = previousPage.current;
+    previousPage.current = view;
+    if (!previous || !view || view === previous || !main.current ||
+      matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const motion = main.current.animate([
+      { opacity: .6, transform: "translateY(4px)" },
+      { opacity: 1, transform: "translateY(0)" },
+    ], { duration: 170, easing: "cubic-bezier(.2, .75, .25, 1)" });
+    return () => motion.cancel();
+  }, [view]);
   useLive(!!actor);
   const logout = useMutation({
     mutationFn: () => api("logout", "POST"),
@@ -156,8 +172,6 @@ export function App() {
   if (session.isPending) return <main className="loading-screen"><Brand /><Loading /></main>;
   if (session.data === null) return <Login hash={hash} />;
   if (!actor) return <main className="login"><ConnectionError error={session.error} retry={() => void session.refetch()} /></main>;
-  const [section, id, tab] = hash.slice(1).split("/");
-  const page = section === "strategy" ? "strategies" : ["overview", "api", "telegram"].includes(section ?? "") || nav.some((item) => item.key === section) ? section : "workbench";
   const activeNav = ["api", "telegram"].includes(page ?? "") ? "system" : page;
   const add = () => setAdding(true);
   return <DarkMode value={dark}>
@@ -181,7 +195,7 @@ export function App() {
         {nav.map(({ key, title, icon: Icon }) => <a key={key} href={`#${key}`}
           aria-current={activeNav === key ? "page" : undefined}><Icon size={19} aria-hidden="true" /><span>{t(title)}</span></a>)}
       </nav>
-      <main id="main" className="page" tabIndex={-1}>
+      <main id="main" className="page" tabIndex={-1} ref={main}>
         <ErrorNotice error={logout.error} />
         {page === "workbench" && <Suspense fallback={<Loading />}><Workbench focus={tab ? decodeURIComponent(tab) : undefined} strategyId={id ? decodeURIComponent(id) : undefined} /></Suspense>}
         {page === "overview" && <OverviewPage add={add} />}
