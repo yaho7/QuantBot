@@ -62,7 +62,7 @@ export default function Chart({
       chart.timeScale().fitContent();
       return () => chart.remove();
     }
-    const plotHeight = () => featured ? Math.min(310, Math.max(210, element.clientWidth * 0.25)) : 230;
+    const plotHeight = () => featured ? 280 : 230;
     const grid = { stroke: "#8994a71a", show: !featured };
     const plot = new uPlot(
       {
