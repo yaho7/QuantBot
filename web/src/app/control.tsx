@@ -19,9 +19,11 @@ import { useLanguage } from "../shared/i18n";
 export function ControlPanel({
   strategyId,
   editing = false,
+  exclude,
 }: {
   strategyId: string;
   editing?: boolean;
+  exclude?: ReadonlySet<string>;
 }) {
   const query = useQuery(
     resource<Registry>("/strategies/" + strategyId + "/controls"),
@@ -30,12 +32,13 @@ export function ControlPanel({
   if (query.isPending) return <Loading />;
   if (query.error)
     return <ErrorView error={query.error} retry={() => void query.refetch()} />;
+  const controls = query.data.controls.filter(
+    (control) => !exclude?.has(control.id),
+  );
   return (
     <div className="controls-grid">
-      {!query.data.controls.length && (
-        <p className="empty-inline">{t("noControls")}</p>
-      )}
-      {query.data.controls.map((control) => (
+      {!controls.length && <p className="empty-inline">{t("noControls")}</p>}
+      {controls.map((control) => (
         <ControlCard
           key={control.id}
           control={control}
@@ -52,11 +55,13 @@ export function ControlCard({
   strategyId,
   registry,
   editing = false,
+  embedded = false,
 }: {
   control: Control;
   strategyId: string;
   registry: Registry;
   editing?: boolean;
+  embedded?: boolean;
 }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
@@ -64,6 +69,8 @@ export function ControlCard({
     initialValue(control, control.actual?.value),
   );
   const [key, setKey] = useState(crypto.randomUUID());
+  const [inputError, setInputError] = useState(false);
+  const rawInput = usesJSONInput(control);
   const [command, setCommand] = useState<Command>();
   const readOnly =
     control.readOnly ||
@@ -75,13 +82,18 @@ export function ControlCard({
     !registry.current ||
     control.disabled ||
     !control.actual?.available ||
+    !!(
+      control.capability?.stale_after_seconds &&
+      Date.now() - control.actual.observedAt >=
+        control.capability.stale_after_seconds * 1000
+    ) ||
     !!(control.desired && activeStates.includes(control.desired.status));
   const submit = useMutation({
-    mutationFn: () =>
+    mutationFn: (input: unknown) =>
       api<Command>(
         "/strategies/" + strategyId + "/commands",
         "POST",
-        { controlId: control.id, revision: registry.revision, input: value },
+        { controlId: control.id, revision: registry.revision, input },
         key,
       ),
     onSuccess: (data) => {
@@ -106,16 +118,20 @@ export function ControlCard({
   });
   return (
     <article className="control-card">
-      <header>
-        <h3>{control.title}</h3>
-        {control.risk && (
-          <Badge
-            tone={["high", "critical"].includes(control.risk) ? "warning" : ""}
-          >
-            {control.risk}
-          </Badge>
-        )}
-      </header>
+      {(!embedded || control.risk) && (
+        <header>
+          {!embedded && <h3>{control.title}</h3>}
+          {control.risk && (
+            <Badge
+              tone={
+                ["high", "critical"].includes(control.risk) ? "warning" : ""
+              }
+            >
+              {control.risk}
+            </Badge>
+          )}
+        </header>
+      )}
       {control.description && <p className="muted">{control.description}</p>}
       <dl className="control-values">
         <dt>{t("actual")}</dt>
@@ -135,7 +151,14 @@ export function ControlCard({
         <button
           disabled={blocked}
           onClick={() => {
-            setValue(initialValue(control, control.actual?.value));
+            const initial = initialValue(
+              control,
+              control.capability?.kind === "action"
+                ? undefined
+                : control.actual?.value,
+            );
+            setValue(rawInput ? JSON.stringify(initial, null, 2) : initial);
+            setInputError(false);
             setKey(crypto.randomUUID());
             setCommand(undefined);
             submit.reset();
@@ -180,15 +203,44 @@ export function ControlCard({
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              submit.mutate();
+              let input = value;
+              if (rawInput) {
+                try {
+                  input = JSON.parse(String(value));
+                } catch {
+                  setInputError(true);
+                  return;
+                }
+              }
+              setInputError(false);
+              submit.mutate(input);
             }}
           >
             {control.description && <p>{control.description}</p>}
-            <ControlInput
-              definition={control}
-              value={value}
-              onChange={setValue}
-            />
+            {rawInput ? (
+              <label>
+                {t("commandInput")}
+                <textarea
+                  rows={6}
+                  value={String(value)}
+                  onChange={(event) => setValue(event.target.value)}
+                />
+                {inputError && (
+                  <span className="error-text" role="alert">
+                    {t("invalidJSON")}
+                  </span>
+                )}
+              </label>
+            ) : (
+              <ControlInput
+                definition={control}
+                value={value}
+                onChange={setValue}
+              />
+            )}
+            {control.capability?.unit && (
+              <small className="muted">{control.capability.unit}</small>
+            )}
             <div className="dialog-actions">
               <button type="button" onClick={() => setOpen(false)}>
                 {t("cancel")}
@@ -208,15 +260,48 @@ export function ControlCard({
     </article>
   );
 }
+function usesJSONInput(definition: Definition) {
+  const capability = definition.capability;
+  if (
+    !capability ||
+    capability.atomic_parameters?.length ||
+    definition.kind !== "form"
+  )
+    return false;
+  const schema = capability.input_schema ?? capability.value_schema;
+  return (
+    !!schema &&
+    (schema.type !== "object" ||
+      Object.keys(schema.properties ?? {}).length !==
+        (definition.fields?.length ?? 0) ||
+      (schema.required?.length ?? 0) !== (definition.fields?.length ?? 0))
+  );
+}
+
 function initialValue(d: Definition, actual: unknown): unknown {
   if (actual !== undefined && actual !== null) return actual;
   if (d.kind === "button") return null;
   if (d.kind === "toggle") return false;
   if (d.kind === "multiSelect") return [];
-  if (d.kind === "form")
+  if (d.kind === "form") {
+    const schema = d.capability?.input_schema ?? d.capability?.value_schema;
+    if (usesJSONInput(d) && schema?.type !== "object") {
+      if (schema?.type === "array" || schema?.type === "string_list") return [];
+      if (schema?.type === "boolean") return false;
+      if (schema?.type === "null") return null;
+      return "";
+    }
     return Object.fromEntries(
-      (d.fields ?? []).map((f) => [f.id, initialValue(f, undefined)]),
+      (d.fields ?? [])
+        .filter(
+          (field) =>
+            d.capability?.atomic_parameters?.length ||
+            !schema ||
+            schema.required?.includes(field.id),
+        )
+        .map((field) => [field.id, initialValue(field, undefined)]),
     );
+  }
   return d.min ?? d.options?.[0]?.value ?? "";
 }
 function ControlInput({
@@ -249,7 +334,10 @@ function ControlInput({
           <ControlInput
             key={field.id}
             definition={field}
-            value={(value as Record<string, unknown>)[field.id]}
+            value={
+              (value as Record<string, unknown> | null)?.[field.id] ??
+              initialValue(field, undefined)
+            }
             onChange={(next) =>
               onChange({ ...(value as object), [field.id]: next })
             }

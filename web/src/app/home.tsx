@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { lazy, Suspense, memo, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -22,6 +22,7 @@ import { Badge, decimalText, ErrorView, Loading } from "../shared/ui";
 import { Page } from "./App";
 import { useTelemetryValues } from "./strategy";
 
+const WidgetBoard = lazy(() => import("../components/widget-board"));
 const views = [
   ["large", Square],
   ["compact", LayoutGrid],
@@ -198,6 +199,9 @@ export function Home() {
           </button>
         )}
       </section>
+      <Suspense fallback={<Loading />}>
+        <WidgetBoard />
+      </Suspense>
       <RecentActivity />
     </Page>
   );

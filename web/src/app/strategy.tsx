@@ -3,6 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
   resource,
+  layoutResource,
+  type CapabilityCatalog,
   type Datum,
   type Strategy,
   type Series,
@@ -18,6 +20,7 @@ import {
   timestamp,
 } from "../shared/ui";
 const Chart = lazy(() => import("../components/chart"));
+const WidgetBoard = lazy(() => import("../components/widget-board"));
 import { Page } from "./App";
 import { ControlPanel } from "./control";
 import { ActivityPage } from "./activity";
@@ -36,6 +39,29 @@ export function StrategyDetail() {
   const { id = "" } = useParams();
   const query = useQuery(resource<Strategy>("/strategies/" + id));
   const { t } = useLanguage();
+  const catalog = useQuery({
+    ...resource<CapabilityCatalog>("/strategies/" + id + "/capabilities"),
+    refetchInterval: 5000,
+  });
+  const layout = useQuery(layoutResource(id));
+  const widgetControls = new Set(
+    (layout.data?.widgets ?? []).flatMap((widget) =>
+      widget.controlId ? [widget.controlId] : [],
+    ),
+  );
+  for (const capability of catalog.data?.capabilities ?? []) {
+    if (
+      capability.presentation?.suggested &&
+      capability.presentation.surface?.includes("strategy")
+    )
+      widgetControls.add(capability.id);
+  }
+  const { health } = catalog.data ?? {};
+  const healthIssues = health?.issues.map(
+    (issue) =>
+      catalog.data?.capabilities.find((entry) => entry.id === issue)?.title ??
+      issue,
+  );
   const {
     query: telemetry,
     records,
@@ -90,6 +116,18 @@ export function StrategyDetail() {
             {t("uptime")} · {Math.floor((Date.now() / 1000 - runtime) / 60)} min
           </span>
         )}
+        {health &&
+          catalog.data?.capabilities.some(
+            (entry) => entry.kind === "state" && entry.group === "health",
+          ) && (
+            <span role="status">
+              {t("health")}{" "}
+              <Badge tone={health.status === "healthy" ? "success" : "warning"}>
+                {t(health.status)}
+              </Badge>
+              {!!healthIssues?.length && " · " + healthIssues.join(", ")}
+            </span>
+          )}
       </div>
       <section className="summary-grid detail-summary">
         {[
@@ -121,8 +159,16 @@ export function StrategyDetail() {
         <div className="section-heading">
           <h2>{t("controls")}</h2>
         </div>
-        <ControlPanel strategyId={id} />
+        {layout.isSuccess && catalog.isSuccess && (
+          <ControlPanel strategyId={id} exclude={widgetControls} />
+        )}
+        {(layout.error || catalog.error) && (
+          <ErrorView error={(layout.error || catalog.error)!} />
+        )}
       </section>
+      <Suspense fallback={<Loading />}>
+        <WidgetBoard key={id} strategyId={id} />
+      </Suspense>
       <section className="section">
         <div className="section-heading">
           <h2>{t("charts")}</h2>
@@ -174,7 +220,13 @@ export function AllControls() {
     </Page>
   );
 }
-function History({ strategyId }: { strategyId: string }) {
+export function History({
+  strategyId,
+  embedded = false,
+}: {
+  strategyId: string;
+  embedded?: boolean;
+}) {
   const query = useQuery(
     resource<{ series: Series[] }>("/strategies/" + strategyId + "/series"),
   );
@@ -204,7 +256,7 @@ function History({ strategyId }: { strategyId: string }) {
     enabled: !!series,
   });
   return (
-    <div className="surface chart-card">
+    <div className={(embedded ? "" : "surface ") + "chart-card"}>
       <div className="filter-bar">
         <select
           aria-label="Series"
@@ -252,21 +304,23 @@ function History({ strategyId }: { strategyId: string }) {
     </div>
   );
 }
-function DataTable({
+export function DataTable({
   title,
   rows,
+  maxColumns = 10,
 }: {
   title: string;
   rows: Record<string, unknown>[];
+  maxColumns?: number;
 }) {
   const { t } = useLanguage();
   const keys = [...new Set(rows.flatMap((row) => Object.keys(row)))].slice(
     0,
-    10,
+    maxColumns,
   );
   return (
     <section className="data-section">
-      <h2>{title}</h2>
+      {title && <h2>{title}</h2>}
       <div className="surface table-scroll">
         {rows.length ? (
           <table>

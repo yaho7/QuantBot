@@ -14,6 +14,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/command"
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/control"
+	"github.com/yaho7/QuantBot/internal/dashboard"
 	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/notification"
 	"github.com/yaho7/QuantBot/internal/realtime"
@@ -104,6 +105,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 	accounts := auth.New(stores.Control)
 	strategies := strategy.New(stores.Control, events.Publish)
 	controls := control.New(stores.Control, events.Publish)
+	layouts := dashboard.New(stores.Control)
 	router.Route("/api/agent", func(r chi.Router) {
 		strategies.RegisterAgent(r)
 		controls.RegisterAgent(r)
@@ -117,6 +119,7 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
+			layouts.Register(r)
 			notifications.Register(r)
 			themes.Register(r)
 			r.Get("/admin/diagnostics", diagnostics(stores, reports, events, cfg.DataDir))

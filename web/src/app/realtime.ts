@@ -34,10 +34,17 @@ export function useRealtime(enabled: boolean) {
               (path.startsWith("/commands") || path === "/admin/audit")
             )
               return true;
-            if (!path.startsWith("/strategies/" + strategyId)) return false;
-            if (topic === "controls" || topic === "commands")
-              return path.endsWith("/controls");
-            if (topic === "telemetry") return !path.endsWith("/controls");
+            const base = "/strategies/" + strategyId;
+            if (path !== base && !path.startsWith(base + "/")) return false;
+            if (topic === "controls")
+              return (
+                path === base + "/controls" ||
+                path === base + "/capabilities" ||
+                path === base + "/capability-data" ||
+                path.startsWith(base + "/capabilities/")
+              );
+            if (topic === "commands") return path === base + "/controls";
+            if (topic === "telemetry") return path !== base + "/controls";
             return true;
           });
         },

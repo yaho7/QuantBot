@@ -1349,3 +1349,133 @@ td button {
   gap: 8px;
   flex-wrap: wrap;
 }
+.widget-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.widget {
+  min-width: 0;
+  border-top-width: 3px;
+  display: flex;
+  flex-direction: column;
+}
+.widget.size-small {
+  grid-column: span 3;
+}
+.widget.size-medium {
+  grid-column: span 6;
+}
+.widget.size-large {
+  grid-column: span 8;
+}
+.widget.size-full {
+  grid-column: span 12;
+}
+.widget-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px 10px;
+}
+.widget-header h3 {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.widget-header .icon-button {
+  width: 28px;
+  min-height: 30px;
+  padding: 4px;
+}
+.widget-body {
+  padding: 6px 16px 16px;
+  min-width: 0;
+  flex: 1;
+}
+.widget-body .control-card {
+  border: 0;
+  padding: 0;
+  height: 100%;
+}
+.widget-body .chart-card {
+  padding: 0;
+}
+.widget-body .data-section {
+  margin: 0;
+}
+.widget-body .data-section .surface {
+  border: 0;
+}
+.widget-compact .control-values {
+  display: none;
+}
+.widget.dragging {
+  z-index: 20;
+  box-shadow: 0 16px 32px #0002;
+  opacity: 0.9;
+}
+.drag-handle {
+  cursor: grab;
+  touch-action: none;
+}
+.widget-add {
+  grid-column: span 12;
+  min-height: 150px;
+  border-style: dashed;
+}
+.equity-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.equity-widget > strong {
+  font-size: 30px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.widget-section .section-heading {
+  flex-wrap: wrap;
+}
+@media (max-width: 1100px) {
+  .widget-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+  }
+  .widget.size-small,
+  .widget.size-medium {
+    grid-column: span 4;
+  }
+  .widget.size-large,
+  .widget.size-full,
+  .widget-add {
+    grid-column: span 8;
+  }
+}
+@media (max-width: 540px) {
+  .widget-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .widget.size-small {
+    grid-column: span 2;
+  }
+  .widget.size-medium,
+  .widget.size-large,
+  .widget.size-full,
+  .widget-add {
+    grid-column: span 4;
+  }
+  .widget-header {
+    padding-inline: 12px;
+    flex-wrap: wrap;
+  }
+  .widget-body {
+    padding-inline: 12px;
+  }
+  .widget-section .actions {
+    gap: 5px;
+    flex-wrap: wrap;
+  }
+}

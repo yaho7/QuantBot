@@ -97,7 +97,86 @@ export type Command = {
   receipt?: { status: string; message?: string };
   transitions?: { status: string; actor: string; reason: string; at: number }[];
 };
+export type ValueSchema = {
+  type:
+    | "null"
+    | "boolean"
+    | "decimal"
+    | "string"
+    | "string_list"
+    | "object"
+    | "array";
+  properties?: Record<string, ValueSchema>;
+  required?: string[];
+  items?: ValueSchema;
+};
+export type Capability = {
+  id: string;
+  kind: "metric" | "state" | "parameter" | "action" | "resource" | "event";
+  title: string;
+  description?: string;
+  group?: string;
+  unit?: string;
+  precision?: number;
+  history: boolean;
+  stale_after_seconds?: number;
+  renderer: string;
+  atomic_parameters?: string[];
+  input_schema?: ValueSchema;
+  value_schema?: ValueSchema;
+  presentation?: {
+    suggested: boolean;
+    surface?: ("overview" | "strategy")[];
+    order?: number;
+    default_size?: "small" | "medium" | "large" | "full";
+  };
+  actual?: NonNullable<Control["actual"]>;
+  stale: boolean;
+  alert_suggestion?: { type: "stale" | "above" | "below"; threshold?: string };
+};
+export type Layout = {
+  version: number;
+  revision: number;
+  widgets: Widget[];
+};
+export type Widget = {
+  id: string;
+  type:
+    "capability" | "control" | "equity" | "chart" | "positions" | "activity";
+  strategyId: string;
+  controlId?: string;
+  hidden?: boolean;
+  label?: string;
+  icon?: string;
+  color?: string;
+  size: "small" | "medium" | "large" | "full";
+  description: boolean;
+  detailed: boolean;
+};
+
+export function layoutResource(strategyId?: string) {
+  return resource<Layout>(
+    "/layouts/" + (strategyId ? "strategy-" + strategyId : "workbench"),
+  );
+}
+
+export type CapabilityCatalog = {
+  revision: number;
+  capabilities: Capability[];
+  health: { status: "healthy" | "degraded" | "offline"; issues: string[] };
+};
+export type CapabilityRecord = {
+  id: string;
+  capabilityId: string;
+  revision: number;
+  observedAt: number;
+  receivedAt: number;
+  value: unknown;
+  associations?: Record<string, string>;
+};
+
 export type Definition = {
+  capability?: Capability;
   id: string;
   kind: string;
   title: string;

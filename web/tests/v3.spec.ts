@@ -36,42 +36,111 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     .selectOption("browser-worker");
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("当前会话 · browser-worker")).toBeVisible();
-  expect(
-    (
-      await request.put("/api/agent/capabilities", {
-        headers,
-        data: {
-          revision: 0,
-          capabilities: [
-            {
-              id: "allow-entry",
-              kind: "parameter",
-              value_type: "boolean",
-              writable: true,
-              title: "允许新开仓",
-              description: "策略将保留本地风控检查。",
-              risk: "high",
-              confirm: true,
-            },
-            {
-              id: "rsi",
-              kind: "parameter",
-              value_type: "decimal",
-              writable: true,
-              title: "RSI 周期",
-              constraints: { min: "5", max: "50", step: "1" },
-            },
-          ],
-        },
-      })
-    ).ok(),
-  ).toBeTruthy();
+  const declarations = [
+    {
+      id: "allow-entry",
+      kind: "parameter",
+      value_type: "boolean",
+      writable: true,
+      title: "允许新开仓",
+      description: "策略将保留本地风控检查。",
+      risk: "high",
+      confirm: true,
+    },
+    {
+      id: "rsi",
+      kind: "parameter",
+      value_type: "decimal",
+      writable: true,
+      title: "RSI 周期",
+      constraints: { min: "5", max: "50", step: "1" },
+    },
+    {
+      id: "feed",
+      kind: "metric",
+      value_type: "decimal",
+      title: "声明式行情延迟",
+      unit: "ms",
+      precision: 2,
+      history: true,
+      presentation: {
+        suggested: true,
+        surface: ["overview", "strategy"],
+        default_size: "large",
+        order: 2,
+      },
+    },
+    {
+      id: "broker",
+      kind: "state",
+      value_type: "boolean",
+      title: "券商连接健康",
+      group: "health",
+      history: true,
+      stale_after_seconds: 30,
+      alert_suggestion: { type: "stale" },
+      presentation: {
+        suggested: true,
+        surface: ["overview", "strategy"],
+        default_size: "medium",
+        order: 1,
+      },
+    },
+    {
+      id: "signal",
+      kind: "event",
+      value_type: "object",
+      title: "策略原始信号",
+      history: true,
+      value_schema: {
+        type: "object",
+        properties: { signal: { type: "string" } },
+        required: ["signal"],
+      },
+      presentation: {
+        suggested: true,
+        surface: ["strategy"],
+        default_size: "medium",
+      },
+    },
+    {
+      id: "candles",
+      kind: "resource",
+      value_type: "object",
+      title: "声明式 K 线",
+      history: true,
+      value_schema: {
+        type: "object",
+        properties: Object.fromEntries(
+          ["open", "high", "low", "close", "volume"].map((key) => [
+            key,
+            { type: "decimal" },
+          ]),
+        ),
+        required: ["open", "high", "low", "close", "volume"],
+      },
+      presentation: {
+        suggested: true,
+        surface: ["strategy"],
+        preferred_renderer: "candlestick",
+      },
+    },
+  ];
+  const register = async (revision: number, capabilities: unknown[]) => {
+    const result = await request.put("/api/agent/capabilities", {
+      headers,
+      data: { revision, capabilities },
+    });
+    expect(result.ok(), await result.text()).toBeTruthy();
+  };
+  await register(0, declarations);
   const now = Date.now();
   const state = {
     revision: 1,
     states: [
       { id: "allow-entry", value: false, available: true, observedAt: now },
       { id: "rsi", value: "14", available: true, observedAt: now },
+      { id: "broker", value: false, available: true, observedAt: now },
     ],
   };
   expect(
@@ -214,6 +283,156 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(
     page.locator(".control-card").first().locator("dd").first(),
   ).toHaveText("true");
+
+  const metric = await request.post("/api/agent/reports", {
+    headers,
+    data: {
+      revision: 1,
+      records: [
+        {
+          id: "feed-1",
+          capabilityId: "feed",
+          observedAt: now - 1000,
+          value: "2.25",
+        },
+        { id: "feed-2", capabilityId: "feed", observedAt: now, value: "2.40" },
+      ],
+    },
+  });
+  expect(metric.ok(), await metric.text()).toBeTruthy();
+  const signal = await request.post("/api/agent/events", {
+    headers,
+    data: {
+      revision: 1,
+      records: [
+        {
+          id: "signal-1",
+          capabilityId: "signal",
+          observedAt: now,
+          value: { signal: "真实信号" },
+          associations: { order_id: "order-paper-42" },
+        },
+      ],
+    },
+  });
+  expect(signal.ok(), await signal.text()).toBeTruthy();
+  const candles = await request.put("/api/agent/resources/candles", {
+    headers,
+    data: {
+      revision: 1,
+      records: [
+        {
+          id: "bar-1",
+          observedAt: now - 60000,
+          value: {
+            open: "10",
+            high: "15",
+            low: "8",
+            close: "12",
+            volume: "10",
+          },
+        },
+        {
+          id: "bar-2",
+          observedAt: now,
+          value: {
+            open: "12",
+            high: "20",
+            low: "11",
+            close: "17",
+            volume: "6",
+          },
+        },
+      ],
+    },
+  });
+  expect(candles.ok(), await candles.text()).toBeTruthy();
+
+  const widgets = page.locator(".widget-grid .widget");
+  const widget = (title: string) =>
+    widgets.filter({
+      has: page.getByRole("heading", { name: title, exact: true }),
+    });
+  await expect(widget("声明式行情延迟").locator(".chart canvas")).toBeVisible();
+  await expect(
+    widget("声明式 K 线").locator(".chart canvas").first(),
+  ).toBeVisible();
+  await expect(widget("策略原始信号")).toContainText("真实信号");
+  await expect(widget("策略原始信号")).toContainText("order-paper-42");
+  await expect(
+    page.getByRole("status").filter({ hasText: "策略健康" }),
+  ).toContainText("健康检查异常");
+  await expect(widget("券商连接健康")).toContainText("未启用");
+
+  await page.goto("/");
+  await expect(widgets).toHaveCount(2);
+  await expect(widgets.first()).toHaveAttribute(
+    "data-widget",
+    "cap:" + id + ":broker",
+  );
+  await expect(widget("声明式行情延迟")).toHaveClass(/size-large/);
+  await page.getByRole("button", { name: "编辑布局", exact: true }).click();
+  await widget("声明式行情延迟")
+    .getByRole("button", { name: "组件设置", exact: true })
+    .click();
+  await dialog.getByLabel("显示名称").fill("自定义延迟");
+  await dialog
+    .getByRole("combobox", { name: "组件尺寸", exact: true })
+    .selectOption("small");
+  await dialog
+    .getByRole("button", { name: "关闭", exact: true })
+    .last()
+    .click();
+  await widget("券商连接健康")
+    .getByRole("button", { name: "移除组件", exact: true })
+    .click();
+  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "编辑布局", exact: true }),
+  ).toBeVisible();
+
+  await register(
+    1,
+    declarations
+      .filter((entry) => entry.id !== "feed")
+      .map((entry) =>
+        entry.id === "broker"
+          ? {
+              ...entry,
+              presentation: {
+                ...entry.presentation,
+                order: -10,
+                default_size: "full",
+              },
+            }
+          : entry,
+      ),
+  );
+  await expect(widget("自定义延迟")).toContainText("能力当前未注册");
+  await expect(widget("自定义延迟")).toHaveClass(/size-small/);
+  await expect(widgets).toHaveCount(1);
+  await page.reload();
+  await expect(widget("自定义延迟")).toContainText("能力当前未注册");
+  await expect(widgets).toHaveCount(1);
+
+  await register(
+    2,
+    declarations.map((entry) =>
+      entry.id === "feed"
+        ? {
+            ...entry,
+            title: "Agent 改名",
+            presentation: { ...entry.presentation, default_size: "full" },
+          }
+        : entry,
+    ),
+  );
+  await expect(widget("自定义延迟")).toHaveClass(/size-small/);
+  await expect(widget("自定义延迟").getByText("能力当前未注册")).toHaveCount(0);
+  await expect(widgets).toHaveCount(1);
+  await page.goto("/strategies/" + id);
+  await expect(widget("Agent 改名")).toHaveClass(/size-full/);
+  await expect(widget("券商连接健康")).toBeVisible();
 
   await page.goto("/admin/notifications");
   await page.getByRole("button", { name: "添加通知渠道", exact: true }).click();

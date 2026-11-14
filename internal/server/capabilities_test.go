@@ -106,6 +106,30 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 		!strings.Contains(history.Body.String(), `"revision":1`) {
 		t.Fatal(history.Body)
 	}
+	fresh := time.Now().UnixMilli()
+	call("PUT", "/agent/state", fmt.Sprintf(`{"revision":1,"states":[{"id":"limit","value":"2","observedAt":%d}]}`, fresh), worker.Session, 200)
+	call("POST", path+"/commands", `{"controlId":"apply","revision":1,"input":{"limit":"3","extra":true}}`, "", 400)
+	var plan struct{ ID, Status string }
+	decodeTest(t, call("POST", path+"/commands", `{"controlId":"apply","revision":1,"input":{"limit":"3"}}`, "", 201), &plan)
+	if plan.Status != "confirmation_required" {
+		t.Fatal(plan)
+	}
+	commandPath := "/commands/" + plan.ID
+	call("POST", "/agent"+commandPath+"/claim", "", worker.Session, 409)
+	call("POST", commandPath+"/confirm", "", "", 200)
+	call("POST", path+"/commands", `{"controlId":"limit","revision":1,"input":"3"}`, "", 400)
+	var grant struct{ Permit, Command string }
+	decodeTest(t, call("POST", "/agent"+commandPath+"/claim", "", worker.Session, 200), &grant)
+	if grant.Command != "apply" || grant.Permit == "" {
+		t.Fatal("atomic action must receive one permit")
+	}
+	call("POST", "/agent"+commandPath+"/claim", "", worker.Session, 409)
+	receipt := fmt.Sprintf(`{"permit":%q,"status":"succeeded"}`, grant.Permit)
+	call("POST", "/agent"+commandPath+"/result", receipt, worker.Session, 200)
+	call("POST", "/agent"+commandPath+"/result", receipt, worker.Session, 200)
+	if saved := call("GET", path+"/capabilities", "", "", 200); !strings.Contains(saved.Body.String(), `"value":"2"`) {
+		t.Fatal("a command receipt must not replace actual state")
+	}
 	call("PUT", "/agent/capabilities", `{"revision":1,"capabilities":[]}`, worker.Session, 200)
 	call("PUT", "/agent/state", state, worker.Session, 409)
 	call("POST", "/agent/reports", report, worker.Session, 409)

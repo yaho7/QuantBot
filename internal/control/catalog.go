@@ -2,7 +2,6 @@ package control
 
 import (
 	"context"
-
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -121,7 +120,9 @@ func ValidateIntent(ctx context.Context, q *controldb.Queries, strategyID string
 			return err
 		}
 		if action.Capability != nil && action.Capability.InputSchema != nil {
-			return action.ValidateValue(input, false)
+			if err := action.ValidateValue(input, false); err != nil {
+				return err
+			}
 		}
 	}
 	active, err := q.CountConflictingPlanCommands(ctx, controldb.CountConflictingPlanCommandsParams{

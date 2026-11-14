@@ -146,6 +146,13 @@ type InstalledTheme struct {
 	UpdatedAt        int64
 }
 
+type Layout struct {
+	UserID   int64
+	Key      string
+	Revision int64
+	Widgets  string
+}
+
 type NotificationChannel struct {
 	ID        string
 	Name      string

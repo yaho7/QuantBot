@@ -10,6 +10,7 @@ The browser API is rooted at `/api/v1`. Agent routes use `/api/agent`. Browser r
 | `/strategies/{id}/controls` | Declared capabilities, desired intent and observed state |
 | `/strategies/{id}/series`, `/history`, `/telemetry`, `/records` | Discover and query monitoring data under the strategy path |
 | `/strategies/{id}/capabilities`, `/capability-data`, `/capabilities/{capability}/history` | Declared capabilities, latest data, health diagnostics and replay under the strategy path |
+| `GET /layouts/{key}`, `PUT /layouts/{key}` | Read or save the administrator’s layout. Use `workbench` or `strategy-{id}`. Writes use the current layout revision. |
 | `/alerts` | Cross-strategy alert feed |
 | `POST /strategies/{id}/commands` | Submit a control action with an `Idempotency-Key` |
 | `GET /commands`, `GET /commands/{id}` | List commands or view one command and its transitions |
@@ -27,3 +28,7 @@ Open an authenticated `EventSource('/api/v1/events')` and listen for the `change
 The five topics are `status`, `telemetry`, `controls`, `commands` and `alerts`. The browser invalidates only the affected query keys. Command changes also invalidate the desired state shown with the control. A reset asks the browser to refresh active queries after connecting or falling behind.
 
 The service publishes invalidations after commit, coalesces updates every 125 ms, and applies fixed subscriber and backlog limits. SSE carries strategy IDs and topics. The authenticated query routes return data. Session validity is rechecked at each 15-second heartbeat.
+
+## Suggested components
+
+A declaration with `presentation.suggested` and an applicable surface provides a default widget. The browser uses the backend’s resolved renderer, the default size and the declared order. Administrators can add a declared capability manually or edit, move, resize and remove suggested widgets. Saved preferences take precedence. A saved widget whose capability disappears keeps its slot and shows an unavailable state. Restoring the capability with the same ID restores the saved widget. A hidden widget stays hidden until it is added again or the layout is reset.

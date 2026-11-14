@@ -4,6 +4,7 @@ sql:
     schema: internal/storage/migrations/control
     queries:
       - internal/storage/control.sql
+      - internal/storage/layouts.sql
       - internal/storage/notifications.sql
       - internal/storage/themes.sql
     gen:
