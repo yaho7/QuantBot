@@ -65,16 +65,16 @@ func run() error {
 	if err := request("PUT", "/heartbeat", nil, &heartbeat); err != nil {
 		return err
 	}
+	for attempt := 0; !heartbeat.Executor && attempt < 120; attempt++ {
+		time.Sleep(time.Second)
+		if err := request("PUT", "/heartbeat", nil, &heartbeat); err != nil {
+			return err
+		}
+	}
+	if !heartbeat.Executor {
+		return fmt.Errorf("assign %s as the paper executor", instance)
+	}
 	if control {
-		for attempt := 0; !heartbeat.Executor && attempt < 120; attempt++ {
-			time.Sleep(time.Second)
-			if err := request("PUT", "/heartbeat", nil, &heartbeat); err != nil {
-				return err
-			}
-		}
-		if !heartbeat.Executor {
-			return fmt.Errorf("assign %s as the paper executor", instance)
-		}
 		capabilities = append(capabilities, json.RawMessage(`{
 			"id":"demo-refresh","kind":"action","title":"Refresh demo state","value_type":"null",
 			"writable":true,"timeout_seconds":30,"presentation":{"suggested":true,"surface":["strategy"]}

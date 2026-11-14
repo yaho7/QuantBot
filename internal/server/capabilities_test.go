@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http/httptest"
 	"strings"
@@ -62,6 +63,10 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 	  {"id":"limit","kind":"parameter","title":"Limit","value_type":"decimal","writable":true,"stale_after_seconds":2},
 	  {"id":"apply","kind":"action","title":"Apply","value_type":"null","writable":true,"atomic_parameters":["limit"]}
 	]}`
+	var observer struct{ Session string }
+	decodeTest(t, call("POST", "/agent/session", `{"instanceId":"analytics","bootId":"analytics-boot"}`, created.Credential.Token, 201), &observer)
+	call("PUT", "/agent/capabilities", `{"revision":0,"capabilities":[{"id":"mine","kind":"state","value_type":"boolean","title":"Mine"}]}`, observer.Session, 403)
+
 	call("PUT", "/agent/capabilities", registry, worker.Session, 200)
 	call("PUT", "/agent/capabilities", registry, worker.Session, 200)
 	now := time.Now().UnixMilli()
@@ -142,7 +147,39 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 	if saved := call("GET", path+"/capabilities", "", "", 200); !strings.Contains(saved.Body.String(), `"value":"2"`) {
 		t.Fatal("a command receipt must not replace actual state")
 	}
-	call("PUT", "/agent/capabilities", `{"revision":1,"capabilities":[]}`, worker.Session, 200)
+	var next struct {
+		Revision     int              `json:"revision"`
+		Capabilities []map[string]any `json:"capabilities"`
+	}
+	if err := json.Unmarshal([]byte(registry), &next); err != nil {
+		t.Fatal(err)
+	}
+	next.Revision = 1
+	next.Capabilities[0]["title"] = "Renamed latency"
+	next.Capabilities = append(next.Capabilities, map[string]any{"id": "new", "kind": "state", "title": "New", "value_type": "boolean"})
+	body, err := json.Marshal(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call("PUT", "/agent/capabilities", string(body), observer.Session, 403)
+	call("PUT", "/agent/capabilities", string(body), worker.Session, 200)
+	if got := call("GET", path+"/capabilities", "", "", 200); !strings.Contains(got.Body.String(), `"value":false`) {
+		t.Fatalf("unrelated registry edit removed state: %s", got.Body)
+	}
+	if latest := call("GET", path+"/capability-data", "", "", 200); !strings.Contains(latest.Body.String(), `"value":"1.001"`) {
+		t.Fatalf("unrelated registry edit removed latest metric: %s", latest.Body)
+	}
+	next.Revision = 2
+	next.Capabilities[0]["unit"] = "seconds"
+	body, err = json.Marshal(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call("PUT", "/agent/capabilities", string(body), worker.Session, 200)
+	if latest := call("GET", path+"/capability-data", "", "", 200); strings.Contains(latest.Body.String(), `"id":"metric1"`) || !strings.Contains(latest.Body.String(), `"id":"position1"`) {
+		t.Fatalf("incompatible registry edit did not isolate the affected observation: %s", latest.Body)
+	}
+	call("PUT", "/agent/capabilities", `{"revision":3,"capabilities":[]}`, worker.Session, 200)
 	call("PUT", "/agent/state", state, worker.Session, 409)
 	call("POST", "/agent/reports", report, worker.Session, 409)
 	if latest := call("GET", path+"/capability-data", "", "", 200); strings.TrimSpace(latest.Body.String()) != "[]" {

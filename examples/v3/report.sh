@@ -30,16 +30,16 @@ bearer="$(jq -er .session <<<"$session")"
 current="$(jq -er .revision <<<"$session")"
 heartbeat="$(call PUT /heartbeat "$bearer")"
 
+for ((attempt=0; attempt<120; attempt++)); do
+  if jq -e .executor <<<"$heartbeat" >/dev/null; then break; fi
+  sleep 1
+  heartbeat="$(call PUT /heartbeat "$bearer")"
+done
+if ! jq -e .executor <<<"$heartbeat" >/dev/null; then
+  printf 'Assign %s as the paper executor\n' "$instance" >&2
+  exit 1
+fi
 if [[ "$control" == 1 ]]; then
-  for ((attempt=0; attempt<120; attempt++)); do
-    if jq -e .executor <<<"$heartbeat" >/dev/null; then break; fi
-    sleep 1
-    heartbeat="$(call PUT /heartbeat "$bearer")"
-  done
-  if ! jq -e .executor <<<"$heartbeat" >/dev/null; then
-    printf 'Assign %s as the paper executor\n' "$instance" >&2
-    exit 1
-  fi
   capabilities="$(jq -c '. + [{
     id:"demo-refresh",kind:"action",title:"Refresh demo state",value_type:"null",
     writable:true,timeout_seconds:30,presentation:{suggested:true,surface:["strategy"]}

@@ -112,6 +112,7 @@ export type ValueSchema = {
   items?: ValueSchema;
 };
 export type Capability = {
+  sinceRevision: number;
   id: string;
   kind: "metric" | "state" | "parameter" | "action" | "resource" | "event";
   title: string;

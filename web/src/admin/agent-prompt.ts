@@ -1,7 +1,7 @@
 export function agentPrompt(origin: string) {
   return `Integrate this trading program with QuantBot. Use ${origin}/api/agent and read the Agent credential from QB_AGENT_TOKEN. Read ${origin}/api/agent/schemas/agent.json and ${origin}/api/agent/schemas/report.json. Use the existing HTTP client and strategy lifecycle.
 
-POST /api/agent/session with a stable instanceId and a new bootId per process. Use the session Bearer for subsequent requests and PUT /api/agent/heartbeat every 15 seconds. Use PUT /api/agent/capabilities on startup and definition changes. Declare real metrics, states, parameters, actions, resources and events. Treat presentation as a suggestion and use group health for health states.
+POST /api/agent/session with a stable instanceId and a new bootId per process. Use the session Bearer for subsequent requests and PUT /api/agent/heartbeat every 15 seconds. Only the designated executor can use PUT /api/agent/capabilities on startup and definition changes. Declare real metrics, states, parameters, actions, resources and events. Treat presentation as a suggestion and use group health for health states.
 
 Use PUT /api/agent/state, POST /api/agent/reports, POST /api/agent/events and PUT /api/agent/resources/{type} as appropriate. Use UTC Unix milliseconds, stable record IDs and unchanged contents on retry. Report only explicit association IDs.
 

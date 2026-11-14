@@ -16,6 +16,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/auth"
 	"github.com/yaho7/QuantBot/internal/control"
 	"github.com/yaho7/QuantBot/internal/httpapi"
+	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/storage/metricsdb"
 	"github.com/yaho7/QuantBot/internal/strategy"
@@ -59,6 +60,10 @@ type declaredWrite struct {
 
 func (s *Service) declared(w http.ResponseWriter, r *http.Request, agent strategy.Agent, revision int64, records []json.RawMessage, kind, resource string) {
 	ctx := r.Context()
+	if !agent.Executor {
+		httpapi.Error(w, http.StatusForbidden, "executor_required", "Designated executor required for declared observations")
+		return
+	}
 	now := time.Now()
 	q := controldb.New(s.stores.Control.Read)
 	registry, err := q.GetControlRegistry(ctx, agent.StrategyID)
@@ -229,16 +234,39 @@ func (s *Service) latestDeclared(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
 	id := chi.URLParam(r, "id")
-	registry, err := controldb.New(s.stores.Control.Read).GetControlRegistry(ctx, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		httpapi.JSON(w, http.StatusOK, []declaredView{})
+	revisions := make(map[string][2]int64)
+	if err := storage.WithTx(ctx, s.stores.Control.Read, func(tx *sql.Tx) error {
+		q := controldb.New(tx)
+		if _, err := q.GetStrategy(ctx, id); err != nil {
+			return err
+		}
+		registry, err := q.GetControlRegistry(ctx, id)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		definitions, err := q.ListControlDefinitions(ctx, id)
+		if err != nil {
+			return err
+		}
+		for _, d := range definitions {
+			revisions[d.ControlID] = [2]int64{d.SinceRevision, registry.Revision}
+		}
+		return nil
+	}); err != nil {
+		writeError(w, err)
 		return
 	}
+	bounds, err := json.Marshal(revisions)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
-	rows, err := metricsdb.New(s.stores.Metrics.Read).ListCapabilityLatest(ctx, metricsdb.ListCapabilityLatestParams{StrategyID: id, Revision: registry.Revision})
+	rows, err := metricsdb.New(s.stores.Metrics.Read).ListCapabilityLatest(ctx, metricsdb.ListCapabilityLatestParams{
+		StrategyID: id, CapabilityRevisions: string(bounds),
+	})
 	if err != nil {
 		writeError(w, err)
 		return

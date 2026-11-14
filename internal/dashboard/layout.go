@@ -134,7 +134,7 @@ func (s *Service) put(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		if string(existing) == string(body) {
+		if old.Revision > 0 && string(existing) == string(body) {
 			output = old
 			return nil
 		}

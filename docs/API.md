@@ -32,6 +32,8 @@ The service publishes invalidations after commit, coalesces updates every 125 ms
 
 ## Suggested components
 
-A declaration with `presentation.suggested` and an applicable surface provides a default widget. The browser uses the backend’s resolved renderer, the default size and the declared order. Administrators can add a declared capability manually or edit, move, resize and remove suggested widgets. Saved preferences take precedence. A saved widget whose capability disappears keeps its slot and shows an unavailable state. Restoring the capability with the same ID restores the saved widget. A hidden widget stays hidden until it is added again or the layout is reset.
+On an unconfigured workbench or strategy page, declarations with `presentation.suggested: true` and a matching `surface` populate the default layout. Their resolved renderer, size and order come from the capability definition. Capabilities with `suggested: false` are available for manual placement in the component picker. Control actions remain accessible through the separate Controls screen.
+
+Saving a layout, including an empty one, switches that surface to the saved selection. Subsequent capabilities are available in the component picker. They do not reorder or appear in a saved layout automatically. Administrators can add, move, resize and hide widgets. A saved widget whose capability disappears keeps its slot and displays an unavailable state. Restoring the capability with the same ID restores its saved slot. A hidden widget stays hidden until manually restored or the user resets the layout. Layouts belong to the administrator and surface and are independent of the active theme.
 
 In declared widgets and standard event feeds, select a reported association to view matching resource, event and metric observations. The view matches the selected field and ID exactly.

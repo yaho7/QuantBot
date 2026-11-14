@@ -60,7 +60,10 @@ export function CapabilityWidget({
       chart && (capability.kind === "metric" || capability.kind === "state"),
   });
   const record = current.data?.find(
-    (item) => item.capabilityId === capability.id && item.revision === revision,
+    (item) =>
+      item.capabilityId === capability.id &&
+      item.revision >= capability.sinceRevision &&
+      item.revision <= revision,
   );
   const recent =
     record &&
@@ -80,18 +83,22 @@ export function CapabilityWidget({
   const records = useMemo(
     () =>
       (history.data ?? emptyRecords).filter(
-        (item) => item.revision === revision,
+        (item) =>
+          item.revision >= capability.sinceRevision &&
+          item.revision <= revision,
       ),
-    [history.data, revision],
+    [history.data, revision, capability.sinceRevision],
   );
   const chartRecords = useMemo(
     () => [
       ...records,
       ...(stateHistory.data ?? emptyRecords).filter(
-        (item) => item.revision === revision,
+        (item) =>
+          item.revision >= capability.sinceRevision &&
+          item.revision <= revision,
       ),
     ],
-    [records, stateHistory.data, revision],
+    [records, stateHistory.data, revision, capability.sinceRevision],
   );
   const error = current.error ?? history.error ?? stateHistory.error;
   const suggestion = capability.alert_suggestion;

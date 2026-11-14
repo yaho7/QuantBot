@@ -93,9 +93,12 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
       .filter((widget) => widget.controlId)
       .map((widget) => widget.strategyId + ":" + widget.controlId),
   );
-  const defaults = suggestions.filter(
-    (widget) => !assigned.has(widget.strategyId + ":" + widget.controlId),
-  );
+  const defaults =
+    saved.data?.revision === 0
+      ? suggestions.filter(
+          (widget) => !assigned.has(widget.strategyId + ":" + widget.controlId),
+        )
+      : [];
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Widget[]>([]);
   const [revision, setRevision] = useState(0);

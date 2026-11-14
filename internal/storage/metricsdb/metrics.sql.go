@@ -250,16 +250,24 @@ func (q *Queries) InsertSample(ctx context.Context, arg InsertSampleParams) (int
 }
 
 const listCapabilityLatest = `-- name: ListCapabilityLatest :many
-SELECT strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint FROM capability_latest WHERE strategy_id=? AND revision=? ORDER BY capability_id
+SELECT latest.strategy_id, latest.record_id, latest.capability_id, latest.revision, latest.instance_id, latest.boot_id, latest.observed_at, latest.received_at, latest.value, latest.links, latest.fingerprint FROM json_each(CAST(?1 AS TEXT)) AS capability
+JOIN capability_latest latest ON latest.strategy_id = ?2 AND latest.capability_id = capability.key
+AND latest.revision = (
+    SELECT candidate.revision FROM capability_latest candidate
+    WHERE candidate.strategy_id = latest.strategy_id AND candidate.capability_id = latest.capability_id
+    AND candidate.revision BETWEEN CAST(json_extract(capability.value, '$[0]') AS INTEGER) AND CAST(json_extract(capability.value, '$[1]') AS INTEGER)
+    ORDER BY candidate.observed_at DESC, candidate.revision DESC, candidate.record_id DESC LIMIT 1
+)
+ORDER BY latest.capability_id
 `
 
 type ListCapabilityLatestParams struct {
-	StrategyID string
-	Revision   int64
+	CapabilityRevisions string
+	StrategyID          string
 }
 
 func (q *Queries) ListCapabilityLatest(ctx context.Context, arg ListCapabilityLatestParams) ([]CapabilityLatest, error) {
-	rows, err := q.db.QueryContext(ctx, listCapabilityLatest, arg.StrategyID, arg.Revision)
+	rows, err := q.db.QueryContext(ctx, listCapabilityLatest, arg.CapabilityRevisions, arg.StrategyID)
 	if err != nil {
 		return nil, err
 	}
@@ -600,6 +608,26 @@ func (q *Queries) PruneLogs(ctx context.Context, cutoff int64) (int64, error) {
 	return result.RowsAffected()
 }
 
+const pruneObsoleteCapabilityLatest = `-- name: PruneObsoleteCapabilityLatest :execrows
+DELETE FROM capability_latest
+WHERE strategy_id = ?1 AND capability_id = ?2
+AND revision < ?3
+`
+
+type PruneObsoleteCapabilityLatestParams struct {
+	StrategyID    string
+	CapabilityID  string
+	SinceRevision int64
+}
+
+func (q *Queries) PruneObsoleteCapabilityLatest(ctx context.Context, arg PruneObsoleteCapabilityLatestParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, pruneObsoleteCapabilityLatest, arg.StrategyID, arg.CapabilityID, arg.SinceRevision)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const pruneRollups = `-- name: PruneRollups :execrows
 DELETE FROM rollups WHERE (strategy_id, instance_id, kind, series, resolution, bucket) IN (
     SELECT old.strategy_id, old.instance_id, old.kind, old.series, old.resolution, old.bucket FROM rollups AS old
@@ -639,11 +667,10 @@ func (q *Queries) PruneSamples(ctx context.Context, cutoff int64) (int64, error)
 const putCapabilityLatest = `-- name: PutCapabilityLatest :execrows
 INSERT INTO capability_latest (strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(strategy_id,capability_id) DO UPDATE SET
-record_id=excluded.record_id, revision=excluded.revision, instance_id=excluded.instance_id, boot_id=excluded.boot_id,
+ON CONFLICT(strategy_id,capability_id,revision) DO UPDATE SET
+record_id=excluded.record_id, instance_id=excluded.instance_id, boot_id=excluded.boot_id,
 observed_at=excluded.observed_at, received_at=excluded.received_at, value=excluded.value, links=excluded.links, fingerprint=excluded.fingerprint
-WHERE (excluded.revision, excluded.observed_at, excluded.record_id) >
-(capability_latest.revision, capability_latest.observed_at, capability_latest.record_id)
+WHERE (excluded.observed_at, excluded.record_id) > (capability_latest.observed_at, capability_latest.record_id)
 `
 
 type PutCapabilityLatestParams struct {

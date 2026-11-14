@@ -254,12 +254,17 @@ func (q *Queries) DeleteBrowserSessions(ctx context.Context, userID int64) error
 	return err
 }
 
-const deleteControlDefinitions = `-- name: DeleteControlDefinitions :exec
-DELETE FROM control_definitions WHERE strategy_id = ?
+const deleteControlDefinition = `-- name: DeleteControlDefinition :exec
+DELETE FROM control_definitions WHERE strategy_id = ? AND control_id = ?
 `
 
-func (q *Queries) DeleteControlDefinitions(ctx context.Context, strategyID string) error {
-	_, err := q.db.ExecContext(ctx, deleteControlDefinitions, strategyID)
+type DeleteControlDefinitionParams struct {
+	StrategyID string
+	ControlID  string
+}
+
+func (q *Queries) DeleteControlDefinition(ctx context.Context, arg DeleteControlDefinitionParams) error {
+	_, err := q.db.ExecContext(ctx, deleteControlDefinition, arg.StrategyID, arg.ControlID)
 	return err
 }
 
@@ -530,7 +535,7 @@ func (q *Queries) GetCommandByKey(ctx context.Context, arg GetCommandByKeyParams
 }
 
 const getControlDefinition = `-- name: GetControlDefinition :one
-SELECT strategy_id, control_id, definition FROM control_definitions WHERE strategy_id = ? AND control_id = ?
+SELECT strategy_id, control_id, definition, since_revision FROM control_definitions WHERE strategy_id = ? AND control_id = ?
 `
 
 type GetControlDefinitionParams struct {
@@ -541,7 +546,12 @@ type GetControlDefinitionParams struct {
 func (q *Queries) GetControlDefinition(ctx context.Context, arg GetControlDefinitionParams) (ControlDefinition, error) {
 	row := q.db.QueryRowContext(ctx, getControlDefinition, arg.StrategyID, arg.ControlID)
 	var i ControlDefinition
-	err := row.Scan(&i.StrategyID, &i.ControlID, &i.Definition)
+	err := row.Scan(
+		&i.StrategyID,
+		&i.ControlID,
+		&i.Definition,
+		&i.SinceRevision,
+	)
 	return i, err
 }
 
@@ -807,21 +817,6 @@ func (q *Queries) InsertCommand(ctx context.Context, arg InsertCommandParams) er
 		arg.Deadline,
 		arg.TimeoutMs,
 	)
-	return err
-}
-
-const insertControlDefinition = `-- name: InsertControlDefinition :exec
-INSERT INTO control_definitions (strategy_id, control_id, definition) VALUES (?, ?, ?)
-`
-
-type InsertControlDefinitionParams struct {
-	StrategyID string
-	ControlID  string
-	Definition string
-}
-
-func (q *Queries) InsertControlDefinition(ctx context.Context, arg InsertControlDefinitionParams) error {
-	_, err := q.db.ExecContext(ctx, insertControlDefinition, arg.StrategyID, arg.ControlID, arg.Definition)
 	return err
 }
 
@@ -1186,7 +1181,7 @@ func (q *Queries) ListCommands(ctx context.Context, arg ListCommandsParams) ([]C
 }
 
 const listControlDefinitions = `-- name: ListControlDefinitions :many
-SELECT strategy_id, control_id, definition FROM control_definitions WHERE strategy_id = ? ORDER BY control_id
+SELECT strategy_id, control_id, definition, since_revision FROM control_definitions WHERE strategy_id = ? ORDER BY control_id
 `
 
 func (q *Queries) ListControlDefinitions(ctx context.Context, strategyID string) ([]ControlDefinition, error) {
@@ -1198,7 +1193,12 @@ func (q *Queries) ListControlDefinitions(ctx context.Context, strategyID string)
 	var items []ControlDefinition
 	for rows.Next() {
 		var i ControlDefinition
-		if err := rows.Scan(&i.StrategyID, &i.ControlID, &i.Definition); err != nil {
+		if err := rows.Scan(
+			&i.StrategyID,
+			&i.ControlID,
+			&i.Definition,
+			&i.SinceRevision,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -1477,6 +1477,28 @@ func (q *Queries) PruneCapabilityStates(ctx context.Context, cutoff int64) (int6
 		return 0, err
 	}
 	return result.RowsAffected()
+}
+
+const putControlDefinition = `-- name: PutControlDefinition :exec
+INSERT INTO control_definitions (strategy_id, control_id, definition, since_revision) VALUES (?, ?, ?, ?)
+ON CONFLICT (strategy_id, control_id) DO UPDATE SET definition = excluded.definition, since_revision = excluded.since_revision
+`
+
+type PutControlDefinitionParams struct {
+	StrategyID    string
+	ControlID     string
+	Definition    string
+	SinceRevision int64
+}
+
+func (q *Queries) PutControlDefinition(ctx context.Context, arg PutControlDefinitionParams) error {
+	_, err := q.db.ExecContext(ctx, putControlDefinition,
+		arg.StrategyID,
+		arg.ControlID,
+		arg.Definition,
+		arg.SinceRevision,
+	)
+	return err
 }
 
 const putControlRegistry = `-- name: PutControlRegistry :exec

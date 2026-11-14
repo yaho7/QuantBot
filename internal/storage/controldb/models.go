@@ -103,9 +103,10 @@ type CommandTransition struct {
 }
 
 type ControlDefinition struct {
-	StrategyID string
-	ControlID  string
-	Definition string
+	StrategyID    string
+	ControlID     string
+	Definition    string
+	SinceRevision int64
 }
 
 type ControlRegistry struct {

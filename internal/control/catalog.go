@@ -18,9 +18,10 @@ import (
 
 type catalogEntry struct {
 	Capability
-	Renderer string       `json:"renderer"`
-	Actual   *actualState `json:"actual,omitempty"`
-	Stale    bool         `json:"stale"`
+	SinceRevision int64        `json:"sinceRevision"`
+	Renderer      string       `json:"renderer"`
+	Actual        *actualState `json:"actual,omitempty"`
+	Stale         bool         `json:"stale"`
 }
 
 func (s *Service) browserCapabilities(w http.ResponseWriter, r *http.Request) {
@@ -70,7 +71,7 @@ func (s *Service) browserCapabilities(w http.ResponseWriter, r *http.Request) {
 			if c == nil {
 				continue
 			}
-			entry := catalogEntry{Capability: *c, Renderer: c.Renderer()}
+			entry := catalogEntry{Capability: *c, Renderer: c.Renderer(), SinceRevision: row.SinceRevision}
 			if state, ok := latest[c.ID]; ok {
 				entry.Actual = &state
 				entry.Stale = c.Expired(state.ObservedAt, now) || owner.BootID != registry.BootID

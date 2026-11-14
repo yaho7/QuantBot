@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -464,4 +465,21 @@ func (c Capability) Dispatch() string {
 		return c.Command
 	}
 	return c.ID
+}
+
+// Data shape and units define whether an observation can survive a registry edit.
+func canPreserveState(previous string, current Capability) (bool, error) {
+	var definition Definition
+	if err := json.Unmarshal([]byte(previous), &definition); err != nil {
+		return false, err
+	}
+	old := definition.Capability
+	if old == nil || old.Kind != current.Kind || old.Unit != current.Unit {
+		return false, nil
+	}
+	if current.Kind == "action" && (old.Command != current.Command ||
+		!reflect.DeepEqual(old.InputSchema, current.InputSchema) || !slices.Equal(old.AtomicBatch, current.AtomicBatch)) {
+		return false, nil
+	}
+	return reflect.DeepEqual(old.schema(), current.schema()), nil
 }

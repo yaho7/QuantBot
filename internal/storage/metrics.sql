@@ -83,11 +83,10 @@ VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;
 -- name: PutCapabilityLatest :execrows
 INSERT INTO capability_latest (strategy_id, record_id, capability_id, revision, instance_id, boot_id, observed_at, received_at, value, links, fingerprint)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(strategy_id,capability_id) DO UPDATE SET
-record_id=excluded.record_id, revision=excluded.revision, instance_id=excluded.instance_id, boot_id=excluded.boot_id,
+ON CONFLICT(strategy_id,capability_id,revision) DO UPDATE SET
+record_id=excluded.record_id, instance_id=excluded.instance_id, boot_id=excluded.boot_id,
 observed_at=excluded.observed_at, received_at=excluded.received_at, value=excluded.value, links=excluded.links, fingerprint=excluded.fingerprint
-WHERE (excluded.revision, excluded.observed_at, excluded.record_id) >
-(capability_latest.revision, capability_latest.observed_at, capability_latest.record_id);
+WHERE (excluded.observed_at, excluded.record_id) > (capability_latest.observed_at, capability_latest.record_id);
 
 -- name: ReplayCapabilityData :many
 SELECT * FROM capability_samples WHERE strategy_id=? AND capability_id=?
@@ -112,7 +111,15 @@ VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING;
 SELECT fingerprint FROM capability_receipts WHERE strategy_id=? AND revision=? AND capability_id=? AND record_id=?;
 
 -- name: ListCapabilityLatest :many
-SELECT * FROM capability_latest WHERE strategy_id=? AND revision=? ORDER BY capability_id;
+SELECT latest.* FROM json_each(CAST(sqlc.arg(capability_revisions) AS TEXT)) AS capability
+JOIN capability_latest latest ON latest.strategy_id = sqlc.arg(strategy_id) AND latest.capability_id = capability.key
+AND latest.revision = (
+    SELECT candidate.revision FROM capability_latest candidate
+    WHERE candidate.strategy_id = latest.strategy_id AND candidate.capability_id = latest.capability_id
+    AND candidate.revision BETWEEN CAST(json_extract(capability.value, '$[0]') AS INTEGER) AND CAST(json_extract(capability.value, '$[1]') AS INTEGER)
+    ORDER BY candidate.observed_at DESC, candidate.revision DESC, candidate.record_id DESC LIMIT 1
+)
+ORDER BY latest.capability_id;
 
 -- name: PruneCapabilityReceipts :execrows
 DELETE FROM capability_receipts WHERE (strategy_id,revision,capability_id,record_id) IN (

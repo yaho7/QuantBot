@@ -64,9 +64,7 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	definitions := make(map[string]string, len(capabilities))
-	writable := false
 	for id, capability := range capabilities {
-		writable = writable || capability.Writable
 		definition := capability.Definition()
 		if len(capability.AtomicBatch) > 0 {
 			for _, id := range capability.AtomicBatch {
@@ -84,35 +82,23 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 	}
 	var revision int64
 	err = s.agentTransaction(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent) error {
+		if !agent.Executor {
+			return ErrExecutorRequired
+		}
 		registry, err := q.GetControlRegistry(ctx, agent.StrategyID)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
 		revision = registry.Revision
-		owner := registry.InstanceID == agent.InstanceID && registry.BootID == agent.BootID
-		if writable && !agent.Executor || revision > 0 && !agent.Executor && !owner && registry.InstanceID != agent.InstanceID {
-			return ErrExecutorRequired
+		saved, err := q.ListControlDefinitions(ctx, agent.StrategyID)
+		if err != nil {
+			return err
 		}
-		if !agent.Executor && revision > 0 {
-			rows, err := q.ListControlDefinitions(ctx, agent.StrategyID)
-			if err != nil {
-				return err
-			}
-			for _, row := range rows {
-				var definition Definition
-				if err := json.Unmarshal([]byte(row.Definition), &definition); err != nil {
-					return err
-				}
-				if !definition.IsReadOnly() {
-					return ErrExecutorRequired
-				}
-			}
-		}
-		if registry.Revision > 0 && registry.InstanceID == agent.InstanceID && registry.BootID == agent.BootID {
-			equal, err := identicalRegistry(ctx, q, agent.StrategyID, definitions)
-			if err != nil || equal && (*input.Revision == revision || *input.Revision == revision-1) {
-				return err
-			}
+		sameOwner := registry.InstanceID == agent.InstanceID
+		sameBoot := sameOwner && registry.BootID == agent.BootID
+		if sameBoot && identicalRegistry(saved, definitions) &&
+			(*input.Revision == revision || *input.Revision == revision-1) {
+			return nil
 		}
 		if revision != *input.Revision {
 			return ErrRegistryChanged
@@ -124,12 +110,40 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			return err
 		}
-		if err := q.DeleteControlDefinitions(ctx, agent.StrategyID); err != nil {
-			return err
+		for _, row := range saved {
+			body, exists := definitions[row.ControlID]
+			if !exists {
+				if err := removeCapability(ctx, q, row); err != nil {
+					return err
+				}
+				continue
+			}
+			if sameBoot && body == row.Definition {
+				delete(definitions, row.ControlID)
+				continue
+			}
+			keep, err := canPreserveState(row.Definition, capabilities[row.ControlID])
+			if err != nil {
+				return err
+			}
+			if !sameBoot || !keep {
+				if err := removeCapability(ctx, q, row); err != nil {
+					return err
+				}
+			}
+			if sameOwner && keep {
+				if err := q.PutControlDefinition(ctx, controldb.PutControlDefinitionParams{
+					StrategyID: row.StrategyID, ControlID: row.ControlID,
+					Definition: body, SinceRevision: row.SinceRevision,
+				}); err != nil {
+					return err
+				}
+				delete(definitions, row.ControlID)
+			}
 		}
 		for id, definition := range definitions {
-			if err := q.InsertControlDefinition(ctx, controldb.InsertControlDefinitionParams{
-				StrategyID: agent.StrategyID, ControlID: id, Definition: definition,
+			if err := q.PutControlDefinition(ctx, controldb.PutControlDefinitionParams{
+				StrategyID: agent.StrategyID, ControlID: id, Definition: definition, SinceRevision: revision,
 			}); err != nil {
 				return err
 			}
@@ -147,17 +161,22 @@ func (s *Service) register(w http.ResponseWriter, r *http.Request) {
 	httpapi.JSON(w, http.StatusOK, map[string]int64{"revision": revision})
 }
 
-func identicalRegistry(ctx context.Context, q *controldb.Queries, strategyID string, definitions map[string]string) (bool, error) {
-	saved, err := q.ListControlDefinitions(ctx, strategyID)
-	if err != nil || len(saved) != len(definitions) {
-		return false, err
+func identicalRegistry(saved []controldb.ControlDefinition, definitions map[string]string) bool {
+	if len(saved) != len(definitions) {
+		return false
 	}
 	for _, item := range saved {
 		if definitions[item.ControlID] != item.Definition {
-			return false, nil
+			return false
 		}
 	}
-	return true, nil
+	return true
+}
+
+func removeCapability(ctx context.Context, q *controldb.Queries, definition controldb.ControlDefinition) error {
+	return q.DeleteControlDefinition(ctx, controldb.DeleteControlDefinitionParams{
+		StrategyID: definition.StrategyID, ControlID: definition.ControlID,
+	})
 }
 
 type actualState struct {
@@ -192,6 +211,9 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 	}
 	var updated, duplicate, stale int
 	err := s.agentTransaction(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent) error {
+		if !agent.Executor {
+			return ErrExecutorRequired
+		}
 		registry, err := q.GetControlRegistry(ctx, agent.StrategyID)
 		if errors.Is(err, sql.ErrNoRows) || err == nil && (registry.Revision != input.Revision ||
 			registry.InstanceID != agent.InstanceID || registry.BootID != agent.BootID) {
@@ -208,9 +230,6 @@ func (s *Service) state(w http.ResponseWriter, r *http.Request) {
 			capability := definition.Capability
 			if capability == nil || capability.Kind == "resource" || capability.Kind == "event" {
 				return invalidInput("Capability does not accept current state")
-			}
-			if capability.Writable && !agent.Executor {
-				return ErrExecutorRequired
 			}
 			if err := definition.ValidateValue(state.Value, true); err != nil {
 				return invalidInput(fmt.Sprintf("Control %q: %v", state.ID, err))

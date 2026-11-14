@@ -414,7 +414,14 @@ test("initialization, real reports, command receipt and responsive shells", asyn
               },
             }
           : entry,
-      ),
+      )
+      .concat({
+        id: "late",
+        title: "后注册建议组件",
+        kind: "metric",
+        value_type: "decimal",
+        presentation: { suggested: true, surface: ["overview"], order: -200 },
+      }),
   );
   await expect(widget("自定义延迟")).toContainText("能力当前未注册");
   await expect(widget("自定义延迟")).toHaveClass(/size-small/);

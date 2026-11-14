@@ -149,11 +149,12 @@ SELECT * FROM control_definitions WHERE strategy_id = ? ORDER BY control_id;
 -- name: GetControlDefinition :one
 SELECT * FROM control_definitions WHERE strategy_id = ? AND control_id = ?;
 
--- name: DeleteControlDefinitions :exec
-DELETE FROM control_definitions WHERE strategy_id = ?;
+-- name: DeleteControlDefinition :exec
+DELETE FROM control_definitions WHERE strategy_id = ? AND control_id = ?;
 
--- name: InsertControlDefinition :exec
-INSERT INTO control_definitions (strategy_id, control_id, definition) VALUES (?, ?, ?);
+-- name: PutControlDefinition :exec
+INSERT INTO control_definitions (strategy_id, control_id, definition, since_revision) VALUES (?, ?, ?, ?)
+ON CONFLICT (strategy_id, control_id) DO UPDATE SET definition = excluded.definition, since_revision = excluded.since_revision;
 
 -- name: GetControlState :one
 SELECT * FROM control_states WHERE strategy_id = ? AND control_id = ?;

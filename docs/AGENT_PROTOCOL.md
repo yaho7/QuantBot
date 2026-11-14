@@ -32,9 +32,9 @@ Call `PUT /api/agent/heartbeat` with the session Bearer token and no body. The r
 
 ## Capability registration
 
-The session response includes the strategy's current `revision`. Submit a complete registry at `PUT /api/agent/capabilities` with that revision. A new strategy starts at revision zero. An identical retry from the same process returns the committed revision. A conflicting write returns HTTP 409. On a new boot, republish before writing state. Capability registration does not write user layout preferences.
+The session response includes the strategy's current `revision`. Submit a complete registry at `PUT /api/agent/capabilities` with that revision. A new strategy starts at revision zero. Only the designated executor with control scope can publish or replace a strategy registry, including read-only declarations. Instance-local registries are unsupported. Other instances may send standard telemetry with report scope. An identical retry from the same process returns the committed revision. A conflicting write returns HTTP 409. On a new boot, republish before writing state. Declared state, reports, events and resources are bound to the designated executor that published the current registry. Capability registration does not write user layout preferences.
 
-Use `metric`, `state`, `parameter`, `action`, `resource` or `event`. Declare a stable `id`, `kind`, `title`, `value_type`, and optional `description`, `group`, `unit`, `precision`, `constraints`, `history` and `presentation`. The first read-only registry may be registered by an Agent with control scope. A registry with writable capabilities requires the designated executor.
+Use `metric`, `state`, `parameter`, `action`, `resource` or `event`. Declare a stable `id`, `kind`, `title`, `value_type`, and optional `description`, `group`, `unit`, `precision`, `constraints`, `history` and `presentation`.
 
 ```json
 {
@@ -55,7 +55,7 @@ Use `metric`, `state`, `parameter`, `action`, `resource` or `event`. Declare a s
 }
 ```
 
-`PUT /api/agent/state` takes the committed `revision` and `states`. Entries contain `id`, `value`, `observedAt` in UTC Unix milliseconds, optional boolean `available` and optional `reason`. Use availability and reason to report local safety locks. Updates validate and commit atomically. Duplicate observations and stale observations are counted. A changed registry clears old current values. An action may report availability with `value: null`. This endpoint reports observations and never applies parameter changes.
+`PUT /api/agent/state` takes the committed `revision` and `states`. Entries contain `id`, `value`, `observedAt` in UTC Unix milliseconds, optional boolean `available` and optional `reason`. Use availability and reason to report local safety locks. Updates validate and commit atomically. Duplicate observations and stale observations are counted. A compatible edit by the same executor process preserves the latest state and reported observations, retaining their original observation time and revision. New capabilities wait for their first observation. Changes to kind, value schema or unit invalidate that capability; changing an action’s dispatch, input schema or plan also invalidates its availability. A new boot must report fresh control state before executing commands. A different executor starts with fresh observations. Deleted capabilities leave the catalog and keep their saved layout slots unavailable until re-registered. An action may report availability with `value: null`. This endpoint reports observations and never applies parameter changes.
 
 A capability with `stale_after_seconds` cannot be used for a command after that deadline. The optional `alert_suggestion` describes an inactive `stale`, `above` or `below` suggestion. The host can read the capability catalog, resolved renderer and diagnostics at `GET /api/strategies/{id}/capabilities`.
 

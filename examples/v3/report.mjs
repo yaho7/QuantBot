@@ -28,12 +28,12 @@ const { session: bearer, revision: current } = await call("POST", "/session", QB
   instanceId: QB_INSTANCE_ID, bootId: boot,
 });
 let heartbeat = await call("PUT", "/heartbeat", bearer);
+for (let attempt = 0; !heartbeat.executor && attempt < 120; attempt++) {
+  await sleep(1000);
+  heartbeat = await call("PUT", "/heartbeat", bearer);
+}
+if (!heartbeat.executor) throw new Error(`Assign ${QB_INSTANCE_ID} as the paper executor`);
 if (control) {
-  for (let attempt = 0; !heartbeat.executor && attempt < 120; attempt++) {
-    await sleep(1000);
-    heartbeat = await call("PUT", "/heartbeat", bearer);
-  }
-  if (!heartbeat.executor) throw new Error(`Assign ${QB_INSTANCE_ID} as the paper executor`);
   capabilities.push({
     id: "demo-refresh", kind: "action", title: "Refresh demo state",
     value_type: "null", writable: true, timeout_seconds: 30,

@@ -35,20 +35,18 @@ def main():
     bearer = session["session"]
     capabilities = json.loads(Path(__file__).with_name("capabilities.json").read_text())
 
+    for _ in range(120):
+        if call("PUT", "/heartbeat", bearer)["executor"]:
+            break
+        time.sleep(1)
+    else:
+        raise SystemExit(f"Assign {instance} as the paper executor")
     if control:
-        for _ in range(120):
-            if call("PUT", "/heartbeat", bearer)["executor"]:
-                break
-            time.sleep(1)
-        else:
-            raise SystemExit(f"Assign {instance} as the paper executor")
         capabilities.append({
             "id": "demo-refresh", "kind": "action", "title": "Refresh demo state",
             "value_type": "null", "writable": True, "timeout_seconds": 30,
             "presentation": {"suggested": True, "surface": ["strategy"]},
         })
-    else:
-        call("PUT", "/heartbeat", bearer)
 
     revision = call("PUT", "/capabilities", bearer, {
         "revision": session["revision"], "capabilities": capabilities,
