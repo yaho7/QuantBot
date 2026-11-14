@@ -46,6 +46,7 @@ import { useRealtime } from "./realtime";
 import { Home } from "./home";
 import { StrategyDetail, AllControls } from "./strategy";
 import { ActivityPage, AlertsPage } from "./activity";
+const Notifications = lazy(() => import("../admin/notifications"));
 const AdminDashboard = lazy(() =>
   import("../admin/pages").then((module) => ({
     default: module.AdminDashboard,
@@ -342,6 +343,7 @@ const router = createBrowserRouter([
         children: [
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", element: <AdminDashboard /> },
+          { path: "notifications", element: <Notifications /> },
           { path: "strategies", element: <AdminStrategies /> },
           { path: "integration", element: <Integration /> },
           { path: "audit", element: <Audit /> },

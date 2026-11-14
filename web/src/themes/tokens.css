@@ -1328,3 +1328,24 @@ td button {
     scroll-behavior: auto !important;
   }
 }
+
+.channel-card header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.channel-card header h2 {
+  margin: 0;
+  flex: 1;
+}
+.channel-events {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+.channel-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

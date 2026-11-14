@@ -1,6 +1,19 @@
 import { useSyncExternalStore } from "react";
 
 const messages = {
+  addChannel: ["添加通知渠道", "Add channel"],
+  editChannel: ["编辑渠道", "Edit channel"],
+  channelName: ["渠道名称", "Channel name"],
+  provider: ["通知平台", "Provider"],
+  enabled: ["已启用", "Enabled"],
+  disabled: ["已停用", "Disabled"],
+  replaceCredentials: ["更换凭据", "Replace credentials"],
+  noChannels: [
+    "添加通知渠道以接收策略告警和执行回执。",
+    "Add a channel to receive strategy alerts and execution receipts.",
+  ],
+  testDelivery: ["发送测试", "Send test"],
+  deliveryHistory: ["投递记录", "Delivery history"],
   workbench: ["工作台", "Workbench"],
   strategies: ["策略", "Strategies"],
   controls: ["控制中心", "Controls"],

@@ -222,6 +222,20 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     page.locator(".control-card").first().locator("dd").first(),
   ).toHaveText("true");
 
+  await page.goto("/admin/notifications");
+  await page.getByRole("button", { name: "添加通知渠道", exact: true }).click();
+  await dialog.getByLabel("渠道名称").fill("测试告警渠道");
+  await dialog.getByLabel("Bot Token").fill("123456:local-browser-test-token");
+  await dialog.getByLabel("Chat ID").fill("1234567");
+  await dialog.getByRole("button", { name: "保存", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".channel-card")).toContainText("测试告警渠道");
+  await expect(page.locator(".channel-card")).toContainText("已停用");
+  const channels = await page.evaluate(async () =>
+    (await fetch("/api/v1/admin/notifications")).json(),
+  );
+  expect(JSON.stringify(channels)).not.toContain("local-browser-test-token");
+
   for (const appearance of ["light", "dark"]) {
     await page.evaluate((mode) => {
       localStorage.setItem("qb.appearance", mode);
@@ -234,6 +248,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
         ["detail", "/strategies/" + id],
         ["admin", "/admin/dashboard"],
         ["audit", "/admin/audit"],
+        ["notifications", "/admin/notifications"],
       ]) {
         await page.goto(path);
         await expect(page.locator("h1")).toBeVisible();
