@@ -6,18 +6,7 @@ Use **Workbench** to see strategy data and controls. In **Administration → Int
 
 ## Docker Compose
 
-Save the following as `compose.yml`. Compose pulls the image from GitHub Packages and stores data in `./data` next to the configuration.
-
-```yaml
-services:
-  quantbot:
-    image: ghcr.io/yaho7/quantbot:latest
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8888:8888"
-    volumes:
-      - ./data:/data
-```
+Save [compose.yml](compose.yml) and start the single container. Docker Compose keeps both databases in the `data` volume.
 
 ```bash
 docker compose up -d
@@ -42,18 +31,15 @@ Open the [local console](http://127.0.0.1:23456/) and create an administrator. C
 - [Agent OpenAPI 3.1](docs/openapi.json) · [JSON Schema](internal/server/schemas/agent.json)
 - [Telegram setup, commands, and notifications](docs/TELEGRAM.md)
 - [Docker, Linux, HTTPS, backups, and upgrades](docs/DEPLOYMENT.md)
-- [Architecture and safety boundaries](DESIGN.md) · [Console localization](web/LOCALIZATION.md)
+- [Architecture and safety boundaries](docs/ARCHITECTURE.md) · [Console localization](web/LOCALIZATION.md)
 
 The running service publishes JSON Schema at `/api/agent/schemas/agent.json` and `/api/agent/schemas/report.json`.
 
 ## Development checks
 
 ```bash
-uv run pytest
-uv run ruff check .
-uv run ruff format --check .
-uv run python scripts/export_api.py --check
-uv build
+go test -race ./...
+go vet ./...
 
 cd web
 npm ci

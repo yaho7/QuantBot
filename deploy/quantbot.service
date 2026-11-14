@@ -9,6 +9,7 @@ EnvironmentFile=-%h/.config/quantbot/service.env
 ExecStart=%h/.local/bin/quantbot serve
 Restart=on-failure
 RestartSec=3
+UMask=0077
 NoNewPrivileges=true
 
 [Install]

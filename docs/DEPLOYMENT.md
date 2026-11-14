@@ -2,83 +2,35 @@
 
 ## Docker Compose
 
-Save [compose.yml](../compose.yml) and start the service from the same directory.
+Save [compose.yml](../compose.yml) and run `docker compose up -d`. Open [http://127.0.0.1:8888](http://127.0.0.1:8888) to initialize the administrator. The container runs as UID/GID 10001 and stores all data in a named volume. Keep the published port bound to the host loopback address. `QB_DOCKER_LOOPBACK=1` allows local requests forwarded by the Docker bridge to loopback hostnames.
 
-```bash
-docker compose up -d
-```
-
-Open [http://localhost:8888](http://localhost:8888) and create an administrator. The port binds to the host loopback interface and the database lives in `./data` next to the Compose file. The image configures permissions for this directory and database files before running as UID/GID 10001. Use a dedicated data directory.
-
-If Docker runs on another machine, forward the port from the machine running your browser.
-
-```bash
-ssh -N -L 8888:127.0.0.1:8888 user@your-server
-```
-
-For remote console or Agent access, use an HTTPS reverse proxy to `127.0.0.1:8888`. Preserve the original Host and pass `X-Forwarded-Proto`. The image trusts loopback and the detected Docker bridge gateway by default. Keep the loopback binding. Set `QB_PUBLIC_URL` for Telegram login links and public hostname validation.
-
-An existing administrator sees the login screen. For unattended deployments, seed the account with `QB_ADMIN_USERNAME` and `QB_ADMIN_PASSWORD_FILE`. Configure the bot token in the console or supply `QB_TELEGRAM_TOKEN_FILE`.
-
-### Cloudflare Tunnel
-
-If `cloudflared` runs on the Docker host, route the public hostname to `http://127.0.0.1:8888` and browse to `https://quantbot.example.com`. Preserve the original Host. Cloudflare forwards the visitor protocol in `X-Forwarded-Proto`. [Origin protocols](https://developers.cloudflare.com/tunnel/concepts/routing/#supported-protocols) · [Cloudflare headers](https://developers.cloudflare.com/fundamentals/reference/http-headers/#x-forwarded-proto)
-
-If the HTTPS hostname returns `HTTPS is required for remote connections`, verify `X-Forwarded-Proto: https` reaches the origin. If the bridge gateway was not detected, inspect it and configure it explicitly.
-
-```bash
-docker inspect --format '{{range .NetworkSettings.Networks}}{{println .Gateway}}{{end}}' \
-  "$(docker compose ps -q quantbot)"
-```
-
-Create `compose.override.yaml` with the real hostname and proxy address. Replace the example gateway `172.18.0.1` with the address from the previous step.
+On a remote host, use SSH forwarding for local administration or terminate HTTPS at a reverse proxy. Configure the exact public origin and the addresses of the trusted proxies:
 
 ```yaml
 services:
   quantbot:
     environment:
-      QB_PUBLIC_URL: "https://quantbot.example.com"
-      QB_TRUST_PROXY: "172.18.0.1"
+      QB_PUBLIC_ORIGIN: "https://quantbot.example.com"
+      QB_TRUSTED_PROXIES: "172.18.0.1/32"
 ```
 
-```bash
-docker compose -f compose.yml -f compose.override.yaml up -d
-curl -fsS https://quantbot.example.com/healthz
-```
+When the proxy runs on the Docker host, use the bridge gateway address reported by `docker inspect` for the QuantBot container. When it shares the Docker network, use a fixed proxy container address and the internal destination `http://quantbot:8888`. Preserve the original Host, forward the HTTPS scheme, allow at least 25 seconds for command polling, and disable proxy buffering for SSE. Caddy, Nginx, 1Panel and Cloudflare Tunnel can all use this arrangement. [Caddy configuration](../deploy/Caddyfile)
 
-If `cloudflared` and QuantBot share a Docker network, use `http://quantbot:8888` as the origin and set `QB_TRUST_PROXY` to the fixed container IP for `cloudflared`. Explicit settings replace the default trust list. Trust only the actual proxy and retain loopback binding.
+## Native Linux
 
-The first successful setup creates the administrator and closes setup. If needed, initialize on loopback or seed the account before exposing the HTTPS hostname.
-
-## Linux user service
-
-Install from a checkout or use the installer with a specific version.
+Run `bash install.sh --ref v3.0.0` to install the Linux amd64 or arm64 release into `~/.local/bin`. The installer verifies the published SHA-256 checksum and binary version before replacing the executable.
 
 ```bash
-uv tool install .
-quantbot admin
-mkdir -p ~/.config/systemd/user ~/.config/quantbot
+mkdir -p ~/.config/systemd/user ~/.config/quantbot ~/.local/share/quantbot
 install -m 0644 deploy/quantbot.service ~/.config/systemd/user/quantbot.service
+printf 'QB_DATA_DIR=%s\n' "$HOME/.local/share/quantbot" > ~/.config/quantbot/service.env
 systemctl --user daemon-reload
 systemctl --user enable --now quantbot
-systemctl --user status quantbot
-journalctl --user -u quantbot
 ```
 
-The service unit defaults to `~/.local/bin/quantbot`. Check `uv tool dir --bin` and adjust `ExecStart` as needed. Enable systemd lingering for the service account if it must continue after logout. [Service unit](../deploy/quantbot.service)
+The default native listener is `127.0.0.1:23456`. Set `QB_LISTEN` to change the bind address. Configure `QB_PUBLIC_ORIGIN` and `QB_TRUSTED_PROXIES` for HTTPS reverse proxies. Other settings include `QB_AGENT_SESSION_TTL`, `QB_COMMAND_POLL`, `QB_METRICS_QUEUE`, `QB_METRICS_BATCH` and `QB_METRICS_FLUSH`.
 
-Write configuration to `~/.config/quantbot/service.env`. The default bind address is `127.0.0.1:23456` and the default data directory is `~/.local/share/quantbot`. Use loopback access or SSH forwarding.
-
-```dotenv
-QB_HOST=127.0.0.1
-QB_PORT=23456
-QB_PUBLIC_URL=https://quantbot.example.com
-QB_TRUST_PROXY=127.0.0.1,::1
-```
-
-Terminate TLS at the proxy, forward the original `Host` and `X-Forwarded-Proto`, and trust only the actual proxy addresses. Allow at least 25 seconds for long polling and disable proxy buffering for SSE. See the [Caddy example](../deploy/Caddyfile). Remote HTTP is rejected.
-
-Common settings include `QB_DATA_DIR`, `QB_HOST`, `QB_PORT`, `QB_PUBLIC_URL`, `QB_TRUST_PROXY`, `QB_ADMIN_USERNAME`, `QB_ADMIN_PASSWORD_FILE`, and `QB_TELEGRAM_TOKEN_FILE`. Check `/healthz` for health and System settings for the version and database schema.
+Upgrade the container with `docker compose pull && docker compose up -d`. Retain the existing 3.0 volume. Start with fresh data when moving from the Python edition to 3.0.
 
 ## Go data backup and restore
 
@@ -93,3 +45,13 @@ QB_DATA_DIR=/path/to/restored-data quantbot doctor
 Restore requires a new destination directory. It checks SQLite integrity and the encryption key before publishing the restored data. It expires queued commands, marks interrupted executions unknown and revokes restored Agent credentials and sessions. Sign in again, reconcile unknown commands, and issue fresh Agent credentials before assigning executors.
 
 Run `quantbot doctor` with the service configuration to inspect directory permissions, database integrity, WAL mode, the encryption key, the configured theme and local readiness. Configuration or storage errors produce a nonzero exit code. Use `quantbot health` for a readiness probe.
+
+With Compose, stop the service and use a one-off container for the archive:
+
+```bash
+docker compose stop quantbot
+docker compose run --rm --no-deps quantbot backup /data/backup.zip
+docker compose run --rm --no-deps --user 10001:10001 -e QB_DATA_DIR=/data/restored quantbot restore /data/backup.zip
+```
+
+The example verifies recovery in a new subdirectory. To run on the restored data, set `QB_DATA_DIR=/data/restored` in a Compose override before restarting.

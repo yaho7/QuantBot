@@ -18,8 +18,9 @@ type Peer struct {
 }
 
 type Origins struct {
-	Public  string
-	Proxies []netip.Prefix
+	Public          string
+	Proxies         []netip.Prefix
+	LoopbackGateway netip.Addr
 }
 
 func (origins Origins) Guard(next http.Handler) http.Handler {
@@ -35,6 +36,7 @@ func (origins Origins) Guard(next http.Handler) http.Handler {
 			return
 		}
 		addr = addr.Unmap()
+		directPeer := addr
 		secure := r.TLS != nil
 		for _, proxy := range origins.Proxies {
 			if proxy.Contains(addr) {
@@ -55,7 +57,10 @@ func (origins Origins) Guard(next http.Handler) http.Handler {
 			hostName = host
 		}
 		localIP, _ := netip.ParseAddr(strings.Trim(hostName, "[]"))
-		local := addr.IsLoopback() && (strings.EqualFold(hostName, "localhost") || localIP.IsLoopback())
+		loopbackHost := strings.EqualFold(hostName, "localhost") || localIP.IsLoopback()
+		dockerLoopback := directPeer == origins.LoopbackGateway && r.Header.Get("X-Forwarded-For") == "" &&
+			r.Header.Get("X-Forwarded-Proto") == "" && r.Header.Get("Forwarded") == ""
+		local := loopbackHost && (addr.IsLoopback() || dockerLoopback)
 		if !local && (!secure || origins.Public == "" || origin != origins.Public) {
 			Error(w, http.StatusForbidden, "untrusted_origin", "Use the configured HTTPS address")
 			return

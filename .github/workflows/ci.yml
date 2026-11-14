@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags: ["v3.*"]
   pull_request:
 
 permissions:
@@ -14,117 +14,87 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.26.x'
-          cache: false
-      - run: uv sync --frozen
-      - run: uv run ruff check . && uv run ruff format --check .
-      - run: uv run pytest
-        env:
-          QB_REQUIRE_LANGUAGE_TESTS: '1'
-      - run: uv run python scripts/export_api.py --check
-      - run: uv build
-      - run: shellcheck install.sh
-      - name: Audit locked Python dependencies
-        run: |
-          uv export --frozen --no-dev --no-emit-project --no-hashes --output-file "$RUNNER_TEMP/requirements.txt" >/dev/null
-          uvx --python 3.12 pip-audit --disable-pip --no-deps --requirement "$RUNNER_TEMP/requirements.txt"
+          go-version-file: go.mod
+      - run: go test -race ./...
+      - run: go vet ./...
+      - run: shellcheck install.sh deploy/smoke.sh
 
   web:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci --no-audit --no-fund
-      - run: npm audit --audit-level=high
+        working-directory: web
       - run: npm run build
-      - run: git diff --exit-code -- ../src/quantbot/web
+        working-directory: web
+      - run: git diff --exit-code -- web/dist
       - run: npx playwright install --with-deps chromium
+        working-directory: web
       - run: npm run test:e2e
+        working-directory: web
 
   image:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - {arch: amd64, runner: ubuntu-latest}
+          - {arch: arm64, runner: ubuntu-24.04-arm}
     steps:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
-      - run: docker build --tag ghcr.io/yaho7/quantbot:latest .
-      - name: Verify the recommended Compose setup
+      - run: docker build --tag quantbot:ci .
+      - run: deploy/smoke.sh quantbot:ci
+      - if: startsWith(github.ref, 'refs/tags/')
+        env:
+          ARCH: ${{ matrix.arch }}
+          TAG: ${{ github.ref_name }}
         run: |
-          trap 'docker compose down' EXIT
-          test ! -e data
-          docker compose up -d --pull never --wait --wait-timeout 60
-          curl --fail --silent --show-error http://localhost:8888/healthz
-          setup=http://localhost:8888/api/admin/setup
-          curl --fail --silent --show-error "$setup" | jq -e '.required and .available'
-          curl --fail --silent --show-error "$setup" \
-            -H 'Host: quantbot.example.com' -H 'X-Forwarded-Proto: https' \
-            -H 'X-Forwarded-For: 203.0.113.10' | jq -e '.required and .available'
-          curl --fail --silent --show-error "$setup" \
-            -H 'Host: quantbot.example.com' -H 'X-Forwarded-Proto: https' \
-            -H 'X-Forwarded-For: 203.0.113.10' -H 'Origin: https://quantbot.example.com' \
-            -H 'Content-Type: application/json' \
-            --data '{"username":"compose-admin","password":"compose-smoke-test"}' \
-            | jq -e '.authenticated'
-          test "$(docker compose exec -T quantbot awk '/^Uid:/ {print $2}' /proc/1/status)" = 10001
-          docker compose down
-          sudo chown root:root data data/quantbot.sqlite3 data/quantbot.lock
-          sudo chmod 0755 data
-          docker compose up -d --pull never --wait --wait-timeout 60
-          curl --fail --silent --show-error "$setup" | jq -e '.required == false'
-          docker compose down
-          sudo mv data/quantbot.sqlite3 data/quantbot-v2.sqlite3
-          sudo chown root:root data/quantbot-v2.sqlite3
-          docker compose up -d --pull never --wait --wait-timeout 60
-          curl --fail --silent --show-error "$setup" | jq -e '.required == false'
-          curl --fail --silent --show-error http://localhost:8888/api/admin/login \
-            -H 'Origin: http://localhost:8888' -H 'Content-Type: application/json' \
-            --data '{"username":"compose-admin","password":"compose-smoke-test"}' \
-            | jq -e '.authenticated'
-          sudo test ! -e data/quantbot.sqlite3
+          test "$(docker run --rm quantbot:ci version)" = "${TAG#v}"
+          mkdir artifacts
+          container="$(docker create quantbot:ci)"
+          trap 'docker rm "$container"' EXIT
+          docker cp "$container:/usr/local/bin/quantbot" "artifacts/quantbot-linux-$ARCH"
+          cd artifacts
+          sha256sum "quantbot-linux-$ARCH" > "quantbot-linux-$ARCH.sha256"
+      - uses: actions/upload-artifact@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: quantbot-linux-${{ matrix.arch }}
+          path: artifacts/
 
-  publish-image:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: [test, web, image]
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Verify release version
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          python - <<'PY'
-          import os
-          import tomllib
-          from pathlib import Path
-
-          version = tomllib.loads(Path("pyproject.toml").read_text())["project"]["version"]
-          assert os.environ["RELEASE_TAG"] == f"v{version}"
-          PY
-      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1
         with:
           platforms: arm64
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
       - name: Log in to GitHub Container Registry
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -132,3 +102,8 @@ jobs:
           tags: |
             ghcr.io/yaho7/quantbot:${{ github.ref_name }}
             ghcr.io/yaho7/quantbot:latest
+      - name: Publish binaries and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" artifacts/* --verify-tag --generate-notes

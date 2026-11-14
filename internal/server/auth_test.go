@@ -87,6 +87,31 @@ func TestPublicTransportRequiresTrustedProxyAndHost(t *testing.T) {
 	send("192.0.2.10", "quantbot.example", "https", 200)
 }
 
+func TestDockerLoopbackRequiresBridgePeerAndLocalHost(t *testing.T) {
+	handler := newAuthTestServer(t, config.Config{LoopbackGateway: netip.MustParseAddr("172.18.0.1")})
+	for _, test := range []struct {
+		peer, host, forwarded string
+		status                int
+	}{
+		{"172.18.0.1", "localhost:8888", "", 200},
+		{"172.18.0.1", "127.0.0.1:8888", "", 200},
+		{"172.18.0.2", "localhost:8888", "", 403},
+		{"172.18.0.1", "quantbot.example", "", 403},
+		{"172.18.0.1", "localhost:8888", "203.0.113.10", 403},
+	} {
+		req := httptest.NewRequest("GET", "http://"+test.host+"/api/auth/setup", nil)
+		req.RemoteAddr = test.peer + ":12345"
+		if test.forwarded != "" {
+			req.Header.Set("X-Forwarded-For", test.forwarded)
+		}
+		result := httptest.NewRecorder()
+		handler.ServeHTTP(result, req)
+		if result.Code != test.status {
+			t.Errorf("peer=%s host=%s: got %d want %d", test.peer, test.host, result.Code, test.status)
+		}
+	}
+}
+
 func TestLoginRateLimit(t *testing.T) {
 	handler := newAuthTestServer(t, config.Config{})
 	for range 12 {

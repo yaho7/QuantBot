@@ -20,6 +20,7 @@ type Config struct {
 	DataDir         string
 	PublicOrigin    string
 	TrustedProxies  []netip.Prefix
+	LoopbackGateway netip.Addr
 	CommandPoll     time.Duration
 	MetricsQueue    int
 	MetricsBatch    int
@@ -65,6 +66,12 @@ func Load() (Config, error) {
 				return Config{}, fmt.Errorf("QB_TRUSTED_PROXIES must contain explicit IPv4 or IPv6 CIDRs")
 			}
 			config.TrustedProxies = append(config.TrustedProxies, prefix.Masked())
+		}
+	}
+	if os.Getenv("QB_DOCKER_LOOPBACK") == "1" {
+		config.LoopbackGateway, err = dockerGateway()
+		if err != nil {
+			return Config{}, fmt.Errorf("QB_DOCKER_LOOPBACK: %w", err)
 		}
 	}
 	if value := os.Getenv("QB_AGENT_SESSION_TTL"); value != "" {

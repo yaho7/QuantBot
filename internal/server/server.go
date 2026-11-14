@@ -105,7 +105,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 
 func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus, notifications *notification.Service, themes *theme.Service, sandboxes *sandbox.Service) http.Handler {
 	router := chi.NewRouter()
-	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies}
+	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies, LoopbackGateway: cfg.LoopbackGateway}
 	router.Use(origins.Guard)
 	accounts := auth.New(stores.Control)
 	strategies := strategy.New(stores.Control, events.Publish, cfg.AgentSessionTTL)
