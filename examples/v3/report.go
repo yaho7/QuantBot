@@ -2,18 +2,19 @@
 package main
 
 import (
-	"bytes"
+	"context"
 	"crypto/rand"
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/yaho7/QuantBot/agent"
 )
 
 func main() {
@@ -41,21 +42,21 @@ func run() error {
 		return err
 	}
 	boot := hex.EncodeToString(entropy[:])
-	client := &http.Client{
-		Timeout:       8 * time.Second,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	var session struct {
-		Session  string
-		Revision int64
-	}
-	if err := call(client, "POST", endpoint+"/session", token, map[string]string{
-		"instanceId": instance, "bootId": boot,
-	}, &session); err != nil {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	client := agent.NewClient(endpoint, token, instance, boot, nil)
+	session, err := client.Connect(ctx)
+	if err != nil {
 		return err
 	}
+	background := make(chan error, 1)
+	go func() { background <- client.Run(ctx) }()
+	defer func() {
+		cancel()
+		<-background
+	}()
 	request := func(method, path string, body, output any) error {
-		return call(client, method, endpoint+path, session.Session, body, output)
+		return client.Do(ctx, method, path, body, output)
 	}
 	var capabilities []json.RawMessage
 	if err := json.Unmarshal(fixture, &capabilities); err != nil {
@@ -128,9 +129,6 @@ func run() error {
 	}
 
 	for attempt := 0; attempt < 32; attempt++ {
-		if err := request("PUT", "/heartbeat", nil, nil); err != nil {
-			return err
-		}
 		var offers []struct{ ID, ControlID string }
 		if err := request("GET", "/commands?wait=2", nil, &offers); err != nil {
 			return err
@@ -144,8 +142,15 @@ func run() error {
 				Permit, Command string
 				Deadline        int64
 			}
-			if err := request("POST", path+"/claim", nil, &grant); err != nil {
-				return err
+			claimKey := "claim-" + offer.ID
+			if err := client.Claim(ctx, offer.ID, claimKey, &grant); err != nil {
+				var response *agent.Error
+				if errors.As(err, &response) {
+					return err
+				}
+				if err := client.Claim(ctx, offer.ID, claimKey, &grant); err != nil {
+					return err
+				}
 			}
 			now := time.Now().UnixMilli()
 			if grant.Command != "demo-refresh" || grant.Permit == "" || grant.Deadline <= now {
@@ -168,36 +173,4 @@ func run() error {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("queue the Refresh demo state command on the paper strategy")
-}
-
-func call(client *http.Client, method, url, token string, body, output any) error {
-	var reader io.Reader
-	if body != nil {
-		data, err := json.Marshal(body)
-		if err != nil {
-			return err
-		}
-		reader = bytes.NewReader(data)
-	}
-	req, err := http.NewRequest(method, url, reader)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	if reader != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	res, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer res.Body.Close()
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return fmt.Errorf("QuantBot returned %s", res.Status)
-	}
-	if output == nil {
-		_, err := io.Copy(io.Discard, res.Body)
-		return err
-	}
-	return json.NewDecoder(res.Body).Decode(output)
 }

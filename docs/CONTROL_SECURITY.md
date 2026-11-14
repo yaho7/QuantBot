@@ -19,7 +19,7 @@ All state transitions and corresponding audit events commit in one control datab
 
 ## Permit and recovery
 
-The server commits the executing transition and a unique permit digest before returning the plaintext permit. A concurrent or repeated claim returns HTTP 409 without the permit. The Agent performs the action only after receiving the permit. Keep the command ID, granted permit and outcome in a private local durable journal. Apply the command ID as an idempotency key at the strategy or broker boundary where available.
+The server commits the executing transition and a unique permit digest before returning the plaintext permit. A repeated claim returns HTTP 409 without the permit. Reusing the original claim key returns `claim_reconciliation_required` and moves an unresolved execution to `unknown`. A different key cannot supersede a claim. The Agent performs the action only after receiving the permit. Keep the command ID, granted permit and outcome in a private local durable journal. Apply the command ID as an idempotency key at the strategy or broker boundary where available.
 
 If the claim response is lost, the executor does not have authority to perform the action. If a result response is lost, retry the saved result with the same permit and outcome. A lost execution result or interrupted execution is marked unknown at deadline or service recovery. Unknown commands stay out of polling and cannot acquire another permit. A verifiable late receipt can reconcile them. An administrator can also reconcile an unknown command after checking broker and strategy records.
 

@@ -674,14 +674,19 @@ func (q *Queries) GetControlState(ctx context.Context, arg GetControlStateParams
 }
 
 const getExecutionPermit = `-- name: GetExecutionPermit :one
-SELECT digest FROM execution_permits WHERE command_id = ?
+SELECT digest, claim_key_digest FROM execution_permits WHERE command_id = ?
 `
 
-func (q *Queries) GetExecutionPermit(ctx context.Context, commandID string) (string, error) {
+type GetExecutionPermitRow struct {
+	Digest         string
+	ClaimKeyDigest sql.NullString
+}
+
+func (q *Queries) GetExecutionPermit(ctx context.Context, commandID string) (GetExecutionPermitRow, error) {
 	row := q.db.QueryRowContext(ctx, getExecutionPermit, commandID)
-	var digest string
-	err := row.Scan(&digest)
-	return digest, err
+	var i GetExecutionPermitRow
+	err := row.Scan(&i.Digest, &i.ClaimKeyDigest)
+	return i, err
 }
 
 const getSetting = `-- name: GetSetting :one
@@ -829,17 +834,23 @@ func (q *Queries) InsertCommand(ctx context.Context, arg InsertCommandParams) er
 }
 
 const insertExecutionPermit = `-- name: InsertExecutionPermit :exec
-INSERT INTO execution_permits (command_id, digest, issued_at) VALUES (?, ?, ?)
+INSERT INTO execution_permits (command_id, digest, issued_at, claim_key_digest) VALUES (?, ?, ?, ?)
 `
 
 type InsertExecutionPermitParams struct {
-	CommandID string
-	Digest    string
-	IssuedAt  int64
+	CommandID      string
+	Digest         string
+	IssuedAt       int64
+	ClaimKeyDigest sql.NullString
 }
 
 func (q *Queries) InsertExecutionPermit(ctx context.Context, arg InsertExecutionPermitParams) error {
-	_, err := q.db.ExecContext(ctx, insertExecutionPermit, arg.CommandID, arg.Digest, arg.IssuedAt)
+	_, err := q.db.ExecContext(ctx, insertExecutionPermit,
+		arg.CommandID,
+		arg.Digest,
+		arg.IssuedAt,
+		arg.ClaimKeyDigest,
+	)
 	return err
 }
 

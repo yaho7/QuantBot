@@ -249,7 +249,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   const commandId = commands[0].id;
   const permit = await (
     await request.post("/api/agent/commands/" + commandId + "/claim", {
-      headers,
+      headers: { ...headers, "Idempotency-Key": "browser-" + commandId },
     })
   ).json();
   expect(permit.permit).toBeTruthy();

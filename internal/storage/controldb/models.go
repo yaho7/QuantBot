@@ -137,9 +137,10 @@ type DesiredState struct {
 }
 
 type ExecutionPermit struct {
-	CommandID string
-	Digest    string
-	IssuedAt  int64
+	CommandID      string
+	Digest         string
+	IssuedAt       int64
+	ClaimKeyDigest sql.NullString
 }
 
 type InstalledTheme struct {

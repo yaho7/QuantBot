@@ -4,6 +4,8 @@ import json
 import os
 import time
 import urllib.request
+import urllib.error
+import random
 import uuid
 from pathlib import Path
 
@@ -21,8 +23,10 @@ def main():
     boot = uuid.uuid4().hex
     opener = urllib.request.build_opener(NoRedirect())
 
-    def call(method, path, bearer, payload=None):
+    def call(method, path, bearer, payload=None, key=None):
         headers = {"Authorization": "Bearer " + bearer}
+        if key:
+            headers["Idempotency-Key"] = key
         body = None
         if payload is not None:
             headers["Content-Type"] = "application/json"
@@ -31,12 +35,39 @@ def main():
         with opener.open(request, timeout=8) as response:
             return json.load(response)
 
-    session = call("POST", "/session", token, {"instanceId": instance, "bootId": boot})
-    bearer = session["session"]
+    identity = {"instanceId": instance, "bootId": boot}
+    session = call("POST", "/session", token, identity)
+
+    def renew():
+        nonlocal session
+        for attempt in range(6):
+            try:
+                session = call("POST", "/session", token, identity)
+                print("session renewed", flush=True)
+                return
+            except urllib.error.HTTPError as error:
+                if error.code != 429 and error.code < 500:
+                    raise RuntimeError(json.load(error)["code"]) from None
+            except (urllib.error.URLError, TimeoutError):
+                pass
+            time.sleep(min(2**attempt, 15) + random.random())
+        raise RuntimeError("Session renewal unavailable")
+
+    def agent(method, path, payload=None, key=None):
+        if session["renewAt"] is not None and time.time() >= session["renewAt"]:
+            renew()
+        try:
+            return call(method, path, session["session"], payload, key)
+        except urllib.error.HTTPError as error:
+            code = json.load(error)["code"]
+            if code != "session_expired":
+                raise RuntimeError(code) from None
+            renew()
+            return call(method, path, session["session"], payload, key)
     capabilities = json.loads(Path(__file__).with_name("capabilities.json").read_text())
 
     for _ in range(120):
-        if call("PUT", "/heartbeat", bearer)["executor"]:
+        if agent("PUT", "/heartbeat")["executor"]:
             break
         time.sleep(1)
     else:
@@ -48,7 +79,7 @@ def main():
             "presentation": {"suggested": True, "surface": ["strategy"]},
         })
 
-    revision = call("PUT", "/capabilities", bearer, {
+    revision = agent("PUT", "/capabilities", {
         "revision": session["revision"], "capabilities": capabilities,
     })["revision"]
 
@@ -56,7 +87,7 @@ def main():
         states = [{"id": "broker", "value": True, "observedAt": at}]
         if control:
             states.append({"id": "demo-refresh", "value": None, "observedAt": at})
-        return call("PUT", "/state", bearer, {"revision": revision, "states": states})
+        return agent("PUT", "/state", {"revision": revision, "states": states})
 
     at = time.time_ns() // 1_000_000
     print(send_state(at), flush=True)
@@ -68,27 +99,34 @@ def main():
             "id": boot + "-" + capability, "capabilityId": capability,
             "observedAt": at, "value": value, "associations": {"correlation_id": boot},
         }
-        print(call("POST", path, bearer, {"revision": revision, "records": [record]}), flush=True)
+        print(agent("POST", path, {"revision": revision, "records": [record]}), flush=True)
 
     if not control:
         return
-    for _ in range(32):
-        call("PUT", "/heartbeat", bearer)
-        commands = call("GET", "/commands?wait=2", bearer)
+    next_heartbeat = time.monotonic() + 15
+    for _ in range(40):
+        if time.monotonic() >= next_heartbeat:
+            agent("PUT", "/heartbeat")
+            next_heartbeat = time.monotonic() + 15
+        commands = agent("GET", "/commands?wait=2")
         offer = next((item for item in commands if item["controlId"] == "demo-refresh"), None)
         if offer is None:
             time.sleep(0.5)
             continue
         path = "/commands/" + offer["id"]
         # A failed or lost claim provides no execution permission.
-        grant = call("POST", path + "/claim", bearer)
+        claim_key = "claim-" + offer["id"]
+        try:
+            grant = agent("POST", path + "/claim", key=claim_key)
+        except (urllib.error.URLError, TimeoutError):
+            grant = agent("POST", path + "/claim", key=claim_key)
         now = time.time_ns() // 1_000_000
         if grant["command"] != "demo-refresh" or not grant["permit"] or grant["deadline"] <= now:
             raise SystemExit("Invalid or expired grant")
         send_state(now)
         receipt = {"permit": grant["permit"], "status": "succeeded", "message": "Refreshed demo state"}
-        call("POST", path + "/result", bearer, receipt)
-        print(call("POST", path + "/result", bearer, receipt)["status"])
+        agent("POST", path + "/result", receipt)
+        print(agent("POST", path + "/result", receipt)["status"])
         return
     raise SystemExit("Queue the Refresh demo state command on the paper strategy")
 

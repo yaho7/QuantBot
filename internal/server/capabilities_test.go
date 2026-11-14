@@ -30,6 +30,7 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		if strings.HasPrefix(path, "/agent/") {
 			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Idempotency-Key", "test-claim")
 		} else {
 			req.Header.Set("Origin", origin)
 			req.Header.Set("X-CSRF-Token", account.CSRF)
@@ -140,7 +141,11 @@ func TestDeclaredDataReplayAndRevisionFencing(t *testing.T) {
 	if grant.Command != "apply" || grant.Permit == "" {
 		t.Fatal("atomic action must receive one permit")
 	}
-	call("POST", "/agent"+commandPath+"/claim", "", worker.Session, 409)
+	replay := call("POST", "/agent"+commandPath+"/claim", "", worker.Session, 409)
+	if !strings.Contains(replay.Body.String(), "claim_reconciliation_required") ||
+		!strings.Contains(replay.Body.String(), `"status":"unknown"`) || strings.Contains(replay.Body.String(), grant.Permit) {
+		t.Fatalf("lost claim response did not enter reconciliation: %s", replay.Body)
+	}
 	receipt := fmt.Sprintf(`{"permit":%q,"status":"succeeded"}`, grant.Permit)
 	call("POST", "/agent"+commandPath+"/result", receipt, worker.Session, 200)
 	call("POST", "/agent"+commandPath+"/result", receipt, worker.Session, 200)

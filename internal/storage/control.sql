@@ -222,10 +222,10 @@ SELECT d.*, c.status, c.updated_at FROM desired_states d JOIN commands c ON c.id
 WHERE d.strategy_id = ? AND d.revision = ? ORDER BY d.control_id;
 
 -- name: InsertExecutionPermit :exec
-INSERT INTO execution_permits (command_id, digest, issued_at) VALUES (?, ?, ?);
+INSERT INTO execution_permits (command_id, digest, issued_at, claim_key_digest) VALUES (?, ?, ?, ?);
 
 -- name: GetExecutionPermit :one
-SELECT digest FROM execution_permits WHERE command_id = ?;
+SELECT digest, claim_key_digest FROM execution_permits WHERE command_id = ?;
 
 -- name: ListPendingCommands :many
 SELECT * FROM commands

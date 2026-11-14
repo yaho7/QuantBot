@@ -10,8 +10,9 @@ const boot = randomUUID();
 const control = QB_DEMO_CONTROL === "1";
 const capabilities = JSON.parse(await readFile(new URL("./capabilities.json", import.meta.url)));
 
-async function call(method, path, bearer, payload) {
+async function call(method, path, bearer, payload, key) {
   const headers = { Authorization: "Bearer " + bearer };
+  if (key) headers["Idempotency-Key"] = key;
   if (payload !== undefined) headers["Content-Type"] = "application/json";
   const response = await fetch(endpoint + path, {
     method,
@@ -20,17 +21,46 @@ async function call(method, path, bearer, payload) {
     redirect: "error",
     signal: AbortSignal.timeout(8000),
   });
-  if (!response.ok) throw new Error(`${method} ${path} returned ${response.status}`);
+  if (!response.ok) {
+    const { code } = await response.json().catch(() => ({}));
+    throw Object.assign(new Error(`${method} ${path} returned ${response.status} ${code ?? ""}`), { status: response.status, code });
+  }
   return response.json();
 }
 
-const { session: bearer, revision: current } = await call("POST", "/session", QB_TOKEN, {
-  instanceId: QB_INSTANCE_ID, bootId: boot,
-});
-let heartbeat = await call("PUT", "/heartbeat", bearer);
+const identity = { instanceId: QB_INSTANCE_ID, bootId: boot };
+let session = await call("POST", "/session", QB_TOKEN, identity);
+const current = session.revision;
+
+async function renew() {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      session = await call("POST", "/session", QB_TOKEN, identity);
+      console.log("session renewed");
+      return;
+    } catch (error) {
+      if (error.status && error.status < 500 && error.status !== 429) throw error;
+    }
+    await sleep(Math.min(2 ** attempt, 15) * 1000 + Math.random() * 1000);
+  }
+  throw new Error("Session renewal unavailable");
+}
+
+async function agent(method, path, payload, key) {
+  if (session.renewAt !== null && Date.now() >= session.renewAt * 1000) await renew();
+  try {
+    return await call(method, path, session.session, payload, key);
+  } catch (error) {
+    if (error.code !== "session_expired") throw error;
+    await renew();
+    return call(method, path, session.session, payload, key);
+  }
+}
+
+let heartbeat = await agent("PUT", "/heartbeat");
 for (let attempt = 0; !heartbeat.executor && attempt < 120; attempt++) {
   await sleep(1000);
-  heartbeat = await call("PUT", "/heartbeat", bearer);
+  heartbeat = await agent("PUT", "/heartbeat");
 }
 if (!heartbeat.executor) throw new Error(`Assign ${QB_INSTANCE_ID} as the paper executor`);
 if (control) {
@@ -41,11 +71,11 @@ if (control) {
   });
 }
 
-const { revision } = await call("PUT", "/capabilities", bearer, { revision: current, capabilities });
+const { revision } = await agent("PUT", "/capabilities", { revision: current, capabilities });
 function sendState(observedAt) {
   const states = [{ id: "broker", value: true, observedAt }];
   if (control) states.push({ id: "demo-refresh", value: null, observedAt });
-  return call("PUT", "/state", bearer, { revision, states });
+  return agent("PUT", "/state", { revision, states });
 }
 
 const observedAt = Date.now();
@@ -58,29 +88,40 @@ for (const [path, capabilityId, value] of [
     id: boot + "-" + capabilityId, capabilityId, observedAt, value,
     associations: { correlation_id: boot },
   }];
-  console.log(await call("POST", path, bearer, { revision, records }));
+  console.log(await agent("POST", path, { revision, records }));
 }
 
 if (control) {
   let completed = false;
-  for (let attempt = 0; attempt < 32; attempt++) {
-    await call("PUT", "/heartbeat", bearer);
-    const offers = await call("GET", "/commands?wait=2", bearer);
+  let nextHeartbeat = Date.now() + 15000;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (Date.now() >= nextHeartbeat) {
+      await agent("PUT", "/heartbeat");
+      nextHeartbeat = Date.now() + 15000;
+    }
+    const offers = await agent("GET", "/commands?wait=2");
     const offer = offers.find((item) => item.controlId === "demo-refresh");
     if (!offer) {
       await sleep(500);
       continue;
     }
     const path = "/commands/" + encodeURIComponent(offer.id);
-    const grant = await call("POST", path + "/claim", bearer);
+    const claimKey = "claim-" + offer.id;
+    let grant;
+    try {
+      grant = await agent("POST", path + "/claim", undefined, claimKey);
+    } catch (error) {
+      if (error.status) throw error;
+      grant = await agent("POST", path + "/claim", undefined, claimKey);
+    }
     const now = Date.now();
     if (grant.command !== "demo-refresh" || !grant.permit || grant.deadline <= now) {
       throw new Error("Invalid or expired grant");
     }
     await sendState(now);
     const receipt = { permit: grant.permit, status: "succeeded", message: "Refreshed demo state" };
-    await call("POST", path + "/result", bearer, receipt);
-    console.log((await call("POST", path + "/result", bearer, receipt)).status);
+    await agent("POST", path + "/result", receipt);
+    console.log((await agent("POST", path + "/result", receipt)).status);
     completed = true;
     break;
   }

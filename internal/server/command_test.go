@@ -34,6 +34,7 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 		req.RemoteAddr = "127.0.0.1:40000"
 		if strings.HasPrefix(path, "/agent/") {
 			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Idempotency-Key", key)
 		} else {
 			req.Header.Set("Origin", origin)
 			req.Header.Set("X-CSRF-Token", setup.CSRF)
@@ -79,7 +80,7 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 	agentBase := "/agent" + base
 	send("POST", strategyPath+"/commands", intent, "", "request-1", 200)
 	send("POST", strategyPath+"/commands", strings.Replace(intent, "true", "false", 1), "", "request-1", 409)
-	send("POST", agentBase+"/claim", "", agent.Session, "", 409)
+	send("POST", agentBase+"/claim", "", agent.Session, "claim-key", 409)
 	send("POST", base+"/confirm", "", "", "", 200)
 	send("POST", base+"/confirm", "", "", "", 200)
 	poll := send("GET", "/agent/commands?wait=0", "", agent.Session, "", 200)
@@ -89,12 +90,17 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 
 	var racers sync.WaitGroup
 	results := make(chan *httptest.ResponseRecorder, 16)
-	for range cap(results) {
-		racers.Go(func() { results <- request("POST", agentBase+"/claim", "", agent.Session, "") })
+	for index := range cap(results) {
+		racers.Go(func() {
+			key := fmt.Sprintf("race-%d", index)
+			response := request("POST", agentBase+"/claim", "", agent.Session, key)
+			response.Header().Set("X-Test-Key", key)
+			results <- response
+		})
 	}
 	racers.Wait()
 	close(results)
-	var permit string
+	var permit, winningKey string
 	success := 0
 	for result := range results {
 		switch result.Code {
@@ -102,6 +108,7 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 			var grant struct{ Permit string }
 			decodeTest(t, result, &grant)
 			permit = grant.Permit
+			winningKey = result.Header().Get("X-Test-Key")
 			success++
 		case 409:
 		default:
@@ -148,7 +155,12 @@ func TestCommandPermitRaceAndRestart(t *testing.T) {
 	if !strings.Contains(recovered.Body.String(), `"status":"unknown"`) {
 		t.Fatalf("lost receipt was not marked unknown: %s", recovered.Body)
 	}
-	send("POST", agentBase+"/claim", "", agent.Session, "", 409)
+	replayedClaim := send("POST", agentBase+"/claim", "", agent.Session, winningKey, 409)
+	if !strings.Contains(replayedClaim.Body.String(), "claim_reconciliation_required") ||
+		!strings.Contains(replayedClaim.Body.String(), `"status":"unknown"`) ||
+		strings.Contains(replayedClaim.Body.String(), permit) {
+		t.Fatal(replayedClaim.Body)
+	}
 	send("POST", strategyPath+"/commands", intent, "", "request-2", 409)
 	poll = send("GET", "/agent/commands?wait=0", "", agent.Session, "", 200)
 	if strings.TrimSpace(poll.Body.String()) != "[]" {

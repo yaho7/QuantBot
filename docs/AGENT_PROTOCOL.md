@@ -67,9 +67,11 @@ Writable parameters can declare a separate `input_schema` for command validation
 
 The designated online executor with `command` scope calls `GET /api/agent/commands?wait=25`. The server waits up to the configured window and returns an array, empty at timeout. `wait=0` returns immediately. Disconnecting a poll does not change commands. The response is an offer to process the listed command.
 
-1. Verify local readiness, then call `POST /api/agent/commands/{id}/claim` with the current session. The server records acceptance and issues the unique permit in one transaction. Execute only if you receive the grant and its Unix millisecond `deadline` remains valid.
-2. Journal the execution outcome and call `POST /api/agent/commands/{id}/result` with `permit`, `status` (`succeeded`, `failed`, or `unknown`), optional `message`, and optional JSON `data`. Retry the same receipt after a transport failure.
+1. Verify local readiness, then call `POST /api/agent/commands/{id}/claim` with the current session and a stable `Idempotency-Key` saved locally for this claim. The server records acceptance and issues the unique permit in one transaction. Execute only if you receive the grant and its Unix millisecond `deadline` remains valid.
+2. Persist the command ID, claim key, and permit before performing the operation. Use the local journal or broker idempotency to prevent repeat execution. Journal the execution outcome and call `POST /api/agent/commands/{id}/result` with `permit`, `status` (`succeeded`, `failed`, or `unknown`), optional `message`, and optional JSON `data`. Retry the same receipt after a transport failure.
 3. Report actual state independently and run local trading and risk checks immediately before any broker action. See [control security](CONTROL_SECURITY.md).
+
+If the claim response is lost, retry only the same key and process identity. If the first request did not commit, the retry can claim normally. If a permit was already issued, the server returns HTTP 409 with `code: claim_reconciliation_required`, `commandId` and the current `status`. An executing command moves to `unknown`. The permit is issued once and omitted from all retries. Use the durable client journal and broker records to reconcile. A saved receipt with the original permit remains valid. A different key returns a conflict and cannot create a replacement permit.
 
 ## Telemetry
 
@@ -114,7 +116,7 @@ Fetch `GET /api/agent/schemas/agent.json` and use the corresponding JSON Schema 
 | `POST /api/agent/events` | `#/$defs/events` |
 | `PUT /api/agent/resources/{type}` | `#/$defs/resources` |
 | `GET /api/agent/commands` | Optional integer query parameter `wait`, 0–25 seconds |
-| `POST /api/agent/commands/{id}/claim` | Empty body |
+| `POST /api/agent/commands/{id}/claim` | Empty body and required `Idempotency-Key` header |
 | `POST /api/agent/commands/{id}/result` | `#/$defs/result` |
 
 The server validates each `value` against the strategy's current declaration and applies server-time checks, permissions and cross-field rules. For example, a `decimal` uses a decimal string, and an `object` accepts only its declared properties. The batch acknowledgment identifies malformed records by index.

@@ -140,9 +140,34 @@ func checkAgentTarget(ctx context.Context, q *controldb.Queries, agent strategy.
 }
 
 func (s *Service) claim(w http.ResponseWriter, r *http.Request) {
+	key := r.Header.Get("Idempotency-Key")
+	if !requestID.MatchString(key) {
+		commandError(w, invalid("Idempotency-Key is required to claim a command"))
+		return
+	}
+	keyDigest := auth.Digest(key)
+	needsReconciliation := false
 	permit := randomID()
 	var dispatch string
 	cmd, err := s.withAgentCommand(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd *controldb.Command, now int64) error {
+		if cmd.Status == executing || cmd.Status == unknown || cmd.Status == succeeded || cmd.Status == failed {
+			if !agent.Executor || cmd.AcceptedBy.String != agent.TokenID {
+				return errExecutor
+			}
+			existing, err := q.GetExecutionPermit(ctx, cmd.ID)
+			if err != nil {
+				return err
+			}
+			if !existing.ClaimKeyDigest.Valid || subtle.ConstantTimeCompare([]byte(existing.ClaimKeyDigest.String), []byte(keyDigest)) != 1 {
+				return errState
+			}
+			// Do not redeliver a permit. The initial response may already have been acted on.
+			needsReconciliation = true
+			if cmd.Status == executing {
+				return transition(ctx, q, cmd, unknown, "agent:"+agent.InstanceID, "claim response requires reconciliation", now)
+			}
+			return nil
+		}
 		if cmd.Status != pending && (cmd.Status != accepted || cmd.AcceptedBy.String != agent.TokenID) {
 			return errState
 		}
@@ -162,6 +187,7 @@ func (s *Service) claim(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := q.InsertExecutionPermit(ctx, controldb.InsertExecutionPermitParams{
 			CommandID: cmd.ID, Digest: auth.Digest(permit), IssuedAt: now,
+			ClaimKeyDigest: sql.NullString{String: keyDigest, Valid: true},
 		}); err != nil {
 			return err
 		}
@@ -170,6 +196,15 @@ func (s *Service) claim(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		commandError(w, err)
+		return
+	}
+	if needsReconciliation {
+		httpapi.JSON(w, http.StatusConflict, struct {
+			Code      string `json:"code"`
+			Message   string `json:"message"`
+			CommandID string `json:"commandId"`
+			Status    string `json:"status"`
+		}{"claim_reconciliation_required", "A permit was already issued. Reconcile the local journal before taking further action.", cmd.ID, cmd.Status})
 		return
 	}
 	httpapi.JSON(w, http.StatusOK, struct {
@@ -206,7 +241,7 @@ func (s *Service) result(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd, err := s.withAgentCommand(r, func(ctx context.Context, q *controldb.Queries, agent strategy.Agent, cmd *controldb.Command, now int64) error {
 		expected, err := q.GetExecutionPermit(ctx, cmd.ID)
-		if errors.Is(err, sql.ErrNoRows) || err == nil && subtle.ConstantTimeCompare([]byte(auth.Digest(input.Permit)), []byte(expected)) != 1 {
+		if errors.Is(err, sql.ErrNoRows) || err == nil && subtle.ConstantTimeCompare([]byte(auth.Digest(input.Permit)), []byte(expected.Digest)) != 1 {
 			return errState
 		}
 		if err != nil {

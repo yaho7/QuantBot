@@ -10,6 +10,7 @@ import (
 	"io"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -66,7 +67,7 @@ func (c *Client) connect(ctx context.Context, previous *Session) (*Session, erro
 	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	err := c.call(ctx, "POST", "/session", c.token, map[string]string{
+	err := c.call(ctx, "POST", "/session", c.token, "", map[string]string{
 		"instanceId": c.instanceID, "bootId": c.bootID,
 	}, &identity)
 	if err != nil {
@@ -157,7 +158,7 @@ func (c *Client) heartbeat(ctx context.Context, terminal chan<- error) {
 				continue
 			}
 			call, cancel := context.WithTimeout(ctx, 5*time.Second)
-			err := c.call(call, "PUT", "/heartbeat", current.bearer, nil, nil)
+			err := c.call(call, "PUT", "/heartbeat", current.bearer, "", nil, nil)
 			cancel()
 			if permanent(err) {
 				terminal <- err
@@ -171,6 +172,15 @@ func (c *Client) heartbeat(ctx context.Context, terminal chan<- error) {
 // sessions. Transport failures are returned so the caller can use its protocol
 // idempotency key or durable execution journal.
 func (c *Client) Do(ctx context.Context, method, path string, body, response any) error {
+	return c.request(ctx, method, path, "", body, response)
+}
+
+// Claim uses the persisted attempt key. Reusing a key can require reconciliation.
+func (c *Client) Claim(ctx context.Context, commandID, key string, response any) error {
+	return c.request(ctx, "POST", "/commands/"+url.PathEscape(commandID)+"/claim", key, nil, response)
+}
+
+func (c *Client) request(ctx context.Context, method, path, key string, body, response any) error {
 	current := c.session.Load()
 	if current == nil {
 		var err error
@@ -179,7 +189,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, response any
 			return err
 		}
 	}
-	err := c.call(ctx, method, path, current.bearer, body, response)
+	err := c.call(ctx, method, path, current.bearer, key, body, response)
 	var status *Error
 	if !errors.As(err, &status) || status.Code != "session_expired" {
 		return err
@@ -188,7 +198,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body, response any
 	if err != nil {
 		return err
 	}
-	return c.call(ctx, method, path, next.bearer, body, response)
+	return c.call(ctx, method, path, next.bearer, key, body, response)
 }
 
 func permanent(err error) bool {
@@ -201,7 +211,7 @@ func permanent(err error) bool {
 		status.Code != "session_expired"
 }
 
-func (c *Client) call(ctx context.Context, method, path, bearer string, body, output any) error {
+func (c *Client) call(ctx context.Context, method, path, bearer, key string, body, output any) error {
 	if !strings.HasPrefix(path, "/") {
 		return errors.New("Agent path must begin with /")
 	}
@@ -220,6 +230,9 @@ func (c *Client) call(ctx context.Context, method, path, bearer string, body, ou
 		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+bearer)
+	if key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	if payload != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

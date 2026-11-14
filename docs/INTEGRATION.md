@@ -50,7 +50,8 @@ Reuse record IDs, observation times and contents on retry. Include explicit
 association IDs only when present in the source system.
 
 For the designated executor, use GET /api/agent/commands and
-POST /api/agent/commands/{id}/claim. Require the unique permit, a valid deadline,
+POST /api/agent/commands/{id}/claim using a durable Idempotency-Key. On a lost
+response, reuse the key and reconcile on claim_reconciliation_required. Require the unique permit, a valid deadline,
 and local safety checks before invoking the actual strategy or broker operation.
 Persist a local journal keyed by command ID. Record the actual outcome via
 POST /api/agent/commands/{id}/result and retry the saved receipt unchanged.
