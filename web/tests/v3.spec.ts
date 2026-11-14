@@ -232,7 +232,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(
     page.getByRole("heading", { name: "允许新开仓", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".summary-card").first()).toContainText(
+  await expect(page.locator(".portfolio-amount")).toContainText(
     "104,825.37",
   );
   await page

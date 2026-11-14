@@ -235,7 +235,7 @@ function Workbench() {
     !new URLSearchParams(location.search).has("classic");
   return (
     <ThemeContext.Provider
-      value={fallback ? { cardView: "list" } : (selected?.presentation ?? {})}
+      value={fallback ? { cardView: "list" } : { ...selected?.presentation, portfolio: antquant }}
     >
       <div
         className={"workbench-shell" + (antquant ? " antquant-workbench" : "")}

@@ -1,6 +1,6 @@
 import { lazy, Suspense, memo, useContext, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   ArrowUpRight,
   ChevronDown,
@@ -21,7 +21,7 @@ import { useLanguage } from "../shared/i18n";
 import { Badge, decimalText, ErrorView, Loading } from "../shared/ui";
 import { ThemeContext } from "../themes/catalog";
 import { Page } from "./App";
-import { useTelemetryValues } from "./strategy";
+import { History, useTelemetryValues } from "./strategy";
 
 const WidgetBoard = lazy(() => import("../components/widget-board"));
 const views = [
@@ -37,8 +37,9 @@ export function Home() {
     resource<Command[]>("/commands?status=confirmation_required"),
   );
   const presentation = useContext(ThemeContext);
+  const portfolio = useLocation().pathname === "/" && presentation.portfolio;
   const [savedView, setView] = useState(localStorage.getItem("qb.view"));
-  const view = savedView ?? presentation.cardView ?? "compact";
+  const view = savedView ?? (portfolio ? "list" : presentation.cardView ?? "compact");
   const sectionOrder = (name: string, fallback: number) => {
     const index = presentation.sections?.indexOf(name) ?? -1;
     return index >= 0 ? index : (presentation.sections?.length ?? 0) + fallback;
@@ -49,6 +50,15 @@ export function Home() {
   const [sort, setSort] = useState("name");
   const [limit, setLimit] = useState(50);
   const rows = strategies.data ?? [];
+  const [featuredId, setFeaturedId] = useState("");
+  const equitySources = useQueries({
+    queries: portfolio ? rows.map((strategy) =>
+      resource<Datum[]>("/strategies/" + strategy.id + "/telemetry"),
+    ) : [],
+  });
+  const featured = rows.find((strategy) => strategy.id === featuredId) ??
+    rows.find((_, index) => equitySources[index]?.data?.some((item) => item.kind === "equity")) ??
+    rows.find((strategy) => strategy.online) ?? rows[0];
   const groups = useMemo(
     () => [...new Set(rows.map((s) => s.group).filter(Boolean))].sort(),
     [rows],
@@ -104,9 +114,12 @@ export function Home() {
         </Link>
       }
     >
-      <div className="workbench-sections">
+      <div className={"workbench-sections" + (portfolio && featured ? " portfolio-dashboard" : "")}>
+        {portfolio && featured && (
+          <PortfolioOverview strategies={rows} selected={featured} select={setFeaturedId} />
+        )}
         <section
-          className="summary-grid"
+          className="summary-grid portfolio-summary"
           style={{ order: sectionOrder("overview", 0) }}
         >
           {summary.map((item) => (
@@ -121,7 +134,7 @@ export function Home() {
           <AbnormalCount strategies={rows} />
         </section>
         <section
-          className="section"
+          className="section portfolio-strategies"
           style={{ order: sectionOrder("strategies", 1) }}
         >
           <div className="section-heading">
@@ -219,16 +232,111 @@ export function Home() {
             </button>
           )}
         </section>
-        <div style={{ order: sectionOrder("strategies", 1) + 0.5 }}>
+        <div className="portfolio-widgets" style={{ order: sectionOrder("strategies", 1) + 0.5 }}>
           <Suspense fallback={<Loading />}>
             <WidgetBoard />
           </Suspense>
         </div>
-        <div style={{ order: sectionOrder("activity", 2) }}>
+        <div className="portfolio-activity" style={{ order: sectionOrder("activity", 2) }}>
+          {portfolio && featured && <HoldingsPreview strategyId={featured.id} />}
           <RecentActivity />
         </div>
       </div>
     </Page>
+  );
+}
+
+function PortfolioOverview({ strategies, selected, select }: {
+  strategies: Strategy[];
+  selected: Strategy;
+  select: (strategyId: string) => void;
+}) {
+  const { t } = useLanguage();
+  return (
+    <section className="portfolio-hero surface">
+      <header className="portfolio-toolbar">
+        <h2>{t("portfolioMonitor")}</h2>
+        <div className="actions">
+          <select
+            aria-label={t("strategy")}
+            value={selected.id}
+            onChange={(event) => select(event.target.value)}
+          >
+            {strategies.map((strategy) => (
+              <option key={strategy.id} value={strategy.id}>{strategy.name}</option>
+            ))}
+          </select>
+          <Link className="icon-button button" to={"/strategies/" + selected.id}
+            aria-label={t("details")} title={t("details")}>
+            <ArrowUpRight size={16} />
+          </Link>
+        </div>
+      </header>
+      <PortfolioSnapshot key={selected.id} strategyId={selected.id} />
+    </section>
+  );
+}
+
+function HoldingsPreview({ strategyId }: { strategyId: string }) {
+  const { t } = useLanguage();
+  const { records, query } = useTelemetryValues(strategyId);
+  const positions = records
+    .filter((row) => row.kind === "position")
+    .flatMap((row) => {
+      const items = (row.data.positions ?? []) as Record<string, unknown>[];
+      return items.map((item) => ({ item, source: row.data.source, instance: row.instanceId }));
+    });
+  return (
+    <section className="section">
+      <div className="section-heading">
+        <h2>{t("positions")}</h2>
+        <Link className="text-button" to={"/strategies/" + strategyId}>
+          {t("details")} <ArrowUpRight size={14} />
+        </Link>
+      </div>
+      <div className="surface">
+        {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} /> :
+          positions.length ? positions.slice(0, 6).map(({ item, source, instance }, index) => (
+            <div className="portfolio-holding" key={JSON.stringify([instance, source, item.accountId, item.positionId, index])}>
+              <span>
+                <strong>{String(item.symbol ?? item.positionId ?? "—")}</strong>
+                <small className="muted">{String(item.accountId ?? "")}</small>
+              </span>
+              <span>
+                <strong>{decimalText(item.quantity)}</strong>
+                <small className="muted">{t("holdingQuantity")}</small>
+              </span>
+            </div>
+          )) : <p className="empty-inline">{t("missing")}</p>}
+      </div>
+    </section>
+  );
+}
+
+function PortfolioSnapshot({ strategyId }: { strategyId: string }) {
+  const { t } = useLanguage();
+  const { equity, performance } = useTelemetryValues(strategyId);
+  const currency = typeof equity?.data.currency === "string" ? equity.data.currency : "";
+  const pnl = performance?.data.dailyPnl;
+  const sameAccount = !!equity && performance?.data.accountId === equity.data.accountId &&
+    performance?.data.currency === equity.data.currency;
+  return (
+    <>
+      <div className="portfolio-amount">
+        <span className="muted">{t("equity")}</span>
+        <strong>{decimalText(equity?.data.value)} <small>{currency}</small></strong>
+        {sameAccount && typeof pnl === "string" && (
+          <span className={pnl.startsWith("-") ? "danger" : "success"}>
+            {t("dailyPnl")} {decimalText(pnl)}
+          </span>
+        )}
+      </div>
+      {equity && (
+        <History strategyId={strategyId} embedded featured seriesKind="equity"
+          seriesKey={JSON.stringify([equity.data.accountId, currency])}
+          instanceId={equity.instanceId} />
+      )}
+    </>
   );
 }
 function AbnormalCount({ strategies }: { strategies: Strategy[] }) {

@@ -56,4 +56,4 @@ export type Theme = {
 };
 
 export const activeTheme = resource<Theme>("/theme");
-export const ThemeContext = createContext<Theme["presentation"]>({});
+export const ThemeContext = createContext<Theme["presentation"] & { portfolio?: boolean }>({});

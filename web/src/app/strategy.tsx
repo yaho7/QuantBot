@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -41,6 +41,7 @@ export function StrategyDetail() {
   const query = useQuery(resource<Strategy>("/strategies/" + id));
   const { t } = useLanguage();
   const display = useDisplay();
+  const [panel, setPanel] = useState<"trading" | "events" | "activity">("trading");
   const catalog = useQuery({
     ...resource<CapabilityCatalog>("/strategies/" + id + "/capabilities"),
     refetchInterval: 5000,
@@ -102,6 +103,7 @@ export function StrategyDetail() {
           <Badge tone={strategy.mode === "live" ? "warning" : ""}>
             {t(strategy.mode)}
           </Badge>
+          <a className="button" href="#strategy-controls">{t("controls")}</a>
           <Link to={"/admin/integration?strategy=" + id}>
             {t("integration")}
           </Link>
@@ -131,33 +133,25 @@ export function StrategyDetail() {
             </span>
           )}
       </div>
-      <section className="summary-grid detail-summary">
-        {[
-          {
-            label: t("equity"),
-            value: decimalText(equity?.data.value),
-            unit: shown(equity?.data.currency ?? ""),
-          },
-          {
-            label: t("dailyPnl"),
-            value: decimalText(performance?.data.dailyPnl),
-            unit: "",
-          },
-          {
-            label: t("drawdown"),
-            value: decimalText(equity?.data.drawdown),
-            unit: "",
-          },
-        ].map((item) => (
-          <div className="summary-card" key={item.label}>
-            <span className="muted">{item.label}</span>
-            <strong>
-              {item.value} <small>{item.unit}</small>
-            </strong>
+      <section className="portfolio-hero surface">
+        <div className="portfolio-amount">
+          <span className="muted">{t("equity")}</span>
+          <strong>{decimalText(equity?.data.value)} <small>{display.value(equity?.data.currency ?? "")}</small></strong>
+          <div className="portfolio-secondary">
+            {equity && performance?.data.accountId === equity.data.accountId &&
+              performance?.data.currency === equity.data.currency && typeof performance?.data.dailyPnl === "string" && (
+                <span className={performance.data.dailyPnl.startsWith("-") ? "danger" : "success"}>
+                  {t("dailyPnl")} {decimalText(performance.data.dailyPnl)}
+                </span>
+              )}
+            {equity?.data.drawdown != null && (
+              <span className="muted">{t("drawdown")} {decimalText(equity.data.drawdown)}</span>
+            )}
           </div>
-        ))}
+        </div>
+        <History strategyId={id} embedded featured />
       </section>
-      <section className="section">
+      <section className="section" id="strategy-controls">
         <div className="section-heading">
           <h2>{t("controls")}</h2>
         </div>
@@ -171,27 +165,24 @@ export function StrategyDetail() {
       <Suspense fallback={<Loading />}>
         <WidgetBoard key={id} strategyId={id} />
       </Suspense>
-      <section className="section">
-        <div className="section-heading">
-          <h2>{t("charts")}</h2>
+      <section className="section portfolio-records">
+        <div className="segmented" role="group" aria-label={t("strategyPanels")}>
+          {(["trading", "events", "activity"] as const).map((item) => (
+            <button key={item} aria-pressed={panel === item} onClick={() => setPanel(item)}>
+              {t(item)}
+            </button>
+          ))}
         </div>
-        <History strategyId={id} />
-      </section>
-      <section className="section">
-        {telemetry.error && <ErrorView error={telemetry.error} />}
-        <DataTable title={t("equity")} rows={accounts} fields="standard" />
-        <div className="two-columns">
-          <DataTable title={t("positions")} rows={positions} fields="standard" />
-          <DataTable title={t("orders")} rows={orders} fields="standard" />
-        </div>
-      </section>
-      <section className="section">
-        <h2>{t("events")}</h2>
-        <RecordFeed id={id} />
-      </section>
-      <section className="section">
-        <h2>{t("activity")}</h2>
-        <ActivityPage strategyId={id} />
+        {panel === "trading" ? (
+          <>
+            {telemetry.error && <ErrorView error={telemetry.error} />}
+            {accounts.length > 0 && <DataTable title={t("equity")} rows={accounts} fields="standard" />}
+            <div className="portfolio-record-grid">
+              <DataTable title={t("positions")} rows={positions} fields="standard" />
+              <DataTable title={t("orders")} rows={orders} fields="standard" />
+            </div>
+          </>
+        ) : panel === "events" ? <RecordFeed id={id} /> : <ActivityPage strategyId={id} />}
       </section>
     </Page>
   );
@@ -225,23 +216,38 @@ export function AllControls() {
 export function History({
   strategyId,
   embedded = false,
+  featured = false,
+  seriesKind,
+  seriesKey,
+  instanceId,
 }: {
   strategyId: string;
   embedded?: boolean;
+  featured?: boolean;
+  seriesKind?: string;
+  seriesKey?: string;
+  instanceId?: string;
 }) {
   const query = useQuery(
     resource<{ series: Series[] }>("/strategies/" + strategyId + "/series"),
   );
-  const [selected, setSelected] = useState(0);
+  const [selected, setSelected] = useState("");
   const [range, setRange] = useState(24);
   const { t } = useLanguage();
   const display = useDisplay();
-  const options = query.data?.series ?? [];
-  const series = options[selected] ?? options[0];
-  const window = useMemo(
-    () => ({ from: Date.now() - range * 3600000, to: Date.now() + 1 }),
-    [range, series?.series],
+  const options = (query.data?.series ?? []).filter((item) =>
+    (!seriesKind || item.kind === seriesKind) &&
+    (!seriesKey || item.series === seriesKey) &&
+    (!instanceId || item.instanceId === instanceId),
   );
+  const keyFor = (item: Series) => JSON.stringify([item.kind, item.series, item.instanceId]);
+  const series = options.find((item) => keyFor(item) === selected) ??
+    options.find((item) => item.kind === "equity") ?? options[0];
+  const seriesIdentity = series ? keyFor(series) : "";
+  const rangeEnd = Math.ceil((series?.observedAt || query.dataUpdatedAt || Date.now()) / 60_000) * 60_000 + 1;
+  const periods = [1, 24, 168, 720];
+  const periodLabel = (hours: number) =>
+    hours < 168 ? display.unit(hours, "hour") : display.unit(hours / 24, "day");
   const path =
     "/strategies/" +
     strategyId +
@@ -250,8 +256,8 @@ export function History({
       instanceId: series?.instanceId ?? "",
       kind: series?.kind ?? "",
       series: series?.series ?? "",
-      from: String(window.from),
-      to: String(window.to),
+      from: String(rangeEnd - range * 3600000),
+      to: String(rangeEnd),
       points: "500",
     });
   const history = useQuery({
@@ -259,29 +265,26 @@ export function History({
     enabled: !!series,
   });
   return (
-    <div className={(embedded ? "" : "surface ") + "chart-card"}>
+    <div className={(embedded ? "" : "surface ") + "chart-card" + (featured ? " portfolio-chart" : "")}>
       <div className="filter-bar">
-        <select
+        {(!seriesKind || options.length > 1) && <select
           aria-label={t("series")}
-          value={selected}
-          onChange={(e) => setSelected(Number(e.target.value))}
+          value={seriesIdentity}
+          onChange={(e) => setSelected(e.target.value)}
         >
-          {options.map((s, i) => (
-            <option value={i} key={s.kind + s.series + s.instanceId}>
+          {options.map((s) => (
+            <option value={keyFor(s)} key={keyFor(s)}>
               {[display.kind(s.kind), display.series(s.kind, s.series), s.instanceId].filter(Boolean).join(" · ")}
             </option>
           ))}
-        </select>
-        <select
+        </select>}
+        {!featured && <select
           aria-label={t("timeRange")}
           value={range}
           onChange={(e) => setRange(Number(e.target.value))}
         >
-          <option value={1}>{display.unit(1, "hour")}</option>
-          <option value={24}>{display.unit(24, "hour")}</option>
-          <option value={168}>{display.unit(7, "day")}</option>
-          <option value={720}>{display.unit(30, "day")}</option>
-        </select>
+          {periods.map((period) => <option value={period} key={period}>{periodLabel(period)}</option>)}
+        </select>}
       </div>
       {query.error || history.error ? (
         <ErrorView error={(query.error || history.error)!} />
@@ -293,10 +296,20 @@ export function History({
           <Chart
             points={history.data.points}
             candle={series?.kind === "ohlcv"}
+            featured={featured}
           />{" "}
         </Suspense>
       ) : (
         <p className="empty-inline chart-empty">{t("missing")}</p>
+      )}
+      {featured && (
+        <div className="segmented portfolio-periods" role="group" aria-label={t("choosePeriod")}>
+          {periods.map((period) => (
+            <button key={period} aria-pressed={range === period} onClick={() => setRange(period)}>
+              {periodLabel(period)}
+            </button>
+          ))}
+        </div>
       )}
       {history.data && history.data.resolutionMs > 0 && (
         <small className="muted">

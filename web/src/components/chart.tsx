@@ -7,15 +7,20 @@ import {
 } from "lightweight-charts";
 import "uplot/dist/uPlot.min.css";
 import type { Point } from "../shared/api";
+import { useLanguage } from "../shared/i18n";
 
 export default function Chart({
   points,
   candle = false,
+  featured = false,
 }: {
   points: Point[];
   candle?: boolean;
+  featured?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = useLanguage();
+  const valueLabel = t("chartValue");
   useEffect(() => {
     if (!ref.current || !points.length) return;
     const element = ref.current;
@@ -57,23 +62,33 @@ export default function Chart({
       chart.timeScale().fitContent();
       return () => chart.remove();
     }
+    const plotHeight = () => featured ? Math.min(300, Math.max(190, element.clientWidth * 0.29)) : 230;
+    const grid = { stroke: "#8994a71a", show: !featured };
     const plot = new uPlot(
       {
         width: element.clientWidth,
-        height: 230,
+        height: plotHeight(),
         legend: { show: false },
         cursor: { drag: { x: true, y: false } },
         axes: [
-          { stroke: "#8994a7", grid: { stroke: "#8994a71a" } },
-          { stroke: "#8994a7", grid: { stroke: "#8994a71a" }, size: 72 },
+          { stroke: "#8994a7", grid },
+          { stroke: "#8994a7", grid, size: featured ? 58 : 72 },
         ],
         series: [
           {},
           {
-            label: "Value",
+            label: valueLabel,
             stroke: chartColor,
-            width: 2,
-            fill: chartColor + "12",
+            width: featured ? 1.5 : 2,
+            fill: featured
+              ? (self) => {
+                  const { top, height } = self.bbox;
+                  const gradient = self.ctx.createLinearGradient(0, top, 0, top + height);
+                  gradient.addColorStop(0, `color-mix(in srgb, ${chartColor} 28%, transparent)`);
+                  gradient.addColorStop(1, "transparent");
+                  return gradient;
+                }
+              : `color-mix(in srgb, ${chartColor} 9%, transparent)`,
             points: { show: false },
           },
         ],
@@ -82,13 +97,13 @@ export default function Chart({
       element,
     );
     const observer = new ResizeObserver(() =>
-      plot.setSize({ width: element.clientWidth, height: 230 }),
+      plot.setSize({ width: element.clientWidth, height: plotHeight() }),
     );
     observer.observe(element);
     return () => {
       observer.disconnect();
       plot.destroy();
     };
-  }, [points, candle]);
-  return <div className="chart" ref={ref} />;
+  }, [points, candle, featured, valueLabel]);
+  return <div className={"chart" + (featured ? " portfolio-plot" : "")} ref={ref} />;
 }

@@ -1,22 +1,23 @@
-/* Visual reference: AntQuant's paper palette, serif financial figures, and
-   responsive navigation. QuantBot keeps its own routes and widget structure. */
+/* The workbench borrows Wealthfolio's portfolio hierarchy and quiet surfaces.
+   Navigation follows the compact rail and mobile tabs introduced with AntQuant. */
 .workbench-shell.antquant-workbench[data-theme="lumina"],
 :root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="lumina"] {
-  --canvas: inherit;
-  --surface: inherit;
-  --raised: inherit;
-  --text: inherit;
-  --muted: inherit;
-  --line: inherit;
-  --accent: inherit;
-  --accent-soft: inherit;
+  --canvas: #f6f7f6;
+  --surface: #fff;
+  --raised: #eef0ee;
+  --text: #202422;
+  --muted: #626b65;
+  --line: #e4e8e4;
+  --accent: #284936;
+  --accent-ink: #fff;
+  --accent-soft: #e4ebe6;
   --success: inherit;
   --success-bg: inherit;
   --warning: inherit;
   --warning-bg: inherit;
   --danger: inherit;
   --danger-bg: inherit;
-  --theme-chart: #659892;
+  --theme-chart: #528463;
   --radius: 12px;
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
@@ -25,7 +26,16 @@
 }
 
 :root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="lumina"] {
-  --theme-chart: #73aba2;
+  --canvas: #151917;
+  --surface: #202622;
+  --raised: #28302a;
+  --text: #e5ebe6;
+  --muted: #a6b0a8;
+  --line: #333d35;
+  --accent: #b4d9bd;
+  --accent-ink: #152319;
+  --accent-soft: #2b4032;
+  --theme-chart: #88bd96;
 }
 
 .antquant-workbench > main.container {
@@ -154,8 +164,7 @@
 }
 
 .workbench-shell.antquant-workbench[data-theme="lumina"] :is(.summary-card > strong, .card-values strong, .equity-widget > strong) {
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  font-weight: 500;
+  font-weight: 610;
   font-variant-numeric: lining-nums tabular-nums;
 }
 
@@ -167,6 +176,153 @@
   background: var(--accent-soft);
   color: var(--text);
   font-weight: 650;
+}
+
+.portfolio-dashboard {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  grid-template-areas: "hero hero" "summary summary" "strategies activity" "widgets widgets";
+  align-items: start;
+  gap: 0 24px;
+}
+.portfolio-dashboard > .portfolio-hero { grid-area: hero; }
+.portfolio-dashboard > .portfolio-summary { grid-area: summary; }
+.portfolio-dashboard > .portfolio-widgets { grid-area: widgets; }
+.portfolio-dashboard > .portfolio-strategies {
+  grid-area: strategies;
+}
+.portfolio-dashboard > .portfolio-activity {
+  grid-area: activity;
+  min-width: 0;
+}
+.portfolio-dashboard > :is(.portfolio-widgets, .portfolio-strategies) {
+  min-width: 0;
+}
+.portfolio-dashboard .activity-line {
+  flex-wrap: wrap;
+}
+.portfolio-dashboard .activity-line time {
+  white-space: normal;
+}
+.portfolio-dashboard .view-list .strategy-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px 12px;
+}
+.portfolio-dashboard .view-list .strategy-card :is(.strategy-tags, footer) {
+  grid-row: 2;
+}
+.portfolio-dashboard .view-list .strategy-card header,
+.portfolio-dashboard .view-list .strategy-card > .strategy-tags {
+  grid-column: 1;
+}
+.portfolio-dashboard .view-list .strategy-card > :is(.card-values, .qb-card-no-financial, footer) {
+  grid-column: 2;
+  justify-self: end;
+}
+.portfolio-dashboard .view-list .strategy-card .card-values {
+  margin: 0;
+}
+.portfolio-dashboard .view-list .strategy-card footer {
+  padding: 0;
+  border: 0;
+}
+.portfolio-hero {
+  margin-block: 17px;
+  min-width: 0;
+  padding: clamp(16px, 3vw, 28px);
+}
+.workbench-shell.antquant-workbench[data-theme="lumina"] .portfolio-hero {
+  background: linear-gradient(var(--surface) 45%, color-mix(in srgb, var(--theme-chart) 9%, var(--surface)));
+}
+.portfolio-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.portfolio-toolbar h2 {
+  margin: 0;
+}
+.portfolio-toolbar select {
+  max-width: min(56vw, 260px);
+}
+.portfolio-amount {
+  display: grid;
+  gap: 4px;
+}
+.portfolio-amount strong {
+  font-size: clamp(29px, 4.3vw, 52px);
+  line-height: 1.14;
+  font-weight: 600;
+  letter-spacing: -.04em;
+  overflow-wrap: anywhere;
+}
+.portfolio-amount strong small {
+  color: var(--muted);
+  font-size: .39em;
+  letter-spacing: 0;
+}
+.portfolio-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.portfolio-amount > span,
+.portfolio-secondary {
+  font-size: 13px;
+}
+.portfolio-chart {
+  padding: 12px 0 0;
+}
+.portfolio-chart > .filter-bar:empty {
+  display: none;
+}
+.portfolio-chart .chart.portfolio-plot {
+  height: auto;
+  min-height: 190px;
+}
+.portfolio-periods {
+  width: fit-content;
+  margin: 12px auto 0;
+  max-width: 100%;
+}
+.portfolio-record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.portfolio-records > .segmented {
+  margin-bottom: 14px;
+}
+#strategy-controls {
+  scroll-margin-top: 68px;
+}
+.portfolio-holding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+}
+.portfolio-holding + .portfolio-holding {
+  border-top: 1px solid var(--line);
+}
+.portfolio-holding > span {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.portfolio-holding > span:last-child {
+  text-align: right;
+}
+
+@media (max-width: 950px) {
+  .portfolio-dashboard {
+    display: flex;
+  }
 }
 
 @media (min-width: 768px) {
@@ -251,5 +407,8 @@
   }
   .antquant-workbench > main.container {
     padding-bottom: calc(90px + env(safe-area-inset-bottom));
+  }
+  .portfolio-record-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
