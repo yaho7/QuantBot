@@ -1,18 +1,16 @@
 import { useEffect, useRef } from "react";
-import { createPortal } from "react-dom";
 import type { Widget } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import "./widget-resize.css";
 
 const sizes: Widget["size"][] = ["small", "medium", "large", "full"];
 
-/** Only the outline changes during pointer movement; the expensive board commits once. */
+/** Resize the actual grid item once per frame; commit React state once on release. */
 export function WidgetResize({ widget, commit }: {
   widget: Widget;
   commit: (value: Partial<Widget>) => void;
 }) {
   const { t } = useLanguage();
-  const outline = useRef<HTMLDivElement>(null);
   const cleanup = useRef<() => void>(() => {});
   useEffect(() => () => cleanup.current(), []);
   return <>
@@ -49,15 +47,18 @@ export function WidgetResize({ widget, commit }: {
         const startX = event.clientX, startY = event.clientY;
         const id = event.pointerId;
         let width = rect.width, height = rect.height, frame = 0;
-        const preview = outline.current!;
+        const previous = { height: card.style.height, gridColumn: card.style.gridColumn };
+        const closestSize = () => {
+          const distances = widths.map(w => Math.abs(w - width));
+          const current = sizes.indexOf(widget.size);
+          return distances[current] === Math.min(...distances) ? current : distances.indexOf(Math.min(...distances));
+        };
+        card.dataset.resizing = "true";
         const paint = () => {
           frame = 0;
-          Object.assign(preview.style, {
-            display: "block", left: Math.min(rect.left, gridRect.right - width) + "px", top: rect.top + "px",
-            width: width + "px", height: height + "px",
-          });
+          card.style.gridColumn = "span " + spans[closestSize()];
+          card.style.height = Math.round(height / 8) * 8 + "px";
         };
-        paint();
         handle.setPointerCapture(id);
         const move = (e: PointerEvent) => {
           if (e.pointerId !== id) return;
@@ -67,7 +68,9 @@ export function WidgetResize({ widget, commit }: {
         };
         const cancel = () => {
           cancelAnimationFrame(frame);
-          preview.style.display = "none";
+          card.style.height = previous.height;
+          card.style.gridColumn = previous.gridColumn;
+          delete card.dataset.resizing;
           handle.removeEventListener("pointermove", move);
           handle.removeEventListener("pointerup", finish);
           handle.removeEventListener("pointercancel", cancel);
@@ -75,7 +78,6 @@ export function WidgetResize({ widget, commit }: {
           window.removeEventListener("keydown", escape);
           window.removeEventListener("blur", cancel);
           window.removeEventListener("resize", cancel);
-          window.removeEventListener("scroll", cancel, true);
           if (handle.hasPointerCapture(id)) handle.releasePointerCapture(id);
           cleanup.current = () => {};
         };
@@ -83,9 +85,7 @@ export function WidgetResize({ widget, commit }: {
         const finish = (e: PointerEvent) => {
           if (e.pointerId !== id) return;
           move(e);
-          const distances = widths.map(w => Math.abs(w - width));
-          const current = sizes.indexOf(widget.size);
-          const best = distances[current] === Math.min(...distances) ? current : distances.indexOf(Math.min(...distances));
+          const best = closestSize();
           const changed = Math.abs(e.clientX - startX) > 3 || Math.abs(e.clientY - startY) > 3;
           cancel();
           if (changed) commit({ size: sizes[best]!, height: Math.round(height / 8) * 8 });
@@ -97,13 +97,11 @@ export function WidgetResize({ widget, commit }: {
         window.addEventListener("keydown", escape);
         window.addEventListener("blur", cancel);
         window.addEventListener("resize", cancel);
-        window.addEventListener("scroll", cancel, true);
         cleanup.current = cancel;
       }}>
       <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
         <path d="M4 12 12 4M9 12l3-3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     </button>
-    {createPortal(<div className="widget-resize-outline" ref={outline} aria-hidden="true" />, document.body)}
   </>;
 }

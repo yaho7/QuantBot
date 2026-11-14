@@ -8,14 +8,43 @@
   cursor: nwse-resize; touch-action: none; user-select: none;
 }
 .widget-resize-handle:hover, .widget-resize-handle:focus-visible { color: var(--accent); }
-.widget-resize-outline {
-  display: none; position: fixed; z-index: 10000; pointer-events: none;
-  border: 2px solid #528463; border-radius: 14px;
-  background: #52846312; box-sizing: border-box; contain: strict;
-}
 .widget.widget-height-set { min-height: 120px; }
 .widget.widget-height-set > .widget-body { min-height: 0; flex: 1; overflow: auto; }
 .widget:has(> .widget-resize-handle) > .widget-body { padding-bottom: 36px; }
 @media (pointer: coarse) {
   .widget-resize-handle { width: 44px; height: 44px; }
+}
+
+
+.widget[data-resizing="true"] {
+  transition: none !important;
+  outline: 2px solid var(--accent);
+  user-select: none;
+  min-height: 120px;
+}
+.widget[data-resizing="true"] > .widget-body {
+  min-height: 0; flex: 1; overflow: auto;
+}
+.widget-section { container-type: inline-size; }
+.workbench-shell .widget-section .widget-grid {
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  overflow-anchor: none;
+}
+.workbench-shell .widget-grid .widget.size-small { grid-column: span 3; }
+.workbench-shell .widget-grid .widget.size-medium { grid-column: span 6; }
+.workbench-shell .widget-grid .widget.size-large { grid-column: span 8; }
+.workbench-shell .widget-grid .widget.size-full { grid-column: span 12; }
+@container (max-width: 900px) {
+  .workbench-shell .widget-section .widget-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+  .workbench-shell .widget-grid .widget.size-small,
+  .workbench-shell .widget-grid .widget.size-medium { grid-column: span 4; }
+  .workbench-shell .widget-grid .widget.size-large,
+  .workbench-shell .widget-grid .widget.size-full { grid-column: span 8; }
+}
+@container (max-width: 540px) {
+  .workbench-shell .widget-section .widget-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .workbench-shell .widget-grid .widget.size-small { grid-column: span 2; }
+  .workbench-shell .widget-grid .widget.size-medium,
+  .workbench-shell .widget-grid .widget.size-large,
+  .workbench-shell .widget-grid .widget.size-full { grid-column: span 4; }
 }
