@@ -49,6 +49,7 @@ import {
 import { ErrorView, Loading } from "../shared/ui";
 import { BrandIcon } from "../components/brand-icon";
 import "../styles/antquant.css";
+import "../styles/wealthfolio.css";
 import { setLanguage, useLanguage, type Message } from "../shared/i18n";
 const Login = lazy(() =>
   import("./auth").then((module) => ({ default: module.Login })),
@@ -249,7 +250,7 @@ function Workbench() {
             <Brand />
             <nav aria-label={t("workbench")}>
               {monitor.map(([path, label, Icon]) => (
-                <NavLink end={path === "/"} key={path} to={path}>
+                <NavLink end={path === "/"} key={path} to={path} title={t(label)} aria-label={t(label)}>
                   <Icon size={18} />
                   <span>{t(label)}</span>
                 </NavLink>

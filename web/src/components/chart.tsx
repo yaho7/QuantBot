@@ -62,7 +62,7 @@ export default function Chart({
       chart.timeScale().fitContent();
       return () => chart.remove();
     }
-    const plotHeight = () => featured ? Math.min(300, Math.max(190, element.clientWidth * 0.29)) : 230;
+    const plotHeight = () => featured ? Math.min(310, Math.max(210, element.clientWidth * 0.25)) : 230;
     const grid = { stroke: "#8994a71a", show: !featured };
     const plot = new uPlot(
       {
@@ -71,8 +71,8 @@ export default function Chart({
         legend: { show: false },
         cursor: { drag: { x: true, y: false } },
         axes: [
-          { stroke: "#8994a7", grid },
-          { stroke: "#8994a7", grid, size: featured ? 58 : 72 },
+          { stroke: "#8994a7", grid, show: !featured },
+          { stroke: "#8994a7", grid, size: 72, show: !featured },
         ],
         series: [
           {},

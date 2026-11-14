@@ -106,7 +106,7 @@ export function Home() {
     );
   return (
     <Page
-      title={t("overview")}
+      title={portfolio ? "" : t("overview")}
       actions={
         <Link className="button" to="/controls">
           <SlidersHorizontal size={16} />
@@ -255,7 +255,11 @@ function PortfolioOverview({ strategies, selected, select }: {
   return (
     <section className="portfolio-hero surface">
       <header className="portfolio-toolbar">
-        <h2>{t("portfolioMonitor")}</h2>
+        <nav className="portfolio-tabs" aria-label={t("workbench")}>
+          <Link to="/" aria-current="page"><LayoutGrid size={14} />{t("overview")}</Link>
+          <Link to="/strategies"><Square size={14} />{t("strategies")}</Link>
+          <Link to="/controls"><SlidersHorizontal size={14} />{t("controls")}</Link>
+        </nav>
         <div className="actions">
           <select
             aria-label={t("strategy")}
