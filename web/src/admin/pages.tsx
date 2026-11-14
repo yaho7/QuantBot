@@ -1,3 +1,4 @@
+import { agentPrompt } from "./agent-prompt";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
@@ -249,7 +250,7 @@ export function Integration() {
     enabled: !!id,
   });
   const [label, setLabel] = useState("Agent");
-  const [scopes, setScopes] = useState(["heartbeat", "report"]);
+  const [scopes, setScopes] = useState(["heartbeat", "report", "control"]);
   const [token, setToken] = useState("");
   const [executor, setExecutor] = useState("");
   const mutation = useMutation({
@@ -411,13 +412,23 @@ export function Integration() {
             <code>{location.origin}/api/agent/session</code>
             <p>
               <a
-                href="/api/v1/schemas/report-v1.json"
+                href="/api/agent/schemas/report.json"
                 target="_blank"
                 rel="noreferrer"
               >
-                Report JSON Schema <ExternalLink size={14} />
+                {t("reportSchema")} <ExternalLink size={14} />
               </a>
             </p>
+            <p>
+              <a href="/api/agent/schemas/agent.json" target="_blank" rel="noreferrer">
+                {t("agentSchema")} <ExternalLink size={14} />
+              </a>
+            </p>
+            <button onClick={() => void navigator.clipboard.writeText(agentPrompt(location.origin))
+              .then(() => toast.success(t("copied")))
+              .catch(() => toast.error(t("copyFailed")))}>
+              <Copy size={16} /> {t("copyAgentPrompt")}
+            </button>
             <pre>{`curl -X POST '${location.origin}/api/agent/session' \\\n  -H 'Authorization: Bearer YOUR_AGENT_TOKEN' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"instanceId":"worker-a","bootId":"NEW_PROCESS_UUID"}'`}</pre>
           </section>
         </>

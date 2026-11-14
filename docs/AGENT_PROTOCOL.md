@@ -1,4 +1,4 @@
-# Agent protocol v1
+# Agent protocol
 
 QuantBot speaks JSON over ordinary HTTP. Use HTTPS for remote integrations. Local loopback development can use HTTP. The strategy independently owns broker connectivity, operations and risk policy.
 
@@ -71,7 +71,7 @@ The designated online executor with `command` scope calls `GET /api/agent/comman
 
 ## Telemetry
 
-Send `POST /api/agent/reports` with a current `report` session and JSON `{"records":[…]}`. Each record has `id`, `kind`, `observedAt` (UTC Unix milliseconds) and `data`. A batch holds 1–250 records, up to 512 KiB. The service publishes the schema at `GET /api/v1/schemas/report-v1.json`. The schema defines status, connection, portfolio, equity, position, order, fill, performance, metric, OHLCV, signal, risk, alert and log. Monetary and quantity fields are decimal strings. A candle timestamp must align to its UTC interval. Metrics support seven days of backfill, and reports may be at most two minutes ahead of server time.
+Send `POST /api/agent/reports` with a current `report` session and JSON `{"records":[…]}`. Each record has `id`, `kind`, `observedAt` (UTC Unix milliseconds) and `data`. A batch holds 1–250 records, up to 512 KiB. The service publishes the schema at `GET /api/agent/schemas/report.json`. The schema defines status, connection, portfolio, equity, position, order, fill, performance, metric, OHLCV, signal, risk, alert and log. Monetary and quantity fields are decimal strings. A candle timestamp must align to its UTC interval. Metrics support seven days of backfill, and reports may be at most two minutes ahead of server time.
 
 ```json
 {
@@ -98,15 +98,23 @@ An optional `associations` object carries explicit `account_id`, `symbol`, `sign
 
 Declared record IDs deduplicate within the combination of strategy, capability and revision. Conflicting duplicates are rejected, and expired revisions return HTTP 409. Current resource and event data are available in `/api/v1/strategies/{id}/capability-data`. A capability with `history: true` retains observations for 30 days with the original observation time, receive time, revision and identity. Query `/api/v1/strategies/{id}/capabilities/{capability}/history` for report, resource and event history. Add `source=state` for observations received through the state endpoint. Replay enumerates only saved observations, including those from previous revisions.
 
-## Runnable status reports
+## Request schemas and examples
 
-Create a paper strategy and set `QB_AGENT_URL` to its QuantBot server's `/api/agent` URL and `QB_TOKEN` to the newly issued credential. Each command creates a short-lived session, sends a heartbeat and submits one durable test status record. Set `QB_INSTANCE_ID` to override the language-specific example instance.
+Fetch `GET /api/agent/schemas/agent.json` and use the corresponding JSON Schema definition.
 
-```sh
-python3 examples/v3/report.py
-node examples/v3/report.mjs
-go run ./examples/v3
-bash examples/v3/report.sh
-```
+| Request | Definition |
+| --- | --- |
+| `POST /api/agent/session` | `#/$defs/session` |
+| `PUT /api/agent/heartbeat` | Empty body |
+| `PUT /api/agent/capabilities` | `#/$defs/capabilities` |
+| `PUT /api/agent/state` | `#/$defs/state` |
+| `POST /api/agent/reports` | `#/$defs/reports` |
+| `POST /api/agent/events` | `#/$defs/events` |
+| `PUT /api/agent/resources/{type}` | `#/$defs/resources` |
+| `GET /api/agent/commands` | Optional integer query parameter `wait`, 0–25 seconds |
+| `POST /api/agent/commands/{id}/claim` | Empty body |
+| `POST /api/agent/commands/{id}/result` | `#/$defs/result` |
 
-The curl example uses jq for JSON and OpenSSL for a unique boot ID. A successful run prints one inserted record. For an integration that performs operations, see the command lifecycle and permit requirements above.
+The server validates each `value` against the strategy's current declaration and applies server-time checks, permissions and cross-field rules. For example, a `decimal` uses a decimal string, and an `object` accepts only its declared properties. The batch acknowledgment identifies malformed records by index.
+
+See [paper strategy examples and the AI prompt](INTEGRATION.md).

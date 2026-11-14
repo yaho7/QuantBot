@@ -1,4 +1,4 @@
-"""Generate the checked-in HTTP API and request schema documents."""
+"""Generate the archived Python HTTP API and request schema documents."""
 
 import argparse
 import json
@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     app = make_app(DOCS / "unused.sqlite3", telegram_network=False)
-    documents = {DOCS / "openapi.json": app.openapi()}
+    documents = {DOCS / "openapi-python.json": app.openapi()}
     for kind in AUXILIARY:
         documents[DOCS / "schemas" / f"{kind}.schema.json"] = schema_document(kind)
     drift = []

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://quantbot.local/schemas/report-v1.json",
+  "$id": "https://quantbot.local/api/agent/schemas/report.json",
   "type": "object",
   "additionalProperties": false,
   "required": ["id", "kind", "observedAt", "data"],

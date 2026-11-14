@@ -1,0 +1,36 @@
+[
+  {
+    "id": "broker",
+    "kind": "state",
+    "title": "Broker connected",
+    "group": "health",
+    "value_type": "boolean",
+    "history": true,
+    "stale_after_seconds": 45,
+    "alert_suggestion": {"type": "stale"},
+    "presentation": {"suggested": true, "surface": ["overview", "strategy"]}
+  },
+  {
+    "id": "poll-latency",
+    "kind": "metric",
+    "title": "Feed latency",
+    "value_type": "decimal",
+    "unit": "ms",
+    "precision": 2,
+    "history": true,
+    "presentation": {"suggested": true, "surface": ["strategy"], "preferred_renderer": "line"}
+  },
+  {
+    "id": "sample-event",
+    "kind": "event",
+    "title": "Demo events",
+    "value_type": "object",
+    "value_schema": {
+      "type": "object",
+      "properties": {"message": {"type": "string"}},
+      "required": ["message"]
+    },
+    "history": true,
+    "presentation": {"suggested": true, "surface": ["strategy"]}
+  }
+]

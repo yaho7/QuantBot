@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://quantbot.local/api/agent/schemas/agent.json",
+  "title": "QuantBot Agent request schemas",
+  "$comment": "Select the $defs entry for the endpoint. Registered schemas, exact decimal constraints, current revision, permissions and observation windows are validated by the server.",
+  "$defs": {
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instanceId", "bootId"],
+      "properties": {
+        "instanceId": {"$ref": "#/$defs/instanceId"},
+        "bootId": {"$ref": "#/$defs/instanceId"}
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "capabilities"],
+      "properties": {
+        "revision": {"type": "integer", "minimum": 0},
+        "capabilities": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/capability"}}
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "title", "value_type"],
+      "properties": {
+        "id": {"$ref": "#/$defs/capabilityId"},
+        "kind": {"enum": ["metric", "state", "parameter", "action", "resource", "event"]},
+        "title": {"type": "string", "minLength": 1, "maxLength": 160, "pattern": "\\S"},
+        "description": {"type": "string", "maxLength": 1000},
+        "group": {"type": "string", "maxLength": 80},
+        "value_type": {"$ref": "#/$defs/valueType"},
+        "unit": {"type": "string", "maxLength": 40},
+        "precision": {"type": "integer", "minimum": 0, "maximum": 18},
+        "constraints": {"$ref": "#/$defs/constraints"},
+        "history": {"type": "boolean"},
+        "presentation": {"$ref": "#/$defs/presentation"},
+        "writable": {"type": "boolean"},
+        "command": {"$ref": "#/$defs/capabilityId"},
+        "input_schema": {"$ref": "#/$defs/valueSchema"},
+        "value_schema": {"$ref": "#/$defs/valueSchema"},
+        "risk": {"enum": ["low", "medium", "high", "critical"]},
+        "confirm": {"type": "boolean"},
+        "timeout_seconds": {"type": "integer", "minimum": 0, "maximum": 3600},
+        "stale_after_seconds": {"type": "integer", "minimum": 0, "maximum": 2592000},
+        "alert_suggestion": {"$ref": "#/$defs/alertSuggestion"},
+        "atomic_parameters": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {"$ref": "#/$defs/capabilityId"}
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"kind": {"const": "action"}}},
+          "then": {
+            "required": ["writable"],
+            "properties": {"value_type": {"const": "null"}, "history": {"const": false}, "writable": {"const": true}, "value_schema": false}
+          },
+          "else": {"properties": {"value_type": {"not": {"const": "null"}}, "atomic_parameters": false}}
+        },
+        {
+          "if": {"properties": {"kind": {"const": "metric"}}},
+          "then": {"properties": {"value_type": {"const": "decimal"}}}
+        },
+        {
+          "if": {"properties": {"kind": {"enum": ["resource", "event"]}}},
+          "then": {"properties": {"value_type": {"enum": ["object", "array"]}}, "required": ["value_schema"]}
+        },
+        {
+          "if": {"properties": {"value_type": {"enum": ["object", "array"]}}},
+          "then": {"required": ["value_schema"]}
+        },
+        {
+          "if": {"properties": {"kind": {"not": {"enum": ["parameter", "action"]}}}},
+          "then": {"properties": {"writable": {"const": false}, "confirm": {"const": false}, "timeout_seconds": {"const": 0}, "command": false, "input_schema": false, "risk": false}}
+        },
+        {
+          "if": {"required": ["input_schema"]},
+          "then": {"required": ["writable"], "properties": {"writable": {"const": true}, "atomic_parameters": false}}
+        },
+        {
+          "if": {"required": ["alert_suggestion"]},
+          "then": {"properties": {"kind": {"enum": ["state", "metric"]}}}
+        }
+      ]
+    },
+    "presentation": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "suggested": {"type": "boolean"},
+        "surface": {"type": "array", "uniqueItems": true, "items": {"enum": ["overview", "strategy"]}},
+        "preferred_renderer": {"enum": ["number", "line", "status", "table", "candlestick", "form", "button", "switch", "slider", "number_input", "select", "text", "multiselect"]},
+        "default_size": {"enum": ["small", "medium", "large", "full"]},
+        "order": {"type": "integer", "minimum": -10000, "maximum": 10000}
+      }
+    },
+    "alertSuggestion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"enum": ["stale", "above", "below"]},
+        "threshold": {"$ref": "#/$defs/decimal"}
+      },
+      "if": {"properties": {"type": {"const": "stale"}}},
+      "then": {"properties": {"threshold": false}},
+      "else": {"required": ["threshold"]}
+    },
+    "valueType": {"enum": ["null", "boolean", "decimal", "string", "string_list", "object", "array"]},
+    "valueSchema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"$ref": "#/$defs/valueType"},
+        "constraints": {"$ref": "#/$defs/constraints"},
+        "properties": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 32,
+          "propertyNames": {"$ref": "#/$defs/capabilityId"},
+          "additionalProperties": {"$ref": "#/$defs/valueSchema"}
+        },
+        "required": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/capabilityId"}},
+        "items": {"$ref": "#/$defs/valueSchema"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "object"}}},
+          "then": {"required": ["properties"]},
+          "else": {"properties": {"properties": false, "required": false}}
+        },
+        {
+          "if": {"properties": {"type": {"const": "array"}}},
+          "then": {"required": ["items"]},
+          "else": {"properties": {"items": false}}
+        }
+      ]
+    },
+    "constraints": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min": {"$ref": "#/$defs/decimal"},
+        "max": {"$ref": "#/$defs/decimal"},
+        "step": {"$ref": "#/$defs/decimal"},
+        "max_length": {"type": "integer", "minimum": 0, "maximum": 4096},
+        "options": {
+          "type": "array",
+          "maxItems": 64,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["value", "label"],
+            "properties": {
+              "value": {"type": "string", "minLength": 1, "maxLength": 96},
+              "label": {"type": "string", "minLength": 1, "maxLength": 160}
+            }
+          }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "states"],
+      "properties": {
+        "revision": {"$ref": "#/$defs/currentRevision"},
+        "states": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "observedAt", "value"],
+            "properties": {
+              "id": {"$ref": "#/$defs/capabilityId"},
+              "observedAt": {"$ref": "#/$defs/timestamp"},
+              "value": {},
+              "available": {"type": "boolean"},
+              "reason": {"type": "string", "maxLength": 512}
+            }
+          }
+        }
+      }
+    },
+    "reports": {"oneOf": [{"$ref": "#/$defs/declaredBatch"}, {"$ref": "#/$defs/standardBatch"}]},
+    "events": {"oneOf": [{"$ref": "#/$defs/declaredBatch"}, {"$ref": "#/$defs/standardEventBatch"}]},
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "records"],
+      "properties": {
+        "revision": {"$ref": "#/$defs/currentRevision"},
+        "records": {"type": "array", "minItems": 1, "maxItems": 250, "items": {"$ref": "#/$defs/resourceRecord"}}
+      }
+    },
+    "declaredBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["revision", "records"],
+      "properties": {
+        "revision": {"$ref": "#/$defs/currentRevision"},
+        "records": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 250,
+          "items": {"$ref": "#/$defs/resourceRecord", "required": ["capabilityId"]}
+        }
+      }
+    },
+    "resourceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "observedAt", "value"],
+      "properties": {
+        "id": {"$ref": "#/$defs/recordId"},
+        "capabilityId": {"$ref": "#/$defs/capabilityId"},
+        "observedAt": {"$ref": "#/$defs/timestamp"},
+        "value": {},
+        "associations": {"$ref": "#/$defs/associations"}
+      }
+    },
+    "standardBatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["records"],
+      "properties": {
+        "records": {"type": "array", "minItems": 1, "maxItems": 250, "items": {"$ref": "report.json"}}
+      }
+    },
+    "standardEventBatch": {
+      "$ref": "#/$defs/standardBatch",
+      "properties": {
+        "records": {"items": {"properties": {"kind": {"enum": ["signal", "order", "fill", "risk", "alert", "log"]}}}}
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["permit", "status"],
+      "properties": {
+        "permit": {"type": "string", "pattern": "^[A-Za-z0-9_-]{32}$"},
+        "status": {"enum": ["succeeded", "failed", "unknown"]},
+        "message": {"type": "string", "maxLength": 1024},
+        "data": {}
+      }
+    },
+    "associations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "account_id": {"$ref": "#/$defs/recordId"},
+        "symbol": {"$ref": "#/$defs/recordId"},
+        "signal_id": {"$ref": "#/$defs/recordId"},
+        "decision_id": {"$ref": "#/$defs/recordId"},
+        "order_id": {"$ref": "#/$defs/recordId"},
+        "command_id": {"$ref": "#/$defs/recordId"},
+        "correlation_id": {"$ref": "#/$defs/recordId"}
+      }
+    },
+    "capabilityId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"},
+    "instanceId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"},
+    "recordId": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:/@-]{0,95}$"},
+    "decimal": {"type": "string", "pattern": "^-?(0|[1-9][0-9]{0,23})(\\.[0-9]{1,18})?$"},
+    "timestamp": {"type": "integer", "minimum": 1},
+    "currentRevision": {"type": "integer", "minimum": 1}
+  }
+}

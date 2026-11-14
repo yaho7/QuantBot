@@ -109,10 +109,11 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 		controls.RegisterAgent(r)
 		commands.RegisterAgent(r)
 		reports.RegisterAgent(r)
+		reports.RegisterSchema(r)
+		r.Get("/schemas/agent.json", serveAgentSchema)
 	})
 	router.Route("/api/v1", func(r chi.Router) {
 		accounts.Register(r)
-		reports.RegisterSchema(r)
 
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)

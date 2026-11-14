@@ -53,7 +53,7 @@ func (s *Service) RegisterAgent(r chi.Router) {
 }
 
 func (s *Service) RegisterSchema(r chi.Router) {
-	r.Get("/schemas/report-v1.json", func(w http.ResponseWriter, _ *http.Request) {
+	r.Get("/schemas/report.json", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/schema+json")
 		w.Header().Set("Cache-Control", "public, max-age=3600")
 		_, _ = w.Write(reportSchema)

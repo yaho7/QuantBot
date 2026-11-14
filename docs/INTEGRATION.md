@@ -1,65 +1,53 @@
-# QuantBot integration guide
+# QuantBot Agent integration
 
-Create a strategy in the console. Under **Token and diagnostics**, select **Copy AI integration prompt** and give it to Codex, Cursor, or another coding tool. The prompt includes a ready-to-use Sandbox configuration.
+Create a dedicated paper strategy in **Administration → Strategies**. Copy the Agent credential when it is issued. The **Integration** page shows the Agent URL and offers a copyable AI prompt. Inject credentials through a local secret store or a protected environment variable on the strategy host.
 
-Read the [HTTP protocol](../PROTOCOL.md), [OpenAPI](openapi.json), [JSON Schema](schemas), and [examples](../examples). Inspect the project's language, HTTP client, startup lifecycle, data sources, and risk controls. Run the client alongside the trading program in a background thread or task. The strategy needs no inbound port or additional service.
+Read the [Agent protocol](AGENT_PROTOCOL.md), [declaration and batch schemas](../internal/server/schemas/agent.json), and [standard report record schema](../internal/telemetry/schemas/report.json).
 
-## One-click AI integration test
+## Try the protocol on a paper strategy
 
-1. Sign in as an administrator and copy the integration prompt. QuantBot creates or reuses the strategy's Sandbox and includes its endpoint, temporary Bearer secret, key ID, strategy ID, and expiration.
-2. Create a startup-loaded `quantbot.json` and add it to `.gitignore`. The test endpoint ends in `/api/sandbox/agent`. Append the standard relative Agent paths and use `secret` as the Bearer token. Detect the Sandbox endpoint before connecting to a broker. Use simulated data and separate local entry state, command deduplication, and receipts.
-3. Review request history, schema validation, registered controls, and simulated receipts in the console. Passing requires a session, heartbeat, telemetry report, registered control, entry-state synchronization, and a successful simulated command receipt. The Sandbox queues simulated pause and refresh for executors that declare those capabilities. You can also run simulated operations from the page.
-4. After passing, copy the production setup instructions. Replace `endpoint` and `secret` on the strategy host, retain `instance_name`, restart the program, and check the production workbench. Retrieve the production secret from the strategy's credential panel.
-
-A test session lasts 60 minutes by default. It can be closed early or extended by 60 minutes from the current time. The console warns five minutes before expiration. Sandbox and production credentials are separate. Each Sandbox uses its own bounded in-memory database and runs on a dedicated worker thread. Copy a new configuration after a server restart. Test data is cleared on expiration or closure, with a short-lived diagnostics summary retained.
-
-Limits are 64 KiB per request, 120 requests per minute per key, 600 per minute globally, eight active sessions, two concurrent requests per key, six globally, and about 4 MiB of storage per session. Honor `Retry-After` on 429 responses.
-
-## Configuration
-
-```json
-{
-  "endpoint": "https://quantbot.example.com/api/agent",
-  "secret": "",
-  "instance_name": "strategy-001"
-}
-```
-
-Keep an empty secret in `quantbot.example.json`. Create the local configuration only if absent. If configuration is missing, skip communication and continue applying the strategy's local entry and risk rules. The bundled examples accept `QB_ENDPOINT` and `QB_TOKEN`.
-
-## HTTP clients
-
-| Language | Client |
-| --- | --- |
-| Python | `urllib.request` or the existing HTTP client |
-| JavaScript / TypeScript | Node.js `fetch` or the existing networking layer |
-| Go | `net/http` |
-| C# | `HttpClient` |
-| Java | `java.net.http.HttpClient` |
-| C++ | The project's HTTP library or OS networking API |
-
-Send the Bearer secret, JSON headers, and `User-Agent: QuantBot-Integration/1.0`. Append relative paths to `/api/agent` or `/api/sandbox/agent`. Preserve the port, verify TLS, reject redirects, and validate response fields. See [Troubleshooting](TROUBLESHOOTING.md).
-
-## Monitoring and control
-
-Basic monitoring uses `POST /monitor/{instance_id}`. For full integration, establish a session, send `X-Agent-Session`, and honor the returned heartbeat interval and scopes. Coalesce status and account snapshots. Persist fills, risk events, and important receipts in a bounded queue. Reuse IDs, timestamps, and content on retry. Report only data the strategy has.
-
-Declare supported capabilities and prefer read-only controls for display. Apply pause at the actual entry gate and persist the state. Keep exits and risk checks active. Resume remains subject to local risk checks. Follow the last applied disconnect policy and reconcile after reconnecting.
-
-Trading actions require explicit user authorization and must use the program's existing risk and execution paths. Persist command IDs before claiming a one-time permit. Check the deadline and local risk state, persist results before sending receipts, and reconcile unknown outcomes against actual trade records.
-
-## Verification
-
-Use simulated or backtest data with the [Python example](../examples/http_agent.py) or [curl quickstart](../PROTOCOL.md#curl-quickstart). Check the instance and report types in **Token and diagnostics**. Test reconnects, pause and resume, the local risk lock, actual dynamic control values, and command idempotency.
-
-The [Node.js](../examples/http_monitor.mjs) and [Go](../examples/http_monitor.go) examples send a standard status report and show redacted diagnostics. The Python example covers monitoring, backoff, synchronization, and control.
+From the repository root, set the endpoint and credential. Run one client per test strategy so each owns its capability registry.
 
 ```bash
-export QB_ENDPOINT=http://127.0.0.1:23456/api/agent
+export QB_AGENT_URL=http://127.0.0.1:23456/api/agent
 read -rs QB_TOKEN
 export QB_TOKEN
-node examples/http_monitor.mjs
-go run examples/http_monitor.go
+python3 examples/v3/report.py
+node examples/v3/report.mjs
+go run ./examples/v3
+bash examples/v3/report.sh
 ```
 
-Run `QB_REQUIRE_LANGUAGE_TESTS=1 uv run pytest tests/integration/test_language_contract.py` to verify the simulated HTTP contract with Python, Node.js, and Go.
+Each example opens a session, registers a broker health state, a chartable metric, and an event, then sends independent updates with observation times. It prints the state and ingestion acknowledgments. The curl example uses curl, jq and OpenSSL. The Node.js example uses the built-in Fetch API.
+
+To exercise a control command, run any example with `QB_DEMO_CONTROL=1`. Assign its instance as executor in **Administration → Integration**. The default IDs are `python-example`, `js-example`, `go-example` and `curl-example`. Set `QB_INSTANCE_ID` to override them. Once **Refresh demo state** appears in the paper strategy, activate it. The example claims one permit, refreshes the reported state, and submits the same receipt twice to demonstrate idempotency. The examples perform only a simulated state refresh. Use a durable execution journal for a trading integration.
+
+## AI integration prompt
+
+```text
+Integrate this trading program with QuantBot using the Agent base URL
+https://quantbot.example.com/api/agent and the QB_AGENT_TOKEN environment variable.
+Read /api/agent/schemas/agent.json and /api/agent/schemas/report.json on that host.
+Use the existing HTTP client and startup lifecycle with bounded I/O and retries.
+
+Use POST /api/agent/session with a stable instanceId and a new bootId per process.
+Use its short-lived session Bearer and PUT /api/agent/heartbeat every 15 seconds.
+Use PUT /api/agent/capabilities at startup and when the declaration changes.
+Declare real metrics, states, parameters, actions, resources and events. Use
+presentation only for display suggestions. Use health for health-state grouping.
+Send actual values via PUT /api/agent/state, historical points via
+POST /api/agent/reports, events via POST /api/agent/events and resource batches via
+PUT /api/agent/resources/{type}. Use epoch milliseconds for observation time.
+Reuse record IDs, observation times and contents on retry. Include explicit
+association IDs only when present in the source system.
+
+For the designated executor, use GET /api/agent/commands and
+POST /api/agent/commands/{id}/claim. Require the unique permit, a valid deadline,
+and local safety checks before invoking the actual strategy or broker operation.
+Persist a local journal keyed by command ID. Record the actual outcome via
+POST /api/agent/commands/{id}/result and retry the saved receipt unchanged.
+Report observed state separately. Keep risk checks and exit paths active.
+Declare atomic_parameters only when the strategy can apply the whole plan in
+one atomic operation. Trial the integration with a dedicated paper strategy
+and simulated operations before enabling production credentials.
+```

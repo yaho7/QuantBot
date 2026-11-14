@@ -15,10 +15,10 @@ import (
 	"github.com/yaho7/QuantBot/internal/httpapi"
 )
 
-//go:embed schemas/report-v1.json
+//go:embed schemas/report.json
 var reportSchema []byte
 
-const reportSchemaURL = "https://quantbot.local/schemas/report-v1.json"
+const reportSchemaURL = "https://quantbot.local/api/agent/schemas/report.json"
 
 var loadSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
 	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(reportSchema))
