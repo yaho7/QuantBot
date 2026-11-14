@@ -1,0 +1,70 @@
+{
+  "after": {
+    "OnlineAgents": 10,
+    "Samples": 1000,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 0,
+    "PeakRssBytes": 148979712,
+    "HeapBytes": 3246048,
+    "CpuSeconds": 1.357941,
+    "WalBytes": {
+      "control": 869352,
+      "metrics": 4218912
+    }
+  },
+  "agents": 10,
+  "before": {
+    "OnlineAgents": 10,
+    "Samples": 0,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 0,
+    "PeakRssBytes": 88932352,
+    "HeapBytes": 68624760,
+    "CpuSeconds": 0.147668,
+    "WalBytes": {
+      "control": 786952,
+      "metrics": 57712
+    }
+  },
+  "controls": 0,
+  "cpuPercent": 44.92719978428672,
+  "cycles": 100,
+  "duplicateAck": 43,
+  "elapsedSeconds": 2.693853625,
+  "insertedAck": 1000,
+  "latency": {
+    "heartbeat": {
+      "Count": 1000,
+      "P50Ms": 1.277125,
+      "P95Ms": 4.125416,
+      "P99Ms": 76.962416
+    },
+    "history": {
+      "Count": 20,
+      "P50Ms": 0.231791,
+      "P95Ms": 0.663166,
+      "P99Ms": 0.663166
+    },
+    "reports": {
+      "Count": 1043,
+      "P50Ms": 17.914875,
+      "P95Ms": 36.975333,
+      "P99Ms": 95.6575
+    }
+  },
+  "persistedDelta": 1000,
+  "platform": "darwin/arm64",
+  "queuePeakSampled": 6,
+  "recordsPerReport": 1,
+  "rejected": 0,
+  "requestErrors": 0,
+  "requestsPerSecond": 765.8174077665411,
+  "retries": 0,
+  "sentRecords": 1000,
+  "serverGomaxprocs": 2,
+  "streams": 0,
+  "workloadErrors": 0,
+  "writesPerSecond": 371.2154182096661
+}

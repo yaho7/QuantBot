@@ -44,6 +44,8 @@ func (s *Service) Close() { s.queue.close() }
 
 func (s *Service) QueueDepth() int { return len(s.queue.jobs) }
 
+func (s *Service) WriteFailures() uint64 { return s.queue.failures.Load() }
+
 func (s *Service) RegisterAgent(r chi.Router) {
 	r.Post("/reports", s.authorized(s.reports))
 	r.Put("/snapshot", s.authorized(s.snapshot))

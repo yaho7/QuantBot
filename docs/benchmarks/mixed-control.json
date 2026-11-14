@@ -1,0 +1,94 @@
+{
+  "after": {
+    "OnlineAgents": 101,
+    "Samples": 30000,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 0,
+    "PeakRssBytes": 166264832,
+    "HeapBytes": 2644832,
+    "CpuSeconds": 2.615367,
+    "WalBytes": {
+      "control": 4157112,
+      "metrics": 4985232
+    }
+  },
+  "agents": 100,
+  "before": {
+    "OnlineAgents": 101,
+    "Samples": 0,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 0,
+    "PeakRssBytes": 90718208,
+    "HeapBytes": 71908824,
+    "CpuSeconds": 0.134859,
+    "WalBytes": {
+      "control": 4120032,
+      "metrics": 57712
+    }
+  },
+  "controls": 100,
+  "cpuPercent": 130.99479811590953,
+  "cycles": 30,
+  "duplicateAck": 1300,
+  "elapsedSeconds": 1.89359275,
+  "insertedAck": 30000,
+  "latency": {
+    "command_accept": {
+      "Count": 100,
+      "P50Ms": 0.302125,
+      "P95Ms": 2.972083,
+      "P99Ms": 10.82725
+    },
+    "command_claim": {
+      "Count": 100,
+      "P50Ms": 0.342042,
+      "P95Ms": 2.965709,
+      "P99Ms": 7.498542
+    },
+    "command_create": {
+      "Count": 100,
+      "P50Ms": 0.340791,
+      "P95Ms": 3.506667,
+      "P99Ms": 16.770917
+    },
+    "command_result": {
+      "Count": 100,
+      "P50Ms": 0.274916,
+      "P95Ms": 3.269792,
+      "P99Ms": 16.258958
+    },
+    "heartbeat": {
+      "Count": 3000,
+      "P50Ms": 1.46625,
+      "P95Ms": 5.218792,
+      "P99Ms": 11.797917
+    },
+    "history": {
+      "Count": 20,
+      "P50Ms": 0.134583,
+      "P95Ms": 0.240958,
+      "P99Ms": 0.240958
+    },
+    "reports": {
+      "Count": 3130,
+      "P50Ms": 26.983209,
+      "P95Ms": 59.817333,
+      "P99Ms": 85.60325
+    }
+  },
+  "persistedDelta": 30000,
+  "platform": "darwin/arm64",
+  "queuePeakSampled": 48,
+  "recordsPerReport": 10,
+  "rejected": 0,
+  "requestErrors": 0,
+  "requestsPerSecond": 3459.0330999102102,
+  "retries": 0,
+  "sentRecords": 30000,
+  "serverGomaxprocs": 2,
+  "streams": 0,
+  "workloadErrors": 0,
+  "writesPerSecond": 15842.899694245238
+}

@@ -105,6 +105,9 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
+			r.Get("/admin/diagnostics", diagnostics(stores, reports, events, cfg.DataDir))
+			r.Get("/admin/runtime", runtimeStatus(stores, reports))
+
 			r.Get("/events", func(w http.ResponseWriter, r *http.Request) {
 				events.Stream(w, r, accounts.SessionActive)
 			})

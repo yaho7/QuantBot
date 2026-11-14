@@ -1,0 +1,51 @@
+{
+  "after": {
+    "OnlineAgents": 0,
+    "Samples": 0,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 0,
+    "PeakRssBytes": 89669632,
+    "HeapBytes": 70141272,
+    "CpuSeconds": 0.239487,
+    "WalBytes": {
+      "control": 251352,
+      "metrics": 57712
+    }
+  },
+  "agents": 0,
+  "before": {
+    "OnlineAgents": 0,
+    "Samples": 0,
+    "QueueDepth": 0,
+    "WriteFailures": 0,
+    "SseSubscribers": 0,
+    "PeakRssBytes": 88915968,
+    "HeapBytes": 68226664,
+    "CpuSeconds": 0.123603,
+    "WalBytes": {
+      "control": 251352,
+      "metrics": 57712
+    }
+  },
+  "controls": 0,
+  "cpuPercent": 3.861264129421913,
+  "cycles": 5,
+  "duplicateAck": 0,
+  "elapsedSeconds": 3.001193291,
+  "insertedAck": 0,
+  "latency": {},
+  "persistedDelta": 0,
+  "platform": "darwin/arm64",
+  "queuePeakSampled": 0,
+  "recordsPerReport": 1,
+  "rejected": 0,
+  "requestErrors": 0,
+  "requestsPerSecond": 0,
+  "retries": 0,
+  "sentRecords": 0,
+  "serverGomaxprocs": 2,
+  "streams": 0,
+  "workloadErrors": 0,
+  "writesPerSecond": 0
+}

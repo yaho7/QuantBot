@@ -136,3 +136,9 @@ func (b *Bus) Run(ctx context.Context) {
 		}
 	}
 }
+
+func (b *Bus) Subscribers() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return len(b.subscribers)
+}
