@@ -1,0 +1,154 @@
+import { useSyncExternalStore } from "react";
+
+const messages = {
+  workbench: ["工作台", "Workbench"],
+  strategies: ["策略", "Strategies"],
+  controls: ["控制中心", "Controls"],
+  activity: ["操作记录", "Activity"],
+  alerts: ["告警", "Alerts"],
+  admin: ["管理后台", "Administration"],
+  dashboard: ["系统仪表盘", "Dashboard"],
+  integration: ["API 与接入", "Integration"],
+  notifications: ["通知渠道", "Notifications"],
+  themes: ["主题管理", "Themes"],
+  storage: ["数据与备份", "Storage"],
+  audit: ["审计日志", "Audit"],
+  security: ["安全与账户", "Security"],
+  settings: ["系统设置", "Settings"],
+  online: ["在线", "Online"],
+  offline: ["离线", "Offline"],
+  abnormal: ["异常", "Abnormal"],
+  confirmation: ["待确认", "Confirmation"],
+  all: ["全部", "All"],
+  search: ["搜索策略", "Search strategies"],
+  overview: ["运行总览", "Overview"],
+  recent: ["最近操作", "Recent activity"],
+  live: ["实盘", "Live"],
+  paper: ["模拟", "Paper"],
+  equity: ["账户权益", "Equity"],
+  dailyPnl: ["当日盈亏", "Daily P&L"],
+  drawdown: ["回撤", "Drawdown"],
+  missing: ["暂无上报", "Awaiting reports"],
+  create: ["创建策略", "Create strategy"],
+  createToken: ["生成凭据", "Generate credential"],
+  empty: ["还没有策略", "No strategies yet"],
+  emptyDescription: [
+    "在管理后台创建策略并接入程序后，监控数据会显示在这里。",
+    "Create a strategy in administration and connect your program to start monitoring.",
+  ],
+  name: ["策略名称", "Strategy name"],
+  group: ["分组", "Group"],
+  mode: ["交易模式", "Trading mode"],
+  save: ["保存", "Save"],
+  cancel: ["取消", "Cancel"],
+  close: ["关闭", "Close"],
+  confirm: ["确认下发", "Confirm command"],
+  username: ["用户名", "Username"],
+  password: ["密码", "Password"],
+  login: ["登录", "Sign in"],
+  setup: ["初始化管理员", "Create administrator"],
+  setupHint: [
+    "创建账户以开始使用 QuantBot。密码至少 12 个字符。",
+    "Create your QuantBot administrator account. Use at least 12 characters for the password.",
+  ],
+  loginHint: [
+    "登录后查看策略运行状态和控制回执。",
+    "Sign in to monitor strategies and view control receipts.",
+  ],
+  logout: ["退出登录", "Sign out"],
+  return: ["返回工作台", "Back to workbench"],
+  large: ["大卡片", "Large"],
+  compact: ["紧凑卡片", "Compact"],
+  mini: ["迷你卡片", "Mini"],
+  list: ["列表", "List"],
+  light: ["浅色", "Light"],
+  dark: ["深色", "Dark"],
+  system: ["跟随系统", "System"],
+  appearance: ["外观", "Appearance"],
+  noEvents: ["暂无记录", "No events"],
+  error: ["加载失败", "Unable to load"],
+  retry: ["重试", "Retry"],
+  execute: ["下发指令", "Submit"],
+  actual: ["实际状态", "Actual state"],
+  desired: ["期望状态", "Desired state"],
+  unavailable: ["当前不可操作", "Unavailable"],
+  readonly: ["只读", "Read only"],
+  risk: ["风险等级", "Risk"],
+  confirmHint: [
+    "请核对策略和参数。策略收到执行许可后仍会执行自身风控检查。",
+    "Review the strategy and input. The strategy applies its own risk checks before execution.",
+  ],
+  confirmationRequired: ["此指令需要二次确认", "Confirmation required"],
+  submitted: [
+    "指令已保存，等待 Agent 回执",
+    "Command saved, awaiting Agent receipt",
+  ],
+  reconcile: ["核对执行结果", "Reconcile outcome"],
+  note: ["核对依据", "Verification notes"],
+  succeeded: ["成功", "Succeeded"],
+  failed: ["失败", "Failed"],
+  unknown: ["待核对", "Unknown"],
+  cancelled: ["已取消", "Cancelled"],
+  expired: ["已过期", "Expired"],
+  rejected: ["已拒绝", "Rejected"],
+  pending: ["待领取", "Pending"],
+  accepted: ["已领取", "Accepted"],
+  executing: ["执行中", "Executing"],
+  confirmation_required: ["待确认", "Confirmation required"],
+  created: ["已创建", "Created"],
+  positions: ["持仓", "Positions"],
+  orders: ["订单", "Orders"],
+  events: ["事件与日志", "Events and logs"],
+  charts: ["指标与行情", "Charts"],
+  token: ["Agent 凭据", "Agent credential"],
+  copy: ["复制", "Copy"],
+  copied: ["已复制", "Copied"],
+  revoke: ["撤销", "Revoke"],
+  archive: ["归档策略", "Archive strategy"],
+  executor: ["执行器实例", "Executor instance"],
+  noExecutor: ["未指定", "Unassigned"],
+  lastSeen: ["最近上报", "Last report"],
+  uptime: ["运行时长", "Uptime"],
+  notConnected: ["等待 Agent 接入", "Awaiting Agent"],
+  credentialsHint: [
+    "凭据仅在生成时展示，请保存到策略程序的私有配置中。",
+    "This credential is shown once. Store it in your strategy's private configuration.",
+  ],
+  edit: ["编辑布局", "Edit layout"],
+  undo: ["撤销修改", "Undo"],
+  reset: ["恢复默认", "Reset"],
+  add: ["添加组件", "Add widget"],
+  remove: ["移除组件", "Remove widget"],
+  size: ["组件尺寸", "Widget size"],
+  loading: ["正在加载", "Loading"],
+  noControls: ["策略尚未注册控件", "No controls registered"],
+  protocol: ["接入协议", "Agent protocol"],
+  newPassword: ["新密码", "New password"],
+  currentPassword: ["当前密码", "Current password"],
+  changePassword: ["更新密码", "Change password"],
+  sessions: ["登录会话", "Sessions"],
+  current: ["当前会话", "Current session"],
+} as const;
+export type Message = keyof typeof messages;
+const listeners = new Set<() => void>();
+let language =
+  localStorage.getItem("qb.language") ??
+  (navigator.language.startsWith("zh") ? "zh" : "en");
+export function setLanguage(value: string) {
+  language = value;
+  localStorage.setItem("qb.language", value);
+  document.documentElement.lang = value;
+  for (const listener of listeners) listener();
+}
+export function useLanguage() {
+  const lang = useSyncExternalStore(
+    (cb) => {
+      listeners.add(cb);
+      return () => {
+        listeners.delete(cb);
+      };
+    },
+    () => language,
+  );
+  return { lang, t: (key: Message) => messages[key][lang === "zh" ? 0 : 1] };
+}

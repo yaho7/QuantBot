@@ -21,6 +21,7 @@ import (
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 	"github.com/yaho7/QuantBot/internal/strategy"
 	"github.com/yaho7/QuantBot/internal/telemetry"
+	"github.com/yaho7/QuantBot/web"
 )
 
 const shutdownTimeout = 35 * time.Second
@@ -106,7 +107,6 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 		r.Group(func(r chi.Router) {
 			r.Use(accounts.Require)
 			r.Get("/admin/diagnostics", diagnostics(stores, reports, events, cfg.DataDir))
-			r.Get("/admin/runtime", runtimeStatus(stores, reports))
 
 			r.Get("/events", func(w http.ResponseWriter, r *http.Request) {
 				events.Stream(w, r, accounts.SessionActive)
@@ -127,5 +127,6 @@ func routes(stores *storage.Stores, cfg config.Config, commands *command.Service
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("{\"status\":\"ok\"}\n"))
 	})
+	router.NotFound(web.Handler().ServeHTTP)
 	return router
 }

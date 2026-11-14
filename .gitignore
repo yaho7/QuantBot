@@ -13,3 +13,6 @@ web/test-results/
 .env
 .env.*
 .secrets/
+
+!/web/dist/
+!/web/dist/**

@@ -1,27 +1,7 @@
-# Console visual checks
+# QuantBot 3.0 browser verification
 
-The layout project uses a temporary QuantBot database with paper strategy
-telemetry and simulated commands. It checks nine viewport widths from 390 to
-1440 CSS pixels, including both sides of the 768px navigation breakpoint. It
-verifies toolbar and widget alignment, long amounts, permission action
-visibility, scroll cues, keyboard dismissal and focus return. Workbench
-screenshots cover desktop and mobile in English dark mode. The mobile settings
-baseline covers the open language picker in Chinese light mode.
+Build the React assets and provide Go 1.26 on PATH, then run `npm run test:e2e` from `web`. Install Chromium using `npx playwright install chromium`, or use an installed Chrome with `QB_BROWSER_CHANNEL=chrome npm run test:e2e`.
 
-Run the layout checks with the bundled Chromium browser:
+The suite starts an isolated native Go service and drives administrator setup, strategy creation, an HTTP Agent, reports, dynamic control confirmation, one execution grant, the receipt, and independently reported actual state. Screenshot outputs cover home, strategy detail, system dashboard and audit at 390, 430, 768, 1280 and 1600 pixels in light and dark. Detail screenshots wait for the chart canvas to render. The suite checks JavaScript errors and document-level horizontal overflow.
 
-```sh
-npm run build
-npm run test:e2e -- --project=layout
-```
-
-The checked-in pixel baselines were captured with Chrome on macOS. To compare
-against them in the same environment, run:
-
-```sh
-QB_BROWSER_CHANNEL=chrome QB_VISUAL_BASELINES=1 npm run test:e2e -- --project=layout
-```
-
-After an intentional visual change, use the same environment with
-`--update-snapshots`, then inspect both images before committing them. The
-geometry checks run on every platform without enabling pixel comparisons.
+Layout editing, theme administration, Sandbox and notification flows require their feature-level browser checks as those features land. Screenshots are written under `web/test-results` and are ignored by Git.
