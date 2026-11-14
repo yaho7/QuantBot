@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Activity } from "lucide-react";
+import { BrandIcon } from "../components/brand-icon";
 import { z } from "zod";
 import { api, client, resource, setCSRF, type Session } from "../shared/api";
 import { ErrorView, Loading } from "../shared/ui";
@@ -33,9 +33,7 @@ export function Login() {
     <main className="login-page">
       <section className="login-card">
         <div className="brand">
-          <span className="brand-icon">
-            <Activity />
-          </span>
+          <BrandIcon />
           <strong>QuantBot</strong>
           <small>3.0</small>
         </div>

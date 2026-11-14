@@ -282,6 +282,12 @@ small {
   background: var(--accent-soft);
   color: var(--accent);
 }
+.brand-mark {
+  width: 70%;
+  height: 70%;
+  background: currentColor;
+  mask: url("/favicon.svg") center / contain no-repeat;
+}
 .topbar {
   border-bottom: 1px solid var(--line);
   background: var(--surface);

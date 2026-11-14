@@ -17,7 +17,6 @@ import {
   useLocation,
 } from "react-router-dom";
 import {
-  Activity,
   ArrowLeft,
   Bell,
   ChartNoAxesCombined,
@@ -45,6 +44,7 @@ import {
   type Session,
 } from "../shared/api";
 import { ErrorView, Loading } from "../shared/ui";
+import { BrandIcon } from "../components/brand-icon";
 import { setLanguage, useLanguage, type Message } from "../shared/i18n";
 const Login = lazy(() =>
   import("./auth").then((module) => ({ default: module.Login })),
@@ -185,9 +185,7 @@ function Root() {
 function Brand() {
   return (
     <Link className="brand" to="/">
-      <span className="brand-icon">
-        <Activity size={22} />
-      </span>
+      <BrandIcon />
       <strong>QuantBot</strong>
     </Link>
   );
