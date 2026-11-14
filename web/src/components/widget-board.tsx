@@ -43,6 +43,7 @@ import {
   type Strategy,
 } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
+import { effectiveWidgets, suggestedWidgets } from "../shared/layout-defaults";
 import { decimalText, ErrorView, Loading, Modal, Badge } from "../shared/ui";
 import { ControlCard } from "../app/control";
 import { DataTable, History, useTelemetryValues } from "../app/strategy";
@@ -65,47 +66,20 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
   const catalogByStrategy = new Map(
     available.map((strategy, index) => [strategy.id, catalogs[index]]),
   );
-  const suggestions: Widget[] = available
-    .flatMap((strategy) =>
-      (catalogByStrategy.get(strategy.id)?.data?.capabilities ?? [])
-        .filter(
-          ({ presentation }) =>
-            presentation?.suggested && presentation.surface?.includes(surface),
-        )
-        .map((capability) => ({
-          order: capability.presentation?.order ?? 0,
-          widget: {
-            id: "cap:" + strategy.id + ":" + capability.id,
-            type: "capability" as const,
-            strategyId: strategy.id,
-            controlId: capability.id,
-            size: capability.presentation?.default_size ?? "medium",
-            description: true,
-            detailed: true,
-          },
-        })),
-    )
-    .sort((a, b) => a.order - b.order)
-    .map(({ widget }) => widget);
-  const configured = saved.data?.widgets ?? [];
-  const assigned = new Set(
-    configured
-      .filter((widget) => widget.controlId)
-      .map((widget) => widget.strategyId + ":" + widget.controlId),
+  const suggestions = suggestedWidgets(
+    available.map(({ id }) => ({
+      strategyId: id,
+      catalog: catalogByStrategy.get(id)?.data,
+    })),
+    surface,
   );
-  const defaults =
-    saved.data?.revision === 0
-      ? suggestions.filter(
-          (widget) => !assigned.has(widget.strategyId + ":" + widget.controlId),
-        )
-      : [];
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<Widget[]>([]);
   const [revision, setRevision] = useState(0);
   const [history, setHistory] = useState<Widget[][]>([]);
   const [adding, setAdding] = useState(false);
   const [settings, setSettings] = useState("");
-  const effective = [...configured, ...defaults];
+  const effective = effectiveWidgets(saved.data, suggestions);
   const widgets = (editing ? draft : effective).filter(
     (widget) => !widget.hidden,
   );
