@@ -29,12 +29,14 @@ export function CapabilityWidget({
   capability,
   description,
   detailed,
+  compact = false,
 }: {
   strategyId: string;
   revision: number;
   capability: Capability;
   description: boolean;
   detailed: boolean;
+  compact?: boolean;
 }) {
   const { t } = useLanguage();
   const display = useDisplay();
@@ -129,7 +131,7 @@ export function CapabilityWidget({
         <p className="muted">{capability.description}</p>
       )}
       {error && <ErrorView error={error} />}
-      {chart && (
+      {chart && !compact && (
         <CapabilityChart
           records={
             capability.kind === "resource"
@@ -139,7 +141,7 @@ export function CapabilityWidget({
           candle={capability.renderer === "candlestick"}
         />
       )}
-      {table ? (
+      {table && !compact ? (
         <DataTable
           title=""
           maxColumns={40}

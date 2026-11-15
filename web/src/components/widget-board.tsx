@@ -1,4 +1,4 @@
-import { useState, useEffect, useSyncExternalStore } from "react";
+import { useState, useEffect, useSyncExternalStore, useRef, createContext, useContext } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import {
   DndContext,
@@ -17,6 +17,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   Activity,
+  Maximize2,
   Bell,
   ChartNoAxesCombined,
   GripVertical,
@@ -48,6 +49,11 @@ import { ControlCard } from "../app/control";
 import { DataTable, History, useTelemetryValues } from "../app/strategy";
 import { capabilityCatalog, CapabilityWidget } from "./capability-widget";
 
+import { ScrollHints } from "./scroll-hints";
+import "./workbench-ux.css";
+
+const Density = createContext("full");
+
 import { WidgetResize } from "./widget-resize";
 
 const icons = { Activity, Bell, ChartNoAxesCombined, SlidersHorizontal };
@@ -58,10 +64,22 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
     (listener) => { mobileLayout.addEventListener("change", listener); return () => mobileLayout.removeEventListener("change", listener); },
     () => mobileLayout.matches ? "mobile" : "desktop",
   );
+  const { t } = useLanguage();
+  const [preview, setPreview] = useState<string>();
   const [lockedDevice, setLockedDevice] = useState<string>();
-  const device = lockedDevice ?? viewport;
-  return <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device}
-    onEditing={(active) => setLockedDevice(active ? device : undefined)} />;
+  const device = lockedDevice ?? preview ?? viewport;
+  return <>
+    <div className="layout-device-switch segmented" role="group" aria-label={t("layoutPreview")}>
+      {["desktop", "mobile"].map(value => <button key={value} aria-pressed={device === value}
+        disabled={!!lockedDevice} onClick={() => setPreview(value)}>
+        {t(value === "mobile" ? "mobileLayout" : "desktopLayout")}
+      </button>)}
+    </div>
+    <div className={device === "mobile" ? "mobile-layout-preview" : ""}>
+      <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device}
+        onEditing={(active) => setLockedDevice(active ? device : undefined)} />
+    </div>
+  </>;
 
 }
 function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: string; device: string; onEditing: (active: boolean) => void }) {
@@ -91,6 +109,8 @@ function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: str
   const [revision, setRevision] = useState(0);
   const [acknowledged, setAcknowledged] = useState("");
   const [history, setHistory] = useState<Widget[][]>([]);
+  const [copyError, setCopyError] = useState<Error>();
+  const [copying, setCopying] = useState(false);
   const [adding, setAdding] = useState(false);
   const [settings, setSettings] = useState("");
   const effective = effectiveWidgets(saved.data, suggestions);
@@ -132,6 +152,15 @@ function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: str
     setEditing(true);
     save.reset();
   }
+  async function copyDesktop() {
+    if (draft.length && !window.confirm(t("copyLayoutConfirm"))) return;
+    setCopying(true); setCopyError(undefined);
+    try {
+      const source = await api<Layout>(layoutResource(strategyId).queryKey[0]!);
+      change(effectiveWidgets(source, suggestions).map(widget => ({ ...widget, width: 100, height: undefined })));
+    } catch (error) { setCopyError(error as Error); }
+    finally { setCopying(false); }
+  }
   function update(id: string, next: Partial<Widget>) {
     change(
       draft.map((widget) =>
@@ -170,8 +199,10 @@ function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: str
                 <Plus size={16} />
                 {t("add")}
               </button>
+              {device === "mobile" && <button disabled={copying || save.isPending} onClick={() => void copyDesktop()}>{t("copyDesktop")}</button>}
               <button
-                disabled={save.isPending || dirty}
+                className="primary"
+                disabled={save.isPending || dirty || copying}
                 onClick={() => {
                   setEditing(false);
                   onEditing(false);
@@ -181,13 +212,11 @@ function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: str
               >
                 {t("done")}
               </button>
-              <button
-                className="primary"
-                disabled={save.isPending}
-                onClick={() => save.mutate({ revision, widgets: draft })}
-              >
-                {save.isPending ? t("savingLayout") : dirty ? t("save") : t("savedLayout")}
-              </button>
+              <span className="muted layout-save-status" role="status" aria-live="polite">
+                {save.isError ? t("saveFailed") : save.isPending || dirty ? t("savingLayout") : t("savedLayout")}
+              </span>
+              {save.isError && <button onClick={() => save.mutate({ revision, widgets: draft })}>{t("retrySave")}</button>}
+
             </>
           ) : (
             <button
@@ -276,6 +305,7 @@ function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: str
       {!editing && !widgets.length && !saved.isPending && (
         <div className="surface empty-inline">{t("widgetsHint")}</div>
       )}
+      {copyError && <ErrorView error={copyError} />}
       {save.error && (
         <p className="error-text" role="alert">
           {save.error.message}
@@ -416,6 +446,20 @@ function SortableWidget({
   children: ReactNode;
 }) {
   const { t } = useLanguage();
+  const body = useRef<HTMLDivElement>(null);
+  const [density, setDensity] = useState("full");
+  const [expanded, setExpanded] = useState(false);
+  useEffect(() => {
+    const node = body.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => {
+      const { width, height } = entry!.contentRect;
+      const next = width < 260 || height < 140 ? "compact" : width < 420 || height < 240 ? "medium" : "full";
+      setDensity(previous => previous === next ? previous : next);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
   const sortable = useSortable({ id: widget.id, disabled: !editing });
   const Icon = icons[widget.icon as keyof typeof icons] ?? Activity;
   return (
@@ -435,6 +479,7 @@ function SortableWidget({
         ...({ "--widget-width": widget.width } as import("react").CSSProperties),
       }}
       data-widget={widget.id}
+      data-density={density}
     >
       <header className="widget-header">
         <Icon size={16} />
@@ -455,6 +500,7 @@ function SortableWidget({
                         : "activity",
             )}
         </h3>
+        {!editing && <button className="icon-button" aria-label={t("expandWidget")} onClick={() => setExpanded(true)}><Maximize2 size={15} /></button>}
         {editing && (
           <>
             <button
@@ -482,7 +528,11 @@ function SortableWidget({
           </>
         )}
       </header>
-      <div className="widget-body">{children}</div>
+      <div className="widget-body" ref={body}><Density.Provider value={density}>{children}</Density.Provider></div>
+      <ScrollHints target={body} />
+      {expanded && <Modal title={widget.label || title || t("details")} open onOpenChange={setExpanded}>
+        <Density.Provider value="full">{children}</Density.Provider>
+      </Modal>}
       {editing && <WidgetResize widget={widget} commit={resize} />}
     </article>
   );
@@ -499,6 +549,10 @@ function WidgetContent({
   catalogError?: Error | null;
 }) {
   const { t } = useLanguage();
+  const density = useContext(Density);
+  widget = { ...widget, description: widget.description && density === "full", detailed: widget.detailed && density === "full" };
+  if (density === "compact" && ["chart", "positions", "activity"].includes(widget.type))
+    return <p className="muted compact-widget-summary">{t("expandForDetails")}</p>;
   if (widget.type === "capability") {
     if (catalogError) return <ErrorView error={catalogError} />;
     if (!catalog) return <p className="empty-inline">{t("unavailable")}</p>;
@@ -516,6 +570,7 @@ function WidgetContent({
         capability={capability}
         description={widget.description}
         detailed={widget.detailed}
+        compact={density === "compact"}
       />
     );
   }

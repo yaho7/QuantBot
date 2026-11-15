@@ -1,0 +1,27 @@
+.layout-device-switch { width: fit-content; margin-top: 20px; }
+.mobile-layout-preview { max-width: 430px; margin-inline: auto; width: 100%; }
+.layout-save-status { font-size: 12px; }
+.widget { position: relative; }
+.widget .widget-body { background: none; }
+.widget .table-scroll { background: none; }
+.scroll-hints { position: absolute; inset: 0; pointer-events: none; }
+.scroll-hints .scroll-cue {
+  position: absolute; pointer-events: auto; border: 0;
+  width: 28px; height: 28px; min-height: 28px; padding: 0;
+  border-radius: 50%; background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--muted); opacity: .7;
+}
+.scroll-cue.down { bottom: 4px; left: calc(50% - 14px); }
+.scroll-cue.right { right: 4px; top: calc(50% - 14px); }
+.scroll-cue.down svg { animation: cue-down 2.6s ease-in-out infinite; }
+.scroll-cue.right svg { animation: cue-right 2.6s ease-in-out infinite; }
+@keyframes cue-down { 0%, 70%, 100% { transform: translateY(0); } 35% { transform: translateY(2px); } }
+@keyframes cue-right { 0%, 70%, 100% { transform: translateX(0); } 35% { transform: translateX(2px); } }
+@media (prefers-reduced-motion: reduce) { .scroll-cue svg { animation: none !important; } }
+.widget[data-density="compact"] .equity-widget strong { font-size: 26px; }
+.widget[data-density="compact"] .widget-header { gap: 4px; padding: 8px; }
+.widget[data-density="compact"] .widget-body { padding: 8px; }
+.widget[data-density="medium"] .widget-body { padding: 12px; }
+.widget[data-density="compact"] .control-values { font-size: 12px; }
+.widget[data-density="compact"] .control-card { padding: 8px; }
+.widget[data-density="compact"] .compact-widget-summary { margin: 0; }
