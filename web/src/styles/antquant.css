@@ -1,7 +1,6 @@
 /* The workbench borrows Wealthfolio's portfolio hierarchy and quiet surfaces.
    Navigation follows the compact rail and mobile tabs introduced with AntQuant. */
-.workbench-shell.antquant-workbench[data-theme="classical"],
-:root[data-appearance="dark"] .workbench-shell.antquant-workbench[data-theme="classical"] {
+.workbench-shell.antquant-workbench[data-theme="classical"] {
   --canvas: #f6f7f6;
   --surface: #fff;
   --raised: #eef0ee;

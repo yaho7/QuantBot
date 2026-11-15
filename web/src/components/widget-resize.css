@@ -51,8 +51,3 @@
 }
 .widget .widget-body, .widget .table-scroll { scrollbar-width: none; }
 .widget .widget-body::-webkit-scrollbar, .widget .table-scroll::-webkit-scrollbar { display: none; }
-html, .table-scroll, .topbar-inner, .sidebar nav {
-  scrollbar-width: none;
-}
-html::-webkit-scrollbar, .table-scroll::-webkit-scrollbar,
-.topbar-inner::-webkit-scrollbar, .sidebar nav::-webkit-scrollbar { display: none; }

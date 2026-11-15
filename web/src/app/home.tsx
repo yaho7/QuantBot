@@ -2,7 +2,8 @@ import { StrategyTable } from "../components/strategy-table";
 import { AttentionSummary } from "../components/attention-summary";
 import { lazy, Suspense, memo, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
+import { Link } from "../shared/page-links";
 import {
   ArrowUpRight,
   ChevronDown,

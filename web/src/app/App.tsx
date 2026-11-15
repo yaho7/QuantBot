@@ -10,14 +10,14 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Link,
-  NavLink,
   Navigate,
   Outlet,
   RouterProvider,
+  ScrollRestoration,
   createBrowserRouter,
   useLocation,
 } from "react-router-dom";
+import { Link, NavLink } from "../shared/page-links";
 import {
   ArrowLeft,
   Bell,
@@ -51,6 +51,7 @@ import { BrandIcon } from "../components/brand-icon";
 import "../styles/antquant.css";
 import "../styles/wealthfolio.css";
 import "../styles/alignment.css";
+import "../styles/route-layout.css";
 import { usePalette } from "../shared/preferences";
 import { useLanguage, type Message } from "../shared/i18n";
 const Login = lazy(() =>
@@ -62,34 +63,6 @@ import { activeTheme, ThemeContext } from "../themes/catalog";
 import { ThemeFrame, themeStyle } from "../themes/host";
 import { StrategyDetail, AllControls } from "./strategy";
 import { ActivityPage, AlertsPage } from "./activity";
-const HostsPage = lazy(() => import("./hosts").then(module => ({ default: module.HostsPage })));
-const HostDetailPage = lazy(() => import("./hosts").then(module => ({ default: module.HostDetailPage })));
-const Notifications = lazy(() => import("../admin/notifications"));
-const Storage = lazy(() =>
-  import("../admin/system").then((module) => ({ default: module.Storage })),
-);
-const SettingsPage = lazy(() =>
-  import("../admin/system").then((module) => ({ default: module.Settings })),
-);
-const AdminDashboard = lazy(() =>
-  import("../admin/pages").then((module) => ({
-    default: module.AdminDashboard,
-  })),
-);
-const AdminStrategies = lazy(() =>
-  import("../admin/pages").then((module) => ({
-    default: module.AdminStrategies,
-  })),
-);
-const Integration = lazy(() =>
-  import("../admin/pages").then((module) => ({ default: module.Integration })),
-);
-const Audit = lazy(() =>
-  import("../admin/pages").then((module) => ({ default: module.Audit })),
-);
-const Security = lazy(() =>
-  import("../admin/pages").then((module) => ({ default: module.Security })),
-);
 
 const monitor = [
   ["/", "workbench", LayoutDashboard],
@@ -188,6 +161,7 @@ function Root() {
       <Suspense fallback={<Loading />}>
         <Outlet />
       </Suspense>
+      <ScrollRestoration />
       <Toaster position="top-center" richColors />
     </AppearanceTools.Provider>
   );
@@ -270,25 +244,25 @@ function Workbench() {
           </div>
         </header>
         <main className="container">
-          {fallback && (
-            <p role="status" className="warning">
-              {t("themeFallback")}
-            </p>
-          )}
-          {full && selected ? (
-            <>
-              <Link className="button" to="/?classic=1">
-                {t("themeHostView")}
-              </Link>
-              <ThemeFrame
-                key={identity}
-                theme={selected}
-                onFailure={onFailure}
-              />
-            </>
-          ) : (
-            <Outlet />
-          )}
+          <RouteSurface>
+            {fallback && (
+              <p role="status" className="warning">
+                {t("themeFallback")}
+              </p>
+            )}
+            {full && selected ? (
+              <>
+                <Link className="button" to="/?classic=1">
+                  {t("themeHostView")}
+                </Link>
+                <ThemeFrame
+                  key={identity}
+                  theme={selected}
+                  onFailure={onFailure}
+                />
+              </>
+            ) : <Outlet />}
+          </RouteSurface>
         </main>
         {!antquant && tools}
       </div>
@@ -364,7 +338,7 @@ function AdminShell() {
         </footer>
       </aside>
       <main className="admin-main">
-        <Outlet />
+        <RouteSurface><Outlet /></RouteSurface>
       </main>
       {tools}
     </div>
@@ -378,6 +352,15 @@ function NotFound() {
     </div>
   );
 }
+function RouteSurface({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  return <div className="route-surface">
+    <div className={"route-frame" + (typeof document.startViewTransition === "function" ? "" : " route-fade-fallback")} key={pathname}>
+      <Suspense fallback={<Loading />}>{children}</Suspense>
+    </div>
+  </div>;
+}
+
 export function Page({
   title,
   actions,
@@ -388,15 +371,16 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <>
+    <div className="page-layout">
       <header className="page-header">
         <h1>{title}</h1>
         {actions && <div className="actions">{actions}</div>}
       </header>
-      {children}
-    </>
+      <div className="page-body">{children}</div>
+    </div>
   );
 }
+
 const router = createBrowserRouter([
   {
     element: <Root />,
@@ -408,8 +392,8 @@ const router = createBrowserRouter([
           { path: "strategies", element: <Home /> },
           { path: "strategies/:id", element: <StrategyDetail /> },
           { path: "controls", element: <AllControls /> },
-          { path: "hosts", element: <HostsPage /> },
-          { path: "hosts/:id", element: <HostDetailPage /> },
+          { path: "hosts", lazy: async () => ({ Component: (await import("./hosts")).HostsPage }) },
+          { path: "hosts/:id", lazy: async () => ({ Component: (await import("./hosts")).HostDetailPage }) },
           { path: "activity", element: <ActivityPage /> },
           { path: "alerts", element: <AlertsPage /> },
         ],
@@ -419,15 +403,15 @@ const router = createBrowserRouter([
         element: <AdminShell />,
         children: [
           { index: true, element: <Navigate to="dashboard" replace /> },
-          { path: "dashboard", element: <AdminDashboard /> },
-          { path: "notifications", element: <Notifications /> },
+          { path: "dashboard", lazy: async () => ({ Component: (await import("../admin/pages")).AdminDashboard }) },
+          { path: "notifications", lazy: async () => ({ Component: (await import("../admin/notifications")).default }) },
           { path: "themes", element: <Navigate to="/admin/settings" replace /> },
-          { path: "strategies", element: <AdminStrategies /> },
-          { path: "integration", element: <Integration /> },
-          { path: "audit", element: <Audit /> },
-          { path: "security", element: <Security /> },
-          { path: "storage", element: <Storage /> },
-          { path: "settings", element: <SettingsPage /> },
+          { path: "strategies", lazy: async () => ({ Component: (await import("../admin/pages")).AdminStrategies }) },
+          { path: "integration", lazy: async () => ({ Component: (await import("../admin/pages")).Integration }) },
+          { path: "audit", lazy: async () => ({ Component: (await import("../admin/pages")).Audit }) },
+          { path: "security", lazy: async () => ({ Component: (await import("../admin/pages")).Security }) },
+          { path: "storage", lazy: async () => ({ Component: (await import("../admin/system")).Storage }) },
+          { path: "settings", lazy: async () => ({ Component: (await import("../admin/system")).Settings }) },
         ],
       },
       { path: "*", element: <NotFound /> },

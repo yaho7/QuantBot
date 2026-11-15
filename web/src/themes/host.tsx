@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link } from "../shared/page-links";
 import { ControlCard } from "../app/control";
 import { resource, type Registry, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";

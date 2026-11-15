@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import {
   createChart,
@@ -22,6 +22,18 @@ export default function Chart({
   const readout = useRef<HTMLOutputElement>(null);
   const { t, lang } = useLanguage();
   const valueLabel = t("chartValue");
+  const [colors, setColors] = useState("");
+  useEffect(() => {
+    const read = () => {
+      const style = ref.current && getComputedStyle(ref.current);
+      if (style) setColors(style.getPropertyValue("--theme-chart").trim() + "|" + style.getPropertyValue("--muted").trim());
+    };
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-appearance", "data-palette"] });
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     if (!ref.current || !points.length) return;
     const element = ref.current;
@@ -39,9 +51,10 @@ export default function Chart({
       readout.current.textContent = date + " · " + values;
     };
     showPoint();
-    const chartColor =
-      getComputedStyle(element).getPropertyValue("--theme-chart").trim() ||
-      "#638ded";
+    if (!colors) return;
+    const [stroke, labels] = colors.split("|");
+    const chartColor = stroke || "#638ded";
+    const labelColor = labels || "#8994a7";
     if (candle) {
       const chart = createChart(element, {
         autoSize: true,
@@ -49,7 +62,7 @@ export default function Chart({
         layout: {
           attributionLogo: true,
           background: { color: "transparent" },
-          textColor: "#8994a7",
+          textColor: labelColor,
         },
         grid: {
           vertLines: { color: "#8994a720" },
@@ -90,8 +103,8 @@ export default function Chart({
         legend: { show: false },
         cursor: { drag: { x: true, y: false } },
         axes: [
-          { stroke: "#8994a7", grid: { ...grid, show: false }, show: true },
-          { stroke: "#8994a7", grid, size: 80, show: true,
+          { stroke: labelColor, grid: { ...grid, show: false }, show: true },
+          { stroke: labelColor, grid, size: 80, show: true,
             values: (_self, values) => values.map(value => new Intl.NumberFormat(lang === "zh" ? "zh-CN" : "en-US", { maximumSignificantDigits: 6, notation: Math.abs(value) >= 1e7 ? "compact" : "standard" }).format(value)),
           },
         ],
@@ -126,7 +139,7 @@ export default function Chart({
       observer.disconnect();
       plot.destroy();
     };
-  }, [points, candle, featured, valueLabel, lang]);
+  }, [points, candle, featured, valueLabel, lang, colors]);
   return <div className="chart-with-values">
     <output ref={readout} className="chart-value-readout">{points.length ? "" : "—"}</output>
     <div className={"chart" + (featured ? " portfolio-plot" : "")} ref={ref} />

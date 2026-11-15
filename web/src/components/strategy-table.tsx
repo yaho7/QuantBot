@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link } from "../shared/page-links";
 import type { Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge, decimalText } from "../shared/ui";

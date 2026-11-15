@@ -1,5 +1,5 @@
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link } from "../shared/page-links";
 import { AlertTriangle } from "lucide-react";
 import { resource, type Command, type Datum, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";

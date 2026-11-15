@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, Plus, Server } from "lucide-react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { Link } from "../shared/page-links";
 import { api, client, resource, type Strategy } from "../shared/api";
 import { useLanguage, type Message } from "../shared/i18n";
 import { Badge, ErrorView, Loading, Modal } from "../shared/ui";

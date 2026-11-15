@@ -40,6 +40,12 @@
   --danger: #e79184;
   --danger-bg: #3a211c;
 }
+/* Keep scrollbar visibility fixed before any route-specific bundle loads. */
+html, .table-scroll, .topbar-inner, .sidebar nav {
+  scrollbar-width: none;
+}
+html::-webkit-scrollbar, .table-scroll::-webkit-scrollbar,
+.topbar-inner::-webkit-scrollbar, .sidebar nav::-webkit-scrollbar { display: none; }
 * {
   box-sizing: border-box;
 }

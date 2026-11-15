@@ -2,7 +2,8 @@ import { SandboxPanel } from "./sandbox";
 import { agentPrompt } from "./agent-prompt";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { Link } from "../shared/page-links";
 import { Copy, Plus, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import {

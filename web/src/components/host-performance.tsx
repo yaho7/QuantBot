@@ -1,6 +1,6 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link } from "../shared/page-links";
 import { resource, type Point } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";

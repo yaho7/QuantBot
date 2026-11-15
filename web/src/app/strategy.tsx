@@ -1,6 +1,7 @@
 import { lazy, Suspense, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
+import { Link } from "../shared/page-links";
 import {
   resource,
   layoutResource,

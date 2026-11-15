@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: "v3.spec.ts",
+  testMatch: ["v3.spec.ts", "layout-stability.spec.ts"],
   timeout: 60_000,
   workers: 1,
   use: { baseURL: "http://127.0.0.1:42357", locale: "zh-CN", channel: process.env.QB_BROWSER_CHANNEL || undefined },
