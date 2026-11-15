@@ -145,3 +145,12 @@ Fetch `GET /api/agent/schemas/agent.json` and use the corresponding JSON Schema 
 The server validates each `value` against the strategy's current declaration and applies server-time checks, permissions and cross-field rules. For example, a `decimal` uses a decimal string, and an `object` accepts only its declared properties. The batch acknowledgment identifies malformed records by index.
 
 See [paper strategy examples and the AI prompt](INTEGRATION.md).
+
+## Optional host and process performance
+
+Use `PUT /api/agent/host` to bind a process with administrator-issued host
+credentials and `POST /api/agent/performance` for asynchronously sampled
+machine/quota and process measurements. This is separate from the standard
+financial `performance` report kind. Both endpoints use the current Agent session
+with `report` scope. See [host performance](HOST_PERFORMANCE.md) for the JSON
+Schema, sample formats, multi-machine identity rules and capacity estimates.

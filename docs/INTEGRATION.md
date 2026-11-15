@@ -72,3 +72,10 @@ and simulated operations before enabling production credentials.
 ```
 
 A Go strategy can embed the [session client](../agent/session.go) using its existing HTTP client. Start `Client.Run(ctx)` in a background task and use `Client.Do` for Agent calls. After a transport failure, use the endpoint’s idempotency rules and the local execution journal.
+
+## Optional host monitoring
+
+See [host performance](HOST_PERFORMANCE.md) to bind Mac and VPS instances,
+report measured CPU/memory/disk data, and estimate remaining capacity. Use
+independent schedules. If the same strategy runs on both machines simultaneously,
+configure a distinct stable `instanceId` for each in the local environment.

@@ -33,6 +33,8 @@ Open the [local console](http://127.0.0.1:23456/) and create an administrator. C
 - [Docker, Linux, HTTPS, backups, and upgrades](docs/DEPLOYMENT.md)
 - [Architecture and safety boundaries](docs/ARCHITECTURE.md) · [Console localization](web/LOCALIZATION.md)
 
+For Mac/VPS resource monitoring and planning how many similar instances can run, see [host performance and capacity](docs/HOST_PERFORMANCE.md).
+
 The running service publishes JSON Schema at `/api/agent/schemas/agent.json` and `/api/agent/schemas/report.json`.
 
 ## Development checks

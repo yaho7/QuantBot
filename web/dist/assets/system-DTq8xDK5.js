@@ -1,4 +1,4 @@
-import{t as e}from"./display-preferences-DEcAkHDJ.js";import{C as t,G as n,N as r,S as i,j as a,t as o}from"./index-BayXeCfo.js";import{n as s,r as c}from"./i18n-weEWAN7g.js";var l=c();function u(){return n({...a(`/admin/diagnostics`),refetchInterval:1e4})}var d={"Docker Compose":`docker compose stop quantbot
+import{t as e}from"./display-preferences-BCOQx5h6.js";import{C as t,G as n,N as r,S as i,j as a,t as o}from"./index-C23PjpgV.js";import{n as s,r as c}from"./i18n-weEWAN7g.js";var l=c();function u(){return n({...a(`/admin/diagnostics`),refetchInterval:1e4})}var d={"Docker Compose":`docker compose stop quantbot
 docker compose run --rm --no-deps quantbot backup /data/backup.zip
 docker compose run --rm --no-deps -e QB_DATA_DIR=/data/restored quantbot restore /data/backup.zip`,Linux:`systemctl --user stop quantbot
 QB_DATA_DIR=/path/to/data quantbot backup /path/to/backup.zip
