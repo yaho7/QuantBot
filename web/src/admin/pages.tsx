@@ -1,8 +1,18 @@
+import { Grid } from "@astryxdesign/core/Grid";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { HStack } from "@astryxdesign/core/HStack";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { Table, pixel, proportional, type TableColumn } from "@astryxdesign/core/Table";
 import { ConnectionDialog, type CreatedStrategy } from "./connection-dialog";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
-import { Plus, Trash2 } from "lucide-react";
+import { ChartNoAxesCombined, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   api,
@@ -16,6 +26,7 @@ import { useLanguage } from "../shared/i18n";
 import { useDisplay } from "../shared/display";
 import {
   Badge,
+  Choices,
   ErrorView,
   Loading,
   Modal,
@@ -39,19 +50,19 @@ export function AdminDashboard() {
         <ErrorView error={query.error} />
       ) : (
         <>
-          <div className="summary-grid">
+          <Grid columns={{ minWidth: 162, repeat: "fit" }} gap={4}>
             {[
               [t("online"), query.data.onlineAgents],
               [t("samples"), query.data.samples],
               [t("sseSubscribers"), query.data.sseSubscribers],
               [t("queueDepth"), query.data.queueDepth],
             ].map(([label, value]) => (
-              <div className="summary-card" key={label}>
-                <span className="muted">{label}</span>
-                <strong>{Number(value).toLocaleString()}</strong>
-              </div>
+              <Card padding={4} key={label}><VStack gap={1}>
+                <Text type="supporting">{label}</Text>
+                <Text type="large" weight="semibold" hasTabularNumbers>{Number(value).toLocaleString()}</Text>
+              </VStack></Card>
             ))}
-          </div>
+          </Grid>
           <section className="section surface padded">
             <dl className="system-dl">
               {[
@@ -83,13 +94,20 @@ export function AdminDashboard() {
     </Page>
   );
 }
+const compactTable = matchMedia("(max-width: 600px)");
+function watchTableWidth(callback: () => void) {
+  compactTable.addEventListener("change", callback);
+  return () => compactTable.removeEventListener("change", callback);
+}
+
 export function AdminStrategies() {
   const { t } = useLanguage();
   const query = useQuery(resource<Strategy[]>("/admin/strategies"));
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [group, setGroup] = useState("");
-  const [mode, setMode] = useState("paper");
+  const [mode, setMode] = useState<"paper" | "live">("paper");
+  const compact = useSyncExternalStore(watchTableWidth, () => compactTable.matches);
   const [connection, setConnection] = useState<{ strategy: Strategy; created?: CreatedStrategy }>();
   const [deleting, setDeleting] = useState<Strategy>();
   const active = (query.data ?? []).filter(strategy => !strategy.archivedAt);
@@ -114,117 +132,59 @@ export function AdminStrategies() {
       void client.invalidateQueries();
     },
   });
+  const columns: TableColumn<Strategy>[] = [
+    { key: "name", header: t("name"), width: proportional(2, { minWidth: 100 }),
+      renderCell: strategy => <Link to={"/strategies/" + strategy.id}>{strategy.name}</Link> },
+    ...(!compact ? [{ key: "group", header: t("group"), width: proportional(1, { minWidth: 90 }) }] : []),
+    { key: "mode", header: t("mode"), width: proportional(1, { minWidth: 65 }),
+      renderCell: strategy => strategy.mode === "live" ? <Badge tone="warning">{t("live")}</Badge> : t("paper") },
+    ...(!compact ? [{ key: "lastSeen", header: t("lastSeen"), width: proportional(1, { minWidth: 120 }),
+      renderCell: (strategy: Strategy) => timestamp(strategy.lastSeen, true) }] : []),
+    { key: "id", header: t("action"), width: pixel(compact ? 108 : 124), align: "end", renderCell: strategy =>
+      <HStack className="strategy-row-actions" gap={1} hAlign="end" vAlign="center">
+        <Button label="API" size="sm" onClick={() => setConnection({ strategy })} />
+        <IconButton variant="ghost" size="sm" label={t("deleteStrategy")} tooltip={t("deleteStrategy")}
+          icon={<Trash2 size={16} />} onClick={() => {
+            remove.reset();
+            setDeleting(strategy);
+          }} />
+      </HStack> },
+  ];
+  const startCreate = () => {
+    setName(""); setGroup(""); setMode("paper"); create.reset(); setOpen(true);
+  };
   return (
     <Page
       title={t("strategies")}
-      actions={
-        <button
-          className="primary"
-          onClick={() => {
-            setName("");
-            setGroup("");
-            setMode("paper");
-            create.reset();
-            setOpen(true);
-          }}
-        >
-          <Plus size={17} />
-          {t("create")}
-        </button>
-      }
+      actions={<Button label={t("create")} variant="primary" icon={<Plus size={16} />} onClick={startCreate} />}
     >
-      {query.isPending ? (
-        <Loading />
-      ) : query.error ? (
-        <ErrorView error={query.error} />
-      ) : (
-        <div className="surface table-scroll admin-strategies-table">
-          <table>
-            <thead>
-              <tr>
-                <th>{t("name")}</th>
-                <th className="strategy-table-detail">{t("group")}</th>
-                <th>{t("mode")}</th>
-                <th className="strategy-table-detail">{t("lastSeen")}</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {active.map((strategy) => (
-                <tr key={strategy.id}>
-                  <td>
-                    <Link to={"/strategies/" + strategy.id}>
-                      {strategy.name}
-                    </Link>
-                  </td>
-                  <td className="strategy-table-detail">{strategy.group}</td>
-                  <td>
-                    <Badge tone={strategy.mode === "live" ? "warning" : ""}>
-                      {t(strategy.mode)}
-                    </Badge>
-                  </td>
-                  <td className="strategy-table-detail">{timestamp(strategy.lastSeen, true)}</td>
-                  <td>
-                    <div className="strategy-row-actions">
-                      <button type="button" className="strategy-api-button" onClick={() => setConnection({ strategy })}>
-                        API
-                      </button>
-                      <button type="button" className="icon-button strategy-delete-button"
-                        aria-label={t("deleteStrategy")} title={t("deleteStrategy")} onClick={() => {
-                          remove.reset();
-                          setDeleting(strategy);
-                        }}><Trash2 size={16} /></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {!active.length && <p className="empty-inline">{t("empty")}</p>}
-        </div>
-      )}
-      <Modal title={t("create")} open={open} onOpenChange={value => {
+      {query.isPending ? <Loading /> : query.error ? <ErrorView retry={() => void query.refetch()} error={query.error} /> :
+        !active.length ? <EmptyState title={t("empty")} description={t("emptyDescription")} headingLevel={2}
+          icon={<ChartNoAxesCombined size={24} />} /> :
+          <Card padding={0}><Table data={active} columns={columns} idKey="id" hasHover /></Card>}
+      <Modal title={t("create")} purpose="form" open={open} onOpenChange={value => {
         if (!create.isPending) setOpen(value);
       }}>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              create.mutate();
-            }}
-          >
-            <label>
-              {t("name")}
-              <input
-                required
-                maxLength={120}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </label>
-            <label>
-              {t("group")}
-              <input
-                maxLength={100}
-                value={group}
-                onChange={(e) => setGroup(e.target.value)}
-              />
-            </label>
-            <label>
-              {t("mode")}
-              <select value={mode} onChange={(e) => setMode(e.target.value)}>
-                <option value="paper">{t("paper")}</option>
-                <option value="live">{t("live")}</option>
-              </select>
-            </label>
-            {create.error && (
-              <p className="error-text" role="alert">
-                {create.error.message}
-              </p>
-            )}
-            <button className="primary" disabled={create.isPending}>
-              {t("create")}
-            </button>
-          </form>
+        <form onSubmit={event => {
+          event.preventDefault();
+          if (name.trim() && name.length <= 120 && group.length <= 100 && !create.isPending) create.mutate();
+        }}>
+          <TextInput label={t("name")} value={name} onChange={setName} isRequired hasAutoFocus
+            status={name.length > 120 ? { type: "error", message: t("nameTooLong") } : undefined} />
+          <TextInput label={t("group")} value={group} onChange={setGroup}
+            status={group.length > 100 ? { type: "error", message: t("groupTooLong") } : undefined} />
+          <fieldset>
+            <legend>{t("mode")}</legend>
+            <Choices label={t("mode")} value={mode} select={setMode}
+              options={([{ value: "paper", label: t("paper") }, { value: "live", label: t("live") }])} />
+          </fieldset>
+          {create.error && <ErrorView error={create.error} />}
+          <HStack hAlign="end" gap={2}>
+            <Button label={t("cancel")} isDisabled={create.isPending} onClick={() => setOpen(false)} />
+            <Button label={t("create")} type="submit" variant="primary" isLoading={create.isPending}
+              isDisabled={!name.trim() || name.length > 120 || group.length > 100} />
+          </HStack>
+        </form>
       </Modal>
       {connection && <ConnectionDialog {...connection} onClose={() => {
         setConnection(undefined);
@@ -236,8 +196,8 @@ export function AdminStrategies() {
         <p>{t("deleteStrategyWarning")}</p>
         {remove.error && <p className="error-text" role="alert">{remove.error.message}</p>}
         <div className="dialog-actions">
-          <button type="button" disabled={remove.isPending} onClick={() => setDeleting(undefined)}>{t("cancel")}</button>
-          <button type="button" className="danger" disabled={remove.isPending} onClick={() => remove.mutate(deleting.id)}>{t("deleteStrategy")}</button>
+          <Button label={t("cancel")} isDisabled={remove.isPending} onClick={() => setDeleting(undefined)} />
+          <Button label={t("deleteStrategy")} variant="destructive" isLoading={remove.isPending} onClick={() => remove.mutate(deleting.id)} />
         </div>
       </Modal>}
     </Page>

@@ -1,3 +1,7 @@
+import { Button } from "@astryxdesign/core/Button";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { BrandIcon } from "../components/brand-icon";
@@ -45,43 +49,23 @@ export function Login() {
           <form
             onSubmit={(event) => {
               event.preventDefault();
-              mutation.mutate();
+              if (username && password && !mutation.isPending) mutation.mutate();
             }}
           >
-            <h1>{setup.data.required ? t("setup") : t("login")}</h1>
-            <p className="muted">
-              {setup.data.required ? t("setupHint") : t("loginHint")}
-            </p>
-            <label>
-              {t("username")}
-              <input
-                autoComplete="username"
-                required
-                autoFocus
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-            </label>
-            <label>
-              {t("password")}
-              <input
-                type="password"
-                autoComplete={
-                  setup.data.required ? "new-password" : "current-password"
-                }
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </label>
+            <Heading level={1}>{setup.data.required ? t("setup") : t("login")}</Heading>
+            <Text as="p" type="supporting">{setup.data.required ? t("setupHint") : t("loginHint")}</Text>
+            <TextInput label={t("username")} autoComplete="username" htmlName="username" isRequired
+              hasAutoFocus value={username} onChange={setUsername} />
+            <TextInput label={t("password")} type="password" htmlName="password"
+              autoComplete={setup.data.required ? "new-password" : "current-password"} isRequired
+              value={password} onChange={setPassword} />
             {mutation.error && (
               <p role="alert" className="error-text">
                 {mutation.error.message}
               </p>
             )}
-            <button className="primary" disabled={mutation.isPending}>
-              {setup.data.required ? t("setup") : t("login")}
-            </button>
+            <Button variant="primary" type="submit" label={setup.data.required ? t("setup") : t("login")}
+              isLoading={mutation.isPending} isDisabled={!username || !password} />
           </form>
         )}
         <button

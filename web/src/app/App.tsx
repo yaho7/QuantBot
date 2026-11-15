@@ -62,12 +62,9 @@ const Login = lazy(() =>
   import("./auth").then((module) => ({ default: module.Login })),
 );
 import { useRealtime } from "./realtime";
-import { Home } from "./home";
 import { activeTheme, ThemeContext } from "../themes/catalog";
 import { ThemeFrame, themeStyle } from "../themes/host";
 import { quantbotUI } from "../themes/quantbot-ui";
-import { StrategyDetail, AllControls } from "./strategy";
-import { ActivityPage, AlertsPage } from "./activity";
 
 const monitor = [
   ["/", "workbench", LayoutDashboard],
@@ -408,14 +405,14 @@ const router = createBrowserRouter([
       {
         element: <Workbench />,
         children: [
-          { index: true, element: <Home /> },
-          { path: "strategies", element: <Home /> },
-          { path: "strategies/:id", element: <StrategyDetail /> },
-          { path: "controls", element: <AllControls /> },
+          { index: true, lazy: async () => ({ Component: (await import("./home")).Home }) },
+          { path: "strategies", lazy: async () => ({ Component: (await import("./home")).Home }) },
+          { path: "strategies/:id", lazy: async () => ({ Component: (await import("./strategy")).StrategyDetail }) },
+          { path: "controls", lazy: async () => ({ Component: (await import("./strategy")).AllControls }) },
           { path: "hosts", lazy: async () => ({ Component: (await import("./hosts")).HostsPage }) },
           { path: "hosts/:id", lazy: async () => ({ Component: (await import("./hosts")).HostDetailPage }) },
-          { path: "activity", element: <ActivityPage /> },
-          { path: "alerts", element: <AlertsPage /> },
+          { path: "activity", lazy: async () => ({ Component: (await import("./activity")).ActivityPage }) },
+          { path: "alerts", lazy: async () => ({ Component: (await import("./activity")).AlertsPage }) },
         ],
       },
       {

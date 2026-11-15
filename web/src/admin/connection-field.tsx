@@ -1,4 +1,6 @@
-import { Copy, Eye, EyeOff } from "lucide-react";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { useClipboard } from "@astryxdesign/core/hooks";
+import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { useLanguage } from "../shared/i18n";
 
@@ -18,22 +20,21 @@ export function ConnectionField({ label, value, field, onReveal, revealing = fal
   label: string; value?: string; field: string; onReveal?: () => void; revealing?: boolean; copyLabel: string;
 }) {
   const { t } = useLanguage();
-  const copy = useCopyText();
+  const { copy, isCopied } = useClipboard({ announce: t("copied") });
   return <div className="connection-field" data-field={field}>
     <div className="connection-field-value">
       <span>{label}</span>
       <code dir="ltr">{value ?? (onReveal ? "••••••••••••••••" : "—")}</code>
     </div>
     <div className="connection-field-actions">
-      {onReveal && <button type="button" className="icon-button"
-        aria-label={t(value ? "hideToken" : "viewToken")}
-        title={t(value ? "hideToken" : "viewToken")} disabled={revealing} onClick={onReveal}>
-        {value ? <EyeOff size={16} /> : <Eye size={16} />}
-      </button>}
-      <button type="button" className="icon-button" aria-label={copyLabel} title={copyLabel}
-        disabled={!value} onClick={() => { if (value) void copy(value); }}>
-        <Copy size={15} />
-      </button>
+      {onReveal && <IconButton size="md" variant="ghost"
+        label={t(value ? "hideToken" : "viewToken")} tooltip={t(value ? "hideToken" : "viewToken")}
+        isLoading={revealing} onClick={onReveal}
+        icon={value ? <EyeOff size={16} /> : <Eye size={16} />} />}
+      <IconButton size="md" variant="ghost" label={copyLabel} tooltip={copyLabel} isDisabled={!value}
+        icon={isCopied ? <Check size={16} /> : <Copy size={16} />} onClick={async () => {
+          if (value && !(await copy(value))) toast.error(t("copyFailed"));
+        }} />
     </div>
   </div>;
 }

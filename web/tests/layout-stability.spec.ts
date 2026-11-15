@@ -191,6 +191,10 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   await dialog.getByLabel("策略名称").fill(testName);
   await dialog.getByRole("button", { name: "创建策略", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "策略已创建" })).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: "沙盒测试", exact: true })).toBeChecked();
+  await expect(dialog.getByRole("button", { name: "复制测试提示词" })).toBeVisible();
+  const showProduction = () => dialog.getByRole("radio", { name: "正式接入", exact: true }).click();
+  await showProduction();
   const endpoint = dialog.locator("[data-field=endpoint] code");
   const key = dialog.locator("[data-field=key] code");
   const secret = dialog.locator("[data-field=token] code");
@@ -207,6 +211,9 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   expect(prompt).toContain(origin + "/api/agent");
   expect(prompt).toContain(testName);
   expect(prompt).not.toContain(token);
+  for (const feature of ["高级控制", "暂停和恢复新开仓", "动态参数", "atomic_parameters", "alert_suggestion", "claim_reconciliation_required"]) {
+    expect(prompt).toContain(feature);
+  }
   const readConfig = (text: string | undefined) => JSON.parse(text?.match(/\n(\{\n[\s\S]+?\n\})\n/)?.[1] ?? "{}");
   expect(readConfig(prompt)).toMatchObject({
     endpoint: origin + "/api/agent", key: keyBefore, secret: "",
@@ -217,6 +224,7 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   const row = page.getByRole("row").filter({ hasText: testName });
   const openAPI = () => row.getByRole("button", { name: "API", exact: true }).click();
   await openAPI();
+  await showProduction();
   await expect(secret).not.toContainText(token);
   await dialog.getByRole("button", { name: "查看 Token" }).click();
   await expect(secret).toHaveText(token);
@@ -236,6 +244,11 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
       Math.abs(box.y + box.height / 2 - window.innerHeight / 2) < 2;
   });
   await expect.poll(isCentered).toBeTruthy();
+  await expect.poll(() => dialog.evaluate(el => {
+    const title = el.querySelector("h2")!.getBoundingClientRect();
+    const body = el.querySelector(".connection-caption")!.getBoundingClientRect();
+    return Math.abs(title.left - body.left);
+  })).toBeLessThan(2);
   await page.screenshot({ path: testInfo.outputPath("strategy-api-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(isCentered).toBeTruthy();
@@ -246,7 +259,7 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
   expect(await dialog.boundingBox()).toEqual(mobileBox);
 
-  await dialog.getByRole("button", { name: "Sandbox", exact: true }).click();
+  await dialog.getByRole("radio", { name: "沙盒测试", exact: true }).click();
   await expect(dialog.getByText("测试中", { exact: true })).toBeVisible();
   const testEndpoint = dialog.locator("[data-field=test-endpoint] code");
   const firstEndpoint = await testEndpoint.innerText();

@@ -19,7 +19,9 @@
 .page-layout { display: grid; gap: var(--page-gap); min-width: 0; }
 /* Center native Astryx dialogs after the app's form/reset layers have loaded. */
 dialog.astryx-dialog[data-variant="standard"] { inset: 0; margin: auto; }
-.astryx-dialog > .astryx-dialog-header { padding-block-start: 0; padding-inline: 0; }
+dialog.astryx-dialog .astryx-layout-header > :has(> .astryx-dialog-header) { padding: 0; }
+dialog.astryx-dialog .astryx-dialog-header { padding-block: 0 var(--spacing-3); padding-inline: 0; }
+dialog.astryx-dialog .astryx-dialog-header h2 { margin: 0; }
 .route-surface .page-layout > .page-header {
   margin: 0;
   align-items: flex-start;

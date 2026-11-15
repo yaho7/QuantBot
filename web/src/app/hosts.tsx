@@ -1,3 +1,8 @@
+import { Card } from "@astryxdesign/core/Card";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Grid } from "@astryxdesign/core/Grid";
+import { Heading } from "@astryxdesign/core/Heading";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ArrowUpRight, Server } from "lucide-react";
@@ -19,14 +24,14 @@ export function HostsPage() {
   const query = useQuery(hostsQuery);
   return <Page title={t("hosts")}>
     {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} retry={() => void query.refetch()} /> :
-      !query.data.length ? <div className="surface empty-state"><Server size={28} /><p>{t("noHosts")}</p></div> :
-      <div className="hosts-grid">{query.data.map(host => <article key={host.id} className="surface padded performance-host">
+      !query.data.length ? <EmptyState title={t("hosts")} headingLevel={2} description={t("noHosts")} icon={<Server size={24} />} /> :
+      <Grid columns={{ minWidth: 249, repeat: "fit" }} gap={4}>{query.data.map(host => <Card key={host.id} padding={4}><VStack as="article" className="performance-host" gap={3}>
         <header className="performance-process-heading">
-          <Link className="performance-link" to={"/hosts/" + host.id}><h2>{host.name}</h2><ArrowUpRight size={15} /></Link>
+          <Link className="performance-link" to={"/hosts/" + host.id}><Heading level={2}>{host.name}</Heading><ArrowUpRight size={16} /></Link>
         </header>
         <HostMetricsGrid host={host} compact />
         <SampleStatus latest={host.latest} stale={host.stale} />
-      </article>)}</div>}
+      </VStack></Card>)}</Grid>}
   </Page>;
 }
 
@@ -43,16 +48,16 @@ export function HostDetailPage() {
   }>
     {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} retry={() => void query.refetch()} /> :
       <>
-        <section className="surface padded performance-host">
+        <Card padding={4}><VStack as="section" className="performance-host" gap={3}>
           <header className="performance-process-heading">
             <SampleStatus latest={query.data.latest} stale={query.data.stale} />
           </header>
           <HostMetricsGrid host={query.data} />
-        </section>
+        </VStack></Card>
         <CapacityPlanner key={id} host={query.data} />
         <HostTrends history={query.data.history} />
         <section className="section">
-          <div className="section-heading"><h2>{t("hostProcesses")}</h2></div>
+          <div className="section-heading"><Heading level={2}>{t("hostProcesses")}</Heading></div>
           {!query.data.members.length ? <p className="surface empty-inline">{t("noHostBinding")}</p> :
             <div className="hosts-grid">{query.data.members.map(process =>
               <article className="surface padded performance-process" key={processKey(process)}>
@@ -107,7 +112,7 @@ function CapacityPlanner({ host }: { host: HostDetail }) {
   });
   const result = query.data;
   return <section className="section surface padded capacity-panel">
-    <h2>{t("capacityPlanner")}</h2>
+    <Heading level={2}>{t("capacityPlanner")}</Heading>
     <p className="muted">{t("capacityHint")}</p>
     {!instance ? <p>{t("noHostBinding")}</p> : <>
       <div className="capacity-fields">

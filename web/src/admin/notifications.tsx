@@ -1,3 +1,10 @@
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Switch } from "@astryxdesign/core/Switch";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Bell, Plus, Send, Pencil, Trash2 } from "lucide-react";
@@ -59,12 +66,7 @@ export default function Notifications() {
   return (
     <Page
       title={t("notifications")}
-      actions={
-        <button className="primary" onClick={() => setEditing("new")}>
-          <Plus size={16} />
-          {t("addChannel")}
-        </button>
-      }
+      actions={<Button label={t("addChannel")} variant="primary" icon={<Plus size={16} />} onClick={() => setEditing("new")} />}
     >
       {query.isPending ? (
         <Loading />
@@ -73,7 +75,7 @@ export default function Notifications() {
       ) : (
         <div className="controls-grid">
           {query.data.map((channel) => (
-            <article className="surface padded channel-card" key={channel.id}>
+            <Card padding={4} key={channel.id}><VStack as="article" className="channel-card" gap={3}>
               <header>
                 <Bell size={18} />
                 <h2>{channel.name}</h2>
@@ -90,50 +92,21 @@ export default function Notifications() {
                 ))}
               </div>
               <div className="channel-actions">
-                <button
-                  onClick={() => setEditing(channel)}
-                  aria-label={channel.name + " " + t("editChannel")}
-                >
-                  <Pencil size={15} />
-                  {t("editChannel")}
-                </button>
-                <button
-                  disabled={action.isPending}
+                <Button label={t("editChannel")} icon={<Pencil size={16} />} onClick={() => setEditing(channel)} />
+                <Button label={t("testDelivery")} icon={<Send size={16} />} isDisabled={action.isPending}
                   onClick={() => {
                     setSelected(channel.id);
-                    action.mutate({
-                      id: channel.id,
-                      method: "POST",
-                      suffix: "/test",
-                    });
-                  }}
-                >
-                  <Send size={15} />
-                  {t("testDelivery")}
-                </button>
-                <button
-                  aria-label={channel.name + " " + t("remove")}
-                  disabled={action.isPending}
-                  onClick={() =>
-                    action.mutate({ id: channel.id, method: "DELETE" })
-                  }
-                >
-                  <Trash2 size={15} />
-                </button>
+                    action.mutate({ id: channel.id, method: "POST", suffix: "/test" });
+                  }} />
+                <IconButton label={channel.name + " " + t("remove")} tooltip={t("remove")} variant="ghost"
+                  icon={<Trash2 size={16} />} isDisabled={action.isPending}
+                  onClick={() => action.mutate({ id: channel.id, method: "DELETE" })} />
               </div>
-              <button
-                className="text-button"
-                onClick={() => setSelected(channel.id)}
-              >
-                {t("deliveryHistory")}
-              </button>
-            </article>
+              <Button label={t("deliveryHistory")} variant="ghost" size="sm" onClick={() => setSelected(channel.id)} />
+            </VStack></Card>
           ))}
           {!query.data.length && (
-            <div className="surface empty-state">
-              <Bell />
-              <p>{t("noChannels")}</p>
-            </div>
+            <EmptyState title={t("noChannels")} headingLevel={2} icon={<Bell size={24} />} />
           )}
         </div>
       )}
@@ -227,26 +200,20 @@ function ChannelForm({
   return (
     <Modal
       title={channel ? t("editChannel") : t("addChannel")}
+      purpose="form"
       open
       onOpenChange={(open) => {
-        if (!open) close();
+        if (!open && !mutation.isPending) close();
       }}
     >
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          mutation.mutate();
+          if (name.trim() && name.length <= 120 && events.length && !mutation.isPending) mutation.mutate();
         }}
       >
-        <label>
-          {t("channelName")}
-          <input
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            maxLength={120}
-          />
-        </label>
+        <TextInput label={t("channelName")} value={name} onChange={setName} isRequired
+          status={name.length > 120 ? { type: "error", message: t("nameTooLong") } : undefined} />
         <label>
           {t("provider")}
           <select
@@ -263,14 +230,7 @@ function ChannelForm({
             ))}
           </select>
         </label>
-        <label className="check-label">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-          />
-          {t("enabled")}
-        </label>
+        <Switch label={t("enabled")} value={enabled} onChange={setEnabled} />
         <fieldset>
           <legend>{t("events")}</legend>
           {["alert", "risk", "fill", "command"].map((event) => (
@@ -352,9 +312,8 @@ function ChannelForm({
             {mutation.error.message}
           </p>
         )}
-        <button className="primary" disabled={mutation.isPending}>
-          {t("save")}
-        </button>
+        <Button label={t("save")} variant="primary" type="submit" isLoading={mutation.isPending}
+          isDisabled={!name.trim() || name.length > 120 || !events.length} />
       </form>
     </Modal>
   );

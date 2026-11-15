@@ -1,7 +1,8 @@
+import { Button } from "@astryxdesign/core/Button";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clipboard, FlaskConical } from "lucide-react";
 import { useState } from "react";
-import { api, client, resource, type Registry } from "../shared/api";
+import { api, client, resource, type Registry, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
 import { agentPrompt } from "./agent-prompt";
@@ -18,8 +19,8 @@ type SandboxStatus = {
 type SandboxCredential = { id: string; token: string; endpoint: string; expiresAt: number };
 const path = "/admin/sandbox";
 
-export function SandboxPanel() {
-  const { t } = useLanguage();
+export function SandboxPanel({ strategy, productionEndpoint }: { strategy: Strategy; productionEndpoint: string }) {
+  const { lang, t } = useLanguage();
   const copy = useCopyText();
   const [secret, setSecret] = useState<SandboxCredential>();
   const [closing, setClosing] = useState(false);
@@ -52,7 +53,9 @@ export function SandboxPanel() {
       } else {
         const issued = await api<SandboxCredential>(path + "/reveal", "POST");
         if (action === "reveal") setSecret(issued);
-        else await copy(sandboxPrompt(issued));
+        else await copy(agentPrompt(location.origin, issued.endpoint, strategy, {
+          lang, key: issued.id, sandboxToken: issued.token, expiresAt: issued.expiresAt, productionEndpoint,
+        }));
       }
     },
     onSettled: () => void client.invalidateQueries({ queryKey: [path] }),
@@ -106,20 +109,10 @@ export function SandboxPanel() {
     </>}
     {mutate.error && <p className="error-text" role="alert">{mutate.error.message}</p>}
     <div className="connection-footer sandbox-footer">
-      <button type="button" className="primary" disabled={mutate.isPending || closing}
-        onClick={() => mutate.mutate(active ? "copy" : "start")}>
-        {active ? <Clipboard size={16} /> : <FlaskConical size={16} />}
-        {t(active ? "copySandboxPrompt" : "sandboxStart")}
-      </button>
+      <Button variant="primary" label={t(active ? "copySandboxPrompt" : "sandboxStart")}
+        icon={active ? <Clipboard size={16} /> : <FlaskConical size={16} />}
+        isLoading={mutate.isPending && (mutate.variables === "copy" || mutate.variables === "start")}
+        isDisabled={mutate.isPending || closing} onClick={() => mutate.mutate(active ? "copy" : "start")} />
     </div>
   </div>;
-}
-
-function sandboxPrompt(credential: SandboxCredential) {
-  return [
-    "Test the QuantBot integration in the shared Sandbox. Use simulated data and operations. Keep real broker connections disabled.",
-    "Expires: " + new Date(credential.expiresAt * 1000).toISOString(),
-    agentPrompt(location.origin, credential.endpoint, undefined, { key: credential.id, sandboxToken: credential.token }),
-    "After Sandbox passes, obtain the production endpoint and credential from the administrator.",
-  ].join("\n\n");
 }

@@ -1,3 +1,8 @@
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Table } from "@astryxdesign/core/Table";
+import { VStack } from "@astryxdesign/core/VStack";
 import { DisplayPreferences } from "../components/display-preferences";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -45,47 +50,29 @@ export function Storage() {
       ) : query.error ? (
         <ErrorView error={query.error} retry={() => void query.refetch()} />
       ) : (
-        <div className="surface table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>SQLite</th>
-                <th>{t("databaseSize")}</th>
-                <th>WAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              {["control", "metrics"].map((name) => (
-                <tr key={name}>
-                  <th scope="row">{name}.db</th>
-                  <td>{size(query.data.databaseBytes[name])}</td>
-                  <td>{size(query.data.walBytes[name])}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Card padding={0}><Table
+          data={["control", "metrics"].map(name => ({
+            name: name + ".db", size: size(query.data.databaseBytes[name]), wal: size(query.data.walBytes[name]),
+          }))}
+          columns={[{ key: "name", header: "SQLite" }, { key: "size", header: t("databaseSize"), align: "end" },
+            { key: "wal", header: "WAL", align: "end" }]}
+          idKey="name" /></Card>
       )}
-      <section className="section surface padded">
-        <h2>{t("backupRestore")}</h2>
+      <Card padding={4}><VStack as="section" gap={4}>
+        <Heading level={2}>{t("backupRestore")}</Heading>
         <p className="muted">{t("backupHint")}</p>
         <p className="muted">{t("restoreHint")}</p>
         {Object.entries(commands).map(([name, snippet]) => (
-          <div key={name}>
-            <h3>{name}</h3>
+          <VStack key={name} gap={2} hAlign="start">
+            <Heading level={3}>{name}</Heading>
             <pre>{snippet}</pre>
-            <button
-              onClick={() =>
-                void navigator.clipboard
-                  ?.writeText(snippet)
-                  .catch(() => toast.error(t("copyFailed")))
-              }
-            >
-              {t("copy")} {name}
-            </button>
-          </div>
+            <Button label={t("copy") + " " + name} onClick={async () => {
+              try { await navigator.clipboard.writeText(snippet); toast.success(t("copied")); }
+              catch { toast.error(t("copyFailed")); }
+            }} />
+          </VStack>
         ))}
-      </section>
+      </VStack></Card>
     </Page>
   );
 }
@@ -104,8 +91,8 @@ export function Settings() {
       ) : query.error ? (
         <ErrorView error={query.error} retry={() => void query.refetch()} />
       ) : settings ? (
-        <section className="surface padded">
-          <h2>{t("runtimeSettings")}</h2>
+        <Card padding={4}><VStack as="section" gap={3}>
+          <Heading level={2}>{t("runtimeSettings")}</Heading>
           <p className="muted">{t("runtimeHint")}</p>
           <dl className="system-dl">
             {[
@@ -125,7 +112,7 @@ export function Settings() {
               </div>
             ))}
           </dl>
-        </section>
+        </VStack></Card>
       ) : null}
     </Page>
   );

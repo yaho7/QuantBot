@@ -22,6 +22,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await dialog.getByLabel("策略名称").fill("动量 · BTC 趋势");
   await dialog.getByLabel("分组").fill("数字资产");
   await dialog.getByRole("button", { name: "创建策略", exact: true }).click();
+  await dialog.getByRole("radio", { name: "正式接入", exact: true }).click();
   await expect(dialog.locator("[data-field=token] code")).toContainText("qbt_");
   const token = await dialog.locator("[data-field=token] code").innerText();
   const agent = await request.post("/api/agent/session", {
@@ -458,7 +459,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
 
   const openSandbox = async () => {
     await page.getByRole("row").filter({ hasText: "动量 · BTC 趋势" }).getByRole("button", { name: "API", exact: true }).click();
-    await dialog.getByRole("button", { name: "Sandbox", exact: true }).click();
+    await dialog.getByRole("radio", { name: "沙盒测试", exact: true }).click();
     await expect(dialog.getByText("共享测试环境")).toBeVisible();
   };
   await page.goto("/admin/strategies");
@@ -504,7 +505,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect.poll(async () =>
     (await (await request.get(sandboxEndpoint + "/commands?wait=0", { headers: sandboxBearer })).json()).length,
   ).toBe(1);
-  await dialog.getByText("Sandbox 请求记录").click();
+  await dialog.getByText("沙盒请求记录").click();
   await expect(dialog.getByText("capabilities", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
   await dialog.getByRole("button", { name: "结束测试", exact: true }).click();

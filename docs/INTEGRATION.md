@@ -12,7 +12,7 @@ Read the [Agent protocol](AGENT_PROTOCOL.md), [declaration and batch schemas](..
 
 ## Validate in Sandbox
 
-Open the **Sandbox** tab in a strategy's connection dialog. Creating a strategy
+The strategy connection dialog opens on **Sandbox test**. Switch to **Production** to view the permanent credentials. Creating a strategy
 automatically starts the shared test environment when needed. You can also start
 it manually. Opening an already active test reuses the current run and key.
 Copy the test prompt for the temporary token, `/api/agent/sandbox/{id}` base URL,

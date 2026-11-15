@@ -1,38 +1,10 @@
-.admin-strategies-table th:last-child,
-.admin-strategies-table td:last-child { width: 1%; }
-.admin-strategies-table td:first-child,
-.admin-strategies-table td:first-child a { white-space: normal; overflow-wrap: anywhere; }
-.strategy-row-actions { display: flex; justify-content: end; align-items: center; gap: 6px; }
-.strategy-api-button { min-width: 48px; font-variant-numeric: tabular-nums; }
-.strategy-delete-button { color: var(--muted); }
-.strategy-delete-button:hover { color: var(--danger); }
-
+.strategy-row-actions { justify-content: end; }
+.strategy-row-actions a { overflow-wrap: anywhere; }
 .connection-caption {
   color: var(--muted);
   margin: 0 0 18px;
   font-size: 13px;
   overflow-wrap: anywhere;
-}
-.connection-switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
-  padding: 4px;
-  background: var(--canvas);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-}
-.connection-switch button {
-  background: transparent;
-  border-color: transparent;
-  min-height: 34px;
-  color: var(--muted);
-  font-weight: 600;
-}
-.connection-switch button[aria-pressed="true"] {
-  border-color: var(--line);
-  background: var(--surface);
-  color: var(--text);
 }
 .connection-panel { display: grid; gap: 14px; margin-top: 16px; min-width: 0; }
 .connection-panel p { margin: 0; }
@@ -103,7 +75,6 @@
 .sandbox-requests time { text-align: end; color: var(--muted); font-size: 11px; }
 
 @media (max-width: 600px) {
-  .admin-strategies-table .strategy-table-detail { display: none; }
   .strategy-row-actions { gap: 2px; }
   .strategy-row-actions button, .connection-field-actions button { min-height: 44px; }
   .connection-field-actions button { width: 44px; }

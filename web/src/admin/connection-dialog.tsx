@@ -1,10 +1,11 @@
+import { Button } from "@astryxdesign/core/Button";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { BookOpen, Clipboard, RotateCw } from "lucide-react";
 import { toast } from "sonner";
 import { api, client, resource, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
-import { ErrorView, Loading, Modal } from "../shared/ui";
+import { Choices, ErrorView, Loading, Modal } from "../shared/ui";
 import { agentPrompt, agentReferences } from "./agent-prompt";
 import { SandboxPanel } from "./sandbox";
 import { ConnectionField, useCopyText } from "./connection-field";
@@ -23,9 +24,9 @@ export type CreatedStrategy = { endpoint: string; strategy: Strategy; credential
 export function ConnectionDialog({ strategy, created, onClose }: {
   strategy: Strategy; created?: CreatedStrategy; onClose: () => void;
 }) {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const copy = useCopyText();
-  const [view, setView] = useState<"production" | "sandbox">("production");
+  const [view, setView] = useState<"production" | "sandbox">("sandbox");
   const [confirm, setConfirm] = useState(false);
   const [issued, setIssued] = useState<KeyMetadata | undefined>(created?.credential);
   const [secret, setSecret] = useState(created ? { id: created.credential.id, value: created.credential.token } : undefined);
@@ -72,12 +73,8 @@ export function ConnectionDialog({ strategy, created, onClose }: {
           onClick={() => regenerate.mutate()}>{t("regenerateToken")}</button>
       </div>
     </> : <>
-      <div className="connection-switch" role="group" aria-label={t("connectionType")}>
-        <button type="button" aria-pressed={view === "production"}
-          onClick={() => setView("production")}>{t("productionConnection")}</button>
-        <button type="button" aria-pressed={view === "sandbox"}
-          onClick={() => setView("sandbox")}>Sandbox</button>
-      </div>
+      <Choices label={t("connectionType")} value={view} fill size="lg" select={setView}
+        options={[{ value: "sandbox", label: t("sandboxTest") }, { value: "production", label: t("productionConnection") }]} />
       {view === "production" ? <div className="connection-panel">
         <div className="connection-fields">
           <ConnectionField field="endpoint" label="Endpoint" value={endpoint} copyLabel={t("copyEndpoint")} />
@@ -102,11 +99,10 @@ export function ConnectionDialog({ strategy, created, onClose }: {
           <a href={agentReferences.integration} target="_blank" rel="noreferrer">
             <BookOpen size={15} />{t("integrationExamples")}
           </a>
-          <button type="button" className="primary" onClick={() => void copy(agentPrompt(location.origin, endpoint, strategy, { key: primary?.id }))}>
-            <Clipboard size={16} />{t("copyAgentPrompt")}
-          </button>
+          <Button variant="primary" label={t("copyAgentPrompt")} icon={<Clipboard size={16} />}
+            onClick={() => void copy(agentPrompt(location.origin, endpoint, strategy, { key: primary?.id, lang }))} />
         </div>
-      </div> : <SandboxPanel />}
+      </div> : <SandboxPanel strategy={strategy} productionEndpoint={endpoint} />}
     </>}
   </Modal>;
 }
