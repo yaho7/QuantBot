@@ -49,16 +49,7 @@
   .workbench-shell .widget-grid .widget.size-medium,
   .workbench-shell .widget-grid .widget.size-large { --default-width: 100; }
 }
-/* Scroll shadows fade naturally at the start/end; input methods stay available. */
-.widget .widget-body, .widget .table-scroll {
-  scrollbar-width: none;
-  background:
-    linear-gradient(var(--surface) 30%, transparent) center top / 100% 24px local,
-    linear-gradient(transparent, var(--surface) 70%) center bottom / 100% 24px local,
-    radial-gradient(farthest-side at 50% 0, #00000012, transparent) center top / 100% 10px scroll,
-    radial-gradient(farthest-side at 50% 100%, #00000012, transparent) center bottom / 100% 10px scroll;
-  background-repeat: no-repeat;
-}
+.widget .widget-body, .widget .table-scroll { scrollbar-width: none; }
 .widget .widget-body::-webkit-scrollbar, .widget .table-scroll::-webkit-scrollbar { display: none; }
 html, .table-scroll, .topbar-inner, .sidebar nav {
   scrollbar-width: none;

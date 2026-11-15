@@ -551,7 +551,7 @@ function WidgetContent({
   const { t } = useLanguage();
   const density = useContext(Density);
   widget = { ...widget, description: widget.description && density === "full", detailed: widget.detailed && density === "full" };
-  if (density === "compact" && ["chart", "positions", "activity"].includes(widget.type))
+  if (density === "compact" && widget.type === "chart")
     return <p className="muted compact-widget-summary">{t("expandForDetails")}</p>;
   if (widget.type === "capability") {
     if (catalogError) return <ErrorView error={catalogError} />;
@@ -584,8 +584,13 @@ function WidgetContent({
 }
 function TelemetryWidget({ widget }: { widget: Widget }) {
   const { t } = useLanguage();
+  const density = useContext(Density);
   const values = useTelemetryValues(widget.strategyId);
   if (values.query.error) return <ErrorView error={values.query.error} />;
+  if (widget.type === "positions" && density === "compact") {
+    const count = values.records.filter(r => r.kind === "position").reduce((n, r) => n + (Array.isArray(r.data.positions) ? r.data.positions.length : 0), 0);
+    return <div className="equity-widget"><strong>{values.query.isPending ? "—" : count}</strong><span className="muted">{t("positions")}</span></div>;
+  }
   if (widget.type === "positions")
     return (
       <DataTable
@@ -647,13 +652,14 @@ function ControlWidget({
   );
 }
 function ActivityWidget({ strategyId }: { strategyId: string }) {
+  const density = useContext(Density);
   const { t } = useLanguage();
   const query = useQuery(
     resource<Command[]>("/commands?strategyId=" + strategyId),
   );
   return (
     <div>
-      {query.data?.slice(0, 5).map((cmd) => (
+      {query.data?.slice(0, density === "compact" ? 1 : density === "medium" ? 3 : 5).map((cmd) => (
         <div className="event-line" key={cmd.id}>
           <span>{cmd.controlId}</span>
           <Badge>{t(cmd.status as "pending")}</Badge>

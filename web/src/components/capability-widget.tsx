@@ -141,7 +141,9 @@ export function CapabilityWidget({
           candle={capability.renderer === "candlestick"}
         />
       )}
-      {table && !compact ? (
+      {table && compact ? (
+        <p className="muted">{t("expandForDetails")}</p>
+      ) : table ? (
         <DataTable
           title=""
           maxColumns={40}

@@ -29,3 +29,21 @@ Changes are saved after 500ms of inactivity, with one request in flight at a tim
 The UI shows pending/saved/error state. Failed saves retain the draft for retry;
 Undo is itself saved. Done is available after the current draft is persisted.
 Scrollbar tracks are hidden; scrollable card content uses subtle edge shadows.
+
+## Dashboard interaction
+
+- Attention items precede the portfolio: offline strategies, reported error
+  states, confirmations, and commands whose outcome is unknown.
+- Device preview tabs select desktop or mobile without changing browser width.
+  While editing, the selection is locked. Mobile editing can copy desktop
+  widgets into a single-column layout, with overwrite confirmation and undo.
+- A saved indicator replaces the former save-status button; failures expose
+  Retry. The primary Done action waits for persistence.
+- Widget density follows actual measured width and height. Secondary descriptions
+  and details recede in smaller cards; an Expand action opens full details.
+- Scrollable widget bodies and tables show small directional arrows only while
+  more content is available. Clicking scrolls; 2px motion is disabled for reduced
+  motion preferences. The earlier edge-shadow hint has been removed.
+- Commands show claim, execution, and receipt stages. A success receipt is not
+  labelled as independently verified actual state. Unknown outcomes block new
+  execution and link to the existing receipt/reconciliation dialog.
