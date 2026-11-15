@@ -2,7 +2,19 @@
 
 ## Docker Compose
 
-Save [compose.yml](../compose.yml) and run `docker compose up -d`. Open [http://127.0.0.1:8888](http://127.0.0.1:8888) to initialize the administrator. The container runs as UID/GID 10001 and stores all data in a named volume. Keep the published port bound to the host loopback address. `QB_DOCKER_LOOPBACK=1` allows local requests forwarded by the Docker bridge to loopback hostnames.
+Save [compose.yml](../compose.yml) and run `docker compose up -d`. Open
+[http://127.0.0.1:8888](http://127.0.0.1:8888) to initialize the administrator.
+Both databases are kept in `./data` beside the Compose file. The image sets
+the listening port and data path, detects the Docker bridge gateway for loopback
+requests, and initializes the mounted directory with private permissions. The
+QuantBot process runs as UID/GID 10001. Keep the published port on the host
+loopback interface.
+
+If a previous Compose file uses a named volume, switching to `./data` will not
+copy that volume. Back up the old volume using the old Compose file, then
+restore the backup into a separate directory before switching. An existing bind
+mount must contain files writable by UID/GID 10001; startup only prepares the
+mount point itself.
 
 On a remote host, use SSH forwarding for local administration or terminate HTTPS at a reverse proxy. Configure the exact public origin and the addresses of the trusted proxies:
 
@@ -32,7 +44,7 @@ The default native listener is `127.0.0.1:23456`. Set `QB_LISTEN` to change the 
 
 For performance diagnosis, set `QB_ENABLE_PPROF=true` and request a Go profile such as `/api/admin/pprof/heap` or `/api/admin/pprof/profile?seconds=10` with an administrator session. Profiles are disabled by default.
 
-Upgrade the container with `docker compose pull && docker compose up -d`. Retain the existing 3.0 volume. Start with fresh data when moving from the Python edition to 3.0.
+Upgrade the container with `docker compose pull && docker compose up -d`. Retain the existing 3.0 data directory. Start with fresh data when moving from the Python edition to 3.0.
 
 ## Go data backup and restore
 
@@ -53,7 +65,7 @@ With Compose, stop the service and use a one-off container for the archive:
 ```bash
 docker compose stop quantbot
 docker compose run --rm --no-deps quantbot backup /data/backup.zip
-docker compose run --rm --no-deps --user 10001:10001 -e QB_DATA_DIR=/data/restored quantbot restore /data/backup.zip
+docker compose run --rm --no-deps -e QB_DATA_DIR=/data/restored quantbot restore /data/backup.zip
 ```
 
 The example verifies recovery in a new subdirectory. To run on the restored data, set `QB_DATA_DIR=/data/restored` in a Compose override before restarting.

@@ -69,9 +69,9 @@ func Load() (Config, error) {
 			config.TrustedProxies = append(config.TrustedProxies, prefix.Masked())
 		}
 	}
-	if os.Getenv("QB_DOCKER_LOOPBACK") == "1" {
+	if mode := os.Getenv("QB_DOCKER_LOOPBACK"); mode == "1" || mode == "auto" {
 		config.LoopbackGateway, err = dockerGateway()
-		if err != nil {
+		if err != nil && mode == "1" {
 			return Config{}, fmt.Errorf("QB_DOCKER_LOOPBACK: %w", err)
 		}
 	}

@@ -2,11 +2,7 @@ services:
   quantbot:
     image: ghcr.io/yaho7/quantbot:latest
     restart: unless-stopped
-    environment:
-      QB_DOCKER_LOOPBACK: "1"
     ports:
       - "127.0.0.1:8888:8888"
     volumes:
-      - data:/data
-volumes:
-  data:
+      - ./data:/data

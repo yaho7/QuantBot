@@ -6,7 +6,7 @@ Use **Workbench** to see strategy data and controls. In **Administration → Int
 
 ## Docker Compose
 
-Save [compose.yml](compose.yml) and start the single container. Docker Compose keeps both databases in the `data` volume.
+Save [compose.yml](compose.yml) and start the single container. Docker Compose keeps both databases in `./data`. The image prepares the data directory and uses the loopback port automatically.
 
 ```bash
 docker compose up -d

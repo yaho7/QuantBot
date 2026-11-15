@@ -23,11 +23,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && rm -rf /var/lib/apt/lists/* \
     && install -d -m 0700 -o 10001 -g 10001 /data
 COPY --from=build /out/quantbot /usr/local/bin/quantbot
+COPY --chmod=0755 deploy/docker-entrypoint.sh /usr/local/bin/quantbot-entrypoint
 COPY LICENSE /usr/share/doc/quantbot/LICENSE
 COPY docs/licenses/ /usr/share/doc/quantbot/licenses/
-USER 10001:10001
-ENV QB_DATA_DIR=/data QB_LISTEN=0.0.0.0:8888
+ENV QB_DATA_DIR=/data QB_LISTEN=0.0.0.0:8888 QB_DOCKER_LOOPBACK=auto
 EXPOSE 8888
-HEALTHCHECK --interval=10s --timeout=4s --start-period=3s CMD ["quantbot", "health"]
-ENTRYPOINT ["quantbot"]
+HEALTHCHECK --interval=10s --timeout=4s --start-period=3s CMD ["/usr/local/bin/quantbot-entrypoint", "health"]
+ENTRYPOINT ["/usr/local/bin/quantbot-entrypoint"]
 CMD ["serve"]
