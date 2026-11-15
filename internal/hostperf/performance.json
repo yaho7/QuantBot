@@ -27,13 +27,21 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "host_id": {
+        "machine_id": {
           "type": "string",
-          "pattern": "^[a-f0-9]{32}$"
+          "pattern": "^[0-9a-f]{12}4[0-9a-f]{3}[89ab][0-9a-f]{15}$"
         },
-        "binding_key": {
+        "name": {
           "type": "string",
-          "pattern": "^qbh_[A-Za-z0-9_-]{43}$"
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "machine",
+            "container"
+          ]
         },
         "capacity": {
           "$ref": "#/$defs/resources"
@@ -43,8 +51,9 @@
         }
       },
       "required": [
-        "host_id",
-        "binding_key"
+        "machine_id",
+        "name",
+        "scope"
       ]
     },
     "host": {

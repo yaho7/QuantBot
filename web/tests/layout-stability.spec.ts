@@ -34,12 +34,26 @@ test("day and night share spacing and page navigation fades only the route", asy
     headers, data: { name: "布局样本", group: "布局测试", mode: "paper" },
   });
   expect(strategy.ok()).toBeTruthy();
-  const { strategy: { id: strategyId } } = await strategy.json();
-  const host = await page.request.post("/api/admin/hosts", {
-    headers, data: { name: "布局主机", scope: "machine", reporterStrategyId: strategyId, reporterInstanceId: "layout-test" },
+  const { strategy: { id: strategyId }, credential } = await strategy.json();
+  const agent = await page.request.post("/api/agent/session", {
+    headers: { Authorization: "Bearer " + credential.token },
+    data: { instanceId: "layout-test", bootId: "layout-test-boot" },
+  });
+  expect(agent.ok()).toBeTruthy();
+  const agentHeaders = { Authorization: "Bearer " + (await agent.json()).session };
+  const host = await page.request.put("/api/agent/host", {
+    headers: agentHeaders,
+    data: { machine_id: crypto.randomUUID().replaceAll("-", ""), name: "布局主机", scope: "machine" },
   });
   expect(host.ok()).toBeTruthy();
-  const { id: hostId } = await host.json();
+  const { hostId } = await host.json();
+  const alert = await page.request.post("/api/agent/events", {
+    headers: agentHeaders,
+    data: { records: [{ id: "layout-alert", kind: "alert", observedAt: Date.now(), data: {
+      code: "layout-warning", severity: "warning", message: "布局告警验证",
+    } }] },
+  });
+  expect(alert.ok()).toBeTruthy();
 
   await page.addInitScript(() => {
     localStorage.setItem("qb.appearance", "system");
@@ -59,7 +73,7 @@ test("day and night share spacing and page navigation fades only the route", asy
   await expect(bell).toHaveAccessibleDescription(/待关注事项/);
   await bell.click();
   await expect(page).toHaveURL(/\/alerts$/);
-  await expect(page.locator(".attention-section").getByRole("link", { name: /布局样本/ })).toHaveAttribute("href", "/strategies/" + strategyId);
+  await expect(page.getByRole("link", { name: /布局告警验证/ })).toHaveAttribute("href", "/strategies/" + strategyId);
 
   for (const width of [1280, 820, 390]) {
     await page.setViewportSize({ width, height: 800 });

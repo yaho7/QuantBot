@@ -199,7 +199,7 @@ type PerformanceHost struct {
 	ID               string
 	Name             string
 	Scope            string
-	KeyDigest        string
+	SourceDigest     string
 	ReporterStrategy string
 	ReporterInstance string
 	Capacity         string

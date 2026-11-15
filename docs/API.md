@@ -16,7 +16,6 @@ The browser API is rooted at `/api`. Agent routes use `/api/agent`. Browser requ
 | `GET /hosts`, `GET /hosts/{id}` | Host inventory, latest measured capacity and recent history; details include currently bound processes |
 | `GET /hosts/{id}/capacity?strategyId=…&instanceId=…&reservePercent=20` | Advisory estimate for more instances of the selected process |
 | `GET /strategies/{id}/performance`, `GET /strategies/{id}/performance/{instanceId}/history` | Bound process snapshots and recent performance samples |
-| `POST /admin/hosts`, `PUT /admin/hosts/{id}/key` | Create a host and issue or rotate its binding key |
 | `/alerts` | Cross-strategy alert feed |
 | `POST /strategies/{id}/commands` | Submit a control action with an `Idempotency-Key` |
 | `GET /commands`, `GET /commands/{id}` | List commands or view one command and its transitions |

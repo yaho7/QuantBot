@@ -148,8 +148,8 @@ See [paper strategy examples and the AI prompt](INTEGRATION.md).
 
 ## Optional host and process performance
 
-Use `PUT /api/agent/host` to bind a process with administrator-issued host
-credentials and `POST /api/agent/performance` for asynchronously sampled
+Use `PUT /api/agent/host` to discover the resource pool from the process’s
+locally generated machine ID and reported host name and `POST /api/agent/performance` for asynchronously sampled
 machine/quota and process measurements. This is separate from the standard
 financial `performance` report kind. Both endpoints use the current Agent session
 with `report` scope. See [host performance](HOST_PERFORMANCE.md) for the JSON

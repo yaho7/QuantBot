@@ -5,60 +5,57 @@ whether they run on a Mac, a VPS, or in a container. Hardware data is optional a
 uses the existing Agent HTTP connection. It never grants execution access or changes
 the configured Executor.
 
-## Add and bind
+## Let the strategy discover the host
 
-1. In **Hosts → Add host**, create an entry for each computer or shared resource pool.
-   Select **Machine** for whole-machine measurements. For a container with its own
-   quota, create a **Container quota** entry and measure that CPU/memory pool. Separate
-   containers with different limits need separate entries, even on the same machine.
-2. Assign exactly one strategy and instance ID to submit *host-wide* metrics to
-   each entry. Copy the generated `host_id` and binding key into the local
-   environment as `QB_HOST_ID` and `QB_HOST_BINDING_KEY`. Keep the binding key private.
-   Processes sharing a resource pool use the same binding credentials, but a
-   non-reporter only sends its own process metrics.
-3. Use the existing Agent session with `report` scope. Call `PUT /api/agent/host`
-   once per process boot, or again if the capacity or budget changes. Do not
-   rebind on routine session renewal. The API derives strategy, instance, and
-   boot identity from the session. A running boot cannot change its host binding.
-   The response includes `hostId`, `hostReporter`, and the capacity `revision`.
-   The same binding endpoint may set `process_budget` for the current boot.
-   Omit the budget to use the historical estimate; re-binding without it clears it.
+1. Create a strategy to obtain its Agent Token. Establish an Agent session as usual.
+2. From the strategy's integration code, call `PUT /api/agent/host` with the
+   session Bearer (`report` scope). Send the actual host name, resource scope, and a
+   locally generated UUIDv4 (32 lower-case hexadecimal digits, no hyphens).
+   Persist that UUID privately per resource pool outside the project checkout.
+   Host names and IP addresses are display data and do not decide identity.
+   Several strategies on the same resource pool can read the same local ID file.
+   Use separate state directories for different container pools, and never copy
+   the ID to a different machine or bake it into an image. The browser never
+   receives this ID.
+3. If you can measure the effective CPU and memory capacity, send it as
+   `capacity`. Add an optional `process_budget` in the same shape to propose
+   a per-instance CPU/memory budget. The response includes `hostId`,
+   `hostReporter`, and the capacity `revision`. Every bound process can report
+   its own metrics. Only the currently elected reporter sends host-wide samples.
 
-For Mac and VPS running **at the same time**, give them distinct `instanceId` values
-(e.g. `mac-dev` and `vps-live`) and open a new `bootId` each time a process starts.
-Configure one host entry and its key for each environment. They may use the same
-strategy if appropriate, but production execution remains assigned to a single
-Executor. For a **move** with no simultaneous processes, the new host can use the
-same logical `instanceId` with a fresh `bootId` and its own host credentials. The
-old session stops being valid under the existing Agent protocol. Updating the
-host ID, binding key, and optionally the instance ID in the environment is enough;
-the reporting code and routes are the same on both machines.
+QuantBot discovers entries and determines the reporter automatically. Re-register
+on each boot or when host metadata, effective capacity, or a declared budget
+changes. A candidate that can measure capacity may re-register periodically if
+another process is the reporter; a stale, moved, revoked, or archived reporter can
+then be replaced. If `POST /performance` replies `not_host_reporter`, refresh
+registration and submit process-only data until selected. Routine session renewal
+with the same boot does not invalidate the binding. Omitting a previously
+registered `process_budget` clears it.
 
-The binding key is separate from the Agent token. To replace a lost key, use the
-host details page to rotate it. Rotation affects future binding requests; existing
-bindings can still report. Revoking an Agent token, removing its `report` scope, or
-archiving its strategy stops that Agent from using the performance endpoints.
+For Mac and VPS running at the same time, use different stable `instanceId`
+values. Use a new `bootId` on each process launch. For a move with no concurrent
+processes, the new process can use the same logical `instanceId` with a new
+`bootId`. The VPS generates its own machine ID. The reporting code and routes are
+the same. The existing Executor assignment still governs trading commands.
 
 ## Schema and curl
 
-Download the strict machine-readable schema at
-`GET /api/agent/schemas/performance.json`. The root describes the sample batch;
-`#/$defs/binding` describes the host binding. No Sandbox host data is mixed into
-production; these optional routes are only on the production Agent endpoint.
+Download the strict schema at `GET /api/agent/schemas/performance.json`. The root
+describes a sample batch; `#/$defs/binding` describes discovery. These optional
+routes are only on the production Agent endpoint, so Sandbox activity is isolated.
 
-Example for a designated reporter, with an existing `QB_AGENT_SESSION`:
+Example registration, with an existing `QB_AGENT_SESSION` and a stable UUID
+loaded from local private state by the integration code:
 
 ```bash
-jq -n --arg id "$QB_HOST_ID" --arg key "$QB_HOST_BINDING_KEY" \
-  '{host_id:$id,binding_key:$key,capacity:{cpu_cores:4,memory_bytes:8589934592}}' |
-  curl -fsS -X PUT "$QB_AGENT_URL/host" \
-    -H "Authorization: Bearer $QB_AGENT_SESSION" -H 'Content-Type: application/json' --data-binary @-
+jq -n --arg id "$LOCAL_MACHINE_ID" --arg name "$(hostname)"   '{machine_id:$id,name:$name,scope:"machine",capacity:{cpu_cores:4,memory_bytes:8589934592}}' |
+  curl -fsS -X PUT "$QB_AGENT_URL/host"     -H "Authorization: Bearer $QB_AGENT_SESSION" -H 'Content-Type: application/json' --data-binary @-
 ```
 
 Here `QB_AGENT_URL` is the full base, e.g. `http://127.0.0.1:23457/api/agent`.
-Replace the illustrative capacity with the *measured effective capacity*.
-A non-reporter omits `capacity`. A fractional `cpu_cores` such as `1.5` is allowed.
-The optional `process_budget` has the same shape as `capacity`.
+Replace the illustrative capacity with the measured effective capacity, or omit it
+if unavailable. Fractional CPU quotas are allowed. For a container with its own
+quota use `scope: "container"` and measure that resource pool.
 
 Send `POST /api/agent/performance` with a persisted JSON batch:
 

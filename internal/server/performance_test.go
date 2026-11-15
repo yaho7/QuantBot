@@ -49,24 +49,35 @@ func TestHostPerformanceAcrossMachines(t *testing.T) {
 	connect := func(instance, boot string) string {
 		return send("POST", "/agent/session", map[string]string{"instanceId": instance, "bootId": boot}, token, 201)["session"].(string)
 	}
-	host := func(name, scope, reporter string) map[string]any {
-		return send("POST", "/admin/hosts", map[string]string{"name": name, "scope": scope, "reporterStrategyId": strategy, "reporterInstanceId": reporter}, "", 201)
-	}
-	bind := func(machine map[string]any, session string, writer bool, status int) {
-		in := map[string]any{"host_id": machine["id"], "binding_key": machine["bindingKey"], "process_budget": map[string]any{"cpu_cores": .5, "memory_bytes": 100}}
-		if writer {
+	const macID = "58c8e97d6e294ac9bfb87c72aa306e0d"
+	const vpsID = "dd260ccd49df47beb73532d8cdee6ae6"
+	bind := func(machineID, name, scope, session string, capacity bool, status int) map[string]any {
+		in := map[string]any{"machine_id": machineID, "name": name, "scope": scope, "process_budget": map[string]any{"cpu_cores": .5, "memory_bytes": 100}}
+		if capacity {
 			in["capacity"] = map[string]any{"cpu_cores": 2, "memory_bytes": 1000}
 		}
-		send("PUT", "/agent/host", in, session, status)
+		return send("PUT", "/agent/host", in, session, status)
 	}
-	mac, vps := host("Mac", "machine", "mac"), host("VPS", "container", "vps")
 	macSession, vpsSession, reader := connect("mac", "boot1"), connect("vps", "boot2"), connect("vps-reader", "boot3")
-	bind(mac, macSession, true, 200)
-	bind(vps, vpsSession, true, 200)
-	bind(mac, macSession, true, 200)
-	bind(vps, macSession, false, 409)
-	bind(vps, reader, true, 403)
-	bind(vps, reader, false, 200)
+	bind(macID, "same host name", "machine", "", true, 401)
+	mac := bind(macID, "same host name", "machine", macSession, true, 200)
+	vps := bind(vpsID, "same host name", "machine", vpsSession, true, 200)
+	if mac["hostId"] == vps["hostId"] {
+		t.Fatal("same host names were merged")
+	}
+	if repeat := bind(macID, "Mac", "machine", macSession, true, 200); repeat["hostId"] != mac["hostId"] || repeat["revision"] != mac["revision"] {
+		t.Fatalf("rename changed identity or capacity revision: %v", repeat)
+	}
+	if details := send("GET", "/hosts/"+mac["hostId"].(string), nil, "", 200); details["name"] != "Mac" {
+		t.Fatalf("reported host name not surfaced: %v", details)
+	}
+	bind(vpsID, "VPS", "machine", macSession, false, 409)
+	if joined := bind(vpsID, "VPS alias", "machine", reader, true, 200); joined["hostReporter"] != false || joined["hostId"] != vps["hostId"] {
+		t.Fatalf("shared machine ID did not attach to the existing host: %v", joined)
+	}
+	if details := send("GET", "/hosts/"+vps["hostId"].(string), nil, "", 200); details["name"] != "same host name" {
+		t.Fatalf("non-reporter overwrote host name: %v", details)
+	}
 	report := func(id string, at time.Time, cpu float64) map[string]any {
 		return map[string]any{"record_id": id, "observed_at": at.Format(time.RFC3339Nano), "sample_duration_ms": 15000,
 			"host": map[string]any{"cpu_usage_percent": cpu, "memory_available_bytes": 700}, "process": map[string]any{"cpu_cores_used": 0.5, "rss_bytes": 100}}
@@ -101,7 +112,7 @@ func TestHostPerformanceAcrossMachines(t *testing.T) {
 	ingest(vpsSession, 400, bad)
 	ingest("", 401, v)
 	capacity := func(machine map[string]any, instance, bearer string, status int) map[string]any {
-		return send(http.MethodGet, "/hosts/"+machine["id"].(string)+"/capacity?strategyId="+strategy+"&instanceId="+instance, nil, bearer, status)
+		return send(http.MethodGet, "/hosts/"+machine["hostId"].(string)+"/capacity?strategyId="+strategy+"&instanceId="+instance, nil, bearer, status)
 	}
 	capacity(vps, "vps", "-", 401)
 	if outcome := capacity(vps, "vps", "", 200); outcome["additional"] != float64(2) || outcome["bottleneck"] != "cpu" {
@@ -112,11 +123,17 @@ func TestHostPerformanceAcrossMachines(t *testing.T) {
 	}
 	// A new boot may move the same logical instance without altering the other host.
 	newMac := connect("mac", "boot4")
-	bind(vps, newMac, false, 200)
+	bind(vpsID, "VPS", "machine", newMac, false, 200)
 	ingest(macSession, 401, m)
 	if outcome := capacity(vps, "mac", "", 200); outcome["additional"] != float64(2) {
 		t.Fatalf("moved instance did not see VPS pool: %v", outcome)
 	}
+	movedVPS := connect("vps", "boot5")
+	bind(macID, "Mac", "machine", movedVPS, true, 200)
+	if elected := bind(vpsID, "VPS", "machine", reader, true, 200); elected["hostReporter"] != true {
+		t.Fatalf("active peer could not take over after reporter moved: %v", elected)
+	}
+	ingest(reader, 200, report("takeover", now, 25))
 	const admin = "/admin/strategies/"
 	send("DELETE", admin+strategy+"/tokens/"+create["credential"].(map[string]any)["id"].(string), nil, "", 204)
 	ingest(vpsSession, 401, report("revoked", now, 20))

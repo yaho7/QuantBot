@@ -4,7 +4,7 @@
   align-items: start;
   gap: 16px;
 }
-.performance-host, .performance-process, .capacity-panel, .host-binding-panel { min-width: 0; display: grid; gap: 14px; }
+.performance-host, .performance-process, .capacity-panel { min-width: 0; display: grid; gap: 14px; }
 .performance-process-list { display: grid; gap: 12px; min-width: 0; }
 .performance-process-heading, .performance-sample-status, .performance-link {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0;
@@ -31,4 +31,3 @@
 .capacity-fields select { width: 100%; }
 .capacity-result { display: grid; gap: 4px; }
 .capacity-result strong { font-size: 30px; font-variant-numeric: tabular-nums; }
-.host-binding-panel > button { justify-self: start; }

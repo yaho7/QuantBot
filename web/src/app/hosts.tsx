@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowUpRight, Plus, Server } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { ArrowLeft, ArrowUpRight, Server } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { Link } from "../shared/page-links";
-import { api, client, resource, type Strategy } from "../shared/api";
+import { resource } from "../shared/api";
 import { useLanguage, type Message } from "../shared/i18n";
-import { Badge, ErrorView, Loading, Modal } from "../shared/ui";
+import { Badge, ErrorView, Loading } from "../shared/ui";
 import { Page } from "./App";
 import {
   HostMetricsGrid, hostsQuery, ProcessMetricsGrid, ResourceChart, SampleStatus,
@@ -13,14 +13,11 @@ import {
 } from "../components/host-performance";
 
 type HostDetail = Host & { members: HostProcess[]; history: Reading<HostMetrics>[] };
-type Binding = { id: string; bindingKey: string };
 
 export function HostsPage() {
   const { t } = useLanguage();
   const query = useQuery(hostsQuery);
-  const [adding, setAdding] = useState(false);
-  const [binding, setBinding] = useState<Binding>();
-  return <Page title={t("hosts")} actions={<button className="primary" onClick={() => setAdding(true)}><Plus size={16} />{t("addHost")}</button>}>
+  return <Page title={t("hosts")}>
     {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} retry={() => void query.refetch()} /> :
       !query.data.length ? <div className="surface empty-state"><Server size={28} /><p>{t("noHosts")}</p></div> :
       <div className="hosts-grid">{query.data.map(host => <article key={host.id} className="surface padded performance-host">
@@ -31,50 +28,7 @@ export function HostsPage() {
         <HostMetricsGrid host={host} compact />
         <SampleStatus latest={host.latest} stale={host.stale} />
       </article>)}</div>}
-    {adding && <CreateHost close={() => setAdding(false)} created={value => { setAdding(false); setBinding(value); }} />}
-    {binding && <BindingDialog binding={binding} close={() => setBinding(undefined)} />}
   </Page>;
-}
-
-function CreateHost({ close, created }: { close: () => void; created: (value: Binding) => void }) {
-  const { t } = useLanguage();
-  const strategies = useQuery(resource<Strategy[]>("/strategies"));
-  const [strategyId, setStrategyId] = useState("");
-  const [scope, setScope] = useState("machine");
-  const mutation = useMutation({
-    mutationFn: (body: object) => api<Binding>("/admin/hosts", "POST", body),
-    onSuccess: value => { void client.invalidateQueries({ queryKey: hostsQuery.queryKey }); created(value); },
-  });
-  const selected = strategyId || strategies.data?.[0]?.id || "";
-  return <Modal title={t("addHost")} open onOpenChange={value => { if (!value && !mutation.isPending) close(); }}>
-    <form onSubmit={event => {
-      event.preventDefault();
-      const data = new FormData(event.currentTarget);
-      mutation.mutate({ name: data.get("name"), scope, reporterStrategyId: selected, reporterInstanceId: data.get("instance") });
-    }}>
-      <label>{t("hostName")}<input name="name" required maxLength={128} /></label>
-      <label>{t("hostScope")}<select value={scope} onChange={e => setScope(e.target.value)}>
-        <option value="machine">{t("hostMachine")}</option><option value="container">{t("hostContainer")}</option>
-      </select></label>
-      <label>{t("hostReporterStrategy")}<select value={selected} onChange={e => setStrategyId(e.target.value)} required>
-        {strategies.data?.map(strategy => <option key={strategy.id} value={strategy.id}>{strategy.name}</option>)}
-      </select></label>
-      {strategies.error && <ErrorView error={strategies.error} />}
-      <label>{t("hostReporterInstance")}<input name="instance" required maxLength={96} pattern="[A-Za-z0-9][A-Za-z0-9._:\\-]*" /></label>
-      <p className="muted">{t("hostReporterHint")}</p>
-      {mutation.error && <p className="error-text" role="alert">{mutation.error.message}</p>}
-      <button className="primary" disabled={!selected || mutation.isPending}>{t("addHost")}</button>
-    </form>
-  </Modal>;
-}
-
-function BindingDialog({ binding, close }: { binding: Binding; close: () => void }) {
-  const { t } = useLanguage();
-  return <Modal title={t("hostBinding")} open onOpenChange={value => { if (!value) close(); }}>
-    <p>{t("hostBindingHint")}</p>
-    <label>host_id<input readOnly value={binding.id} onFocus={e => e.target.select()} /></label>
-    <label>{t("hostBindingKey")}<input readOnly value={binding.bindingKey} onFocus={e => e.target.select()} /></label>
-  </Modal>;
 }
 
 const hostCPU = (m: HostMetrics) => m.cpu_usage_percent;
@@ -85,11 +39,6 @@ export function HostDetailPage() {
   const { id = "" } = useParams();
   const { t } = useLanguage();
   const query = useQuery({ ...resource<HostDetail>("/hosts/" + id), refetchInterval: 15_000 });
-  const [binding, setBinding] = useState<Binding>();
-  const rotate = useMutation({
-    mutationFn: () => api<Binding>("/admin/hosts/" + id + "/key", "PUT"),
-    onSuccess: setBinding,
-  });
   return <Page title={query.data?.name ?? t("hosts")} actions={
     <Link className="button" to="/hosts"><ArrowLeft size={16} />{t("hosts")}</Link>
   }>
@@ -119,15 +68,7 @@ export function HostDetailPage() {
             )}</div>}
         </section>
         <HostSuggestions host={query.data} />
-        <details className="section surface padded performance-details host-binding-panel">
-          <summary>{t("hostBinding")}</summary>
-          <dl className="compact-dl"><dt>host_id</dt><dd>{query.data.id}</dd>
-            <dt>{t("hostReporterInstance")}</dt><dd>{query.data.reporterInstanceId}</dd></dl>
-          <button disabled={rotate.isPending} onClick={() => { if (window.confirm(t("rotateHostKeyHint"))) rotate.mutate(); }}>{t("rotateHostKey")}</button>
-          {rotate.error && <p className="error-text" role="alert">{rotate.error.message}</p>}
-        </details>
       </>}
-    {binding && <BindingDialog binding={binding} close={() => setBinding(undefined)} />}
   </Page>;
 }
 

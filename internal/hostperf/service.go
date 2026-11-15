@@ -5,9 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/subtle"
 	"database/sql"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -31,7 +29,6 @@ var errBinding = errors.New("host_binding_required")
 var errReporter = errors.New("not_host_reporter")
 var errConflict = errors.New("performance_conflict")
 var errSample = errors.New("invalid_sample")
-var errAgent = errors.New("unknown_reporter_strategy")
 
 type Service struct {
 	stores *storage.Stores
@@ -54,8 +51,6 @@ func (s *Service) RegisterBrowser(r chi.Router) {
 	r.Get("/hosts/{id}/capacity", s.capacity)
 	r.Get("/strategies/{id}/performance", s.strategyPerformance)
 	r.Get("/strategies/{id}/performance/{instanceId}/history", s.processHistory)
-	r.Post("/admin/hosts", s.create)
-	r.Put("/admin/hosts/{id}/key", s.rotate)
 }
 
 type resources struct {
@@ -77,74 +72,19 @@ type host struct {
 	Revision         int64     `json:"revision"`
 }
 
-type hostInput struct {
-	Name             string `json:"name"`
-	Scope            string `json:"scope"`
-	ReporterStrategy string `json:"reporterStrategyId"`
-	ReporterInstance string `json:"reporterInstanceId"`
-}
-
-func digest(key string) string {
-	hash := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(hash[:])
-}
-
-func newKey() string { return "qbh_" + base64.RawURLEncoding.EncodeToString(randBytes(32)) }
-
-func randBytes(size int) []byte {
-	b := make([]byte, size)
-	rand.Read(b)
-	return b
-}
-
-func (s *Service) create(w http.ResponseWriter, r *http.Request) {
-	var in hostInput
-	if !httpapi.ReadJSON(w, r, &in, 4096) {
-		return
-	}
-	in.Name = strings.TrimSpace(in.Name)
-	if in.Name == "" || len(in.Name) > 128 || (in.Scope != "machine" && in.Scope != "container") ||
-		!identity.MatchString(in.ReporterStrategy) || !identity.MatchString(in.ReporterInstance) {
-		httpapi.Error(w, 400, "invalid_host", "Provide a name, scope, and reporter strategy and instance IDs")
-		return
-	}
-	id, key := hex.EncodeToString(randBytes(16)), newKey()
-	result, err := s.stores.Control.Write.ExecContext(r.Context(), `INSERT INTO performance_hosts
-		(id,name,scope,key_digest,reporter_strategy,reporter_instance)
-		SELECT ?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM strategies WHERE id=? AND archived_at IS NULL)`,
-		id, in.Name, in.Scope, digest(key), in.ReporterStrategy, in.ReporterInstance, in.ReporterStrategy)
-	if err == nil {
-		if count, _ := result.RowsAffected(); count == 0 {
-			err = errAgent
-		}
-	}
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	httpapi.JSON(w, 201, map[string]string{"id": id, "bindingKey": key})
-}
-
-func (s *Service) rotate(w http.ResponseWriter, r *http.Request) {
-	id, key := chi.URLParam(r, "id"), newKey()
-	result, err := s.stores.Control.Write.ExecContext(r.Context(), "UPDATE performance_hosts SET key_digest=? WHERE id=?", digest(key), id)
-	if err == nil {
-		if count, _ := result.RowsAffected(); count == 0 {
-			err = sql.ErrNoRows
-		}
-	}
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	httpapi.JSON(w, 200, map[string]string{"id": id, "bindingKey": key})
-}
-
 type bindingInput struct {
-	HostID   string     `json:"host_id"`
-	Key      string     `json:"binding_key"`
-	Capacity *resources `json:"capacity,omitempty"`
-	Budget   *resources `json:"process_budget,omitempty"`
+	MachineID string     `json:"machine_id"`
+	Name      string     `json:"name"`
+	Scope     string     `json:"scope"`
+	Capacity  *resources `json:"capacity,omitempty"`
+	Budget    *resources `json:"process_budget,omitempty"`
+}
+
+// Names are display metadata. Only a high-entropy identifier, shared locally by
+// Agents in one resource pool, joins processes to the same host.
+func sourceDigest(id string) string {
+	hash := sha256.Sum256([]byte("quantbot-host:" + id))
+	return hex.EncodeToString(hash[:])
 }
 
 const hostFields = "id,name,scope,reporter_strategy,reporter_instance,capacity,revision"
@@ -170,6 +110,11 @@ func (s *Service) bind(w http.ResponseWriter, r *http.Request) {
 	if !readInput(w, r, &in, "binding", 4096) {
 		return
 	}
+	in.Name = strings.TrimSpace(in.Name)
+	if in.Name == "" {
+		httpapi.Error(w, 400, "invalid_host", "Provide a non-empty host name")
+		return
+	}
 	if (in.Capacity != nil && !in.Capacity.valid()) || (in.Budget != nil && !in.Budget.valid()) {
 		httpapi.Error(w, 400, "invalid_host", "CPU cores and memory bytes must be positive and within range")
 		return
@@ -181,25 +126,40 @@ func (s *Service) bind(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
-		var key string
-		err = scanHost(tx.QueryRowContext(ctx, "SELECT "+hostFields+",key_digest FROM performance_hosts WHERE id=?", in.HostID), &h, &key)
-		if errors.Is(err, sql.ErrNoRows) || (err == nil && subtle.ConstantTimeCompare([]byte(digest(in.Key)), []byte(key)) != 1) {
-			return errBinding
+		source := sourceDigest(in.MachineID)
+		err = scanHost(tx.QueryRowContext(ctx, "SELECT "+hostFields+" FROM performance_hosts WHERE scope=? AND source_digest=?", in.Scope, source), &h)
+		if errors.Is(err, sql.ErrNoRows) {
+			var key [16]byte
+			rand.Read(key[:])
+			h = host{ID: hex.EncodeToString(key[:]), Name: in.Name, Scope: in.Scope,
+				ReporterStrategy: agent.StrategyID, ReporterInstance: agent.InstanceID}
+			_, err = tx.ExecContext(ctx, `INSERT INTO performance_hosts
+				(id,name,scope,source_digest,reporter_strategy,reporter_instance) VALUES (?,?,?,?,?,?)`,
+				h.ID, h.Name, h.Scope, source, agent.StrategyID, agent.InstanceID)
 		}
 		if err != nil {
 			return err
 		}
 		reporter = agent.StrategyID == h.ReporterStrategy && agent.InstanceID == h.ReporterInstance
-		if in.Capacity != nil {
-			if !reporter {
-				return errReporter
+		if !reporter && in.Capacity != nil {
+			active, err := reporterActive(ctx, tx, h)
+			if err != nil {
+				return err
 			}
-			if h.Capacity != *in.Capacity {
-				raw, _ := json.Marshal(in.Capacity)
-				if _, err = tx.ExecContext(ctx, "UPDATE performance_hosts SET capacity=?,revision=revision+1 WHERE id=?", string(raw), h.ID); err != nil {
-					return err
-				}
+			// A process-only reporter must not prevent capable peers from supplying machine metrics.
+			reporter = !active || !h.Capacity.valid()
+		}
+		if reporter {
+			if in.Capacity != nil && h.Capacity != *in.Capacity {
 				h.Capacity, h.Revision = *in.Capacity, h.Revision+1
+			}
+			raw, _ := json.Marshal(h.Capacity)
+			if _, err := tx.ExecContext(ctx, `UPDATE performance_hosts
+				SET name=?,capacity=?,revision=?,reporter_strategy=?,reporter_instance=?
+				WHERE id=? AND (name<>? OR revision<>? OR reporter_strategy<>? OR reporter_instance<>?)`,
+				in.Name, string(raw), h.Revision, agent.StrategyID, agent.InstanceID,
+				h.ID, in.Name, h.Revision, agent.StrategyID, agent.InstanceID); err != nil {
+				return err
 			}
 		}
 		budget, _ := json.Marshal(in.Budget)
@@ -220,21 +180,36 @@ func (s *Service) bind(w http.ResponseWriter, r *http.Request) {
 	httpapi.JSON(w, 200, map[string]any{"hostId": h.ID, "hostReporter": reporter, "revision": h.Revision})
 }
 
+func reporterActive(ctx context.Context, tx *sql.Tx, h host) (bool, error) {
+	var active bool
+	now := time.Now()
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS (
+		SELECT 1 FROM agent_instances a
+		JOIN performance_bindings b ON (a.strategy_id,a.instance_id,a.boot_id)=(b.strategy_id,b.instance_id,b.boot_id)
+		JOIN strategies s ON s.id=a.strategy_id AND s.archived_at IS NULL
+		JOIN agent_sessions x ON (a.strategy_id,a.instance_id,a.boot_id)=(x.strategy_id,x.instance_id,x.boot_id)
+		JOIN agent_tokens t ON t.id=x.token_id
+		WHERE a.strategy_id=? AND a.instance_id=? AND b.host_id=? AND a.last_seen>=?
+			AND x.expires_at>? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at>?)
+			AND (t.scopes & ?) != 0
+	)`, h.ReporterStrategy, h.ReporterInstance, h.ID, now.Add(-freshness).Unix(), now.Unix(), now.Unix(),
+		strategy.ReportScope).Scan(&active)
+	return active, err
+}
+
 func writeError(w http.ResponseWriter, err error) {
 	if strategy.WriteAuthError(w, err) {
 		return
 	}
 	switch {
 	case errors.Is(err, errBinding):
-		httpapi.Error(w, 403, "host_binding_required", "Bind this process with a valid host ID and binding key")
+		httpapi.Error(w, 403, "host_binding_required", "Register this process using PUT /api/agent/host before submitting samples")
 	case errors.Is(err, errReporter):
-		httpapi.Error(w, 403, "not_host_reporter", "Only the designated instance may submit host capacity or host samples")
+		httpapi.Error(w, 403, "not_host_reporter", "Only the elected instance may submit host samples; refresh host registration and report process data meanwhile")
 	case errors.Is(err, errConflict):
 		httpapi.Error(w, 409, "performance_conflict", "The process is already bound to a different host or the record ID has different data")
 	case errors.Is(err, errSample):
 		httpapi.Error(w, 400, "invalid_sample", err.Error())
-	case errors.Is(err, errAgent):
-		httpapi.Error(w, 400, "unknown_reporter_strategy", "Select a non-archived reporter strategy")
 	case errors.Is(err, sql.ErrNoRows):
 		httpapi.Error(w, 404, "not_found", "Resource was not found")
 	case errors.Is(err, context.Canceled):
