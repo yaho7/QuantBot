@@ -1,3 +1,4 @@
+import { AttentionSummary } from "../components/attention-summary";
 import { lazy, Suspense, memo, useContext, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { Link, useLocation } from "react-router-dom";
@@ -114,6 +115,7 @@ export function Home() {
         </Link>
       }
     >
+      <AttentionSummary strategies={rows} />
       <div className={"workbench-sections" + (portfolio && featured ? " portfolio-dashboard" : "")}>
         {portfolio && featured && (
           <PortfolioOverview strategies={rows} selected={featured} select={setFeaturedId} />

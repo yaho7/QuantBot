@@ -1,3 +1,4 @@
+import { CommandProgress } from "../components/command-progress";
 import { useEffect, useState } from "react";
 import * as Switch from "@radix-ui/react-switch";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -17,6 +18,10 @@ import { Badge, ErrorView, Loading, Modal } from "../shared/ui";
 import { useDisplay } from "../shared/display";
 import { useLanguage } from "../shared/i18n";
 
+function submitPendingGuard(command: Command | undefined, control: Control) {
+  const status = control.desired?.commandId === command?.id ? control.desired?.status : command?.status;
+  return status === "unknown" || control.desired?.status === "unknown" || !!(status && activeStates.includes(status));
+}
 export function ControlPanel({
   strategyId,
   editing = false,
@@ -79,6 +84,7 @@ export function ControlCard({
     control.kind === "metricDisplay";
   const blocked =
     editing ||
+    submitPendingGuard(command, control) ||
     readOnly ||
     !registry.current ||
     control.disabled ||
@@ -143,11 +149,7 @@ export function ControlCard({
       {control.actual?.reason && (
         <p className="warning">{control.actual.reason}</p>
       )}
-      {control.desired && (
-        <Badge tone={control.desired.status === "unknown" ? "danger" : ""}>
-          {t(control.desired.status as "pending")}
-        </Badge>
-      )}
+      {control.desired && <CommandProgress desired={control.desired} />}
       {!readOnly && (
         <button
           disabled={blocked}

@@ -1,6 +1,16 @@
 import { useSyncExternalStore } from "react";
 
 const messages = {
+  needsAttention: ["需要处理", "Needs attention"],
+  executionProgress: ["命令执行进度", "Command progress"],
+  awaitingClaim: ["等待领取", "Awaiting claim"],
+  claimedCommand: ["已领取", "Claimed"],
+  receiptSuccess: ["成功回执", "Success receipt"],
+  unknownGuidance: ["结果未知，请核对策略或券商记录后再确认，勿重复执行。", "Outcome unknown. Check strategy or broker records before reconciliation; do not repeat the operation."],
+  failedGuidance: ["执行失败，请查看回执与实际状态，再决定下一步。", "Execution failed. Inspect the receipt and actual state before proceeding."],
+  receiptGuidance: ["已收到成功回执，实际状态以策略最新上报为准。", "Success receipt received. Actual state follows the latest strategy report."],
+  progressUnavailable: ["暂时无法刷新进度，当前显示最后已知状态。", "Progress refresh unavailable; showing the last known state."],
+  inspectCommand: ["查看回执与核对", "Inspect receipt and reconcile"],
   scrollMoreDown: ["向下查看更多", "Scroll down for more"],
   scrollMoreRight: ["向右查看更多", "Scroll right for more"],
   layoutPreview: ["布局预览", "Layout preview"],
