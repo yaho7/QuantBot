@@ -1,0 +1,87 @@
+/* Shared alignment rules for the trusted Classical interface. */
+.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-hero {
+  margin-inline: 0;
+}
+.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar,
+.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-amount {
+  padding-inline: 0;
+}
+.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar { min-height: 40px; gap: 12px; }
+.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar > .actions { margin-left: auto; }
+.workbench-shell.antquant-workbench[data-theme="classical"] .chart-value-readout { padding-inline: 0; }
+.workbench-shell.antquant-workbench[data-theme="classical"] .section-heading {
+  min-height: 40px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+.workbench-shell.antquant-workbench[data-theme="classical"] .section-heading h2 {
+  display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; line-height: 1.4;
+}
+.workbench-shell.antquant-workbench[data-theme="classical"] .section-heading h2 .count { margin-left: 0; }
+.workbench-shell .view-switch button {
+  width: auto; min-width: 76px; min-height: 32px; padding: 6px 12px; white-space: nowrap;
+}
+.workbench-shell .filter-bar { gap: 8px; align-items: center; }
+.workbench-shell.antquant-workbench[data-theme="classical"] .filter-bar :is(select, input) {
+  height: 36px; min-height: 36px; margin: 0; padding-block: 6px;
+}
+.workbench-shell.antquant-workbench[data-theme="classical"] .filter-bar .segmented { height: 36px; padding: 3px; }
+.workbench-shell.antquant-workbench[data-theme="classical"] .filter-bar .segmented button { height: 28px; min-height: 28px; }
+.workbench-shell .filter-bar label { margin: 0; }
+.workbench-shell .filter-bar .search-field input { width: 100%; }
+.workbench-shell .actions { align-items: center; gap: 8px; flex-wrap: wrap; }
+.workbench-shell .actions svg, .admin-shell button svg { flex-shrink: 0; }
+.widget-section > .section-heading { flex-wrap: wrap; gap: 12px; }
+.widget-section > .section-heading > h2 { margin-right: auto; }
+.widget-section .layout-device-switch { margin: 0; flex-shrink: 0; }
+.workbench-shell .widget-section .widget-grid { width: calc(100% + 12px); margin-inline: -6px; }
+.workbench-shell .widget .widget-header {
+  min-height: 48px; padding: 10px 14px; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.workbench-shell .widget .widget-header h3 { margin: 0; line-height: 1.4; flex: 1 1 80px; }
+.workbench-shell .widget .widget-header > svg { flex-shrink: 0; }
+.workbench-shell .widget .widget-body { padding-inline: 14px; }
+.workbench-shell .widget .widget-header .icon-button { flex-shrink: 0; margin: 0; }
+.workbench-shell .widget .control-values { align-items: baseline; }
+.workbench-shell .control-card > header { min-height: 28px; align-items: center; gap: 12px; }
+.workbench-shell .control-card > header h3 { margin: 0; }
+.workbench-shell .control-card .command-progress button { margin-top: 0; }
+.strategy-table-container :is(th, td) { padding: 12px 16px; vertical-align: middle; }
+.strategy-table-container :is(th, td):nth-child(4),
+.strategy-table-container :is(th, td):nth-child(5) { text-align: right; }
+.strategy-table-container :is(th, td):last-child { text-align: right; }
+.display-preferences .palette-options {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); max-width: 680px; gap: 12px;
+}
+.display-preferences .palette-option { width: 100%; justify-content: flex-start; padding: 10px 12px; }
+.display-preferences .palette-option[aria-pressed="true"] { outline-offset: -2px; }
+.display-preferences .preference-language { margin: 0; max-width: 360px; }
+.display-preferences .preference-language > span { min-height: 24px; }
+.display-preferences legend { padding: 0; min-height: 24px; }
+.admin-shell .system-dl > div { align-items: baseline; gap: 16px; min-height: 48px; }
+.admin-shell .system-dl dd { font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 767px) {
+  .workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar { align-items: flex-start; }
+  .workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar > .actions { width: 100%; justify-content: space-between; }
+  .workbench-shell.antquant-workbench[data-theme="classical"] .page-header { flex-wrap: wrap; gap: 12px; }
+  .workbench-shell .filter-spacer { display: none; }
+  .workbench-shell .filter-bar .search-field { flex: 1 1 140px; max-width: none; }
+  .widget-section > .section-heading > .actions { width: 100%; justify-content: flex-end; }
+  .widget-section > .section-heading > h2 { flex-basis: 100%; }
+  .workbench-shell .widget .widget-header { padding-inline: 10px; }
+  .workbench-shell .widget .widget-body { padding-inline: 10px; }
+}
+@media (max-width: 767px) {
+  .workbench-shell .portfolio-strategies .filter-bar {
+    display: grid; grid-template-columns: minmax(0, 1fr) 110px;
+    width: 100%; gap: 8px;
+  }
+  .workbench-shell .portfolio-strategies .filter-bar .segmented {
+    width: 100%; grid-column: 1;
+  }
+  .workbench-shell .portfolio-strategies .filter-bar .segmented button { flex: 1; padding-inline: 6px; }
+  .workbench-shell .portfolio-strategies .filter-bar .inline-filter { grid-column: 2; width: 100%; }
+  .workbench-shell .portfolio-strategies .filter-bar .inline-filter select { width: 100%; }
+  .workbench-shell .portfolio-strategies .filter-bar .search-field { grid-column: 1; width: 100%; max-width: none; }
+  .workbench-shell .portfolio-strategies .filter-bar > select { grid-column: 2; width: 100%; }
+}

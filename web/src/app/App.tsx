@@ -50,6 +50,7 @@ import { ErrorView, Loading } from "../shared/ui";
 import { BrandIcon } from "../components/brand-icon";
 import "../styles/antquant.css";
 import "../styles/wealthfolio.css";
+import "../styles/alignment.css";
 import { usePalette } from "../shared/preferences";
 import { useLanguage, type Message } from "../shared/i18n";
 const Login = lazy(() =>

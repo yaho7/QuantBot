@@ -68,21 +68,21 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
   const [preview, setPreview] = useState<string>();
   const [lockedDevice, setLockedDevice] = useState<string>();
   const device = lockedDevice ?? preview ?? viewport;
-  return <>
-    <div className="layout-device-switch segmented" role="group" aria-label={t("layoutPreview")}>
+  const deviceTools = <div className="layout-device-switch segmented" role="group" aria-label={t("layoutPreview")}>
       {["desktop", "mobile"].map(value => <button key={value} aria-pressed={device === value}
         disabled={!!lockedDevice} onClick={() => setPreview(value)}>
         {t(value === "mobile" ? "mobileLayout" : "desktopLayout")}
       </button>)}
-    </div>
+    </div>;
+  return <>
     <div className={device === "mobile" ? "mobile-layout-preview" : ""}>
-      <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device}
+      <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device} deviceTools={deviceTools}
         onEditing={(active) => setLockedDevice(active ? device : undefined)} />
     </div>
   </>;
 
 }
-function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: string; device: string; onEditing: (active: boolean) => void }) {
+function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { strategyId?: string; device: string; deviceTools: ReactNode; onEditing: (active: boolean) => void }) {
   const { t } = useLanguage();
   const surface = strategyId ? "strategy" : "overview";
   const layout = layoutResource(strategyId, device);
@@ -172,6 +172,7 @@ function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: str
     <section className="section widget-section">
       <div className="section-heading">
         <h2>{t("widgets")} <small className="muted">{t(device === "mobile" ? "mobileLayout" : "desktopLayout")}</small></h2>
+        {deviceTools}
         <div className="actions">
           {editing ? (
             <>

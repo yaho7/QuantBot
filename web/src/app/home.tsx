@@ -105,7 +105,7 @@ export function Home() {
     );
   return (
     <Page
-      title={portfolio ? "" : t("overview")}
+      title={portfolio ? "" : t("strategies")}
       actions={
         <Link className="button" to="/controls">
           <SlidersHorizontal size={16} />
