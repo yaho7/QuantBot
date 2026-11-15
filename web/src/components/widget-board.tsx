@@ -49,6 +49,7 @@ import { ControlCard } from "../app/control";
 import { DataTable, History, useTelemetryValues } from "../app/strategy";
 import { capabilityCatalog, CapabilityWidget } from "./capability-widget";
 
+import { StrategyPerformance } from "./host-performance";
 import { ScrollHints } from "./scroll-hints";
 import "./workbench-ux.css";
 
@@ -498,7 +499,7 @@ function SortableWidget({
                       ? "charts"
                       : widget.type === "positions"
                         ? "positions"
-                        : "activity",
+                        : widget.type === "performance" ? "hostPerformance" : "activity",
             )}
         </h3>
         {!editing && <button className="icon-button" aria-label={t("expandWidget")} onClick={() => setExpanded(true)}><Maximize2 size={15} /></button>}
@@ -579,6 +580,7 @@ function WidgetContent({
     return <ControlWidget widget={widget} editing={editing} />;
   if (widget.type === "chart")
     return <History strategyId={widget.strategyId} embedded />;
+  if (widget.type === "performance") return <StrategyPerformance widget compact={density === "compact"} strategyId={widget.strategyId} />;
   if (widget.type === "activity")
     return <ActivityWidget strategyId={widget.strategyId} />;
   return <TelemetryWidget widget={widget} />;
@@ -752,6 +754,7 @@ function AddWidget({
               ["chart", t("charts")],
               ["positions", t("positions")],
               ["activity", t("activity")],
+              ["performance", t("hostPerformance")],
             ].map(([value, label]) => (
               <option key={value} value={value}>
                 {label}

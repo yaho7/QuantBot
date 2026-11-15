@@ -395,11 +395,11 @@ const StrategyCard = memo(function StrategyCard({
         </span>
       </span>
       <span className="portfolio-strategy-value">
-        <strong>{hasEquity ? decimalText(values.equity?.data.value) : "—"}{" "}
+        <strong>{values.equity?.data.value != null ? decimalText(values.equity?.data.value) : "—"}{" "}
           <small>{String(values.equity?.data.currency ?? "")}</small>
         </strong>
         <span className={String(values.performance?.data.dailyPnl).startsWith("-") ? "danger" : "muted"}>
-          {hasPnl ? t("dailyPnl") + " " + decimalText(values.performance?.data.dailyPnl) : t("missing")}
+          {values.performance?.data.dailyPnl != null ? t("dailyPnl") + " " + decimalText(values.performance?.data.dailyPnl) : t("missing")}
         </span>
       </span>
       <ArrowUpRight size={16} className="muted" />

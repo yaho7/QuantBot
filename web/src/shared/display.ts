@@ -108,7 +108,7 @@ export function useDisplay() {
     try {
       const parts: unknown = JSON.parse(raw);
       if (Array.isArray(parts) && parts.length === 2 && parts.every((part) => typeof part === "string")) {
-        if (kind === "ohlcv" && /^\d+$/.test(parts[1])) {
+        if (kind === "ohlcv" && parts[1] !== undefined && /^\d+$/.test(parts[1])) {
           return [parts[0], unit(Number(parts[1]), "second")].filter(Boolean).join(" · ");
         }
         return parts.filter(Boolean).join(" · ");

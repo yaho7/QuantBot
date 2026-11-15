@@ -144,7 +144,7 @@ export type Layout = {
 export type Widget = {
   id: string;
   type:
-    "capability" | "control" | "equity" | "chart" | "positions" | "activity";
+    "capability" | "control" | "equity" | "chart" | "positions" | "activity" | "performance";
   strategyId: string;
   controlId?: string;
   hidden?: boolean;

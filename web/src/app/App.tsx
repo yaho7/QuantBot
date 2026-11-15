@@ -31,6 +31,7 @@ import {
   Paintbrush,
   Plug,
   Settings,
+  Server,
   Shield,
   SlidersHorizontal,
   Sun,
@@ -62,6 +63,8 @@ import { activeTheme, ThemeContext } from "../themes/catalog";
 import { ThemeFrame, themeStyle } from "../themes/host";
 import { StrategyDetail, AllControls } from "./strategy";
 import { ActivityPage, AlertsPage } from "./activity";
+const HostsPage = lazy(() => import("./hosts").then(module => ({ default: module.HostsPage })));
+const HostDetailPage = lazy(() => import("./hosts").then(module => ({ default: module.HostDetailPage })));
 const ThemeAdmin = lazy(() => import("../admin/themes"));
 const Notifications = lazy(() => import("../admin/notifications"));
 const Storage = lazy(() =>
@@ -94,6 +97,7 @@ const monitor = [
   ["/", "workbench", LayoutDashboard],
   ["/strategies", "strategies", ChartNoAxesCombined],
   ["/controls", "controls", SlidersHorizontal],
+  ["/hosts", "hosts", Server],
   ["/activity", "activity", ClipboardList],
   ["/alerts", "alerts", Bell],
 ] as const;
@@ -407,6 +411,8 @@ const router = createBrowserRouter([
           { path: "strategies", element: <Home /> },
           { path: "strategies/:id", element: <StrategyDetail /> },
           { path: "controls", element: <AllControls /> },
+          { path: "hosts", element: <HostsPage /> },
+          { path: "hosts/:id", element: <HostDetailPage /> },
           { path: "activity", element: <ActivityPage /> },
           { path: "alerts", element: <AlertsPage /> },
         ],

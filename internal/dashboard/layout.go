@@ -92,7 +92,7 @@ func validate(input Layout) error {
 	for _, widget := range input.Widgets {
 		hasSource := widget.Type == "control" || widget.Type == "capability"
 		if !widgetIDPattern.MatchString(widget.ID) || seen[widget.ID] || len(widget.StrategyID) > 96 || widget.StrategyID == "" ||
-			!slices.Contains([]string{"control", "capability", "equity", "chart", "positions", "activity"}, widget.Type) ||
+			!slices.Contains([]string{"control", "capability", "equity", "chart", "positions", "activity", "performance"}, widget.Type) ||
 			!slices.Contains([]string{"small", "medium", "large", "full"}, widget.Size) ||
 			widget.Width != 0 && (widget.Width < 12 || widget.Width > 100) ||
 			widget.Height != 0 && (widget.Height < 120 || widget.Height > 1200 || widget.Height%8 != 0) ||

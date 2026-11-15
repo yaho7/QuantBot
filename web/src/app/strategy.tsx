@@ -24,6 +24,7 @@ const WidgetBoard = lazy(() => import("../components/widget-board"));
 import { Page } from "./App";
 import { ControlPanel } from "./control";
 import { ActivityPage } from "./activity";
+import { StrategyPerformance } from "../components/host-performance";
 import { RelatedRecords } from "../components/related-records";
 
 export function useTelemetryValues(id: string) {
@@ -165,6 +166,7 @@ export function StrategyDetail() {
       <Suspense fallback={<Loading />}>
         <WidgetBoard key={id} strategyId={id} />
       </Suspense>
+      <StrategyPerformance strategyId={id} />
       <section className="section portfolio-records">
         <div className="segmented" role="group" aria-label={t("strategyPanels")}>
           {(["trading", "events", "activity"] as const).map((item) => (

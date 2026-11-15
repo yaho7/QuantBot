@@ -1,0 +1,1 @@
+import{t as e}from"./index-BayXeCfo.js";import{n as t,r as n}from"./i18n-weEWAN7g.js";import{t as r}from"./display-preferences-DEcAkHDJ.js";var i=n();function a(){let{t:n}=t();return(0,i.jsx)(e,{title:n(`themes`),children:(0,i.jsx)(r,{})})}export{a as default};
