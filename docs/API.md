@@ -21,7 +21,9 @@ The browser API is rooted at `/api`. Agent routes use `/api/agent`. Browser requ
 | `GET /commands`, `GET /commands/{id}` | List commands or view one command and its transitions |
 | `POST /commands/{id}/confirm`, `/cancel`, `/reconcile` | Apply an authorized state transition |
 | `/admin/strategies` and per-strategy `/executor` and `/tokens` | Manage strategies and credentials. `PUT /admin/strategies/{id}/tokens/{token}` replaces the token scopes and applies them to existing sessions immediately. |
-| `GET /admin/strategies/{id}/sandbox`, `POST`, `PUT`, `DELETE` | Inspect trial status, issue a temporary key, extend the trial, or revoke it. Child controls and commands use the isolated test databases. |
+| `POST /admin/strategies/{id}/tokens/{token}/reveal` and `/regenerate` | View a stored Token or replace it with a new Key and Token. Regeneration immediately revokes the old credential and its sessions; permissions are preserved. Tokens created before encrypted storage must be replaced before their value can be viewed. |
+| `GET /admin/sandbox`, `POST`, `PUT`, `DELETE` | Read, open, extend or close the shared test environment. Strategy creation opens it automatically if inactive. Starting again reuses the current run without changing its expiry or key. |
+| `POST /admin/sandbox/reveal` | Retrieve the temporary Sandbox token and endpoint. Controls and test commands under `/admin/sandbox` use isolated test databases. |
 | `/admin/notifications` and per-channel `/test` and `/deliveries` | Encrypted channel configuration, test messages and delivery status |
 | `/theme`, `/admin/themes` and per-theme settings and rollback | Versioned theme installation and active workbench presentation |
 | `/admin/audit` | Read recent audit events |

@@ -159,18 +159,19 @@ func (q *Queries) CreateAdmin(ctx context.Context, arg CreateAdminParams) (int64
 }
 
 const createAgentToken = `-- name: CreateAgentToken :exec
-INSERT INTO agent_tokens (id, strategy_id, digest, label, scopes, created_at, expires_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+INSERT INTO agent_tokens (id, strategy_id, digest, label, scopes, created_at, expires_at, sealed_token)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 type CreateAgentTokenParams struct {
-	ID         string
-	StrategyID string
-	Digest     string
-	Label      string
-	Scopes     int64
-	CreatedAt  int64
-	ExpiresAt  sql.NullInt64
+	ID          string
+	StrategyID  string
+	Digest      string
+	Label       string
+	Scopes      int64
+	CreatedAt   int64
+	ExpiresAt   sql.NullInt64
+	SealedToken []byte
 }
 
 func (q *Queries) CreateAgentToken(ctx context.Context, arg CreateAgentTokenParams) error {
@@ -182,6 +183,7 @@ func (q *Queries) CreateAgentToken(ctx context.Context, arg CreateAgentTokenPara
 		arg.Scopes,
 		arg.CreatedAt,
 		arg.ExpiresAt,
+		arg.SealedToken,
 	)
 	return err
 }
@@ -353,7 +355,8 @@ func (q *Queries) FindAgentSession(ctx context.Context, digest string) (FindAgen
 }
 
 const findAgentToken = `-- name: FindAgentToken :one
-SELECT t.id, t.strategy_id, t.digest, t.label, t.scopes, t.created_at, t.expires_at, t.revoked_at, s.archived_at FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
+SELECT t.id, t.strategy_id, t.digest, t.label, t.scopes, t.created_at, t.expires_at, t.revoked_at, s.archived_at
+FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
 WHERE t.digest = ?
 `
 
@@ -854,6 +857,33 @@ func (q *Queries) GetStrategy(ctx context.Context, id string) (Strategy, error) 
 	return i, err
 }
 
+const getStrategyToken = `-- name: GetStrategyToken :one
+SELECT t.id, t.strategy_id, t.digest, t.label, t.scopes, t.created_at, t.expires_at, t.revoked_at, t.sealed_token FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
+WHERE t.id = ?1 AND t.strategy_id = ?2 AND s.archived_at IS NULL
+`
+
+type GetStrategyTokenParams struct {
+	TokenID    string
+	StrategyID string
+}
+
+func (q *Queries) GetStrategyToken(ctx context.Context, arg GetStrategyTokenParams) (AgentToken, error) {
+	row := q.db.QueryRowContext(ctx, getStrategyToken, arg.TokenID, arg.StrategyID)
+	var i AgentToken
+	err := row.Scan(
+		&i.ID,
+		&i.StrategyID,
+		&i.Digest,
+		&i.Label,
+		&i.Scopes,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.SealedToken,
+	)
+	return i, err
+}
+
 const insertCommand = `-- name: InsertCommand :exec
 INSERT INTO commands (
     id, strategy_id, control_id, revision, input, actor, request_key, instance_id, boot_id,
@@ -1044,7 +1074,7 @@ func (q *Queries) ListAgentInstances(ctx context.Context, strategyID string) ([]
 }
 
 const listAgentTokens = `-- name: ListAgentTokens :many
-SELECT id, strategy_id, label, scopes, created_at, expires_at, revoked_at
+SELECT id, strategy_id, label, scopes, created_at, expires_at, revoked_at, sealed_token IS NOT NULL AS revealable
 FROM agent_tokens WHERE strategy_id = ? ORDER BY created_at DESC, id LIMIT 256
 `
 
@@ -1056,6 +1086,7 @@ type ListAgentTokensRow struct {
 	CreatedAt  int64
 	ExpiresAt  sql.NullInt64
 	RevokedAt  sql.NullInt64
+	Revealable bool
 }
 
 func (q *Queries) ListAgentTokens(ctx context.Context, strategyID string) ([]ListAgentTokensRow, error) {
@@ -1075,6 +1106,7 @@ func (q *Queries) ListAgentTokens(ctx context.Context, strategyID string) ([]Lis
 			&i.CreatedAt,
 			&i.ExpiresAt,
 			&i.RevokedAt,
+			&i.Revealable,
 		); err != nil {
 			return nil, err
 		}
@@ -1825,7 +1857,7 @@ func (q *Queries) ReplayCapabilityState(ctx context.Context, arg ReplayCapabilit
 }
 
 const revokeAgentToken = `-- name: RevokeAgentToken :execrows
-UPDATE agent_tokens SET revoked_at = ?1
+UPDATE agent_tokens SET revoked_at = ?1, sealed_token = NULL
 WHERE id = ?2 AND strategy_id = ?3 AND revoked_at IS NULL
 `
 
@@ -1844,7 +1876,7 @@ func (q *Queries) RevokeAgentToken(ctx context.Context, arg RevokeAgentTokenPara
 }
 
 const revokeStrategyTokens = `-- name: RevokeStrategyTokens :exec
-UPDATE agent_tokens SET revoked_at = ? WHERE strategy_id = ? AND revoked_at IS NULL
+UPDATE agent_tokens SET revoked_at = ?, sealed_token = NULL WHERE strategy_id = ? AND revoked_at IS NULL
 `
 
 type RevokeStrategyTokensParams struct {

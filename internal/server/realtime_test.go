@@ -48,9 +48,9 @@ func TestStreamPushesOnlyCommittedStrategyChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sandboxes := sandbox.New(t.Context(), stores.Control)
+	sandboxes := sandbox.New(t.Context())
 	t.Cleanup(sandboxes.Close)
-	server := httptest.NewServer(routes(stores, cfg, command.New(stores.Control, ctx, 0, bus.Publish), reports, bus, notification.New(stores.Control, [32]byte{}), themes, sandboxes, hostperf.New(stores)))
+	server := httptest.NewServer(routes(stores, cfg, command.New(stores.Control, ctx, 0, bus.Publish), reports, bus, notification.New(stores.Control, [32]byte{}), themes, sandboxes, hostperf.New(stores), [32]byte{}))
 	defer server.Close()
 
 	send := func(method, path, body, token, cookie, csrf string, expected int) *http.Response {

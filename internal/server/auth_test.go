@@ -178,9 +178,9 @@ func testRoutes(t *testing.T, stores *storage.Stores, cfg config.Config, command
 	if err != nil {
 		t.Fatal(err)
 	}
-	sandboxes := sandbox.New(t.Context(), stores.Control)
+	sandboxes := sandbox.New(t.Context())
 	t.Cleanup(sandboxes.Close)
-	return routes(stores, cfg, commands, reports, realtime.New(), notification.New(stores.Control, [32]byte{}), themes, sandboxes, hostperf.New(stores))
+	return routes(stores, cfg, commands, reports, realtime.New(), notification.New(stores.Control, [32]byte{}), themes, sandboxes, hostperf.New(stores), [32]byte{})
 }
 
 func requestAuth(t *testing.T, handler http.Handler, method, path, body, origin string, cookie *http.Cookie, csrf string, expected int) *httptest.ResponseRecorder {

@@ -42,15 +42,34 @@ func TestSandboxExercisesAgentContractInIsolation(t *testing.T) {
 	}
 	var created struct {
 		Strategy   struct{ ID string }
-		Credential struct{ Token string }
+		Credential struct{ ID, Token string }
+		Endpoint   string
 	}
 	decodeTest(t, call("POST", "/api/admin/strategies", `{"name":"Sandbox parent","mode":"live"}`, "", "", 201), &created)
-	base := "/api/admin/strategies/" + created.Strategy.ID + "/sandbox"
+	if created.Endpoint != origin+"/api/agent" || created.Credential.ID == "" {
+		t.Fatal("strategy creation must return the endpoint and key ID")
+	}
+	tokens := "/api/admin/strategies/" + created.Strategy.ID + "/tokens"
+	tokenPath := tokens + "/" + created.Credential.ID
+	if response := call("GET", tokens, "", "", "", 200); strings.Contains(response.Body.String(), created.Credential.Token) {
+		t.Fatal("token list exposed the secret")
+	}
+	call("POST", tokenPath+"/reveal", "", "not-an-admin", "", 401)
+	var revealed struct{ Token string }
+	response := call("POST", tokenPath+"/reveal", "", "", "", 200)
+	decodeTest(t, response, &revealed)
+	if revealed.Token != created.Credential.Token || response.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal("explicit token reveal failed")
+	}
+	base := "/api/admin/sandbox"
 	var sandbox struct {
 		ID, Token, Endpoint string
 		ExpiresAt           int64
 	}
-	decodeTest(t, call("POST", base, "", "", "", 201), &sandbox)
+	if opened := call("GET", base, "", "", "", 200); !strings.Contains(opened.Body.String(), `"status":"active"`) || strings.Contains(opened.Body.String(), "qbt_") {
+		t.Fatal("creating a strategy did not start the sandbox or revealed its key")
+	}
+	decodeTest(t, call("POST", base+"/reveal", "", "", "", 200), &sandbox)
 	if remain := sandbox.ExpiresAt - time.Now().Unix(); remain < 3595 || remain > 3600 {
 		t.Fatal(remain)
 	}
@@ -58,6 +77,19 @@ func TestSandboxExercisesAgentContractInIsolation(t *testing.T) {
 	const identity = `{"instanceId":"test-agent","bootId":"test-boot"}`
 	call("POST", "/api/agent/session", identity, sandbox.Token, "", 401)
 	call("POST", agent+"/session", identity, created.Credential.Token, "", 401)
+	var productionSession struct{ Session string }
+	decodeTest(t, call("POST", "/api/agent/session", identity, created.Credential.Token, "", 201), &productionSession)
+	call("PUT", "/api/agent/heartbeat", "", productionSession.Session, "", 200)
+	var replacement struct{ ID, Token string }
+	decodeTest(t, call("POST", tokenPath+"/regenerate", "", "", "", 201), &replacement)
+	if replacement.ID == created.Credential.ID || replacement.Token == created.Credential.Token {
+		t.Fatal("regeneration reused the old credential")
+	}
+	call("POST", tokenPath+"/reveal", "", "", "", 409)
+	call("POST", tokenPath+"/regenerate", "", "", "", 409)
+	call("PUT", "/api/agent/heartbeat", "", productionSession.Session, "", 401)
+	call("POST", "/api/agent/session", identity, created.Credential.Token, "", 401)
+	call("POST", "/api/agent/session", identity, replacement.Token, "", 201)
 	var session struct {
 		Session  string
 		Executor bool
@@ -97,14 +129,25 @@ func TestSandboxExercisesAgentContractInIsolation(t *testing.T) {
 	}
 	call("GET", "/api/commands/"+cmd.ID, "", "", "", 404)
 	call(http.MethodPut, base, "", "", "", 200)
-	var replacement struct{ Token string }
-	decodeTest(t, call("POST", base, "", "", "", 201), &replacement)
-	call("PUT", agent+"/heartbeat", "", tok, "", 401)
-	call("POST", agent+"/session", identity, sandbox.Token, "", 401)
-	call("POST", agent+"/session", identity, replacement.Token, "", 201)
+	// More strategies and opening the test again must reuse the active
+	// environment and leave the existing test connection intact.
+	call("POST", "/api/admin/strategies", `{"name":"Another strategy","mode":"paper"}`, "", "", 201)
+	call("POST", base, "", "", "", 200)
+	var reused struct{ ID, Token string }
+	decodeTest(t, call("POST", base+"/reveal", "", "", "", 200), &reused)
+	if reused.ID != sandbox.ID || reused.Token != sandbox.Token {
+		t.Fatal("starting again replaced the shared sandbox")
+	}
+	call("PUT", agent+"/heartbeat", "", tok, "", 200)
 	call("DELETE", base, "", "", "", 204)
-	call("POST", agent+"/session", identity, replacement.Token, "", 401)
+	call("POST", agent+"/session", identity, sandbox.Token, "", 401)
 	if revoked := call("GET", base, "", "", "", 200); !strings.Contains(revoked.Body.String(), `"status":"revoked"`) {
 		t.Fatal(revoked.Body)
+	}
+	call("POST", base, "", "", "", 200)
+	var reopened struct{ ID, Token string }
+	decodeTest(t, call("POST", base+"/reveal", "", "", "", 200), &reopened)
+	if reopened.ID == sandbox.ID || reopened.Token == sandbox.Token {
+		t.Fatal("a new sandbox must use a fresh credential")
 	}
 }

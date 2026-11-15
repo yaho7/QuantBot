@@ -61,7 +61,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	if err != nil {
 		return err
 	}
-	sandboxes := sandbox.New(ctx, stores.Control)
+	sandboxes := sandbox.New(ctx)
 	defer sandboxes.Close()
 	performance := hostperf.New(stores)
 	maintenance, cancelMaintenance := context.WithCancel(ctx)
@@ -82,7 +82,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 		return err
 	}
 	srv := &http.Server{
-		Handler:           routes(stores, cfg, commands, reports, events, notifications, themes, sandboxes, performance),
+		Handler:           routes(stores, cfg, commands, reports, events, notifications, themes, sandboxes, performance, key),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       35 * time.Second,
 		IdleTimeout:       60 * time.Second,
@@ -107,12 +107,12 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 }
 
-func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus, notifications *notification.Service, themes *theme.Service, sandboxes *sandbox.Service, perf *hostperf.Service) http.Handler {
+func routes(stores *storage.Stores, cfg config.Config, commands *command.Service, reports *telemetry.Service, events *realtime.Bus, notifications *notification.Service, themes *theme.Service, sandboxes *sandbox.Service, perf *hostperf.Service, key [32]byte) http.Handler {
 	router := chi.NewRouter()
 	origins := httpapi.Origins{Public: cfg.PublicOrigin, Proxies: cfg.TrustedProxies, LoopbackGateway: cfg.LoopbackGateway}
 	router.Use(origins.Guard)
 	accounts := auth.New(stores.Control)
-	strategies := strategy.New(stores.Control, events.Publish, cfg.AgentSessionTTL)
+	strategies := strategy.New(stores.Control, events.Publish, cfg.AgentSessionTTL, key, sandboxes.Ensure)
 	controls := control.New(stores.Control, events.Publish)
 	layouts := dashboard.New(stores.Control)
 	router.Route("/api/agent", func(r chi.Router) {

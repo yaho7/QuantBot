@@ -2,6 +2,8 @@ package strategy
 
 import (
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -44,17 +46,27 @@ var (
 )
 
 type Service struct {
-	store      storage.Database
-	notify     realtime.Notify
-	sessionTTL time.Duration
-	sandbox    bool
+	store       storage.Database
+	notify      realtime.Notify
+	sessionTTL  time.Duration
+	sandbox     bool
+	tokenCipher cipher.AEAD
+	openSandbox func(context.Context) error
 }
 
-func New(store storage.Database, notify realtime.Notify, ttl time.Duration) *Service {
+func New(store storage.Database, notify realtime.Notify, ttl time.Duration, key [32]byte, openSandbox func(context.Context) error) *Service {
 	if ttl <= 0 {
 		ttl = config.DefaultAgentSessionTTL
 	}
-	return &Service{store: store, notify: notify, sessionTTL: ttl}
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		panic(err)
+	}
+	aead, err := cipher.NewGCMWithRandomNonce(block)
+	if err != nil {
+		panic(err)
+	}
+	return &Service{store: store, notify: notify, sessionTTL: ttl, tokenCipher: aead, openSandbox: openSandbox}
 }
 
 func NewSandbox(store storage.Database) *Service {
@@ -74,6 +86,8 @@ func (s *Service) RegisterBrowser(r chi.Router) {
 	r.Post("/admin/strategies/{id}/tokens", s.issueToken)
 	r.Put("/admin/strategies/{id}/tokens/{token}", s.updateTokenScopes)
 	r.Delete("/admin/strategies/{id}/tokens/{token}", s.revokeToken)
+	r.Post("/admin/strategies/{id}/tokens/{token}/reveal", s.revealToken)
+	r.Post("/admin/strategies/{id}/tokens/{token}/regenerate", s.regenerateToken)
 }
 
 func (s *Service) RegisterAgent(r chi.Router) {
@@ -185,6 +199,7 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := q.CreateAgentToken(ctx, controldb.CreateAgentTokenParams{
 			ID: tokenID, StrategyID: id, Digest: digest(raw), Label: "Initial Agent", Scopes: AllScopes, CreatedAt: now,
+			SealedToken: s.sealToken(id, tokenID, raw),
 		}); err != nil {
 			return err
 		}
@@ -195,9 +210,17 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.notify.Emit(id, realtime.Status)
+	if s.openSandbox != nil {
+		// Strategy creation has already committed. If the test runtime fails
+		// to start, keep the strategy and let the administrator start it again.
+		if err := s.openSandbox(ctx); err != nil {
+			slog.Warn("start shared sandbox", "error", err)
+		}
+	}
 	httpapi.JSON(w, http.StatusCreated, map[string]any{
 		"strategy":   strategyView{ID: id, Name: input.Name, Group: input.Group, Mode: input.Mode, CreatedAt: now},
-		"credential": tokenView{ID: tokenID, Label: "Initial Agent", Scopes: scopeNames(AllScopes), CreatedAt: now, Token: raw},
+		"credential": tokenView{ID: tokenID, Label: "Initial Agent", Scopes: scopeNames(AllScopes), CreatedAt: now, Revealable: true, Token: raw},
+		"endpoint":   httpapi.RequestPeer(r).Origin + "/api/agent",
 	})
 }
 

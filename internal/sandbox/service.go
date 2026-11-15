@@ -3,9 +3,7 @@ package sandbox
 import (
 	"context"
 	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -15,12 +13,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/httpapi"
-	"github.com/yaho7/QuantBot/internal/storage"
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 )
 
 const keyTTL = time.Hour
-const activeLimit = 8
+const sandboxStrategy = "sandbox"
 const globalInflight = 12
 const runInflight = 3
 const eventLimit = 80
@@ -33,13 +30,11 @@ type requestLog struct {
 }
 
 type info struct {
-	ID         string       `json:"id"`
-	StrategyID string       `json:"strategyId"`
-	ExpiresAt  int64        `json:"expiresAt"`
-	Status     string       `json:"status"`
-	Requests   []requestLog `json:"requests"`
-	Passed     bool         `json:"passed"`
-	changedAt  int64
+	ID        string       `json:"id"`
+	ExpiresAt int64        `json:"expiresAt"`
+	Status    string       `json:"status"`
+	Requests  []requestLog `json:"requests"`
+	Passed    bool         `json:"passed"`
 }
 
 type window struct {
@@ -60,20 +55,17 @@ func (w *window) allow(now time.Time, max int) bool {
 }
 
 type Service struct {
-	ctx        context.Context
-	production storage.Database
-	mu         sync.Mutex
-	active     map[string]*run
-	strategies map[string]string
-	closed     map[string]info
-	inflight   int
-	overall    window
-	closing    bool
+	ctx      context.Context
+	mu       sync.Mutex
+	active   *run
+	previous info
+	inflight int
+	overall  window
+	closing  bool
 }
 
-func New(ctx context.Context, production storage.Database) *Service {
-	return &Service{ctx: ctx, production: production, active: make(map[string]*run),
-		strategies: make(map[string]string), closed: make(map[string]info)}
+func New(ctx context.Context) *Service {
+	return &Service{ctx: ctx}
 }
 
 func (s *Service) Maintain(ctx context.Context) {
@@ -91,60 +83,44 @@ func (s *Service) Maintain(ctx context.Context) {
 
 func (s *Service) expire(now time.Time) {
 	s.mu.Lock()
-	var expired []*run
-	for _, active := range s.active {
-		if active.ExpiresAt <= now.Unix() {
-			s.detach(active, "expired", now)
-			expired = append(expired, active)
-		}
-	}
-	for id, previous := range s.closed {
-		if previous.changedAt < now.Add(-keyTTL).Unix() {
-			delete(s.closed, id)
-		}
+	active := s.active
+	expired := active != nil && active.ExpiresAt <= now.Unix()
+	if expired {
+		s.detach("expired")
 	}
 	s.mu.Unlock()
-	for _, active := range expired {
+	if expired {
 		active.close()
 	}
 }
 
 // detach runs under the service lock. New requests cannot acquire a detached run.
-func (s *Service) detach(active *run, status string, now time.Time) {
-	delete(s.active, active.ID)
-	delete(s.strategies, active.StrategyID)
+func (s *Service) detach(status string) {
+	active := s.active
+	s.active = nil
 	active.cancel()
-	active.Status, active.changedAt = status, now.Unix()
-	if len(s.closed) >= 32 {
-		var first string
-		for id, item := range s.closed {
-			if first == "" || item.changedAt < s.closed[first].changedAt {
-				first = id
-			}
-		}
-		delete(s.closed, first)
-	}
-	s.closed[active.StrategyID] = active.info
+	s.previous = active.info
+	s.previous.Status = status
 }
 
 func (s *Service) Close() {
 	s.mu.Lock()
 	s.closing = true
-	var runners []*run
-	for _, item := range s.active {
-		s.detach(item, "closed", time.Now())
-		runners = append(runners, item)
+	active := s.active
+	if active != nil {
+		s.detach("closed")
 	}
 	s.mu.Unlock()
-	for _, item := range runners {
-		item.close()
+	if active != nil {
+		active.close()
 	}
 }
 
 func (s *Service) RegisterBrowser(r chi.Router) {
-	const path = "/admin/strategies/{id}/sandbox"
+	const path = "/admin/sandbox"
 	r.Get(path, s.status)
 	r.Post(path, s.create)
+	r.Post(path+"/reveal", s.reveal)
 	r.Put(path, s.extend)
 	r.Delete(path, s.revoke)
 	r.Get(path+"/controls", s.browser)
@@ -154,66 +130,79 @@ func (s *Service) RegisterBrowser(r chi.Router) {
 }
 
 func (s *Service) status(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
 	s.expire(time.Now())
 	s.mu.Lock()
-	view := s.closed[id]
-	if active := s.active[s.strategies[id]]; active != nil {
+	view := s.previous
+	endpoint := ""
+	if active := s.active; active != nil {
 		view = active.info
+		endpoint = sandboxEndpoint(r, active.ID)
 	}
 	view.Requests = append([]requestLog{}, view.Requests...)
 	s.mu.Unlock()
 	if view.ID == "" {
-		view.StrategyID, view.Status = id, "inactive"
+		view.Status = "inactive"
 	}
-	httpapi.JSON(w, 200, view)
+	httpapi.JSON(w, 200, struct {
+		info
+		Endpoint string `json:"endpoint,omitempty"`
+	}{view, endpoint})
 }
 
-func (s *Service) create(w http.ResponseWriter, r *http.Request) {
+func sandboxEndpoint(r *http.Request, id string) string {
+	return httpapi.RequestPeer(r).Origin + "/api/agent/sandbox/" + id
+}
+
+// Ensure opens the shared test environment on demand. Opening it again does
+// not rotate an active key, erase a running test, or extend its lifetime.
+func (s *Service) Ensure(ctx context.Context) error {
 	now := time.Now()
 	s.expire(now)
-	id := chi.URLParam(r, "id")
-	row, err := controldb.New(s.production.Read).GetStrategy(r.Context(), id)
-	if errors.Is(err, sql.ErrNoRows) || err == nil && row.ArchivedAt.Valid {
-		httpapi.Error(w, 404, "not_found", "Active strategy was not found")
-		return
-	}
-	if err != nil {
-		unavailable(w, err)
-		return
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.closing || s.strategies[id] == "" && len(s.active) >= activeLimit {
-		rateLimited(w, "Sandbox capacity exhausted", 5)
-		return
+	if s.closing {
+		return context.Canceled
+	}
+	if s.active != nil {
+		return nil
 	}
 	var entropy [32]byte
 	rand.Read(entropy[:])
+	var route [16]byte
+	rand.Read(route[:])
+	id := base64.RawURLEncoding.EncodeToString(route[:])
 	token := "qbt_" + base64.RawURLEncoding.EncodeToString(entropy[:])
-	active := s.active[s.strategies[id]]
-	if active == nil {
-		var route [16]byte
-		rand.Read(route[:])
-		sandboxID := base64.RawURLEncoding.EncodeToString(route[:])
-		active, err = newRun(r.Context(), s.ctx, sandboxID, id, row.Name, token, now)
-		if err == nil {
-			s.active[sandboxID], s.strategies[id] = active, sandboxID
-			delete(s.closed, id)
-		}
-	} else {
-		// Issuing another key preserves validation progress and immediately revokes the previous credential.
-		err = active.changeKey(r.Context(), token, active.ExpiresAt)
-	}
+	active, err := newRun(ctx, s.ctx, id, sandboxStrategy, "Sandbox", token, now)
 	if err != nil {
+		return err
+	}
+	s.active = active
+	s.previous = info{}
+	return nil
+}
+
+func (s *Service) create(w http.ResponseWriter, r *http.Request) {
+	if err := s.Ensure(r.Context()); err != nil {
 		unavailable(w, err)
 		return
 	}
-	httpapi.JSON(w, 201, struct {
-		info
-		Token    string `json:"token"`
-		Endpoint string `json:"endpoint"`
-	}{active.info, token, httpapi.RequestPeer(r).Origin + "/api/agent/sandbox/" + active.ID})
+	s.status(w, r)
+}
+
+func (s *Service) reveal(w http.ResponseWriter, r *http.Request) {
+	s.expire(time.Now())
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.active == nil {
+		httpapi.Error(w, 404, "sandbox_inactive", "No active Sandbox")
+		return
+	}
+	httpapi.JSON(w, 200, struct {
+		ID        string `json:"id"`
+		Endpoint  string `json:"endpoint"`
+		Token     string `json:"token"`
+		ExpiresAt int64  `json:"expiresAt"`
+	}{s.active.ID, sandboxEndpoint(r, s.active.ID), s.active.key, s.active.ExpiresAt})
 }
 
 func (s *Service) extend(w http.ResponseWriter, r *http.Request) {
@@ -221,13 +210,13 @@ func (s *Service) extend(w http.ResponseWriter, r *http.Request) {
 	s.expire(now)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	active := s.active[s.strategies[chi.URLParam(r, "id")]]
+	active := s.active
 	if active == nil {
 		httpapi.Error(w, 404, "sandbox_inactive", "No active Sandbox")
 		return
 	}
 	end := now.Add(keyTTL).Unix()
-	if err := active.changeKey(r.Context(), "", end); err != nil {
+	if err := active.extend(r.Context(), end); err != nil {
 		unavailable(w, err)
 		return
 	}
@@ -237,9 +226,9 @@ func (s *Service) extend(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) revoke(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
-	active := s.active[s.strategies[chi.URLParam(r, "id")]]
+	active := s.active
 	if active != nil {
-		s.detach(active, "revoked", time.Now())
+		s.detach("revoked")
 	}
 	s.mu.Unlock()
 	if active != nil {
@@ -257,8 +246,8 @@ func (s *Service) agent(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "sandboxID")
 	var active *run
 	s.mu.Lock()
-	current := s.active[id]
-	if current == nil || current.ExpiresAt <= now.Unix() || s.closing {
+	current := s.active
+	if current == nil || current.ID != id || current.ExpiresAt <= now.Unix() || s.closing {
 		s.mu.Unlock()
 		httpapi.Error(w, 401, "sandbox_inactive", "Sandbox key is expired or the environment was closed")
 		return
@@ -306,7 +295,7 @@ func (s *Service) agent(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.active[id] != active {
+	if s.active != active {
 		return
 	}
 	active.Requests = append(active.Requests, requestLog{Step: step, Status: capture.status, At: time.Now().UnixMilli()})
@@ -355,9 +344,9 @@ func stepFor(method, path string) string {
 }
 
 func (s *Service) browser(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := sandboxStrategy
 	s.mu.Lock()
-	active := s.active[s.strategies[id]]
+	active := s.active
 	if active == nil || active.ExpiresAt <= time.Now().Unix() || s.closing {
 		s.mu.Unlock()
 		httpapi.Error(w, 404, "sandbox_inactive", "No active Sandbox")

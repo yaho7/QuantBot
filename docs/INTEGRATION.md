@@ -1,23 +1,35 @@
 # QuantBot Agent integration
 
-Create a dedicated paper strategy in **Administration → Strategies**. The success
-dialog shows the first Agent Token and a separate **Copy AI integration prompt**
-button. The prompt includes the current Agent URL, target strategy, deployed
-schemas, and direct GitHub links to the protocol and Python, JavaScript, Go, and
-curl examples. It does not contain the production Token. Inject that separately
-through a local secret store or a protected environment variable on the strategy
-host. Use **Integration** later for credential rotation, Sandbox, or Executor
-assignment; these are not needed to start heartbeat and monitoring reports.
+Create a strategy in **Administration → Strategies**. The connection dialog shows
+the **Endpoint**, **Key** (credential ID), and **Token** (Bearer secret). Reopen it
+from the strategy row to view or replace the Token. Replacing a Token immediately
+invalidates its old sessions; update the strategy's configuration with the new
+Token. The separate **Copy AI integration prompt** action includes the current
+Agent URL, target strategy, deployed schemas and GitHub links to protocol and
+examples. Copy the production Token separately and store it outside source code.
 
 Read the [Agent protocol](AGENT_PROTOCOL.md), [declaration and batch schemas](../internal/server/schemas/agent.json), and [standard report record schema](../internal/telemetry/schemas/report.json).
 
 ## Validate in Sandbox
 
-In **Administration → Integration**, select a strategy and click **Copy AI integration prompt** in the Sandbox panel. QuantBot creates a private trial and issues a temporary key valid for 60 minutes. The prompt includes the strategy ID, scoped `/api/agent/sandbox/{id}` base URL, expiry and protocol links. Append the same relative paths as for production. Use the temporary credential locally and simulate the strategy and broker.
+Open the **Sandbox** tab in a strategy's connection dialog. Creating a strategy
+automatically starts the shared test environment when needed. You can also start
+it manually. Opening an already active test reuses the current run and key.
+Copy the test prompt for the temporary token, `/api/agent/sandbox/{id}` base URL,
+expiry, and protocol links. Append the usual relative Agent routes. Use simulated
+strategy and broker operations. Sandbox state and credentials are separate from
+production.
 
-The first connected instance becomes the Sandbox executor. Register a simulated button and publish its availability to queue a test command from this panel. The checklist covers session, heartbeat, capabilities, state, reports, events, resources, polling, claim and a successful result. Use the production prompt and a production credential after the trial passes.
+The first connected instance becomes the Sandbox executor. Register a simulated
+button and publish its availability to queue a test command from the dialog.
+The checklist verifies session, heartbeat, capabilities, state, reports, events,
+resources, polling, claim and a successful result. Afterward, use the production
+prompt and Token to connect the actual strategy.
 
-The administrator can extend the expiry to 60 minutes from the current time, issue a replacement key, or revoke the environment. The replaced key and its sessions stop working on rotation. Expiration and revocation close the trial. A restart discards the trial. The test databases are in memory, limited to approximately 4 MiB per trial. QuantBot allows eight active trials, 64 KiB per request, 120 requests per minute per trial, 600 per minute globally, three concurrent Agent requests per trial, and 12 globally. Honor `Retry-After` on HTTP 429.
+A run lasts 60 minutes unless extended or closed. Expiration, closure or a server
+restart discards the isolated in-memory databases. The environment allows up to
+64 KiB per request, 120 requests per minute and three concurrent Agent requests.
+Honor `Retry-After` on HTTP 429.
 
 ## Try the protocol on a paper strategy
 
@@ -33,7 +45,7 @@ go run ./examples/v3
 bash examples/v3/report.sh
 ```
 
-Start the example, then designate its connected instance in **Administration → Integration**. Each example opens a session, waits for executor assignment, registers a broker health state, a chartable metric, and an event, then sends independent updates with observation times. It prints the state and ingestion acknowledgments. The curl example uses curl, jq and OpenSSL. The Node.js example uses the built-in Fetch API.
+Start the example, then designate its connected instance in **Administration → Strategies → API → Executor**. Each example opens a session, waits for executor assignment, registers a broker health state, a chartable metric, and an event, then sends independent updates with observation times. It prints the state and ingestion acknowledgments. The curl example uses curl, jq and OpenSSL. The Node.js example uses the built-in Fetch API.
 
 To exercise a control command, run any example with `QB_DEMO_CONTROL=1`. The default instance IDs are `python-example`, `js-example`, `go-example` and `curl-example`. Set `QB_INSTANCE_ID` to override them. Once **Refresh demo state** appears in the paper strategy, activate it. The example claims one permit, refreshes the reported state, and submits the same receipt twice to demonstrate idempotency. The examples perform only a simulated state refresh. Use a durable execution journal for a trading integration.
 

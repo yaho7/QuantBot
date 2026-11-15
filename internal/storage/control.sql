@@ -76,15 +76,20 @@ AND archived_at IS NULL AND (sqlc.narg(instance_id) IS NULL OR EXISTS (
 ));
 
 -- name: CreateAgentToken :exec
-INSERT INTO agent_tokens (id, strategy_id, digest, label, scopes, created_at, expires_at)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO agent_tokens (id, strategy_id, digest, label, scopes, created_at, expires_at, sealed_token)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 -- name: ListAgentTokens :many
-SELECT id, strategy_id, label, scopes, created_at, expires_at, revoked_at
+SELECT id, strategy_id, label, scopes, created_at, expires_at, revoked_at, sealed_token IS NOT NULL AS revealable
 FROM agent_tokens WHERE strategy_id = ? ORDER BY created_at DESC, id LIMIT 256;
 
+-- name: GetStrategyToken :one
+SELECT t.* FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
+WHERE t.id = sqlc.arg(token_id) AND t.strategy_id = sqlc.arg(strategy_id) AND s.archived_at IS NULL;
+
 -- name: FindAgentToken :one
-SELECT t.*, s.archived_at FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
+SELECT t.id, t.strategy_id, t.digest, t.label, t.scopes, t.created_at, t.expires_at, t.revoked_at, s.archived_at
+FROM agent_tokens t JOIN strategies s ON s.id = t.strategy_id
 WHERE t.digest = ?;
 
 -- name: UpdateAgentTokenScopes :execrows
@@ -92,11 +97,11 @@ UPDATE agent_tokens SET scopes = sqlc.arg(scopes) WHERE id = sqlc.arg(token_id)
 AND strategy_id = sqlc.arg(strategy_id) AND revoked_at IS NULL;
 
 -- name: RevokeAgentToken :execrows
-UPDATE agent_tokens SET revoked_at = sqlc.arg(now)
+UPDATE agent_tokens SET revoked_at = sqlc.arg(now), sealed_token = NULL
 WHERE id = sqlc.arg(token_id) AND strategy_id = sqlc.arg(strategy_id) AND revoked_at IS NULL;
 
 -- name: RevokeStrategyTokens :exec
-UPDATE agent_tokens SET revoked_at = ? WHERE strategy_id = ? AND revoked_at IS NULL;
+UPDATE agent_tokens SET revoked_at = ?, sealed_token = NULL WHERE strategy_id = ? AND revoked_at IS NULL;
 
 -- name: GetAgentInstance :one
 SELECT * FROM agent_instances WHERE strategy_id = ? AND instance_id = ?;

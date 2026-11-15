@@ -34,14 +34,15 @@ type AgentSession struct {
 }
 
 type AgentToken struct {
-	ID         string
-	StrategyID string
-	Digest     string
-	Label      string
-	Scopes     int64
-	CreatedAt  int64
-	ExpiresAt  sql.NullInt64
-	RevokedAt  sql.NullInt64
+	ID          string
+	StrategyID  string
+	Digest      string
+	Label       string
+	Scopes      int64
+	CreatedAt   int64
+	ExpiresAt   sql.NullInt64
+	RevokedAt   sql.NullInt64
+	SealedToken []byte
 }
 
 type Audit struct {

@@ -27,6 +27,7 @@ type run struct {
 	stores   *storage.Stores
 	reports  *telemetry.Service
 	tokenID  string
+	key      string
 	checked  map[string]bool
 	agent    http.Handler
 	console  http.Handler
@@ -47,8 +48,8 @@ func newRun(ctx, lifetime context.Context, id, strategyID, name, token string, n
 	}
 	stop, cancel := context.WithCancel(lifetime)
 	r := &run{
-		info: info{ID: id, StrategyID: strategyID, ExpiresAt: now.Add(keyTTL).Unix(), Status: "active", Requests: []requestLog{}},
-		ctx:  stop, cancel: cancel, stores: stores, reports: reports, tokenID: id, checked: make(map[string]bool),
+		info: info{ID: id, ExpiresAt: now.Add(keyTTL).Unix(), Status: "active", Requests: []requestLog{}},
+		ctx:  stop, cancel: cancel, stores: stores, reports: reports, tokenID: id, key: token, checked: make(map[string]bool),
 	}
 	err = storage.WithTx(ctx, stores.Control.Write, func(tx *sql.Tx) error {
 		q := controldb.New(tx)
@@ -92,17 +93,7 @@ func (r *run) close() {
 	}
 }
 
-func (r *run) changeKey(ctx context.Context, replacement string, expires int64) error {
-	return storage.WithTx(ctx, r.stores.Control.Write, func(tx *sql.Tx) error {
-		if replacement != "" {
-			// A replaced key also invalidates its current and previous session records.
-			if _, err := tx.ExecContext(ctx, "DELETE FROM agent_sessions WHERE token_id=?", r.tokenID); err != nil {
-				return err
-			}
-			_, err := tx.ExecContext(ctx, "UPDATE agent_tokens SET digest=? WHERE id=?", auth.Digest(replacement), r.tokenID)
-			return err
-		}
-		_, err := tx.ExecContext(ctx, "UPDATE agent_tokens SET expires_at=? WHERE id=?", expires, r.tokenID)
-		return err
-	})
+func (r *run) extend(ctx context.Context, expires int64) error {
+	_, err := r.stores.Control.Write.ExecContext(ctx, "UPDATE agent_tokens SET expires_at=? WHERE id=?", expires, r.tokenID)
+	return err
 }

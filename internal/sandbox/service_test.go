@@ -8,18 +8,17 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/yaho7/QuantBot/internal/storage"
 )
 
 func TestSandboxExpiryAndRateLimits(t *testing.T) {
-	service := New(t.Context(), storage.Database{})
+	service := New(t.Context())
 	t.Cleanup(service.Close)
 	now := time.Now()
 	runner, err := newRun(t.Context(), t.Context(), "trial", "paper", "Paper", "qbt_"+strings.Repeat("X", 43), now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	service.active["trial"], service.strategies["paper"] = runner, "trial"
+	service.active = runner
 	router := chi.NewRouter()
 	service.RegisterAgent(router)
 	request := func() *httptest.ResponseRecorder {
@@ -39,7 +38,7 @@ func TestSandboxExpiryAndRateLimits(t *testing.T) {
 		}
 	}
 	service.expire(now.Add(keyTTL + time.Second))
-	if len(service.active) != 0 || service.closed["paper"].Status != "expired" {
+	if service.active != nil || service.previous.Status != "expired" {
 		t.Fatal("expiration did not release the trial")
 	}
 	if got := request(); got.Code != http.StatusUnauthorized {
