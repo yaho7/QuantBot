@@ -95,3 +95,8 @@ dialog.astryx-dialog[data-variant="standard"] { inset: 0; margin: auto; }
   .route-surface :is(.segmented, .view-switch) button { transition: none; }
   ::view-transition-old(quantbot-page), ::view-transition-new(quantbot-page) { animation: none; }
 }
+
+.strategy-search { flex: 1; min-inline-size: min(100%, 12rem); }
+.strategy-directory .filter-bar { align-items: center; }
+.portfolio-records > .astryx-segmented-control { max-width: 100%; }
+.widget-edit-tools { margin-inline-start: auto; }

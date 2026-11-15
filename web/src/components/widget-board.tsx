@@ -1,3 +1,7 @@
+import { Button } from "@astryxdesign/core/Button";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { HStack } from "@astryxdesign/core/HStack";
+import { IconButton } from "@astryxdesign/core/IconButton";
 import { useState, useEffect, useSyncExternalStore, useRef, createContext, useContext } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import {
@@ -21,6 +25,7 @@ import {
   Bell,
   ChartNoAxesCombined,
   GripVertical,
+  LayoutGrid as LayoutGridIcon,
   Pencil,
   Plus,
   RotateCcw,
@@ -44,7 +49,7 @@ import {
 } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { effectiveWidgets, suggestedWidgets } from "../shared/layout-defaults";
-import { decimalText, ErrorView, Loading, Modal, Badge } from "../shared/ui";
+import { Choices, decimalText, ErrorView, Loading, Modal, Badge } from "../shared/ui";
 import { ControlCard } from "../app/control";
 import { DataTable, History, useTelemetryValues } from "../app/strategy";
 import { capabilityCatalog, CapabilityWidget } from "./capability-widget";
@@ -69,12 +74,10 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
   const [preview, setPreview] = useState<string>();
   const [lockedDevice, setLockedDevice] = useState<string>();
   const device = lockedDevice ?? preview ?? viewport;
-  const deviceTools = <div className="layout-device-switch segmented" role="group" aria-label={t("layoutPreview")}>
-      {["desktop", "mobile"].map(value => <button key={value} aria-pressed={device === value}
-        disabled={!!lockedDevice} onClick={() => setPreview(value)}>
-        {t(value === "mobile" ? "mobileLayout" : "desktopLayout")}
-      </button>)}
-    </div>;
+  const deviceTools = <HStack className="layout-device-switch">
+    <Choices label={t("layoutPreview")} value={device} size="sm" disabled={!!lockedDevice} select={setPreview}
+      options={["desktop", "mobile"].map(value => ({ value, label: t(value === "mobile" ? "mobileLayout" : "desktopLayout") }))} />
+  </HStack>;
   return <>
     <div className={device === "mobile" ? "mobile-layout-preview" : ""}>
       <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device} deviceTools={deviceTools}
@@ -174,66 +177,37 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
       <div className="section-heading">
         <h2>{t("widgets")}</h2>
         {deviceTools}
-        <div className="actions">
+        <HStack className="widget-edit-tools" gap={2} wrap="wrap" vAlign="center">
           {editing ? (
             <>
-              <button
-                className="icon-button"
-                aria-label={t("undo")}
-                disabled={!history.length || save.isPending}
-                onClick={() => {
+              <IconButton variant="ghost" label={t("undo")} tooltip={t("undo")} icon={<Undo2 size={16} />}
+                isDisabled={!history.length || save.isPending} onClick={() => {
                   save.reset();
                   setDraft(history.at(-1)!);
                   setHistory(history.slice(0, -1));
-                }}
-              >
-                <Undo2 size={17} />
-              </button>
-              <button
-                className="icon-button"
-                aria-label={t("reset")}
-                disabled={save.isPending}
-                onClick={() => change(suggestions)}
-              >
-                <RotateCcw size={17} />
-              </button>
-              <button onClick={() => setAdding(true)} disabled={save.isPending}>
-                <Plus size={16} />
-                {t("add")}
-              </button>
-              {device === "mobile" && <button disabled={copying || save.isPending} onClick={() => void copyDesktop()}>{t("copyDesktop")}</button>}
-              <button
-                className="primary"
-                disabled={save.isPending || dirty || copying}
+                }} />
+              <IconButton variant="ghost" label={t("reset")} tooltip={t("reset")} icon={<RotateCcw size={16} />}
+                isDisabled={save.isPending} onClick={() => change(suggestions)} />
+              <Button label={t("add")} icon={<Plus size={16} />} onClick={() => setAdding(true)} isDisabled={save.isPending} />
+              {device === "mobile" && <Button label={t("copyDesktop")} isLoading={copying}
+                isDisabled={save.isPending} onClick={() => void copyDesktop()} />}
+              <Button label={t("done")} variant="primary" isDisabled={save.isPending || dirty || copying}
                 onClick={() => {
                   setEditing(false);
                   onEditing(false);
                   setSettings("");
                   setAdding(false);
-                }}
-              >
-                {t("done")}
-              </button>
+                }} />
               <span className="muted layout-save-status" role="status" aria-live="polite">
                 {save.isError ? t("saveFailed") : save.isPending || dirty ? t("savingLayout") : t("savedLayout")}
               </span>
-              {save.isError && <button onClick={() => save.mutate({ revision, widgets: draft })}>{t("retrySave")}</button>}
-
+              {save.isError && <Button label={t("retrySave")} onClick={() => save.mutate({ revision, widgets: draft })} />}
             </>
           ) : (
-            <button
-              disabled={
-                saved.isPending ||
-                !!saved.error ||
-                catalogs.some((catalog) => catalog.isPending)
-              }
-              onClick={beginEdit}
-            >
-              <Pencil size={15} />
-              {t("edit")}
-            </button>
+            <Button label={t("edit")} icon={<Pencil size={16} />} onClick={beginEdit}
+              isDisabled={saved.isPending || !!saved.error || catalogs.some(catalog => catalog.isPending)} />
           )}
-        </div>
+        </HStack>
       </div>
       {saved.isPending ? (
         <Loading />
@@ -305,7 +279,8 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
         </DndContext>
       )}
       {!editing && !widgets.length && !saved.isPending && (
-        <div className="surface empty-inline">{t("widgetsHint")}</div>
+        <EmptyState isCompact headingLevel={3} title={t("widgets")} description={t("widgetsHint")}
+          icon={<LayoutGridIcon size={20} />} />
       )}
       {copyError && <ErrorView error={copyError} />}
       {save.error && (
@@ -502,7 +477,7 @@ function SortableWidget({
                         : widget.type === "performance" ? "hostPerformance" : "activity",
             )}
         </h3>
-        {!editing && <button className="icon-button" aria-label={t("expandWidget")} onClick={() => setExpanded(true)}><Maximize2 size={15} /></button>}
+        {!editing && <IconButton size="sm" label={t("expandWidget")} tooltip={t("expandWidget")} variant="ghost" icon={<Maximize2 size={16} />} onClick={() => setExpanded(true)} />}
         {editing && (
           <>
             <button
@@ -513,20 +488,10 @@ function SortableWidget({
             >
               <GripVertical size={17} />
             </button>
-            <button
-              className="icon-button"
-              aria-label={t("widgetSettings")}
-              onClick={configure}
-            >
-              <Settings2 size={16} />
-            </button>
-            <button
-              className="icon-button"
-              aria-label={t("remove")}
-              onClick={remove}
-            >
-              <Trash2 size={16} />
-            </button>
+            <IconButton size="sm" label={t("widgetSettings")} tooltip={t("widgetSettings")} variant="ghost"
+              icon={<Settings2 size={16} />} onClick={configure} />
+            <IconButton size="sm" label={t("remove")} tooltip={t("remove")} variant="ghost"
+              icon={<Trash2 size={16} />} onClick={remove} />
           </>
         )}
       </header>

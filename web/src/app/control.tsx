@@ -1,6 +1,9 @@
 import { CommandProgress } from "../components/command-progress";
 import { useEffect, useState } from "react";
-import * as Switch from "@radix-ui/react-switch";
+import { Button } from "@astryxdesign/core/Button";
+import { Slider } from "@astryxdesign/core/Slider";
+import { Switch } from "@astryxdesign/core/Switch";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowUpRight } from "lucide-react";
 import { toast } from "sonner";
@@ -177,6 +180,7 @@ export function ControlCard({
       {!registry.current && <small className="muted">{t("unavailable")}</small>}
       <Modal
         title={control.title}
+        purpose="form"
         open={open}
         onOpenChange={(value) => {
           if (!submit.isPending && !confirm.isPending) setOpen(value);
@@ -195,18 +199,13 @@ export function ControlCard({
               <dt>{t("desired")}</dt>
               <dd>{display.value(command.input, control)}</dd>
             </dl>
-            <button
-              className="primary"
-              disabled={confirm.isPending}
-              onClick={() => confirm.mutate()}
-            >
-              {t("confirm")}
-            </button>
+            <Button label={t("confirm")} variant="primary" isLoading={confirm.isPending} onClick={() => confirm.mutate()} />
           </>
         ) : (
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (submit.isPending) return;
               try {
                 const input = submittedValue(control, value);
                 setInputError(false);
@@ -231,12 +230,8 @@ export function ControlCard({
               <small className="muted">{control.capability.unit}</small>
             )}
             <div className="dialog-actions">
-              <button type="button" onClick={() => setOpen(false)}>
-                {t("cancel")}
-              </button>
-              <button className="primary" disabled={submit.isPending}>
-                {t("execute")}
-              </button>
+              <Button label={t("cancel")} isDisabled={submit.isPending} onClick={() => setOpen(false)} />
+              <Button type="submit" label={t("execute")} variant="primary" isLoading={submit.isPending} />
             </div>
           </form>
         )}
@@ -314,10 +309,12 @@ function submittedValue(d: Definition, value: unknown): unknown {
 function ControlInput({
   definition: d,
   value,
+  disabled,
   onChange,
 }: {
   definition: Definition;
   value: unknown;
+  disabled?: boolean;
   onChange: (value: unknown) => void;
 }) {
   const { t } = useLanguage();
@@ -334,26 +331,28 @@ function ControlInput({
       </label>
     );
   }
-  if (d.kind === "toggle")
-    return (
-      <label className="switch-label">
-        {d.title}
-        <Switch.Root
-          className="switch"
-          checked={value === true}
-          onCheckedChange={onChange}
-        >
-          <Switch.Thumb className="switch-thumb" />
-        </Switch.Root>
-      </label>
-    );
+  if (d.kind === "toggle") {
+    return <Switch label={d.title} labelPosition="start" labelSpacing="spread" width="100%"
+      value={value === true} isDisabled={disabled} onChange={onChange} />;
+  }
+  if (d.kind === "slider") {
+    const min = Number(d.min ?? 0);
+    const max = Number(d.max ?? 100);
+    const current = value == null || value === "" ? min : Number(value);
+    if (Number.isFinite(min) && Number.isFinite(max) && min < max && Number.isFinite(current)) {
+      return <Slider label={d.title} min={min} max={max} step={Number(d.step ?? 1)} width="100%"
+        value={Math.min(max, Math.max(min, current))} valueDisplay="text" isDisabled={disabled}
+        onChange={(next: number) => onChange(String(next))} />;
+    }
+  }
   if (d.kind === "form")
     return (
-      <div className="form-fields">
+      <VStack className="form-fields" gap={3}>
         {d.fields?.map((field) => (
           <ControlInput
             key={field.id}
             definition={field}
+            disabled={disabled}
             value={
               (value as Record<string, unknown> | null)?.[field.id] ??
               editValue(field, undefined)
@@ -363,7 +362,7 @@ function ControlInput({
             }
           />
         ))}
-      </div>
+      </VStack>
     );
   if (d.kind === "select" || d.kind === "multiSelect")
     return (
@@ -394,7 +393,7 @@ function ControlInput({
       {d.title}
       <input
         required
-        type={d.kind === "slider" ? "range" : "text"}
+        type="text"
         inputMode={d.kind === "textInput" ? "text" : "decimal"}
         min={d.min}
         max={d.max}
@@ -403,7 +402,6 @@ function ControlInput({
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
       />
-      {d.kind === "slider" && <output>{String(value)}</output>}
     </label>
   );
 }

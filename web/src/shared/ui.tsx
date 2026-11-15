@@ -4,6 +4,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Spinner } from "@astryxdesign/core/Spinner";
+import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { VStack } from "@astryxdesign/core/VStack";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
@@ -68,6 +69,24 @@ export function Badge({
 }) {
   const variant = tone === "success" ? "green" : tone === "warning" ? "yellow" : tone === "danger" ? "red" : "neutral";
   return <AstryxBadge label={children} variant={variant} />;
+}
+
+export function Choices<T extends string>({ label, value, options, select, disabled, fill = false, size = "md" }: {
+  label: string;
+  value: T;
+  options: readonly { value: T; label: string; icon?: ReactNode }[];
+  select: (value: T) => void;
+  disabled?: boolean;
+  fill?: boolean;
+  size?: "sm" | "md" | "lg";
+}) {
+  return <SegmentedControl label={label} value={value} size={size} layout={fill ? "fill" : "hug"}
+    isDisabled={disabled} onChange={next => {
+      const option = options.find(option => option.value === next);
+      if (option) select(option.value);
+    }}>
+    {options.map(option => <SegmentedControlItem {...option} key={option.value} />)}
+  </SegmentedControl>;
 }
 export function decimalText(value: unknown) {
   if (typeof value !== "string" || !/^-?\d+(\.\d+)?$/.test(value)) return "—";

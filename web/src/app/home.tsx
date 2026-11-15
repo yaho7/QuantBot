@@ -1,3 +1,6 @@
+import { Button } from "@astryxdesign/core/Button";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { StrategyTable } from "../components/strategy-table";
 import { lazy, Suspense, memo, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
@@ -8,7 +11,6 @@ import {
   ChevronDown,
   LayoutGrid,
   List,
-  Search,
   SlidersHorizontal,
 } from "lucide-react";
 import {
@@ -17,7 +19,7 @@ import {
   type Strategy,
 } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
-import { Badge, decimalText, ErrorView, Loading } from "../shared/ui";
+import { Badge, Choices, decimalText, ErrorView, Loading } from "../shared/ui";
 import { Page } from "./App";
 import { History, useTelemetryValues } from "./strategy";
 
@@ -94,34 +96,17 @@ export function Home() {
       <section className="section portfolio-strategies strategy-directory">
         <div className="section-heading">
           <span className="muted">{rows.length} · {t("strategies")}</span>
-          <div className="view-switch" role="group" aria-label={t("view")}>
-            {views.map(([name, Icon]) => (
-              <button
-                key={name}
-                aria-label={t(name)}
-                aria-pressed={view === name}
-                onClick={() => {
-                  setView(name);
-                  localStorage.setItem("qb.strategyView", name);
-                }}
-              >
-                <Icon size={17} /> {t(name)}
-              </button>
-            ))}
-          </div>
+          <Choices label={t("view")} value={view} options={views.map(([value, Icon]) => ({
+            value, label: t(value), icon: <Icon size={16} />,
+          }))} select={name => {
+            setView(name);
+            localStorage.setItem("qb.strategyView", name);
+          }} />
         </div>
         <div className="filter-bar">
-          <div className="segmented">
-            {(["all", "online", "offline"] as const).map((item) => (
-              <button
-                key={item}
-                aria-pressed={filter === item}
-                onClick={() => setFilter(item)}
-              >
-                {t(item)}
-              </button>
-            ))}
-          </div>
+          <Choices label={t("status")} value={filter}
+            options={(["all", "online", "offline"] as const).map(value => ({ value, label: t(value) }))}
+            select={setFilter} />
           {groups.length > 0 && (
             <label className="inline-filter">
               <span className="sr-only">{t("group")}</span>
@@ -137,15 +122,8 @@ export function Home() {
             </label>
           )}
           <div className="filter-spacer" />
-          <label className="search-field">
-            <Search size={16} />
-            <input
-              placeholder={t("search")}
-              aria-label={t("search")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </label>
+          <TextInput label={t("search")} placeholder={t("search")} isLabelHidden hasClear
+            type="search" startIcon="search" value={search} onChange={setSearch} containerClassName="strategy-search" />
           <select
             aria-label={t("sort")}
             value={sort}
@@ -156,7 +134,10 @@ export function Home() {
           </select>
         </div>
         {strategies.isPending ? <Loading /> : !rows.length ? <EmptyStrategies /> :
-         !selected.length ? <p className="empty-inline">{t("noMatchingStrategies")}</p> :
+         !selected.length ? <EmptyState isCompact headingLevel={2} title={t("noMatchingStrategies")}
+            description={t("noMatchingStrategiesHint")} actions={<Button label={t("clearFilters")} onClick={() => {
+              setFilter("all"); setGroup(""); setSearch("");
+            }} />} /> :
          <div className="panel-enter" key={view}>
           {view === "tableView" ? (
             <StrategyTable strategies={selected.slice(0, limit)} />
@@ -179,12 +160,8 @@ export function Home() {
 
 function EmptyStrategies() {
   const { t } = useLanguage();
-  return <div className="empty-state surface">
-    <LayoutGrid size={30} />
-    <h2>{t("empty")}</h2>
-    <p>{t("emptyDescription")}</p>
-    <Link className="button primary" to="/admin/strategies">{t("create")}</Link>
-  </div>;
+  return <EmptyState headingLevel={2} title={t("empty")} description={t("emptyDescription")}
+    icon={<LayoutGrid size={24} />} actions={<Link className="button primary" to="/admin/strategies">{t("create")}</Link>} />;
 }
 
 function PortfolioPicker({ strategies, selected, select }: {

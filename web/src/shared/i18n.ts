@@ -19,6 +19,8 @@ const messages = {
   attentionCount: ["待关注事项", "Items requiring attention"],
   alertHistory: ["告警记录", "Alert history"],
   noMatchingStrategies: ["没有符合筛选条件的策略", "No matching strategies"],
+  clearFilters: ["清除筛选", "Clear filters"],
+  noMatchingStrategiesHint: ["调整搜索或清除筛选后再试。", "Adjust the search or clear your filters."],
   accountDetails: ["账户明细", "Account details"],
   hosts: ["主机", "Hosts"],
   noHosts: ["策略上报主机信息后，主机会自动出现在这里。", "Hosts appear here automatically when a strategy reports its environment."],

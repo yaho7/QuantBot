@@ -1,7 +1,9 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function layoutBox(page: Page) {
-  return page.locator(".route-surface .page-layout").evaluate(layout => {
+  await page.locator(".route-surface .page-layout > .page-body").waitFor({ state: "attached" });
+  return page.evaluate(() => {
+    const layout = document.querySelector(".route-surface .page-layout")!;
     const header = layout.querySelector(".page-header")!.getBoundingClientRect();
     const title = layout.querySelector("h1")!.getBoundingClientRect();
     const body = layout.querySelector(".page-body")!.getBoundingClientRect();
@@ -144,13 +146,18 @@ test("day and night share spacing and page navigation fades only the route", asy
   expect(await menu.boundingBox()).toEqual(position);
 
   await page.goto("/strategies");
-  await page.getByRole("button", { name: "表格", exact: true }).click();
+  const search = page.getByRole("searchbox", { name: "搜索策略", exact: true });
+  await search.fill("not-a-strategy");
+  await expect(page.getByRole("heading", { name: "没有符合筛选条件的策略" })).toBeVisible();
+  await page.getByRole("button", { name: "清除筛选" }).click();
+  await expect(search).toHaveValue("");
+  await page.getByRole("radio", { name: "表格", exact: true }).click();
   const directoryPanel = page.locator(".strategy-directory .panel-enter");
   await expect(directoryPanel.locator("table")).toBeVisible();
   await expect(directoryPanel).toHaveCSS("animation-name", "qb-panel-enter");
 
   await page.goto("/strategies/" + strategyId);
-  await page.locator(".portfolio-records").getByRole("button", { name: "主机", exact: true }).click();
+  await page.locator(".portfolio-records").getByRole("radio", { name: "主机", exact: true }).click();
   const records = page.locator(".portfolio-records .panel-enter");
   await expect(records).toHaveCSS("animation-name", "qb-panel-enter");
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -264,4 +271,61 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
     data: { instanceId: "removed", bootId: "new-boot" },
   });
   expect(agent.status()).toBe(401);
+});
+
+test("Astryx parameter controls preserve the command confirmation boundary", async ({ page }) => {
+  const origin = "http://127.0.0.1:42357";
+  const init = (await (await page.request.get("/api/auth/setup")).json()).required;
+  const session = await page.request.post(init ? "/api/auth/setup" : "/api/auth/login", {
+    headers: { Origin: origin }, data: { username: "browser-admin", password: "browser-test-password" },
+  });
+  expect(session.ok()).toBeTruthy();
+  const headers = { Origin: origin, "X-CSRF-Token": (await session.json()).csrf as string };
+  const created = await page.request.post("/api/admin/strategies", {
+    headers, data: { name: "参数交互测试", group: "", mode: "paper" },
+  });
+  const { strategy, credential } = await created.json();
+  const connected = await page.request.post("/api/agent/session", {
+    headers: { Authorization: "Bearer " + credential.token },
+    data: { instanceId: "parameter-ui", bootId: "parameter-ui-boot" },
+  });
+  const agent = { Authorization: "Bearer " + (await connected.json()).session };
+  expect((await page.request.put("/api/admin/strategies/" + strategy.id + "/executor", {
+    headers, data: { instanceId: "parameter-ui" },
+  })).ok()).toBeTruthy();
+  const registry = await page.request.put("/api/agent/capabilities", {
+    headers: agent, data: { revision: 0, capabilities: [
+      { id: "entry", title: "模拟开仓开关", kind: "parameter", value_type: "boolean", writable: true, confirm: true },
+      { id: "size", title: "模拟仓位阈值", kind: "parameter", value_type: "decimal", writable: true,
+        constraints: { min: "1", max: "8", step: "0.5" }, presentation: { preferred_renderer: "slider" } },
+    ] },
+  });
+  expect(registry.ok()).toBeTruthy();
+  const { revision } = await registry.json();
+  expect((await page.request.put("/api/agent/state", {
+    headers: agent, data: { revision, states: [
+      { id: "entry", observedAt: Date.now(), value: false },
+      { id: "size", observedAt: Date.now(), value: "4" },
+    ] },
+  })).ok()).toBeTruthy();
+  await page.goto("/strategies/" + strategy.id);
+  const slider = page.locator(".control-card").filter({ hasText: "模拟仓位阈值" });
+  const toggle = page.locator(".control-card").filter({ hasText: "模拟开仓开关" });
+  const dialog = page.getByRole("dialog");
+  await slider.getByRole("button", { name: "下发指令" }).click();
+  const thumb = dialog.getByRole("slider");
+  await expect(thumb).toHaveAttribute("aria-valuenow", "4");
+  await thumb.press("ArrowRight");
+  await expect(thumb).toHaveAttribute("aria-valuenow", "4.5");
+  await dialog.getByRole("button", { name: "取消" }).click();
+  const offered = () => page.request.get("/api/agent/commands?wait=0", { headers: agent }).then(response => response.json());
+  expect(await offered()).toEqual([]);
+  await toggle.getByRole("button", { name: "下发指令" }).click();
+  await dialog.getByRole("switch", { name: "模拟开仓开关" }).press("Space");
+  await expect(dialog.getByRole("switch")).toBeChecked();
+  await dialog.getByRole("button", { name: "下发指令" }).click();
+  await expect(dialog).toContainText("此指令需要二次确认");
+  expect(await offered()).toEqual([]);
+  await dialog.getByRole("button", { name: "确认下发" }).click();
+  await expect.poll(offered).toHaveLength(1);
 });

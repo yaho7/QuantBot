@@ -15,6 +15,7 @@ import { useLanguage } from "../shared/i18n";
 import { useDisplay } from "../shared/display";
 import {
   Badge,
+  Choices,
   decimalText,
   ErrorView,
   Loading,
@@ -167,13 +168,8 @@ export function StrategyDetail() {
         <WidgetBoard key={id} strategyId={id} />
       </Suspense>
       <section className="section portfolio-records">
-        <div className="segmented" role="group" aria-label={t("strategyPanels")}>
-          {(["trading", "events", "activity", "hosts"] as const).map((item) => (
-            <button key={item} aria-pressed={panel === item} onClick={() => setPanel(item)}>
-              {t(item)}
-            </button>
-          ))}
-        </div>
+        <Choices label={t("strategyPanels")} value={panel} select={setPanel}
+          options={((["trading", "events", "activity", "hosts"]) as const).map(value => ({ value, label: t(value) }))} />
         <div className="panel-enter" key={panel}>
           {panel === "trading" ? (
             <>
@@ -309,13 +305,9 @@ export function History({
         <p className="empty-inline chart-empty">{t("missing")}</p>
       )}
       {featured && (
-        <div className="segmented portfolio-periods" role="group" aria-label={t("choosePeriod")}>
-          {periods.map((period) => (
-            <button key={period} aria-pressed={range === period} onClick={() => setRange(period)}>
-              {periodLabel(period)}
-            </button>
-          ))}
-        </div>
+        <Choices label={t("choosePeriod")} value={String(range)} size="sm"
+          options={periods.map(period => ({ value: String(period), label: periodLabel(period) }))}
+          select={period => setRange(Number(period))} />
       )}
       {history.data && history.data.resolutionMs > 0 && (
         <small className="muted">
