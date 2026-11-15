@@ -9,12 +9,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yaho7/QuantBot/internal/buildinfo"
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/maintenance"
 	"github.com/yaho7/QuantBot/internal/server"
 )
-
-const version = "3.0.0"
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -41,7 +40,7 @@ func run(args []string) error {
 		return fmt.Errorf("%s", usage)
 	}
 	if args[0] == "version" {
-		fmt.Println(version)
+		fmt.Println(buildinfo.Version)
 		return nil
 	}
 	cfg, err := config.Load()
@@ -56,7 +55,7 @@ func run(args []string) error {
 	case "doctor":
 		ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 		defer cancel()
-		return maintenance.Doctor(ctx, cfg, version, os.Stdout)
+		return maintenance.Doctor(ctx, cfg, buildinfo.Version, os.Stdout)
 	case "health":
 		return maintenance.ProbeHealth(ctx, cfg)
 	case "backup":

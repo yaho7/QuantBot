@@ -4,6 +4,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { version } from "../../package.json";
 import { BrandIcon } from "../components/brand-icon";
 import { z } from "zod";
 import { api, client, resource, setCSRF, type Session } from "../shared/api";
@@ -39,7 +40,7 @@ export function Login() {
         <div className="brand">
           <BrandIcon />
           <strong>QuantBot</strong>
-          <small>3.0</small>
+          <small>{version}</small>
         </div>
         {setup.isPending ? (
           <Loading />

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "QuantBot Agent API",
-    "version": "3.0.0",
+    "version": "3.1.0",
     "description": "The version field identifies the QuantBot release. Agent paths are unversioned."
   },
   "security": [

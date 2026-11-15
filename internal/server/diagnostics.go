@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yaho7/QuantBot/internal/buildinfo"
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/realtime"
@@ -61,7 +62,7 @@ func diagnostics(stores *storage.Stores, reports *telemetry.Service, events *rea
 		}
 		cpu := float64(usage.Utime.Sec+usage.Stime.Sec) + float64(usage.Utime.Usec+usage.Stime.Usec)/1e6
 		httpapi.JSON(w, http.StatusOK, map[string]any{
-			"version": "3.0.0", "uptimeSeconds": time.Since(start).Seconds(),
+			"version": buildinfo.Version, "uptimeSeconds": time.Since(start).Seconds(),
 			"onlineAgents": online, "samples": samples, "queueDepth": reports.QueueDepth(),
 			"writeFailures": reports.WriteFailures(), "sseSubscribers": events.Subscribers(),
 			"peakRssBytes": rss, "heapBytes": memory.HeapAlloc, "cpuSeconds": cpu,

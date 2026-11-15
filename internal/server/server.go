@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/agentapi"
 	"github.com/yaho7/QuantBot/internal/auth"
+	"github.com/yaho7/QuantBot/internal/buildinfo"
 	"github.com/yaho7/QuantBot/internal/command"
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/control"
@@ -57,7 +58,7 @@ func Serve(ctx context.Context, cfg config.Config) (err error) {
 	}
 	defer reports.Close()
 	notifications := notification.New(stores.Control, key)
-	themes, err := theme.New(stores.Control, cfg.DataDir, "3.0.0")
+	themes, err := theme.New(stores.Control, cfg.DataDir, buildinfo.Version)
 	if err != nil {
 		return err
 	}

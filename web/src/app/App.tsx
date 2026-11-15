@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { version } from "../../package.json";
 import { Theme as AstryxTheme } from "@astryxdesign/core/theme";
 import { InternationalizationProvider } from "@astryxdesign/core/i18n";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -351,7 +352,7 @@ function AdminShell() {
             <ArrowLeft size={16} />
             {t("return")}
           </Link>
-          <span className="muted">QuantBot 3.0.0</span>
+          <span className="muted">QuantBot {version}</span>
         </footer>
       </aside>
       <main className="admin-main">

@@ -30,7 +30,7 @@ When the proxy runs on the Docker host, use the bridge gateway address reported 
 
 ## Native Linux
 
-Run `bash install.sh --ref v3.0.0` to install the Linux amd64 or arm64 release into `~/.local/bin`. The installer verifies the published SHA-256 checksum and binary version before replacing the executable.
+Run `bash install.sh --ref v3.1.0` to install the Linux amd64 or arm64 release into `~/.local/bin`. The installer verifies the published SHA-256 checksum and binary version before replacing the executable.
 
 ```bash
 mkdir -p ~/.config/systemd/user ~/.config/quantbot ~/.local/share/quantbot
@@ -44,7 +44,7 @@ The default native listener is `127.0.0.1:23456`. Set `QB_LISTEN` to change the 
 
 For performance diagnosis, set `QB_ENABLE_PPROF=true` and request a Go profile such as `/api/admin/pprof/heap` or `/api/admin/pprof/profile?seconds=10` with an administrator session. Profiles are disabled by default.
 
-Upgrade the container with `docker compose pull && docker compose up -d`. Retain the existing 3.0 data directory. Start with fresh data when moving from the Python edition to 3.0.
+Upgrade the container with `docker compose pull && docker compose up -d`. Retain the existing 3.x data directory. Start with fresh data when moving from the Python edition to 3.x.
 
 ## Go data backup and restore
 
