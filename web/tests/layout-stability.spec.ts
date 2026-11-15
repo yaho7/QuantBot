@@ -61,12 +61,18 @@ test("day and night share spacing and page navigation fades only the route", asy
   await expect(page).toHaveURL(/\/alerts$/);
   await expect(page.locator(".attention-section").getByRole("link", { name: /布局样本/ })).toHaveAttribute("href", "/strategies/" + strategyId);
 
-  for (const width of [1280, 390]) {
+  for (const width of [1280, 820, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
     const box = await layoutBox(page);
+    const spacing = await page.locator(".page-body").evaluate(body => ({
+      gutter: getComputedStyle(body.closest("main")!).paddingInlineStart,
+      sections: getComputedStyle(body).rowGap,
+    }));
+    const expected = width < 768 ? [16, 20] : width < 1100 ? [24, 24] : [32, 28];
+    expect(spacing).toEqual({ gutter: expected[0] + "px", sections: expected[1] + "px" });
     for (const path of ["/strategies", "/hosts", "/activity", "/controls", "/alerts", "/"]) {
       await page.locator(`.topbar nav a[href="${path}"]`).click();
       await expect(page).toHaveURL(new RegExp(path === "/" ? ":42357/$" : path + "$"));
@@ -119,5 +125,18 @@ test("day and night share spacing and page navigation fades only the route", asy
     await expect(page.locator(".route-frame")).toHaveClass(/route-fade-fallback/);
   }
   expect(await menu.boundingBox()).toEqual(position);
+
+  await page.goto("/strategies");
+  await page.getByRole("button", { name: "表格", exact: true }).click();
+  const directoryPanel = page.locator(".strategy-directory .panel-enter");
+  await expect(directoryPanel.locator("table")).toBeVisible();
+  await expect(directoryPanel).toHaveCSS("animation-name", "qb-panel-enter");
+
+  await page.goto("/strategies/" + strategyId);
+  await page.locator(".portfolio-records").getByRole("button", { name: "主机", exact: true }).click();
+  const records = page.locator(".portfolio-records .panel-enter");
+  await expect(records).toHaveCSS("animation-name", "qb-panel-enter");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(records).toHaveCSS("animation-name", "none");
   expect(errors).toEqual([]);
 });

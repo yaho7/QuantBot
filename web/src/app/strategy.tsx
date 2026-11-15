@@ -109,47 +109,49 @@ export function StrategyDetail() {
         </>
       }
     >
-      <div className="detail-meta muted">
-        {strategy.group && <span>{strategy.group}</span>}
-        <span>
-          {t("lastSeen")} · {timestamp(strategy.lastSeen, true)}
-        </span>
-        {runtime && (
+      <div className="strategy-intro">
+        <div className="detail-meta muted">
+          {strategy.group && <span>{strategy.group}</span>}
           <span>
-            {t("uptime")} · {display.unit(Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)), "minute")}
+            {t("lastSeen")} · {timestamp(strategy.lastSeen, true)}
           </span>
-        )}
-        {strategy.online && health && health.status !== "healthy" &&
-          catalog.data?.capabilities.some(
-            (entry) => entry.kind === "state" && entry.group === "health",
-          ) && (
-            <span role="status">
-              {t("health")}{" "}
-              <Badge tone="warning">
-                {t(health.status)}
-              </Badge>
-              {!!healthIssues?.length && " · " + healthIssues.join(", ")}
+          {runtime && (
+            <span>
+              {t("uptime")} · {display.unit(Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)), "minute")}
             </span>
           )}
-      </div>
-      <section className="portfolio-hero surface">
-        <div className="portfolio-amount">
-          <span className="muted">{t("equity")}</span>
-          <strong>{decimalText(equity?.data.value)} <small>{display.value(equity?.data.currency ?? "")}</small></strong>
-          <div className="portfolio-secondary">
-            {equity && performance?.data.accountId === equity.data.accountId &&
-              performance?.data.currency === equity.data.currency && typeof performance?.data.dailyPnl === "string" && (
-                <span className={performance.data.dailyPnl.startsWith("-") ? "danger" : "success"}>
-                  {t("dailyPnl")} {decimalText(performance.data.dailyPnl)}
-                </span>
-              )}
-            {equity?.data.drawdown != null && (
-              <span className="muted">{t("drawdown")} {decimalText(equity.data.drawdown)}</span>
+          {strategy.online && health && health.status !== "healthy" &&
+            catalog.data?.capabilities.some(
+              (entry) => entry.kind === "state" && entry.group === "health",
+            ) && (
+              <span role="status">
+                {t("health")}{" "}
+                <Badge tone="warning">
+                  {t(health.status)}
+                </Badge>
+                {!!healthIssues?.length && " · " + healthIssues.join(", ")}
+              </span>
             )}
-          </div>
         </div>
-        <History strategyId={id} embedded featured />
-      </section>
+        <section className="portfolio-hero surface">
+          <div className="portfolio-amount">
+            <span className="muted">{t("equity")}</span>
+            <strong>{decimalText(equity?.data.value)} <small>{display.value(equity?.data.currency ?? "")}</small></strong>
+            <div className="portfolio-secondary">
+              {equity && performance?.data.accountId === equity.data.accountId &&
+                performance?.data.currency === equity.data.currency && typeof performance?.data.dailyPnl === "string" && (
+                  <span className={performance.data.dailyPnl.startsWith("-") ? "danger" : "success"}>
+                    {t("dailyPnl")} {decimalText(performance.data.dailyPnl)}
+                  </span>
+                )}
+              {equity?.data.drawdown != null && (
+                <span className="muted">{t("drawdown")} {decimalText(equity.data.drawdown)}</span>
+              )}
+            </div>
+          </div>
+          <History strategyId={id} embedded featured />
+        </section>
+      </div>
       <section className="section" id="strategy-controls">
         <div className="section-heading">
           <h2>{t("controls")}</h2>
@@ -172,19 +174,21 @@ export function StrategyDetail() {
             </button>
           ))}
         </div>
-        {panel === "trading" ? (
-          <>
-            {telemetry.isPending ? <Loading /> : telemetry.error ? <ErrorView error={telemetry.error} /> :
-             !accounts.length && !positions.length && !orders.length ? <p className="empty-inline">{t("noEvents")}</p> : <>
-              {!!accounts.length && <DataTable title={t("accountDetails")} rows={accounts} fields="standard" />}
-              {(!!positions.length || !!orders.length) && <div className="portfolio-record-grid">
-                {!!positions.length && <DataTable title={t("positions")} rows={positions} fields="standard" />}
-                {!!orders.length && <DataTable title={t("orders")} rows={orders} fields="standard" />}
-              </div>}
-            </>}
-          </>
-        ) : panel === "events" ? <RecordFeed id={id} /> :
-          panel === "hosts" ? <StrategyPerformance strategyId={id} /> : <ActivityPage strategyId={id} />}
+        <div className="panel-enter" key={panel}>
+          {panel === "trading" ? (
+            <>
+              {telemetry.isPending ? <Loading /> : telemetry.error ? <ErrorView error={telemetry.error} /> :
+               !accounts.length && !positions.length && !orders.length ? <p className="empty-inline">{t("noEvents")}</p> : <>
+                {!!accounts.length && <DataTable title={t("accountDetails")} rows={accounts} fields="standard" />}
+                {(!!positions.length || !!orders.length) && <div className="portfolio-record-grid">
+                  {!!positions.length && <DataTable title={t("positions")} rows={positions} fields="standard" />}
+                  {!!orders.length && <DataTable title={t("orders")} rows={orders} fields="standard" />}
+                </div>}
+              </>}
+            </>
+          ) : panel === "events" ? <RecordFeed id={id} /> :
+            panel === "hosts" ? <StrategyPerformance strategyId={id} /> : <ActivityPage strategyId={id} />}
+        </div>
       </section>
     </Page>
   );

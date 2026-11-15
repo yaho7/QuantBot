@@ -94,7 +94,7 @@ export function Home() {
       <section className="section portfolio-strategies strategy-directory">
         <div className="section-heading">
           <span className="muted">{rows.length} · {t("strategies")}</span>
-            <div className="view-switch" role="group" aria-label={t("view")}>
+          <div className="view-switch" role="group" aria-label={t("view")}>
             {views.map(([name, Icon]) => (
               <button
                 key={name}
@@ -157,18 +157,15 @@ export function Home() {
         </div>
         {strategies.isPending ? <Loading /> : !rows.length ? <EmptyStrategies /> :
          !selected.length ? <p className="empty-inline">{t("noMatchingStrategies")}</p> :
-         view === "tableView" ? (
-          <StrategyTable strategies={selected.slice(0, limit)} />
-        ) : (
-          <div className="strategy-grid view-compact">
-            {selected.slice(0, limit).map((strategy) => (
-              <StrategyCard
-                key={strategy.id}
-                strategy={strategy}
-              />
-            ))}
-          </div>
-        )}
+         <div className="panel-enter" key={view}>
+          {view === "tableView" ? (
+            <StrategyTable strategies={selected.slice(0, limit)} />
+          ) : (
+            <div className="strategy-grid view-compact">
+              {selected.slice(0, limit).map(strategy => <StrategyCard key={strategy.id} strategy={strategy} />)}
+            </div>
+          )}
+        </div>}
         {selected.length > limit && (
           <button className="load-more" onClick={() => setLimit(limit + 50)}>
             <ChevronDown />
