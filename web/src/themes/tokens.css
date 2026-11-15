@@ -1,6 +1,6 @@
 @layer reset, theme, base, qb-legacy, astryx-base, astryx-theme, components, utilities;
 @import "@astryxdesign/core/reset.css";
-@import "tailwindcss";
+@import "tailwindcss" source("../");
 @import "@astryxdesign/core/astryx.css";
 
 @layer qb-legacy {
