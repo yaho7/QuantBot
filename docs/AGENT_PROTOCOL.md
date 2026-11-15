@@ -148,9 +148,9 @@ See [paper strategy examples and the AI prompt](INTEGRATION.md).
 
 ## Optional host and process performance
 
-Use `PUT /api/agent/host` to discover the resource pool from the process’s
-locally generated machine ID and reported host name and `POST /api/agent/performance` for asynchronously sampled
-machine/quota and process measurements. This is separate from the standard
-financial `performance` report kind. Both endpoints use the current Agent session
-with `report` scope. See [host performance](HOST_PERFORMANCE.md) for the JSON
-Schema, sample formats, multi-machine identity rules and capacity estimates.
+Use `POST /api/agent/performance` with the current Agent session and its
+`report` scope. Include the actual `host_name` and measured host or process
+records. QuantBot automatically displays the host from this report and groups
+observations by name. This is separate from the financial `performance` report
+kind. See [host performance](HOST_PERFORMANCE.md) for the schema, curl example,
+freshness and curve behavior.

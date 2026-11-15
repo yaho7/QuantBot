@@ -41,9 +41,12 @@ test("day and night share spacing and page navigation fades only the route", asy
   });
   expect(agent.ok()).toBeTruthy();
   const agentHeaders = { Authorization: "Bearer " + (await agent.json()).session };
-  const host = await page.request.put("/api/agent/host", {
+  const host = await page.request.post("/api/agent/performance", {
     headers: agentHeaders,
-    data: { machine_id: crypto.randomUUID().replaceAll("-", ""), name: "布局主机", scope: "machine" },
+    data: { host_name: "布局主机", records: [{ record_id: "layout-reading",
+      observed_at: new Date().toISOString(), sample_duration_ms: 10000,
+      host: { cpu_usage_percent: 12 },
+    }] },
   });
   expect(host.ok()).toBeTruthy();
   const { hostId } = await host.json();
@@ -153,4 +156,53 @@ test("day and night share spacing and page navigation fades only the route", asy
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(records).toHaveCSS("animation-name", "none");
   expect(errors).toEqual([]);
+});
+
+
+test("strategy creation shows the token and copyable GitHub prompt; deletion revokes the credential", async ({ page }) => {
+  const origin = "http://127.0.0.1:42357";
+  const setup = await page.request.get("/api/auth/setup");
+  const init = (await setup.json()).required as boolean;
+  const session = await page.request.post(init ? "/api/auth/setup" : "/api/auth/login", {
+    headers: { Origin: origin }, data: { username: "browser-admin", password: "browser-test-password" },
+  });
+  expect(session.ok()).toBeTruthy();
+
+  await page.addInitScript(() => {
+    document.addEventListener("DOMContentLoaded", () => {
+      const copy = navigator.clipboard;
+      Object.defineProperty(copy, "writeText", { value: async (value: string) => {
+        // Keep test clipboard contents outside the app UI and out of the OS clipboard.
+        (window as Window & { qbTestCopy?: string }).qbTestCopy = value;
+      } });
+    }, { once: true });
+  });
+  await page.goto("/admin/strategies");
+  const testName = "一键接入样本";
+  await page.getByRole("button", { name: "创建策略", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await dialog.getByLabel("策略名称").fill(testName);
+  await dialog.getByRole("button", { name: "创建策略", exact: true }).click();
+  await expect(dialog.getByRole("heading", { name: "策略已创建" })).toBeVisible();
+  const token = await dialog.locator(".secret code").innerText();
+  expect(token).toMatch(/^qbt_/);
+  await dialog.getByRole("button", { name: "复制 AI 接入提示词" }).click();
+  const prompt = await page.evaluate(() => (window as Window & { qbTestCopy?: string }).qbTestCopy);
+  for (const path of ["docs/AGENT_PROTOCOL.md", "examples/v3/report.py", "examples/v3/report.mjs", "examples/v3/report.go", "examples/v3/report.sh"]) {
+    expect(prompt).toContain("https://github.com/yaho7/QuantBot/blob/main/" + path);
+  }
+  expect(prompt).toContain(origin + "/api/agent");
+  expect(prompt).toContain(testName);
+  expect(prompt).not.toContain(token);
+  await expect(page).toHaveURL(/\/admin\/strategies$/);
+  await page.keyboard.press("Escape");
+  const row = page.getByRole("row").filter({ hasText: testName });
+  await row.getByRole("button", { name: "删除策略" }).click();
+  await dialog.getByRole("button", { name: "删除策略" }).click();
+  await expect(row).toHaveCount(0);
+  const agent = await page.request.post("/api/agent/session", {
+    headers: { Authorization: "Bearer " + token },
+    data: { instanceId: "removed", bootId: "new-boot" },
+  });
+  expect(agent.status()).toBe(401);
 });

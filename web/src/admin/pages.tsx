@@ -1,5 +1,5 @@
 import { SandboxPanel } from "./sandbox";
-import { agentPrompt } from "./agent-prompt";
+import { agentPrompt, agentReferences } from "./agent-prompt";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
@@ -92,8 +92,15 @@ export function AdminStrategies() {
   const [name, setName] = useState("");
   const [group, setGroup] = useState("");
   const [mode, setMode] = useState("paper");
-  const [secret, setSecret] = useState("");
-  const [id, setId] = useState("");
+  const [deleting, setDeleting] = useState<Strategy>();
+  const active = (query.data ?? []).filter(strategy => !strategy.archivedAt);
+  const remove = useMutation({
+    mutationFn: (id: string) => api<void>("/admin/strategies/" + id, "DELETE"),
+    onSuccess: () => {
+      setDeleting(undefined);
+      void client.invalidateQueries();
+    },
+  });
   const create = useMutation({
     mutationFn: () =>
       api<{ strategy: Strategy; credential: { token: string } }>(
@@ -101,11 +108,7 @@ export function AdminStrategies() {
         "POST",
         { name, group, mode },
       ),
-    onSuccess: (result) => {
-      setSecret(result.credential.token);
-      setId(result.strategy.id);
-      void client.invalidateQueries();
-    },
+    onSuccess: () => { void client.invalidateQueries(); },
   });
   return (
     <Page
@@ -117,7 +120,6 @@ export function AdminStrategies() {
             setName("");
             setGroup("");
             setMode("paper");
-            setSecret("");
             create.reset();
             setOpen(true);
           }}
@@ -144,13 +146,12 @@ export function AdminStrategies() {
               </tr>
             </thead>
             <tbody>
-              {query.data.map((strategy) => (
+              {active.map((strategy) => (
                 <tr key={strategy.id}>
                   <td>
                     <Link to={"/strategies/" + strategy.id}>
                       {strategy.name}
                     </Link>
-                    {strategy.archivedAt && <Badge>{t("archive")}</Badge>}
                   </td>
                   <td>{strategy.group}</td>
                   <td>
@@ -160,29 +161,41 @@ export function AdminStrategies() {
                   </td>
                   <td>{timestamp(strategy.lastSeen, true)}</td>
                   <td>
-                    <Link to={"/admin/integration?strategy=" + strategy.id}>
-                      {t("integration")} <ExternalLink size={14} />
-                    </Link>
+                    <div className="actions">
+                      <Link to={"/admin/integration?strategy=" + strategy.id}>
+                        {t("integration")} <ExternalLink size={14} />
+                      </Link>
+                      <button type="button" className="text-button danger" onClick={() => {
+                        remove.reset();
+                        setDeleting(strategy);
+                      }}>{t("deleteStrategy")}</button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {!query.data.length && <p className="empty-inline">{t("empty")}</p>}
+          {!active.length && <p className="empty-inline">{t("empty")}</p>}
         </div>
       )}
-      <Modal title={t("create")} open={open} onOpenChange={setOpen}>
-        {secret ? (
+      <Modal title={t(create.data ? "strategyCreated" : "create")} open={open}
+        onOpenChange={value => {
+          if (create.isPending) return;
+          setOpen(value);
+          if (!value) create.reset();
+        }}>
+        {create.data ? (
           <>
+            <p><strong>{create.data.strategy.name}</strong></p>
             <p>{t("credentialsHint")}</p>
-            <Secret value={secret} />
-            <Link
-              className="button primary"
-              to={"/admin/integration?strategy=" + id}
-              onClick={() => setOpen(false)}
-            >
-              {t("integration")}
-            </Link>
+            <h3>Agent Token</h3>
+            <Secret value={create.data.credential.token} label={t("copyAgentToken")} />
+            <CopyAgentPrompt strategy={create.data.strategy} primary />
+            <p className="muted">
+              <a href={agentReferences.protocol} target="_blank" rel="noreferrer">{t("protocol")}</a>
+              {" · "}
+              <a href={agentReferences.integration} target="_blank" rel="noreferrer">{t("integrationExamples")}</a>
+            </p>
           </>
         ) : (
           <form
@@ -226,6 +239,16 @@ export function AdminStrategies() {
           </form>
         )}
       </Modal>
+      {deleting && <Modal title={t("deleteStrategy")} open
+        onOpenChange={value => { if (!value && !remove.isPending) setDeleting(undefined); }}>
+        <p><strong>{deleting.name}</strong></p>
+        <p>{t("deleteStrategyWarning")}</p>
+        {remove.error && <p className="error-text" role="alert">{remove.error.message}</p>}
+        <div className="dialog-actions">
+          <button type="button" disabled={remove.isPending} onClick={() => setDeleting(undefined)}>{t("cancel")}</button>
+          <button type="button" className="danger" disabled={remove.isPending} onClick={() => remove.mutate(deleting.id)}>{t("deleteStrategy")}</button>
+        </div>
+      </Modal>}
     </Page>
   );
 }
@@ -434,16 +457,7 @@ export function Integration() {
                 {t("agentSchema")} <ExternalLink size={14} />
               </a>
             </p>
-            <button
-              onClick={() =>
-                void navigator.clipboard
-                  .writeText(agentPrompt(location.origin))
-                  .then(() => toast.success(t("copied")))
-                  .catch(() => toast.error(t("copyFailed")))
-              }
-            >
-              <Copy size={16} /> {t("copyProductionPrompt")}
-            </button>
+            <CopyAgentPrompt strategy={detail.data} />
             <pre>{`curl -X POST '${location.origin}/api/agent/session' \\\n  -H 'Authorization: Bearer YOUR_AGENT_TOKEN' \\\n  -H 'Content-Type: application/json' \\\n  -d '{"instanceId":"worker-a","bootId":"NEW_PROCESS_UUID"}'`}</pre>
           </section>
         </>
@@ -456,18 +470,38 @@ export function Integration() {
     </Page>
   );
 }
-function Secret({ value }: { value: string }) {
+function CopyAgentPrompt({ strategy, primary = false }: { strategy?: Strategy; primary?: boolean }) {
+  const { t } = useLanguage();
+  return <button type="button" className={primary ? "primary" : undefined}
+    onClick={async () => {
+      try {
+        await navigator.clipboard.writeText(agentPrompt(location.origin, undefined, strategy));
+        toast.success(t("copied"));
+      } catch {
+        toast.error(t("copyFailed"));
+      }
+    }}>
+    <Copy size={16} /> {t(primary ? "copyAgentPrompt" : "copyProductionPrompt")}
+  </button>;
+}
+
+function Secret({ value, label }: { value: string; label?: string }) {
   const { t } = useLanguage();
   return (
     <div className="secret">
       <code>{value}</code>
       <button
-        aria-label={t("copy")}
-        onClick={() =>
-          void navigator.clipboard
-            .writeText(value)
-            .then(() => toast.success(t("copied")))
-        }
+        type="button"
+        aria-label={label ?? t("copy")}
+        title={label}
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(value);
+            toast.success(t("copied"));
+          } catch {
+            toast.error(t("copyFailed"));
+          }
+        }}
       >
         <Copy size={16} />
       </button>

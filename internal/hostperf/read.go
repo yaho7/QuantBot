@@ -20,8 +20,9 @@ type reading[T any] struct {
 
 type hostView struct {
 	host
-	Latest *reading[hostSample] `json:"latest"`
-	Stale  bool                 `json:"stale"`
+	Capacity *resources           `json:"capacity"`
+	Latest   *reading[hostSample] `json:"latest"`
+	Stale    bool                 `json:"stale"`
 }
 
 type member struct {
@@ -57,22 +58,12 @@ func sampleRows[T any](ctx context.Context, db *sql.DB, query string, args ...an
 	return out, rows.Err()
 }
 
-func (s *Service) reportBoot(ctx context.Context, h host) (string, error) {
-	var boot string
-	err := s.stores.Control.Read.QueryRowContext(ctx, `SELECT a.boot_id FROM agent_instances a
-		JOIN strategies s ON s.id=a.strategy_id AND s.archived_at IS NULL
-		JOIN performance_bindings b ON (a.strategy_id,a.instance_id,a.boot_id)=(b.strategy_id,b.instance_id,b.boot_id)
-		WHERE a.strategy_id=? AND a.instance_id=? AND b.host_id=?`, h.ReporterStrategy, h.ReporterInstance, h.ID).Scan(&boot)
-	if err == sql.ErrNoRows {
-		err = nil
-	}
-	return boot, err
-}
-
-func (s *Service) hostReadings(ctx context.Context, h host, boot string, from int64, limit int) ([]reading[hostSample], error) {
+func (s *Service) hostReadings(ctx context.Context, id string, from int64, limit int) ([]reading[hostSample], error) {
 	return sampleRows[hostSample](ctx, s.stores.Metrics.Read, `SELECT observed_at,received_at,host_data FROM performance_samples
-		WHERE host_id=? AND revision=? AND boot_id=? AND strategy_id=? AND instance_id=? AND host_data IS NOT NULL AND observed_at>=?
-		ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT ?`, h.ID, h.Revision, boot, h.ReporterStrategy, h.ReporterInstance, from, limit)
+		WHERE host_id=? AND host_run>0 AND host_data IS NOT NULL AND observed_at>=?
+		AND host_run=(SELECT host_run FROM performance_samples WHERE host_id=? AND host_data IS NOT NULL AND host_run>0
+			ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT 1)
+		ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT ?`, id, from, id, limit)
 }
 
 func fresh(now time.Time, observed int64) bool {
@@ -81,21 +72,33 @@ func fresh(now time.Time, observed int64) bool {
 
 func (s *Service) viewHost(ctx context.Context, h host, now time.Time) (hostView, error) {
 	v := hostView{host: h, Stale: true}
-	boot, err := s.reportBoot(ctx, h)
-	if err != nil || boot == "" {
+	var item reading[hostSample]
+	var payload string
+	var capacity sql.NullString
+	err := s.stores.Metrics.Read.QueryRowContext(ctx, `SELECT observed_at,received_at,host_data,host_capacity FROM performance_samples
+		WHERE host_id=? AND host_data IS NOT NULL AND host_run>0 ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT 1`, h.ID).
+		Scan(&item.ObservedAt, &item.ReceivedAt, &payload, &capacity)
+	if err == sql.ErrNoRows {
+		return v, nil
+	}
+	if err != nil {
 		return v, err
 	}
-	history, err := s.hostReadings(ctx, h, boot, 0, 1)
-	if len(history) > 0 {
-		v.Latest = &history[0]
-		v.Stale = !fresh(now, history[0].ObservedAt)
+	if err = json.Unmarshal([]byte(payload), &item.Data); err != nil {
+		return v, err
 	}
-	return v, err
+	if capacity.Valid {
+		if err = json.Unmarshal([]byte(capacity.String), &v.Capacity); err != nil {
+			return v, err
+		}
+	}
+	v.Latest, v.Stale = &item, !fresh(now, item.ObservedAt)
+	return v, nil
 }
 
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	rows, err := s.stores.Control.Read.QueryContext(ctx, "SELECT "+hostFields+" FROM performance_hosts ORDER BY name,id")
+	rows, err := s.stores.Control.Read.QueryContext(ctx, "SELECT id,name FROM performance_hosts WHERE "+discovered+" ORDER BY name,id")
 	if err != nil {
 		writeError(w, err)
 		return
@@ -103,7 +106,7 @@ func (s *Service) list(w http.ResponseWriter, r *http.Request) {
 	var hosts []host
 	for rows.Next() {
 		var h host
-		if err := scanHost(rows, &h); err != nil {
+		if err := rows.Scan(&h.ID, &h.Name); err != nil {
 			rows.Close()
 			writeError(w, err)
 			return
@@ -173,13 +176,15 @@ func (s *Service) members(ctx context.Context, where string, args ...any) ([]mem
 
 func (s *Service) processReadings(ctx context.Context, m member, from int64, limit int) ([]reading[processSample], error) {
 	return sampleRows[processSample](ctx, s.stores.Metrics.Read, `SELECT observed_at,received_at,process_data FROM performance_samples
-		WHERE strategy_id=? AND instance_id=? AND boot_id=? AND process_data IS NOT NULL AND observed_at>=?
-		ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT ?`, m.Strategy, m.Instance, m.Boot, from, limit)
+		WHERE strategy_id=? AND instance_id=? AND boot_id=? AND process_data IS NOT NULL AND process_run>0 AND observed_at>=?
+		AND process_run=(SELECT process_run FROM performance_samples WHERE strategy_id=? AND instance_id=? AND boot_id=?
+			AND process_data IS NOT NULL AND process_run>0 ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT 1)
+		ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT ?`, m.Strategy, m.Instance, m.Boot, from, m.Strategy, m.Instance, m.Boot, limit)
 }
 
 func (s *Service) findHost(ctx context.Context, id string) (host, error) {
 	var h host
-	err := scanHost(s.stores.Control.Read.QueryRowContext(ctx, "SELECT "+hostFields+" FROM performance_hosts WHERE id=?", id), &h)
+	err := s.stores.Control.Read.QueryRowContext(ctx, "SELECT id,name FROM performance_hosts WHERE id=? AND "+discovered, id).Scan(&h.ID, &h.Name)
 	return h, err
 }
 
@@ -201,10 +206,8 @@ func (s *Service) detail(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	// Preserve historical trends across ordinary reporter restarts, within the current capacity.
-	history, err := sampleRows[hostSample](ctx, s.stores.Metrics.Read, `SELECT observed_at,received_at,host_data FROM performance_samples
-		WHERE host_id=? AND revision=? AND host_data IS NOT NULL AND observed_at>=?
-		ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT 240`, h.ID, h.Revision, now.Add(-time.Hour).UnixMilli())
+	// Only chart the current uninterrupted run within the last hour.
+	history, err := s.hostReadings(ctx, h.ID, now.Add(-time.Hour).UnixMilli(), 240)
 	if err != nil {
 		writeError(w, err)
 		return
@@ -218,7 +221,7 @@ func (s *Service) detail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) strategyPerformance(w http.ResponseWriter, r *http.Request) {
-	members, err := s.members(r.Context(), "b.strategy_id=?", chi.URLParam(r, "id"))
+	members, err := s.members(r.Context(), "b.strategy_id=? AND h."+discovered, chi.URLParam(r, "id"))
 	if err != nil {
 		writeError(w, err)
 		return
@@ -228,7 +231,7 @@ func (s *Service) strategyPerformance(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) processHistory(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	targets, err := s.members(ctx, "b.strategy_id=? AND b.instance_id=?", chi.URLParam(r, "id"), chi.URLParam(r, "instanceId"))
+	targets, err := s.members(ctx, "b.strategy_id=? AND b.instance_id=? AND h."+discovered, chi.URLParam(r, "id"), chi.URLParam(r, "instanceId"))
 	if err != nil {
 		writeError(w, err)
 		return

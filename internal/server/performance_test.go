@@ -49,92 +49,58 @@ func TestHostPerformanceAcrossMachines(t *testing.T) {
 	connect := func(instance, boot string) string {
 		return send("POST", "/agent/session", map[string]string{"instanceId": instance, "bootId": boot}, token, 201)["session"].(string)
 	}
-	const macID = "58c8e97d6e294ac9bfb87c72aa306e0d"
-	const vpsID = "dd260ccd49df47beb73532d8cdee6ae6"
-	bind := func(machineID, name, scope, session string, capacity bool, status int) map[string]any {
-		in := map[string]any{"machine_id": machineID, "name": name, "scope": scope, "process_budget": map[string]any{"cpu_cores": .5, "memory_bytes": 100}}
-		if capacity {
-			in["capacity"] = map[string]any{"cpu_cores": 2, "memory_bytes": 1000}
-		}
-		return send("PUT", "/agent/host", in, session, status)
-	}
-	macSession, vpsSession, reader := connect("mac", "boot1"), connect("vps", "boot2"), connect("vps-reader", "boot3")
-	bind(macID, "same host name", "machine", "", true, 401)
-	mac := bind(macID, "same host name", "machine", macSession, true, 200)
-	vps := bind(vpsID, "same host name", "machine", vpsSession, true, 200)
-	if mac["hostId"] == vps["hostId"] {
-		t.Fatal("same host names were merged")
-	}
-	if repeat := bind(macID, "Mac", "machine", macSession, true, 200); repeat["hostId"] != mac["hostId"] || repeat["revision"] != mac["revision"] {
-		t.Fatalf("rename changed identity or capacity revision: %v", repeat)
-	}
-	if details := send("GET", "/hosts/"+mac["hostId"].(string), nil, "", 200); details["name"] != "Mac" {
-		t.Fatalf("reported host name not surfaced: %v", details)
-	}
-	bind(vpsID, "VPS", "machine", macSession, false, 409)
-	if joined := bind(vpsID, "VPS alias", "machine", reader, true, 200); joined["hostReporter"] != false || joined["hostId"] != vps["hostId"] {
-		t.Fatalf("shared machine ID did not attach to the existing host: %v", joined)
-	}
-	if details := send("GET", "/hosts/"+vps["hostId"].(string), nil, "", 200); details["name"] != "same host name" {
-		t.Fatalf("non-reporter overwrote host name: %v", details)
-	}
+	macSession, vpsSession, peer := connect("mac", "boot1"), connect("vps", "boot2"), connect("peer", "boot3")
+	now := time.Now()
 	report := func(id string, at time.Time, cpu float64) map[string]any {
 		return map[string]any{"record_id": id, "observed_at": at.Format(time.RFC3339Nano), "sample_duration_ms": 15000,
 			"host": map[string]any{"cpu_usage_percent": cpu, "memory_available_bytes": 700}, "process": map[string]any{"cpu_cores_used": 0.5, "rss_bytes": 100}}
 	}
-	ingest := func(session string, status int, items ...map[string]any) map[string]any {
-		return send("POST", "/agent/performance", map[string]any{"records": items}, session, status)
+	ingest := func(name, session string, status int, items ...map[string]any) map[string]any {
+		return send("POST", "/agent/performance", map[string]any{"host_name": name,
+			"capacity": map[string]any{"cpu_cores": 2, "memory_bytes": 1000}, "records": items}, session, status)
 	}
-	now := time.Now()
-	m := report("sample", now.Add(-5*time.Minute), 20)
-	v := report("sample", now.Add(-time.Second), 25)
-	ingest(macSession, 200, m)
-	ingest(vpsSession, 200, v)
-	// Host and process clocks are independent; reordered samples never replace latest.
-	ingest(vpsSession, 200, report("late", now.Add(-10*time.Minute), 90))
-	if dup := ingest(vpsSession, 200, v); dup["duplicate"] != float64(1) {
-		t.Fatalf("expected idempotent retry, got %v", dup)
+	ingest("Mac", "", 401, report("unauthorized", now, 20))
+	mac := ingest("Mac", macSession, 200, report("mac", now.Add(-10*time.Minute), 20))["hostId"].(string)
+	initial := report("old", now.Add(-2*time.Minute), 25)
+	vps := ingest("VPS", vpsSession, 200, initial)["hostId"].(string)
+	newSample := report("sample", now.Add(-10*time.Second), 25)
+	ingest("VPS", vpsSession, 200, newSample)
+	joined := ingest(" vps ", peer, 200, report("peer", now.Add(-time.Second), 25))
+	if joined["hostId"] != vps || mac == vps {
+		t.Fatalf("wrong grouping: %v", joined)
 	}
-	conflict := report("sample", now.Add(-time.Second), 22)
-	probe := report("probe", now.Add(-time.Second), 25)
-	ingest(vpsSession, 409, probe, conflict)
-	if ack := ingest(vpsSession, 200, probe); ack["inserted"] != float64(1) {
-		t.Fatalf("expected atomic rollback, got %v", ack)
+	if d := ingest("VPS", vpsSession, 200, newSample); d["duplicate"] != float64(1) {
+		t.Fatalf("expected deduplication: %v", d)
 	}
-	ingest(reader, 403, v)
-	processOnly := report("reader", now.Add(-time.Second), 25)
-	delete(processOnly, "host")
-	ingest(reader, 200, processOnly)
-	bad := report("bad", now, 25)
-	bad["host"].(map[string]any)["cpu_usage_percent"] = 101
-	ingest(vpsSession, 400, bad)
-	bad["host"] = nil
-	ingest(vpsSession, 400, bad)
-	ingest("", 401, v)
-	capacity := func(machine map[string]any, instance, bearer string, status int) map[string]any {
-		return send(http.MethodGet, "/hosts/"+machine["hostId"].(string)+"/capacity?strategyId="+strategy+"&instanceId="+instance, nil, bearer, status)
+	// A delayed sample from before the active run cannot reconnect it.
+	ingest("VPS", vpsSession, 200, report("late", now.Add(-55*time.Second), 99))
+	host := send("GET", "/hosts/"+vps, nil, "", 200)
+	if host["name"] != "VPS" || len(host["history"].([]any)) != 2 {
+		t.Fatalf("expected two samples from the uninterrupted run: %v", host)
+	}
+	send("GET", "/strategies/"+strategy+"/performance", nil, "", 200)
+	capacity := func(id, instance, bearer string, status int) map[string]any {
+		return send(http.MethodGet, "/hosts/"+id+"/capacity?strategyId="+strategy+"&instanceId="+instance, nil, bearer, status)
 	}
 	capacity(vps, "vps", "-", 401)
-	if outcome := capacity(vps, "vps", "", 200); outcome["additional"] != float64(2) || outcome["bottleneck"] != "cpu" {
-		t.Fatalf("bad effective quota estimate: %v", outcome)
+	if outcome := capacity(vps, "vps", "", 200); outcome["additional"] != float64(2) || outcome["source"] != "latest" || outcome["bottleneck"] != "cpu" {
+		t.Fatalf("bad latest-sample estimate: %v", outcome)
 	}
 	if outcome := capacity(mac, "mac", "", 200); outcome["reason"] != "host_stale" {
 		t.Fatalf("old host data utilized: %v", outcome)
 	}
-	// A new boot may move the same logical instance without altering the other host.
+	probe := report("probe", now.Add(-12*time.Second), 25)
+	ingest("VPS", vpsSession, 409, probe, report("sample", now.Add(-10*time.Second), 22))
+	if ack := ingest("VPS", vpsSession, 200, probe); ack["inserted"] != float64(1) {
+		t.Fatalf("expected batch rollback: %v", ack)
+	}
+	ingest("VPS", vpsSession, 400, report("bad", now, 101))
+	ingest("another machine", vpsSession, 409, report("rename", now, 25))
 	newMac := connect("mac", "boot4")
-	bind(vpsID, "VPS", "machine", newMac, false, 200)
-	ingest(macSession, 401, m)
-	if outcome := capacity(vps, "mac", "", 200); outcome["additional"] != float64(2) {
-		t.Fatalf("moved instance did not see VPS pool: %v", outcome)
-	}
-	movedVPS := connect("vps", "boot5")
-	bind(macID, "Mac", "machine", movedVPS, true, 200)
-	if elected := bind(vpsID, "VPS", "machine", reader, true, 200); elected["hostReporter"] != true {
-		t.Fatalf("active peer could not take over after reporter moved: %v", elected)
-	}
-	ingest(reader, 200, report("takeover", now, 25))
+	ingest("VPS", newMac, 200, report("moved", now, 25))
+	ingest("Mac", macSession, 401, report("old-boot", now, 25))
 	const admin = "/admin/strategies/"
-	send("DELETE", admin+strategy+"/tokens/"+create["credential"].(map[string]any)["id"].(string), nil, "", 204)
-	ingest(vpsSession, 401, report("revoked", now, 20))
+	send("DELETE", admin+strategy, nil, "", 204)
+	ingest("VPS", vpsSession, 401, report("deleted", now, 20))
+	send("POST", "/agent/session", map[string]string{"instanceId": "vps", "bootId": "new-after-delete"}, token, 401)
 }

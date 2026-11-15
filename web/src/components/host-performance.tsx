@@ -23,9 +23,8 @@ export type ProcessMetrics = {
   uptime_seconds?: number;
 };
 export type Host = {
-  id: string; name: string; scope: "machine" | "container";
-  reporterStrategyId: string; reporterInstanceId: string;
-  capacity: Resources; stale: boolean; latest: Reading<HostMetrics> | null;
+  id: string; name: string;
+  capacity: Resources | null; stale: boolean; latest: Reading<HostMetrics> | null;
 };
 export type HostProcess = {
   strategyId: string; strategyName: string; instanceId: string;
@@ -63,10 +62,10 @@ export function HostMetricsGrid({ host, compact = false }: { host: Host; compact
   const sample = host.latest?.data;
   return <dl className="performance-metrics">
     <div><dt>{t("hostCPU")}</dt><dd>{percent(sample?.cpu_usage_percent)}</dd>
-      {host.capacity.cpu_cores > 0 && <small className="muted">{cores(host.capacity.cpu_cores)}</small>}
+      {host.capacity && host.capacity.cpu_cores > 0 && <small className="muted">{cores(host.capacity.cpu_cores)}</small>}
     </div>
     <div><dt>{t("availableMemory")}</dt><dd>{bytes(sample?.memory_available_bytes)}</dd>
-      {host.capacity.memory_bytes > 0 && <small className="muted">{t("resourceLimit")} {bytes(host.capacity.memory_bytes)}</small>}
+      {host.capacity && host.capacity.memory_bytes > 0 && <small className="muted">{t("resourceLimit")} {bytes(host.capacity.memory_bytes)}</small>}
     </div>
     {!compact && sample?.disk_available_bytes != null && <div><dt>{t("availableDisk")}</dt><dd>{bytes(sample.disk_available_bytes)}</dd></div>}
     {!compact && sample?.swap_used_bytes != null && <div><dt>{t("swapUsed")}</dt><dd>{bytes(sample.swap_used_bytes)}</dd></div>}

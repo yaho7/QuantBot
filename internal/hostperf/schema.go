@@ -27,7 +27,7 @@ var schemas = sync.OnceValues(func() (map[string]*jsonschema.Schema, error) {
 		return nil, err
 	}
 	out := make(map[string]*jsonschema.Schema)
-	for _, key := range []string{"binding", "batch"} {
+	for _, key := range []string{"batch"} {
 		out[key], err = c.Compile(schemaURL + "#/$defs/" + key)
 		if err != nil {
 			return nil, err

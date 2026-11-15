@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"math"
 	"net/http"
-	"slices"
 	"strconv"
 	"time"
 
@@ -19,7 +18,6 @@ type estimate struct {
 	Budget         *resources `json:"budget,omitempty"`
 	Source         string     `json:"source,omitempty"`
 	ReservePercent int        `json:"reservePercent"`
-	Samples        int        `json:"sampleMinutes,omitempty"`
 }
 
 func (s *Service) capacity(w http.ResponseWriter, r *http.Request) {
@@ -52,25 +50,24 @@ func (s *Service) capacity(w http.ResponseWriter, r *http.Request) {
 	m := targets[0]
 	now := time.Now()
 	out := estimate{ReservePercent: reserve}
-	boot, err := s.reportBoot(ctx, h)
-	if err != nil {
-		writeError(w, err)
-		return
-	}
-	recent, err := s.hostReadings(ctx, h, boot, now.Add(-freshness).UnixMilli(), 240)
+	view, err := s.viewHost(ctx, h, now)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
 	out.Reason = "host_stale"
-	if len(recent) == 0 || !fresh(now, recent[0].ObservedAt) {
+	if view.Latest == nil || view.Stale {
 		httpapi.JSON(w, 200, out)
 		return
 	}
+	data := view.Latest.Data
 	out.Reason = "host_metrics_missing"
-	cpu, mem, reason := headroom(h.Capacity, recent)
-	if reason != "" {
-		out.Reason = reason
+	if view.Capacity == nil || !view.Capacity.valid() || data.CPU == nil || data.Available == nil {
+		httpapi.JSON(w, 200, out)
+		return
+	}
+	if data.Pressure != nil && *data.Pressure {
+		out.Reason = "swap_pressure"
 		httpapi.JSON(w, 200, out)
 		return
 	}
@@ -78,52 +75,26 @@ func (s *Service) capacity(w http.ResponseWriter, r *http.Request) {
 		out.Budget, out.Source = m.Budget, "declared"
 	} else {
 		out.Reason = "process_stale"
-		if m.Stale {
+		if m.Stale || m.Latest == nil {
 			httpapi.JSON(w, 200, out)
 			return
 		}
-		out.Reason = "insufficient_history"
-		out.Budget, out.Samples, err = s.historicalBudget(r, m, now)
-		if err != nil {
-			writeError(w, err)
-			return
-		}
-		if out.Budget == nil {
+		data := m.Latest.Data
+		out.Reason = "process_metrics_missing"
+		if data.CPU == nil || data.RSS == nil {
 			httpapi.JSON(w, 200, out)
 			return
 		}
-		out.Source = "p95"
+		budget := resources{CPUCores: *data.CPU, Memory: *data.RSS}
+		if !budget.valid() {
+			httpapi.JSON(w, 200, out)
+			return
+		}
+		out.Budget, out.Source = &budget, "latest"
 	}
-	n, limiting := additional(h.Capacity, *out.Budget, cpu, mem, reserve)
+	n, limiting := additional(*view.Capacity, *out.Budget, view.Capacity.CPUCores*(1-*data.CPU/100), float64(*data.Available), reserve)
 	out.Additional, out.Bottleneck, out.Reason = &n, limiting, ""
 	httpapi.JSON(w, 200, out)
-}
-
-func headroom(cap resources, rows []reading[hostSample]) (float64, float64, string) {
-	cpu, mem := cap.CPUCores, float64(cap.Memory)
-	if len(rows) == 0 || !cap.valid() || rows[0].Data.CPU == nil || rows[0].Data.Available == nil {
-		return 0, 0, "host_metrics_missing"
-	}
-	var firstSwap *int64
-	for _, r := range rows {
-		if p := r.Data.Pressure; p != nil && *p {
-			return 0, 0, "swap_pressure"
-		}
-		if swap := r.Data.Swap; swap != nil {
-			if firstSwap == nil {
-				firstSwap = swap
-			} else if *firstSwap > *swap {
-				return 0, 0, "swap_pressure"
-			}
-		}
-		if r.Data.CPU != nil {
-			cpu = min(cpu, cap.CPUCores*(1-*r.Data.CPU/100))
-		}
-		if r.Data.Available != nil {
-			mem = min(mem, float64(*r.Data.Available))
-		}
-	}
-	return cpu, mem, ""
 }
 
 func additional(cap, budget resources, cpu, mem float64, reserve int) (int, string) {
@@ -137,42 +108,4 @@ func additional(cap, budget resources, cpu, mem float64, reserve int) (int, stri
 		limiting = "both"
 	}
 	return int(min(math.Floor(min(cpuRatio, memRatio)), float64(1<<31-1))), limiting
-}
-
-func (s *Service) historicalBudget(r *http.Request, m member, now time.Time) (*resources, int, error) {
-	rows, err := s.stores.Metrics.Read.QueryContext(r.Context(), `SELECT observed_at/60000 AS minute,
-		MAX(json_extract(process_data,'$.cpu_cores_used')),MAX(json_extract(process_data,'$.rss_bytes'))
-		FROM performance_samples WHERE strategy_id=? AND instance_id=? AND boot_id=? AND process_data IS NOT NULL
-		AND observed_at BETWEEN ? AND ? AND json_type(process_data,'$.cpu_cores_used') IS NOT NULL
-		AND json_type(process_data,'$.rss_bytes') IS NOT NULL
-		GROUP BY minute ORDER BY minute`, m.Strategy, m.Instance, m.Boot, now.Add(-24*time.Hour).UnixMilli(), now.UnixMilli())
-	if err != nil {
-		return nil, 0, err
-	}
-	defer rows.Close()
-	var cpus []float64
-	var memories []int64
-	for rows.Next() {
-		var minute, mem int64
-		var cpu float64
-		if err := rows.Scan(&minute, &cpu, &mem); err != nil {
-			return nil, 0, err
-		}
-		cpus, memories = append(cpus, cpu), append(memories, mem)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
-	n := len(cpus)
-	if n < 30 {
-		return nil, n, nil
-	}
-	slices.Sort(cpus)
-	slices.Sort(memories)
-	idx := int(math.Ceil(float64(n)*.95)) - 1
-	budget := resources{CPUCores: cpus[idx], Memory: memories[idx]}
-	if !budget.valid() {
-		return nil, n, nil
-	}
-	return &budget, n, nil
 }

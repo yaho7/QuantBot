@@ -1,6 +1,13 @@
 # QuantBot Agent integration
 
-Create a dedicated paper strategy in **Administration → Strategies**. Copy the Agent credential when it is issued. The **Integration** page shows the Agent URL and offers a copyable AI prompt. Inject credentials through a local secret store or a protected environment variable on the strategy host.
+Create a dedicated paper strategy in **Administration → Strategies**. The success
+dialog shows the first Agent Token and a separate **Copy AI integration prompt**
+button. The prompt includes the current Agent URL, target strategy, deployed
+schemas, and direct GitHub links to the protocol and Python, JavaScript, Go, and
+curl examples. It does not contain the production Token. Inject that separately
+through a local secret store or a protected environment variable on the strategy
+host. Use **Integration** later for credential rotation, Sandbox, or Executor
+assignment; these are not needed to start heartbeat and monitoring reports.
 
 Read the [Agent protocol](AGENT_PROTOCOL.md), [declaration and batch schemas](../internal/server/schemas/agent.json), and [standard report record schema](../internal/telemetry/schemas/report.json).
 
@@ -75,7 +82,7 @@ A Go strategy can embed the [session client](../agent/session.go) using its exis
 
 ## Optional host monitoring
 
-See [host performance](HOST_PERFORMANCE.md) to bind Mac and VPS instances,
-report measured CPU/memory/disk data, and estimate remaining capacity. Use
+See [host performance](HOST_PERFORMANCE.md) to discover Mac and VPS hosts directly from reports,
+send measured CPU/memory/disk data, and estimate remaining capacity. Use
 independent schedules. If the same strategy runs on both machines simultaneously,
 configure a distinct stable `instanceId` for each in the local environment.

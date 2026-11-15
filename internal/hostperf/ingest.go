@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/yaho7/QuantBot/internal/httpapi"
@@ -55,10 +57,13 @@ func (s *Service) ingest(w http.ResponseWriter, r *http.Request) {
 		httpapi.Error(w, 429, "performance_busy", "Too many concurrent requests; retry with the same record IDs")
 		return
 	}
-	var batch struct {
-		Records []record `json:"records"`
-	}
+	var batch reportBatch
 	if !readInput(w, r, &batch, "batch", 256<<10) {
+		return
+	}
+	batch.Name = strings.TrimSpace(batch.Name)
+	if batch.Name == "" {
+		httpapi.Error(w, 400, "invalid_host", "Report a non-empty host_name")
 		return
 	}
 	now := time.Now()
@@ -67,21 +72,35 @@ func (s *Service) ingest(w http.ResponseWriter, r *http.Request) {
 			writeError(w, fmt.Errorf("%w: observed_at must be after the Unix epoch and no more than two minutes in the future", errSample))
 			return
 		}
+		if item.Host != nil && batch.Capacity != nil && item.Host.Available != nil && *item.Host.Available > batch.Capacity.Memory {
+			writeError(w, fmt.Errorf("%w: available memory cannot exceed reported capacity", errSample))
+			return
+		}
 	}
-	ack, err := s.persist(ctx, auth, agent, batch.Records, now)
+	// The next reporter is simply whichever authorized Agent reported a new
+	// observation. A host name is for display and grouping only.
+	hostID, err := s.bindReported(ctx, auth, agent, batch)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+	sort.SliceStable(batch.Records, func(i, j int) bool { return batch.Records[i].Observed.Before(batch.Records[j].Observed) })
+	ack, err := s.persist(ctx, auth, agent, hostID, batch, now)
+	if err != nil {
+		writeError(w, err)
+		return
+	}
+	ack.HostID = hostID
 	httpapi.JSON(w, 200, ack)
 }
 
 type acknowledgment struct {
-	Inserted  int `json:"inserted"`
-	Duplicate int `json:"duplicate"`
+	HostID    string `json:"hostId"`
+	Inserted  int    `json:"inserted"`
+	Duplicate int    `json:"duplicate"`
 }
 
-func (s *Service) persist(ctx context.Context, auth string, agent strategy.Agent, records []record, now time.Time) (acknowledgment, error) {
+func (s *Service) persist(ctx context.Context, auth string, agent strategy.Agent, hostID string, batch reportBatch, now time.Time) (acknowledgment, error) {
 	var ack acknowledgment
 	err := storage.WithTx(ctx, s.stores.Metrics.Write, func(tx *sql.Tx) error {
 		// Read the current session again after waiting for the metrics writer.
@@ -92,29 +111,17 @@ func (s *Service) persist(ctx context.Context, auth string, agent strategy.Agent
 		if current.StrategyID != agent.StrategyID || current.InstanceID != agent.InstanceID || current.BootID != agent.BootID {
 			return strategy.ErrUnauthorized
 		}
-		var h host
-		err = scanHost(s.stores.Control.Read.QueryRowContext(ctx, "SELECT "+hostFields+` FROM performance_hosts WHERE id=(
-			SELECT host_id FROM performance_bindings WHERE strategy_id=? AND instance_id=? AND boot_id=?)`,
-			agent.StrategyID, agent.InstanceID, agent.BootID), &h)
-		if errors.Is(err, sql.ErrNoRows) {
-			return errBinding
-		}
-		if err != nil {
-			return err
-		}
-		for _, report := range records {
-			if report.Host != nil && (h.ReporterStrategy != agent.StrategyID || h.ReporterInstance != agent.InstanceID) {
-				return errReporter
-			}
+		for _, report := range batch.Records {
 			hostJSON, processJSON := optionalJSON(report.Host, report.Host != nil), optionalJSON(report.Process, report.Process != nil)
 			observed := report.Observed.UnixMilli()
-			var oldHost, oldProcess sql.NullString
+			capacity := optionalJSON(batch.Capacity, report.Host != nil && batch.Capacity != nil)
+			var oldHost, oldProcess, oldCapacity sql.NullString
 			var oldObserved, oldDuration int64
-			err := tx.QueryRowContext(ctx, `SELECT observed_at,duration_ms,host_data,process_data FROM performance_samples
+			err := tx.QueryRowContext(ctx, `SELECT observed_at,duration_ms,host_data,process_data,host_capacity FROM performance_samples
 				WHERE strategy_id=? AND instance_id=? AND boot_id=? AND record_id=?`, agent.StrategyID, agent.InstanceID, agent.BootID, report.ID).
-				Scan(&oldObserved, &oldDuration, &oldHost, &oldProcess)
+				Scan(&oldObserved, &oldDuration, &oldHost, &oldProcess, &oldCapacity)
 			if err == nil {
-				if oldObserved != observed || oldDuration != report.Duration || oldHost != hostJSON || oldProcess != processJSON {
+				if oldObserved != observed || oldDuration != report.Duration || oldHost != hostJSON || oldProcess != processJSON || oldCapacity != capacity {
 					return errConflict
 				}
 				ack.Duplicate++
@@ -123,12 +130,22 @@ func (s *Service) persist(ctx context.Context, auth string, agent strategy.Agent
 			if !errors.Is(err, sql.ErrNoRows) {
 				return err
 			}
-			if report.Host != nil && (!h.Capacity.valid() || report.Host.Available != nil && *report.Host.Available > h.Capacity.Memory) {
-				return fmt.Errorf("%w: register effective capacity before reporting host data; available memory cannot exceed capacity", errSample)
+			var hostRun, processRun int64
+			if report.Host != nil {
+				hostRun, err = currentRun(ctx, tx, hostID, agent, observed, true)
+				if err != nil {
+					return err
+				}
+			}
+			if report.Process != nil {
+				processRun, err = currentRun(ctx, tx, hostID, agent, observed, false)
+				if err != nil {
+					return err
+				}
 			}
 			_, err = tx.ExecContext(ctx, `INSERT INTO performance_samples
-				(host_id,strategy_id,instance_id,boot_id,revision,record_id,observed_at,received_at,duration_ms,host_data,process_data)
-				VALUES(?,?,?,?,?,?,?,?,?,?,?)`, h.ID, agent.StrategyID, agent.InstanceID, agent.BootID, h.Revision, report.ID, observed, now.UnixMilli(), report.Duration, hostJSON, processJSON)
+				(host_id,strategy_id,instance_id,boot_id,revision,record_id,observed_at,received_at,duration_ms,host_data,process_data,host_capacity,host_run,process_run)
+				VALUES(?,?,?,?,0,?,?,?,?,?,?,?,?,?)`, hostID, agent.StrategyID, agent.InstanceID, agent.BootID, report.ID, observed, now.UnixMilli(), report.Duration, hostJSON, processJSON, capacity, hostRun, processRun)
 			if err != nil {
 				return err
 			}
@@ -137,6 +154,35 @@ func (s *Service) persist(ctx context.Context, auth string, agent strategy.Agent
 		return nil
 	})
 	return ack, err
+}
+
+// Late reports can fill the current run but cannot reopen a previous one.
+func currentRun(ctx context.Context, tx *sql.Tx, hostID string, agent strategy.Agent, observed int64, host bool) (int64, error) {
+	var last, run int64
+	var source, instance, boot string
+	var row *sql.Row
+	if host {
+		row = tx.QueryRowContext(ctx, `SELECT observed_at,host_run,strategy_id,instance_id,boot_id FROM performance_samples
+			WHERE host_id=? AND host_data IS NOT NULL AND host_run>0 ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT 1`, hostID)
+	} else {
+		row = tx.QueryRowContext(ctx, `SELECT observed_at,process_run,strategy_id,instance_id,boot_id FROM performance_samples
+			WHERE strategy_id=? AND instance_id=? AND boot_id=? AND process_data IS NOT NULL AND process_run>0
+			ORDER BY observed_at DESC,received_at DESC,record_id DESC LIMIT 1`, agent.StrategyID, agent.InstanceID, agent.BootID)
+	}
+	err := row.Scan(&last, &run, &source, &instance, &boot)
+	if errors.Is(err, sql.ErrNoRows) {
+		return observed, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	if observed < run {
+		return 0, nil
+	}
+	if observed > last && (observed-last > freshness.Milliseconds() || source == agent.StrategyID && instance == agent.InstanceID && boot != agent.BootID) {
+		return observed, nil
+	}
+	return run, nil
 }
 
 func optionalJSON(value any, present bool) sql.NullString {
@@ -160,7 +206,7 @@ func (s *Service) Maintain(ctx context.Context) {
 				result, err := s.stores.Metrics.Write.ExecContext(ctx, `DELETE FROM performance_samples WHERE
 					(strategy_id,instance_id,boot_id,record_id) IN
 					(SELECT strategy_id,instance_id,boot_id,record_id FROM performance_samples
-					WHERE observed_at<? ORDER BY observed_at LIMIT 2000)`, now.Add(-7*24*time.Hour).UnixMilli())
+					WHERE observed_at<? ORDER BY observed_at LIMIT 2000)`, now.Add(-3*24*time.Hour).UnixMilli())
 				if err != nil {
 					if ctx.Err() == nil {
 						slog.Error("performance retention", "error", err)

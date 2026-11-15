@@ -269,32 +269,9 @@
         }
       }
     },
-    "/api/agent/host": {
-      "put": {
-        "summary": "Bind this Agent process to a host",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "../internal/hostperf/performance.json#/$defs/binding"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Binding acknowledged"
-          },
-          "default": {
-            "description": "See HOST_PERFORMANCE.md for error and retry behavior"
-          }
-        }
-      }
-    },
     "/api/agent/performance": {
       "post": {
-        "summary": "Persist host or process performance samples",
+        "summary": "Report performance and automatically discover the host",
         "requestBody": {
           "required": true,
           "content": {

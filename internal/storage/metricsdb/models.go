@@ -62,17 +62,20 @@ type MetricDefinition struct {
 }
 
 type PerformanceSample struct {
-	HostID      string
-	StrategyID  string
-	InstanceID  string
-	BootID      string
-	Revision    int64
-	RecordID    string
-	ObservedAt  int64
-	ReceivedAt  int64
-	DurationMs  int64
-	HostData    sql.NullString
-	ProcessData sql.NullString
+	HostID       string
+	StrategyID   string
+	InstanceID   string
+	BootID       string
+	Revision     int64
+	RecordID     string
+	ObservedAt   int64
+	ReceivedAt   int64
+	DurationMs   int64
+	HostData     sql.NullString
+	ProcessData  sql.NullString
+	HostCapacity sql.NullString
+	HostRun      int64
+	ProcessRun   int64
 }
 
 type Rollup struct {

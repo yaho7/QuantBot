@@ -5,7 +5,7 @@ import { useParams } from "react-router-dom";
 import { Link } from "../shared/page-links";
 import { resource } from "../shared/api";
 import { useLanguage, type Message } from "../shared/i18n";
-import { Badge, ErrorView, Loading } from "../shared/ui";
+import { ErrorView, Loading } from "../shared/ui";
 import { Page } from "./App";
 import {
   HostMetricsGrid, hostsQuery, ProcessMetricsGrid, ResourceChart, SampleStatus,
@@ -23,7 +23,6 @@ export function HostsPage() {
       <div className="hosts-grid">{query.data.map(host => <article key={host.id} className="surface padded performance-host">
         <header className="performance-process-heading">
           <Link className="performance-link" to={"/hosts/" + host.id}><h2>{host.name}</h2><ArrowUpRight size={15} /></Link>
-          <Badge>{t(host.scope === "container" ? "hostContainer" : "hostMachine")}</Badge>
         </header>
         <HostMetricsGrid host={host} compact />
         <SampleStatus latest={host.latest} stale={host.stale} />
@@ -46,7 +45,6 @@ export function HostDetailPage() {
       <>
         <section className="surface padded performance-host">
           <header className="performance-process-heading">
-            <Badge>{t(query.data.scope === "container" ? "hostContainer" : "hostMachine")}</Badge>
             <SampleStatus latest={query.data.latest} stale={query.data.stale} />
           </header>
           <HostMetricsGrid host={query.data} />
@@ -87,10 +85,10 @@ function HostTrends({ history }: { history: Reading<HostMetrics>[] }) {
   </details>;
 }
 
-type Estimate = { additional: number | null; reason?: string; bottleneck?: string; budget?: Resources; source?: string; sampleMinutes?: number };
+type Estimate = { additional: number | null; reason?: string; bottleneck?: string; budget?: Resources; source?: string };
 const reasons: Record<string, Message> = {
   host_stale: "estimateHostStale", host_metrics_missing: "estimateMissing",
-  swap_pressure: "estimateSwap", process_stale: "estimateProcessStale", insufficient_history: "estimateHistory",
+  swap_pressure: "estimateSwap", process_stale: "estimateProcessStale", process_metrics_missing: "estimateProcessMissing",
 };
 function processKey(process: HostProcess) { return process.strategyId + "/" + process.instanceId; }
 
@@ -136,7 +134,7 @@ function HostSuggestions({ host }: { host: Host }) {
   if (host.stale) suggestions.push("suggestHostStale");
   else if (data) {
     if ((data.cpu_usage_percent ?? -1) >= 85) suggestions.push("suggestHostCPU");
-    if (host.capacity.memory_bytes > 0 && data.memory_available_bytes != null && data.memory_available_bytes / host.capacity.memory_bytes < .15) suggestions.push("suggestHostMemory");
+    if ((host.capacity?.memory_bytes ?? 0) > 0 && data.memory_available_bytes != null && data.memory_available_bytes / (host.capacity?.memory_bytes ?? 1) < .15) suggestions.push("suggestHostMemory");
     if (data.disk_available_bytes != null && data.disk_available_bytes < 5 * gib) suggestions.push("suggestHostDisk");
   }
   if (!suggestions.length) return null;

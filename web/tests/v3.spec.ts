@@ -33,7 +33,8 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   const id = identity.strategyId as string;
   const session = identity.session as string;
   const headers = { Authorization: "Bearer " + session };
-  await dialog.getByRole("link", { name: "API 与接入", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "复制 AI 接入提示词" })).toBeVisible();
+  await page.goto("/admin/integration?strategy=" + id);
   await page
     .getByRole("combobox", { name: "执行器实例", exact: true })
     .selectOption("browser-worker");
