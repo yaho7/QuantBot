@@ -3,17 +3,16 @@ package theme
 import (
 	"encoding/json"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/yaho7/QuantBot/internal/httpapi"
 	"github.com/yaho7/QuantBot/internal/storage"
+	"github.com/yaho7/QuantBot/internal/storage/controldb"
 )
 
-func TestThemeLifecycleAndIsolatedAssets(t *testing.T) {
+func TestClassicalOnlyAndIsolatedLegacyAssets(t *testing.T) {
 	dir := t.TempDir()
 	stores, err := storage.Open(t.Context(), dir)
 	if err != nil {
@@ -49,33 +48,42 @@ func TestThemeLifecycleAndIsolatedAssets(t *testing.T) {
 		return result
 	}
 	const kind = "application/json"
-	if got := read(call("GET", "/theme", "", "", 200)); got.ID != "lumina" {
+	if got := read(call("GET", "/theme", "", "", 200)); got.ID != BuiltinClassical || !got.Builtin || !got.Available {
 		t.Fatalf("wrong initial theme: %+v", got)
 	}
+
+	// Seed an installed package through the internal installer, as an upgraded
+	// database could contain one. Its assets must remain isolated and the
+	// package cannot be enabled through the public API.
 	manifest := exampleManifest(t, "frontend", "index.html")
-	var meta Manifest
-	if err := json.Unmarshal([]byte(manifest.body), &meta); err != nil {
+	first, err := s.install(t.Context(), "fixture", makeZIP(t,
+		manifest,
+		zipEntry{name: "index.html", body: `<!doctype html><script src="widget.js"></script>`},
+		zipEntry{name: "widget.js", body: "document.body.dataset.ready = 'yes';"},
+	))
+	if err != nil {
 		t.Fatal(err)
 	}
-	meta.Settings = "settings.json"
-	makeBundle := func(version string) string {
-		t.Helper()
-		meta.Version = version
-		body, err := json.Marshal(meta)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return string(makeZIP(t,
-			zipEntry{name: manifestName, body: string(body)},
-			zipEntry{name: "settings.json", body: `{"fields":[{"key":"dense","label":"Dense","type":"switch","default":true}]}`},
-			zipEntry{name: "index.html", body: `<!DOCTYPE html><html><body><script src="widget.js"></script></body></html>`},
-			zipEntry{name: "widget.js", body: "document.body.dataset.ready = 'yes';"},
-		))
+	if err := setActive(t.Context(), controldb.New(stores.Control.Write), first.ID); err != nil {
+		t.Fatal(err)
 	}
-	first := read(call("POST", "/admin/themes", makeBundle("1.0.0"), "application/zip", 201))
-	call("PUT", "/admin/themes/active", `{"id":"graphite"}`, kind, 200)
-	call("PUT", "/admin/themes/graphite/settings", `{"dense":false}`, kind, 200)
-	call("PUT", "/admin/themes/graphite/settings", `{"dense":"no"}`, kind, 400)
+	if got := read(call("GET", "/theme", "", "", 200)); got.ID != BuiltinClassical || got.EntryURL != "" {
+		t.Fatalf("legacy package was activated: %+v", got)
+	}
+	var catalogue struct {
+		Active string     `json:"active"`
+		Themes []instance `json:"themes"`
+	}
+	if err := json.Unmarshal(call("GET", "/admin/themes", "", "", 200).Body.Bytes(), &catalogue); err != nil {
+		t.Fatal(err)
+	}
+	if catalogue.Active != BuiltinClassical || len(catalogue.Themes) != 1 || catalogue.Themes[0].ID != BuiltinClassical {
+		t.Fatalf("unexpected theme catalogue: %+v", catalogue)
+	}
+	call("POST", "/admin/themes", "not an archive", "application/zip", 405)
+	call("PUT", "/admin/themes/active", `{"id":"graphite"}`, kind, 400)
+	call("PUT", "/admin/themes/active", `{"id":"classical"}`, kind, 200)
+
 	entry := call("GET", first.EntryURL, "", "", 200)
 	policy := entry.Header().Get("Content-Security-Policy")
 	if !strings.Contains(policy, "sandbox allow-scripts") || !strings.Contains(policy, "connect-src 'none'") ||
@@ -84,28 +92,4 @@ func TestThemeLifecycleAndIsolatedAssets(t *testing.T) {
 	}
 	call("GET", first.AssetBase+"widget.js", "", "", 200)
 	call("GET", first.AssetBase+"%2e%2e/control.db", "", "", 404)
-	call("POST", "/admin/themes", "invalid ZIP", "application/zip", 400)
-	if latest := read(call("GET", "/theme", "", "", 200)); latest.Revision != first.Revision || string(latest.Settings["dense"]) != "false" {
-		t.Fatalf("failed update changed active package: %+v", latest)
-	}
-	next := read(call("POST", "/admin/themes", makeBundle("1.1.0"), "application/zip", 201))
-	if next.Previous != first.Revision || next.Revision == first.Revision {
-		t.Fatal("update did not preserve the old revision")
-	}
-	previous := read(call("POST", "/admin/themes/graphite/rollback", "", "", 200))
-	if previous.Revision != first.Revision || string(previous.Settings["dense"]) != "false" {
-		t.Fatal("rollback did not restore the previous bundle and settings")
-	}
-	if err := os.Remove(filepath.Join(dir, "themes", first.ID, first.Revision, "index.html")); err != nil {
-		t.Fatal(err)
-	}
-	if restored := read(call("GET", "/theme", "", "", 200)); restored.ID != "classic" {
-		t.Fatal("missing installed entry did not fall back to Classic")
-	}
-	call("DELETE", "/admin/themes/graphite", "", "", 204)
-	call("GET", next.EntryURL, "", "", 404)
-	if restored := read(call("GET", "/theme", "", "", 200)); restored.ID != "classic" {
-		t.Fatal("deleting active theme did not preserve Classic")
-	}
-	call("DELETE", "/admin/themes/classic", "", "", 400)
 }

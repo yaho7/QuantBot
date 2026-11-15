@@ -1,18 +1,19 @@
 import { expect, test } from "@playwright/test";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 
 test("initialization, real reports, command receipt and responsive shells", async ({
   page,
   request,
 }, testInfo) => {
+  // This flow also captures screenshots across five viewport widths and two palettes.
+  test.setTimeout(120_000);
+  page.setDefaultTimeout(8_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
+  const { required } = await (await request.get("/api/auth/setup")).json();
   await page.goto("/");
-  await page.getByLabel("用户名", { exact: true }).fill("browser-admin");
-  await page.getByLabel("密码", { exact: true }).fill("browser-test-password");
-  await page.getByRole("button", { name: "初始化管理员", exact: true }).click();
+  await page.getByLabel(/用户名/).fill("browser-admin");
+  await page.getByLabel(/密码/).fill("browser-test-password");
+  await page.getByRole("button", { name: required ? "初始化管理员" : "登录", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "运行总览", exact: true }),
   ).toBeVisible();
@@ -361,24 +362,34 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     widgets.filter({
       has: page.getByRole("heading", { name: title, exact: true }),
     });
-  await expect(widget("声明式行情延迟").locator(".chart canvas")).toBeVisible();
-  await expect(
-    widget("声明式 K 线").locator(".chart canvas").first(),
-  ).toBeVisible();
-  await expect(widget("策略原始信号")).toContainText("真实信号");
-  await expect(widget("策略原始信号")).toContainText("order-paper-42");
-  await widget("策略原始信号")
+  await expect(widget("声明式行情延迟")).toContainText("2.40 ms");
+  const expand = (title: string) =>
+    widget(title).getByRole("button", { name: "展开组件", exact: true }).click();
+  for (const title of ["声明式行情延迟", "声明式 K 线"]) {
+    await expand(title);
+    await expect(dialog.locator(".chart canvas").first()).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  }
+  await expand("策略原始信号");
+  await expect(dialog).toContainText("真实信号");
+  await expect(dialog).toContainText("order-paper-42");
+  await dialog
     .getByRole("button", { name: "订单编号 order-paper-42" })
     .click();
-  await expect(dialog.getByRole("heading", { name: "关联记录" })).toBeVisible();
-  await expect(dialog).toContainText("真实信号");
-  await expect(dialog).not.toContainText("声明式行情延迟");
+  const related = page.getByRole("dialog", { name: "关联记录" });
+  await expect(related).toContainText("真实信号");
+  await expect(related).not.toContainText("声明式行情延迟");
   await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
 
   await expect(
     page.getByRole("status").filter({ hasText: "策略健康" }),
   ).toContainText("健康检查异常");
-  await expect(widget("券商连接健康")).toContainText("未启用");
+  await expand("券商连接健康");
+  await expect(dialog).toContainText("未启用");
+  await page.keyboard.press("Escape");
 
   await page.goto("/");
   await expect(widgets).toHaveCount(2);
@@ -402,7 +413,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await widget("券商连接健康")
     .getByRole("button", { name: "移除组件", exact: true })
     .click();
-  await page.getByRole("button", { name: "保存", exact: true }).click();
+  await page.getByRole("button", { name: "完成", exact: true }).click();
   await expect(
     page.getByRole("button", { name: "编辑布局", exact: true }),
   ).toBeVisible();
@@ -532,119 +543,18 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   );
   expect(JSON.stringify(channels)).not.toContain("local-browser-test-token");
 
-  const fixture = testInfo.outputPath("theme-fixture");
-  mkdirSync(fixture, { recursive: true });
-  function bundle(version: string, script: string) {
-    writeFileSync(
-      join(fixture, "quantbot-theme.json"),
-      JSON.stringify({
-        id: "trial-theme",
-        name: "Trial Theme",
-        version,
-        author: "QuantBot test",
-        engine: "quantbot-theme-v1",
-        type: "frontend",
-        entry: "index.html",
-        minQuantBotVersion: "3.0.0",
-        settingsSchema: "settings.json",
-      }),
-    );
-    writeFileSync(
-      join(fixture, "settings.json"),
-      JSON.stringify({
-        fields: [
-          {
-            key: "compact",
-            label: "Compact view",
-            type: "switch",
-            default: false,
-          },
-        ],
-      }),
-    );
-    writeFileSync(
-      join(fixture, "index.html"),
-      '<!doctype html><html><body><output id="result"></output><script src="theme.js"></script></body></html>',
-    );
-    writeFileSync(join(fixture, "theme.js"), script);
-    const path = testInfo.outputPath("theme-" + version + ".zip");
-    execFileSync(
-      "zip",
-      [
-        "-q",
-        path,
-        "quantbot-theme.json",
-        "index.html",
-        "theme.js",
-        "settings.json",
-      ],
-      { cwd: fixture },
-    );
-    return path;
-  }
-  const working = bundle(
-    "1.0.0",
-    `
-    const host = location.origin;
-    function send(type, requestId, extra = {}) {
-      parent.postMessage({ version: 1, type, requestId, ...extra }, host);
-    }
-    addEventListener("message", async ({ data }) => {
-      if (data.type === "quantbot:ready") {
-        const blocked = await fetch(host + "/api/auth/session").then(() => false, () => true);
-        if (blocked) send("quantbot:strategies", "list");
-      }
-      if (data.type === "quantbot:strategies") {
-        const item = data.items[0];
-        document.querySelector("output").textContent = item.name;
-        const button = document.createElement("button");
-        button.textContent = "Ask host";
-        button.onclick = () => send("quantbot:control", "open", { strategyId: item.id, controlId: "rsi" });
-        document.body.append(button);
-      }
-    });
-    send("quantbot:ready", "ready");
-  `,
-  );
-  const broken = bundle(
-    "1.1.0",
-    'document.querySelector("output").textContent = "No handshake";',
-  );
   await page.goto("/admin/themes");
-  await page.getByLabel("主题 ZIP").setInputFiles(working);
-  await page.getByRole("button", { name: "安装或更新" }).click();
-  const card = page.locator("article").filter({ hasText: "Trial Theme" });
-  await card.getByRole("button", { name: "启用主题", exact: true }).click();
-  await expect(card).toContainText("使用中");
-  await card.getByRole("button", { name: "主题设置", exact: true }).click();
-  await dialog.getByLabel("Compact view").check();
-  await dialog.getByRole("button", { name: "保存", exact: true }).click();
-  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/admin\/settings$/);
+  await expect(page.getByRole("heading", { name: /Classical/ })).toBeVisible();
+  await page.getByRole("button", { name: "海蓝", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
+  const themeCatalogue = await page.evaluate(async () => (await fetch("/api/admin/themes")).json());
+  expect(themeCatalogue.active).toBe("classical");
+  expect(themeCatalogue.themes.map((theme: { id: string }) => theme.id)).toEqual(["classical"]);
   await page.goto("/");
-  const iframe = page.locator('iframe[title="Trial Theme"]');
-  await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
-  const framed = page.frameLocator('iframe[title="Trial Theme"]');
-  await expect(framed.locator("output")).toContainText("动量");
-  await framed.getByRole("button", { name: "Ask host" }).click();
-  await expect(dialog).toContainText("RSI 周期");
-  await page.keyboard.press("Escape");
-  await page.goto("/admin/themes");
-  await page.getByLabel("主题 ZIP").setInputFiles(broken);
-  await page.getByRole("button", { name: "安装或更新" }).click();
-  await expect(
-    card.getByRole("button", { name: "回滚版本", exact: true }),
-  ).toBeVisible();
-  await page.goto("/");
-  await expect(
-    page.getByRole("status").filter({ hasText: "主题载入失败" }),
-  ).toBeVisible({ timeout: 8000 });
+  await expect(page.locator(".workbench-shell")).toHaveAttribute("data-theme", "classical");
+  await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
   await expect(widget("自定义延迟")).toBeVisible();
-  await page.goto("/admin/themes");
-  await card.getByRole("button", { name: "回滚版本", exact: true }).click();
-  await expect(card).toContainText("1.0.0");
-  page.once("dialog", (confirm) => confirm.accept());
-  await card.getByRole("button", { name: "删除主题", exact: true }).click();
-  await expect(card).toHaveCount(0);
 
   await page.goto("/admin/storage");
   await expect(page.getByRole("heading", { name: "备份与恢复" })).toBeVisible();
@@ -670,7 +580,6 @@ test("initialization, real reports, command receipt and responsive shells", asyn
         ["storage", "/admin/storage"],
         ["settings", "/admin/settings"],
         ["sandbox", "/admin/strategies"],
-        ["themes", "/admin/themes"],
       ]) {
         await page.goto(path);
         await expect(page.locator("h1")).toBeVisible();
