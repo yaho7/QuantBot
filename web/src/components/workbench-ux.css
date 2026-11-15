@@ -42,3 +42,9 @@
 .strategy-table-container tbody a { text-underline-offset: 3px; }
 .strategy-table-container tbody a:hover { text-decoration: underline; }
 .strategy-table-container td { white-space: nowrap; }
+.chart-with-values { min-width: 0; }
+.chart-value-readout {
+  display: block; min-height: 24px; padding: 3px 12px;
+  color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

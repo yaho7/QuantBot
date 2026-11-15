@@ -19,11 +19,26 @@ export default function Chart({
   featured?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const { t } = useLanguage();
+  const readout = useRef<HTMLOutputElement>(null);
+  const { t, lang } = useLanguage();
   const valueLabel = t("chartValue");
   useEffect(() => {
     if (!ref.current || !points.length) return;
     const element = ref.current;
+    const format = (value: string) => {
+      const [whole, fraction] = value.split(".");
+      return whole!.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (fraction === undefined ? "" : "." + fraction);
+    };
+    const showPoint = (point = points[points.length - 1]!) => {
+      if (!readout.current) return;
+      const date = new Date(point.at).toLocaleString(lang === "zh" ? "zh-CN" : "en-US");
+      const values = candle
+        ? (lang === "zh" ? ["开", "高", "低", "收"] : ["O", "H", "L", "C"]).map((label, index) =>
+            label + " " + format([point.open, point.high, point.low, point.close][index]!)).join(" · ")
+        : valueLabel + " " + format(point.close);
+      readout.current.textContent = date + " · " + values;
+    };
+    showPoint();
     const chartColor =
       getComputedStyle(element).getPropertyValue("--theme-chart").trim() ||
       "#638ded";
@@ -59,11 +74,15 @@ export default function Chart({
           close: Number(p.close),
         })),
       );
+      const byTime = new Map(points.map(point => [Math.floor(point.at / 1000), point]));
+      chart.subscribeCrosshairMove(event => {
+        showPoint(typeof event.time === "number" ? byTime.get(event.time) : undefined);
+      });
       chart.timeScale().fitContent();
       return () => chart.remove();
     }
     const plotHeight = () => featured ? 280 : 230;
-    const grid = { stroke: "#8994a71a", show: !featured };
+    const grid = { stroke: "#8994a71a", show: true };
     const plot = new uPlot(
       {
         width: element.clientWidth,
@@ -71,9 +90,12 @@ export default function Chart({
         legend: { show: false },
         cursor: { drag: { x: true, y: false } },
         axes: [
-          { stroke: "#8994a7", grid, show: !featured },
-          { stroke: "#8994a7", grid, size: 72, show: !featured },
+          { stroke: "#8994a7", grid: { ...grid, show: false }, show: true },
+          { stroke: "#8994a7", grid, size: 80, show: true,
+            values: (_self, values) => values.map(value => new Intl.NumberFormat(lang === "zh" ? "zh-CN" : "en-US", { maximumSignificantDigits: 6, notation: Math.abs(value) >= 1e7 ? "compact" : "standard" }).format(value)),
+          },
         ],
+        hooks: { setCursor: [self => showPoint(self.cursor.idx == null ? undefined : points[self.cursor.idx])] },
         series: [
           {},
           {
@@ -104,6 +126,9 @@ export default function Chart({
       observer.disconnect();
       plot.destroy();
     };
-  }, [points, candle, featured, valueLabel]);
-  return <div className={"chart" + (featured ? " portfolio-plot" : "")} ref={ref} />;
+  }, [points, candle, featured, valueLabel, lang]);
+  return <div className="chart-with-values">
+    <output ref={readout} className="chart-value-readout">{points.length ? "" : "—"}</output>
+    <div className={"chart" + (featured ? " portfolio-plot" : "")} ref={ref} />
+  </div>;
 }
