@@ -14,6 +14,7 @@ import (
 
 	"github.com/yaho7/QuantBot/internal/command"
 	"github.com/yaho7/QuantBot/internal/config"
+	"github.com/yaho7/QuantBot/internal/hostperf"
 	"github.com/yaho7/QuantBot/internal/notification"
 	"github.com/yaho7/QuantBot/internal/realtime"
 	"github.com/yaho7/QuantBot/internal/sandbox"
@@ -49,7 +50,7 @@ func TestStreamPushesOnlyCommittedStrategyChanges(t *testing.T) {
 	}
 	sandboxes := sandbox.New(t.Context(), stores.Control)
 	t.Cleanup(sandboxes.Close)
-	server := httptest.NewServer(routes(stores, cfg, command.New(stores.Control, ctx, 0, bus.Publish), reports, bus, notification.New(stores.Control, [32]byte{}), themes, sandboxes))
+	server := httptest.NewServer(routes(stores, cfg, command.New(stores.Control, ctx, 0, bus.Publish), reports, bus, notification.New(stores.Control, [32]byte{}), themes, sandboxes, hostperf.New(stores)))
 	defer server.Close()
 
 	send := func(method, path, body, token, cookie, csrf string, expected int) *http.Response {

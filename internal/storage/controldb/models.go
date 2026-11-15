@@ -187,6 +187,25 @@ type NotificationEvent struct {
 	CreatedAt int64
 }
 
+type PerformanceBinding struct {
+	StrategyID string
+	InstanceID string
+	BootID     string
+	HostID     string
+	Budget     string
+}
+
+type PerformanceHost struct {
+	ID               string
+	Name             string
+	Scope            string
+	KeyDigest        string
+	ReporterStrategy string
+	ReporterInstance string
+	Capacity         string
+	Revision         int64
+}
+
 type ResourceCollection struct {
 	StrategyID       string
 	CapabilityID     string

@@ -4,6 +4,10 @@
 
 package metricsdb
 
+import (
+	"database/sql"
+)
+
 type CapabilityLatest struct {
 	StrategyID   string
 	RecordID     string
@@ -55,6 +59,20 @@ type MetricDefinition struct {
 	StrategyID string
 	Name       string
 	Definition string
+}
+
+type PerformanceSample struct {
+	HostID      string
+	StrategyID  string
+	InstanceID  string
+	BootID      string
+	Revision    int64
+	RecordID    string
+	ObservedAt  int64
+	ReceivedAt  int64
+	DurationMs  int64
+	HostData    sql.NullString
+	ProcessData sql.NullString
 }
 
 type Rollup struct {
