@@ -1,8 +1,10 @@
 """Exercise the declarative Agent API against a dedicated paper strategy."""
 
+import argparse
 import json
-import os
+import re
 import time
+import urllib.parse
 import urllib.request
 import urllib.error
 import random
@@ -15,11 +17,44 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def load_config():
+    try:
+        config = json.loads(Path("quantbot.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise SystemExit("Create a valid local quantbot.json using quantbot.example.json") from None
+    if not isinstance(config, dict):
+        raise SystemExit("quantbot.json must contain a JSON object")
+    raw = config.get("endpoint")
+    try:
+        url = urllib.parse.urlsplit(raw if isinstance(raw, str) else "")
+        host = url.hostname
+        path = url.path.rstrip("/") or "/api/agent"
+        secure = url.scheme == "https" or url.scheme == "http" and host in ("localhost", "127.0.0.1", "::1")
+        if not (secure and host and not re.search(r"[\s?#\\]", raw) and not url.username and url.password is None
+                and "@" not in url.netloc and re.fullmatch(r"/api/agent(?:/sandbox/[A-Za-z0-9_-]+)?", path)):
+            raise ValueError()
+    except (ValueError, TypeError):
+        raise SystemExit("Set endpoint to a QuantBot HTTPS URL or local loopback URL in quantbot.json") from None
+    secret, instance = config.get("secret"), config.get("instance_name")
+    heartbeat = config.get("heartbeat_seconds", 15)
+    if not isinstance(secret, str) or not re.fullmatch(r"qbt_[A-Za-z0-9_-]+", secret):
+        raise SystemExit("Paste the Agent Token into secret in quantbot.json")
+    if not isinstance(instance, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,95}", instance):
+        raise SystemExit("Set a stable instance_name in quantbot.json")
+    if type(heartbeat) is not int or not 1 <= heartbeat <= 15:
+        raise SystemExit("heartbeat_seconds must be an integer from 1 to 15")
+    if config.get("disconnect_policy", "continue") != "continue":
+        raise SystemExit("The demo supports only disconnect_policy 'continue'")
+    if not isinstance(config.get("strategy_id", ""), str):
+        raise SystemExit("strategy_id must be a string")
+    return config, f"{url.scheme}://{url.netloc}{path}", secret, instance, heartbeat
+
+
 def main():
-    endpoint = os.environ["QB_AGENT_URL"].rstrip("/")
-    token = os.environ["QB_AGENT_TOKEN"]
-    instance = os.getenv("QB_INSTANCE_ID", "python-example")
-    control = os.getenv("QB_DEMO_CONTROL") == "1"
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--demo-control", action="store_true", help="wait for a simulated Refresh demo state command")
+    control = parser.parse_args().demo_control
+    config, endpoint, token, instance, heartbeat = load_config()
     boot = uuid.uuid4().hex
     opener = urllib.request.build_opener(NoRedirect())
 
@@ -36,13 +71,20 @@ def main():
             return json.load(response)
 
     identity = {"instanceId": instance, "bootId": boot}
-    session = call("POST", "/session", token, identity)
+
+    def connect():
+        result = call("POST", "/session", token, identity)
+        if config.get("strategy_id") and result["strategyId"] != config["strategy_id"]:
+            raise SystemExit("Session strategy does not match strategy_id in quantbot.json")
+        return result
+
+    session = connect()
 
     def renew():
         nonlocal session
         for attempt in range(6):
             try:
-                session = call("POST", "/session", token, identity)
+                session = connect()
                 print("session renewed", flush=True)
                 return
             except urllib.error.HTTPError as error:
@@ -66,10 +108,10 @@ def main():
             return call(method, path, session["session"], payload, key)
     capabilities = json.loads(Path(__file__).with_name("capabilities.json").read_text())
 
-    for _ in range(120):
+    for _ in range(1 + 120 // heartbeat):
         if agent("PUT", "/heartbeat")["executor"]:
             break
-        time.sleep(1)
+        time.sleep(heartbeat)
     else:
         raise SystemExit(f"Assign {instance} as the paper executor")
     if control:
@@ -103,11 +145,11 @@ def main():
 
     if not control:
         return
-    next_heartbeat = time.monotonic() + 15
+    next_heartbeat = time.monotonic() + heartbeat
     for _ in range(40):
         if time.monotonic() >= next_heartbeat:
             agent("PUT", "/heartbeat")
-            next_heartbeat = time.monotonic() + 15
+            next_heartbeat = time.monotonic() + heartbeat
         commands = agent("GET", "/commands?wait=2")
         offer = next((item for item in commands if item["controlId"] == "demo-refresh"), None)
         if offer is None:

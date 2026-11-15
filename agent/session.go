@@ -103,10 +103,19 @@ func (c *Client) Connect(ctx context.Context) (Session, error) {
 // Run blocks until cancellation or permanent credential failure. Run it in a
 // background task. A transient renewal failure keeps the currently valid session.
 func (c *Client) Run(ctx context.Context) error {
+	return c.RunWithHeartbeat(ctx, 15*time.Second)
+}
+
+// RunWithHeartbeat maintains the session with a caller-configured heartbeat.
+// Use 15 seconds unless the local Agent configuration asks for a shorter interval.
+func (c *Client) RunWithHeartbeat(ctx context.Context, interval time.Duration) error {
+	if interval <= 0 || interval > 15*time.Second {
+		return errors.New("QuantBot heartbeat interval must be greater than zero and at most 15 seconds")
+	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	heartbeatError := make(chan error, 1)
-	go c.heartbeat(ctx, heartbeatError)
+	go c.heartbeat(ctx, interval, heartbeatError)
 	backoff := time.Second
 	var retryAt time.Time
 	for ctx.Err() == nil {
@@ -145,8 +154,8 @@ func (c *Client) Run(ctx context.Context) error {
 }
 
 // Heartbeat runs independently of session renewal and command requests.
-func (c *Client) heartbeat(ctx context.Context, terminal chan<- error) {
-	ticker := time.NewTicker(15 * time.Second)
+func (c *Client) heartbeat(ctx context.Context, interval time.Duration, terminal chan<- error) {
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {

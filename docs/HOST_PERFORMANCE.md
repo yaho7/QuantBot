@@ -24,13 +24,16 @@ measurements, its own process measurements, or both. An omitted value is unknown
 and a reported zero remains zero. No additional setup call is needed.
 
 ```bash
-curl -fsS -X POST "$QB_AGENT_URL/performance" \
-  -H "Authorization: Bearer $QB_AGENT_SESSION" -H 'Content-Type: application/json' \
+endpoint="$(jq -er '.endpoint | sub("/+$"; "")' quantbot.json)"
+case "${endpoint#*://}" in */*) ;; *) endpoint="$endpoint/api/agent" ;; esac
+curl -fsS -X POST "$endpoint/performance" \
+  -H "Authorization: Bearer $agent_session" -H 'Content-Type: application/json' \
   --data-binary @performance-batch.json
 ```
 
-Set `QB_AGENT_URL` to the Agent base URL, e.g.
-`http://127.0.0.1:23457/api/agent`. The example JSON below is illustrative;
+Use your local [`quantbot.json`](INTEGRATION.md#local-agent-configuration) and set
+`agent_session` in the snippet to the current session returned by `POST /session`.
+The example JSON below is illustrative;
 replace the observation time and all measured values when producing a sample.
 
 ```json

@@ -13,6 +13,7 @@ web/test-results/
 .env
 .env.*
 .secrets/
+quantbot.json
 
 !/web/dist/
 !/web/dist/**

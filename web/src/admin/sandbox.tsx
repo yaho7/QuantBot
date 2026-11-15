@@ -119,8 +119,7 @@ function sandboxPrompt(credential: SandboxCredential) {
   return [
     "Test the QuantBot integration in the shared Sandbox. Use simulated data and operations. Keep real broker connections disabled.",
     "Expires: " + new Date(credential.expiresAt * 1000).toISOString(),
-    "Set QB_AGENT_TOKEN locally to this temporary credential. Keep it out of source control and logs: " + credential.token,
-    agentPrompt(location.origin, credential.endpoint),
+    agentPrompt(location.origin, credential.endpoint, undefined, { key: credential.id, sandboxToken: credential.token }),
     "After Sandbox passes, obtain the production endpoint and credential from the administrator.",
   ].join("\n\n");
 }

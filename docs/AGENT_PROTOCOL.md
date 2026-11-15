@@ -4,7 +4,7 @@ QuantBot speaks JSON over ordinary HTTP. Use HTTPS for remote integrations. Loca
 
 ## Strategy identity and credentials
 
-An administrator creates a strategy with a display name, group and mode (`paper` or `live`). QuantBot assigns a stable strategy ID and returns the first Agent credential. Copy the credential at issuance. List responses return metadata, and the server stores a SHA-256 digest of the random credential.
+An administrator creates a strategy with a display name, group and mode (`paper` or `live`). QuantBot assigns a stable strategy ID and returns the first Agent credential. Store the Token as `secret` in the strategy's private [local `quantbot.json`](INTEGRATION.md#local-agent-configuration). The `key` identifies the credential but does not authenticate requests. List responses return metadata. The server authenticates using a SHA-256 digest and keeps an encrypted copy for administrator reveal.
 
 The four scopes are `heartbeat`, `report`, `control`, and `command`. Issue a second credential to rotate, migrate the Agent to it, then revoke the previous credential. Revocation and archive take effect on subsequent authenticated requests even if the Agent session has time remaining. The administrator must explicitly designate the executor instance.
 

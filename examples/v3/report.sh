@@ -2,10 +2,32 @@
 # Exercise the declarative Agent API with curl, jq and OpenSSL.
 set -euo pipefail
 
-endpoint="${QB_AGENT_URL:?Set QB_AGENT_URL}"
-token="${QB_AGENT_TOKEN:?Set QB_AGENT_TOKEN}"
-instance="${QB_INSTANCE_ID:-curl-example}"
-control="${QB_DEMO_CONTROL:-0}"
+case "$#" in
+  0) control=0 ;;
+  1) [[ "$1" == --demo-control ]] || { echo "Usage: $0 [--demo-control]" >&2; exit 1; }; control=1 ;;
+  *) echo "Usage: $0 [--demo-control]" >&2; exit 1 ;;
+esac
+read_config() {
+  jq -er "$1" <<<"$config" 2>/dev/null ||
+    { printf '%s\n' "$2" >&2; return 1; }
+}
+config="$(jq -ce -s 'select(length == 1 and (.[0] | type == "object")) | .[0]' quantbot.json 2>/dev/null)" ||
+  { echo "Create a valid local quantbot.json using quantbot.example.json" >&2; exit 1; }
+endpoint="$(read_config '
+  .endpoint | strings | sub("/+$"; "") | select(contains("\\") | not) |
+  select(test("^(https://[^/?#@\\s]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?)(/api/agent(/sandbox/[A-Za-z0-9_-]+)?)?$")) |
+  if test("^https?://[^/]+$") then . + "/api/agent" else . end
+' 'Set endpoint to a QuantBot HTTPS URL or local loopback URL in quantbot.json')"
+token="$(read_config '.secret | strings | select(test("^qbt_[A-Za-z0-9_-]+$"))' 'Paste the Agent Token into secret in quantbot.json')"
+instance="$(read_config '.instance_name | strings | select(test("^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"))' 'Set a stable instance_name in quantbot.json')"
+strategy="$(read_config '(.strategy_id // "") | strings' 'strategy_id must be a string')"
+interval="$(read_config '
+  (if has("heartbeat_seconds") then .heartbeat_seconds else 15 end) |
+  numbers | select(. == floor and . >= 1 and . <= 15)
+' 'heartbeat_seconds must be an integer from 1 to 15')"
+read_config 'select((has("disconnect_policy") | not) or .disconnect_policy == "continue")' \
+  "The demo supports only disconnect_policy 'continue'" >/dev/null
+unset config
 boot="$(openssl rand -hex 16)"
 capabilities="$(cat "$(dirname "$0")/capabilities.json")"
 
@@ -13,8 +35,8 @@ call() {
   local method="$1" path="$2" bearer="$3" response
   shift 3
   response="$(curl --silent --show-error --max-time 8 --request "$method" \
-    --write-out $'\n%{http_code}' --header "Authorization: Bearer $bearer" \
-    "$@" "${endpoint%/}$path")" || { status=000; error_code=network_error; return 1; }
+    --write-out $'\n%{http_code}' --header @- \
+    "$@" "$endpoint$path" <<<"Authorization: Bearer $bearer")" || { status=000; error_code=network_error; return 1; }
   status="${response##*$'\n'}"
   result="${response%$'\n'*}"
   error_code=""
@@ -28,6 +50,11 @@ call() {
 identity="$(jq -nc --arg instance "$instance" --arg boot "$boot" '{instanceId:$instance,bootId:$boot}')"
 connect() {
   call POST /session "$token" --json "$identity" || return
+  if [[ -n "$strategy" && "$(jq -r '.strategyId // empty' <<<"$result")" != "$strategy" ]]; then
+    echo "Session strategy does not match strategy_id in quantbot.json" >&2
+    status=400
+    return 1
+  fi
   bearer="$(jq -er .session <<<"$result")"
   renew_at="$(jq -r '.renewAt // 0' <<<"$result")"
 }
@@ -54,19 +81,15 @@ agent() {
   renew && call "$method" "$path" "$bearer" "$@"
 }
 
-agent PUT /heartbeat
-heartbeat="$result"
-
-for ((attempt=0; attempt<120; attempt++)); do
-  if jq -e .executor <<<"$heartbeat" >/dev/null; then break; fi
-  sleep 1
+for ((elapsed=0; ; elapsed+=interval)); do
   agent PUT /heartbeat
-  heartbeat="$result"
+  if jq -e .executor <<<"$result" >/dev/null; then break; fi
+  if ((elapsed + interval > 120)); then
+    printf 'Assign %s as the paper executor\n' "$instance" >&2
+    exit 1
+  fi
+  sleep "$interval"
 done
-if ! jq -e .executor <<<"$heartbeat" >/dev/null; then
-  printf 'Assign %s as the paper executor\n' "$instance" >&2
-  exit 1
-fi
 if [[ "$control" == 1 ]]; then
   capabilities="$(jq -c '. + [{
     id:"demo-refresh",kind:"action",title:"Refresh demo state",value_type:"null",
@@ -104,11 +127,11 @@ send_record /reports poll-latency '"2.50"'
 send_record /events sample-event '{"message":"Paper demo started"}'
 
 if [[ "$control" != 1 ]]; then exit 0; fi
-next_heartbeat=$(( $(date +%s) + 15 ))
+next_heartbeat=$(( $(date +%s) + interval ))
 for ((attempt=0; attempt<40; attempt++)); do
   if (( $(date +%s) >= next_heartbeat )); then
     agent PUT /heartbeat
-    next_heartbeat=$(( $(date +%s) + 15 ))
+    next_heartbeat=$(( $(date +%s) + interval ))
   fi
   agent GET '/commands?wait=2'
   id="$(jq -r 'map(select(.controlId == "demo-refresh")) | .[0].id // empty' <<<"$result")"

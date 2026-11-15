@@ -102,7 +102,7 @@ export function ConnectionDialog({ strategy, created, onClose }: {
           <a href={agentReferences.integration} target="_blank" rel="noreferrer">
             <BookOpen size={15} />{t("integrationExamples")}
           </a>
-          <button type="button" className="primary" onClick={() => void copy(agentPrompt(location.origin, endpoint, strategy))}>
+          <button type="button" className="primary" onClick={() => void copy(agentPrompt(location.origin, endpoint, strategy, { key: primary?.id }))}>
             <Clipboard size={16} />{t("copyAgentPrompt")}
           </button>
         </div>

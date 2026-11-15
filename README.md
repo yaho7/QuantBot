@@ -2,7 +2,7 @@
 
 QuantBot is an HTTP monitoring and remote-control console for independently deployed trading strategies. Agents declare metrics, states, parameters, actions, resources and events, then report observations through the unversioned `/api/agent/` namespace. QuantBot resolves widgets from those declarations and uses one-time execution permits for commands.
 
-Use **Workbench** to see strategy data and controls. In **Administration → Strategies → API**, copy the Agent URL or the [AI integration prompt](docs/INTEGRATION.md#ai-integration-prompt).
+Use **Workbench** to see strategy data and controls. In **Administration → Strategies → API**, copy the connection information for your local [`quantbot.json`](docs/INTEGRATION.md#local-agent-configuration) or copy the [AI integration prompt](docs/INTEGRATION.md#ai-integration-prompt).
 
 ## Docker Compose
 

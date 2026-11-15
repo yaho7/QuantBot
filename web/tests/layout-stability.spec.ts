@@ -194,12 +194,17 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   expect(token).toMatch(/^qbt_/);
   await dialog.getByRole("button", { name: "复制 AI 接入提示词" }).click();
   const prompt = await page.evaluate(() => (window as Window & { qbTestCopy?: string }).qbTestCopy);
-  for (const path of ["docs/AGENT_PROTOCOL.md", "examples/v3/report.py", "examples/v3/report.mjs", "examples/v3/report.go", "examples/v3/report.sh"]) {
+  for (const path of ["docs/AGENT_PROTOCOL.md", "examples/v3/report.py", "examples/v3/report.mjs", "examples/v3/report.go", "examples/v3/report.sh", "examples/v3/quantbot.example.json"]) {
     expect(prompt).toContain("https://github.com/yaho7/QuantBot/blob/main/" + path);
   }
   expect(prompt).toContain(origin + "/api/agent");
   expect(prompt).toContain(testName);
   expect(prompt).not.toContain(token);
+  const readConfig = (text: string | undefined) => JSON.parse(text?.match(/\n(\{\n[\s\S]+?\n\})\n/)?.[1] ?? "{}");
+  expect(readConfig(prompt)).toMatchObject({
+    endpoint: origin + "/api/agent", key: keyBefore, secret: "",
+    heartbeat_seconds: 15, disconnect_policy: "continue",
+  });
   await expect(page).toHaveURL(/\/admin\/strategies$/);
   await page.keyboard.press("Escape");
   const row = page.getByRole("row").filter({ hasText: testName });
@@ -232,7 +237,9 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   const testEndpoint = dialog.locator("[data-field=test-endpoint] code");
   const firstEndpoint = await testEndpoint.innerText();
   await dialog.getByRole("button", { name: "复制测试提示词" }).click();
-  await expect.poll(() => page.evaluate(() => (window as Window & { qbTestCopy?: string }).qbTestCopy)).toContain(firstEndpoint);
+  await expect.poll(async () => readConfig(await page.evaluate(() =>
+    (window as Window & { qbTestCopy?: string }).qbTestCopy,
+  ))).toMatchObject({ endpoint: firstEndpoint, secret: expect.stringMatching(/^qbt_/), strategy_id: "" });
   await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
   await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
   await dialog.getByRole("button", { name: "开启测试" }).click();

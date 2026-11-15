@@ -3,6 +3,7 @@
 .env
 .env.*
 .secrets
+**/quantbot.json
 data
 dist
 **/__pycache__

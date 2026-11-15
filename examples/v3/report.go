@@ -8,9 +8,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -18,7 +21,9 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
+	control := flag.Bool("demo-control", false, "wait for a simulated Refresh demo state command")
+	flag.Parse()
+	if err := run(*control); err != nil {
 		log.Fatal(err)
 	}
 }
@@ -26,17 +31,54 @@ func main() {
 //go:embed capabilities.json
 var fixture []byte
 
-func run() error {
-	endpoint := strings.TrimRight(os.Getenv("QB_AGENT_URL"), "/")
-	token := os.Getenv("QB_AGENT_TOKEN")
-	if endpoint == "" || token == "" {
-		return fmt.Errorf("set QB_AGENT_URL and QB_AGENT_TOKEN")
+type localConfig struct {
+	Endpoint   string `json:"endpoint"`
+	Secret     string `json:"secret"`
+	Instance   string `json:"instance_name"`
+	StrategyID string `json:"strategy_id"`
+	Heartbeat  int    `json:"heartbeat_seconds"`
+	Policy     string `json:"disconnect_policy"`
+}
+
+func loadConfig() (localConfig, error) {
+	cfg := localConfig{Heartbeat: 15, Policy: "continue"}
+	body, err := os.ReadFile("quantbot.json")
+	if err != nil || json.Unmarshal(body, &cfg) != nil {
+		return cfg, errors.New("create a valid local quantbot.json using quantbot.example.json")
 	}
-	instance := os.Getenv("QB_INSTANCE_ID")
-	if instance == "" {
-		instance = "go-example"
+	u, err := url.Parse(cfg.Endpoint)
+	if err != nil || u.Hostname() == "" || u.User != nil || strings.ContainsAny(cfg.Endpoint, "?#\\ \t\r\n") ||
+		(u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"))) {
+		return cfg, errors.New("set endpoint to a QuantBot HTTPS URL or local loopback URL in quantbot.json")
 	}
-	control := os.Getenv("QB_DEMO_CONTROL") == "1"
+	path := strings.TrimRight(u.EscapedPath(), "/")
+	if path == "" {
+		path = "/api/agent"
+	}
+	if !regexp.MustCompile("^/api/agent(/sandbox/[A-Za-z0-9_-]+)?$").MatchString(path) {
+		return cfg, errors.New("set endpoint to a QuantBot origin, Agent or Sandbox URL")
+	}
+	cfg.Endpoint = u.Scheme + "://" + u.Host + path
+	if !regexp.MustCompile("^qbt_[A-Za-z0-9_-]+$").MatchString(cfg.Secret) {
+		return cfg, errors.New("paste the Agent Token into secret in quantbot.json")
+	}
+	if !regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$").MatchString(cfg.Instance) {
+		return cfg, errors.New("set a stable instance_name in quantbot.json")
+	}
+	if cfg.Heartbeat < 1 || cfg.Heartbeat > 15 {
+		return cfg, errors.New("heartbeat_seconds must be an integer from 1 to 15")
+	}
+	if cfg.Policy != "continue" {
+		return cfg, errors.New("the demo supports only disconnect_policy 'continue'")
+	}
+	return cfg, nil
+}
+
+func run(control bool) error {
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 	var entropy [16]byte
 	if _, err := rand.Read(entropy[:]); err != nil {
 		return err
@@ -44,17 +86,14 @@ func run() error {
 	boot := hex.EncodeToString(entropy[:])
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client := agent.NewClient(endpoint, token, instance, boot, nil)
+	client := agent.NewClient(cfg.Endpoint, cfg.Secret, cfg.Instance, boot, nil)
 	session, err := client.Connect(ctx)
 	if err != nil {
 		return err
 	}
-	background := make(chan error, 1)
-	go func() { background <- client.Run(ctx) }()
-	defer func() {
-		cancel()
-		<-background
-	}()
+	if cfg.StrategyID != "" && session.StrategyID != cfg.StrategyID {
+		return errors.New("session strategy does not match strategy_id in quantbot.json")
+	}
 	request := func(method, path string, body, output any) error {
 		return client.Do(ctx, method, path, body, output)
 	}
@@ -66,15 +105,22 @@ func run() error {
 	if err := request("PUT", "/heartbeat", nil, &heartbeat); err != nil {
 		return err
 	}
-	for attempt := 0; !heartbeat.Executor && attempt < 120; attempt++ {
-		time.Sleep(time.Second)
+	interval := time.Duration(cfg.Heartbeat) * time.Second
+	for attempt := 1; !heartbeat.Executor && attempt*cfg.Heartbeat <= 120; attempt++ {
+		time.Sleep(interval)
 		if err := request("PUT", "/heartbeat", nil, &heartbeat); err != nil {
 			return err
 		}
 	}
 	if !heartbeat.Executor {
-		return fmt.Errorf("assign %s as the paper executor", instance)
+		return fmt.Errorf("assign %s as the paper executor", cfg.Instance)
 	}
+	background := make(chan error, 1)
+	go func() { background <- client.RunWithHeartbeat(ctx, interval) }()
+	defer func() {
+		cancel()
+		<-background
+	}()
 	if control {
 		capabilities = append(capabilities, json.RawMessage(`{
 			"id":"demo-refresh","kind":"action","title":"Refresh demo state","value_type":"null",
