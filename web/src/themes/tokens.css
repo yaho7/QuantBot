@@ -1,6 +1,12 @@
+@layer reset, theme, base, qb-legacy, astryx-base, astryx-theme, components, utilities;
+@import "@astryxdesign/core/reset.css";
 @import "tailwindcss";
+@import "@astryxdesign/core/astryx.css";
+
+@layer qb-legacy {
 :root {
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --qb-font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-family: var(--qb-font-family);
   color: var(--text);
   background: var(--canvas);
   font-synthesis: none;
@@ -880,38 +886,6 @@ td button {
 .inline-form .check-label input {
   min-width: auto;
 }
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: #10192980;
-  z-index: 80;
-}
-.dialog-content {
-  position: fixed;
-  z-index: 81;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 24px;
-  width: min(500px, calc(100vw - 28px));
-  max-height: 90dvh;
-  overflow-y: auto;
-  box-shadow: 0 20px 70px #0004;
-}
-.dialog-content > header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 18px;
-  gap: 12px;
-}
-.dialog-content > header h2 {
-  margin: 0;
-  font-size: 18px;
-}
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
@@ -1312,9 +1286,6 @@ td button {
   .inline-form > label {
     width: 100%;
   }
-  .dialog-content {
-    padding: 20px;
-  }
   .login-card {
     padding: 26px;
   }
@@ -1547,4 +1518,5 @@ td button {
 .workbench-sections {
   display: flex;
   flex-direction: column;
+}
 }

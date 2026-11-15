@@ -7,12 +7,6 @@
 .strategy-delete-button { color: var(--muted); }
 .strategy-delete-button:hover { color: var(--danger); }
 
-.dialog-content.connection-dialog {
-  width: min(520px, calc(100vw - 24px));
-  max-height: min(90dvh, calc(100dvh - 24px));
-  overflow-x: hidden;
-}
-.connection-dialog > header { margin-bottom: 0; }
 .connection-caption {
   color: var(--muted);
   margin: 0 0 18px;
@@ -95,7 +89,7 @@
 .sandbox-state > svg { color: var(--muted); margin-top: 2px; }
 .sandbox-state strong { font-size: 14px; }
 .sandbox-state p { color: var(--muted); font-size: 12px; margin-top: 2px; }
-.sandbox-state .badge { white-space: nowrap; }
+.sandbox-state .astryx-badge { white-space: nowrap; }
 .sandbox-confirm { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
 .sandbox-confirm button { flex-shrink: 0; }
 .sandbox-passed { color: var(--success); font-size: 13px; }
@@ -113,7 +107,6 @@
   .strategy-row-actions { gap: 2px; }
   .strategy-row-actions button, .connection-field-actions button { min-height: 44px; }
   .connection-field-actions button { width: 44px; }
-  .dialog-content.connection-dialog { padding: 16px; }
   .connection-field { grid-template-columns: minmax(0, 1fr) auto; }
   .connection-footer { align-items: stretch; }
   .connection-footer button { width: 100%; min-height: 44px; order: -1; }

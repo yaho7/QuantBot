@@ -9,6 +9,10 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Theme as AstryxTheme } from "@astryxdesign/core/theme";
+import { InternationalizationProvider } from "@astryxdesign/core/i18n";
+import { Heading } from "@astryxdesign/core/Heading";
+import { VStack } from "@astryxdesign/core/VStack";
 import {
   Navigate,
   Outlet,
@@ -61,6 +65,7 @@ import { useRealtime } from "./realtime";
 import { Home } from "./home";
 import { activeTheme, ThemeContext } from "../themes/catalog";
 import { ThemeFrame, themeStyle } from "../themes/host";
+import { quantbotUI } from "../themes/quantbot-ui";
 import { StrategyDetail, AllControls } from "./strategy";
 import { ActivityPage, AlertsPage } from "./activity";
 
@@ -101,7 +106,7 @@ function Root() {
     retry: false,
   });
   const connected = useRealtime(!!session.data);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [mode, setMode] = useState(
     localStorage.getItem("qb.appearance") ?? "system",
   );
@@ -119,23 +124,28 @@ function Root() {
   useEffect(() => {
     if (session.data) setCSRF(session.data.csrf);
   }, [session.data]);
-  if (session.isPending) return <Loading />;
+  const appearance = mode === "light" || mode === "dark" ? mode : "system";
+  const themed = (content: ReactNode) => (
+    <InternationalizationProvider locale={lang === "zh" ? "zh-Hans" : "en"}>
+      <AstryxTheme theme={quantbotUI} mode={appearance}>{content}</AstryxTheme>
+    </InternationalizationProvider>
+  );
+  if (session.isPending) return themed(<Loading />);
   if (
     session.error &&
     !(session.error instanceof ApiError && session.error.status === 401)
   )
-    return (
+    return themed(
       <ErrorView error={session.error} retry={() => void session.refetch()} />
     );
   if (!session.data)
-    return (
+    return themed(
       <Suspense fallback={<Loading />}>
         <Login />
       </Suspense>
     );
   setCSRF(session.data.csrf);
   const themeIcons = { system: Monitor, light: Sun, dark: Moon } as const;
-  const appearance = mode === "light" || mode === "dark" ? mode : "system";
   const ThemeIcon = themeIcons[appearance];
   const tools = (
     <div className="floating-tools" aria-label={t("appearance")}>
@@ -155,7 +165,7 @@ function Root() {
       </button>
     </div>
   );
-  return (
+  return themed(
     <AppearanceTools.Provider value={tools}>
       <Suspense fallback={<Loading />}>
         <Outlet />
@@ -381,13 +391,13 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <div className="page-layout">
+    <VStack className="page-layout">
       <header className="page-header">
-        <h1>{title}</h1>
+        <Heading level={1} weight="semibold">{title}</Heading>
         {actions && <div className="actions">{actions}</div>}
       </header>
-      <div className="page-body">{children}</div>
-    </div>
+      <VStack className="page-body">{children}</VStack>
+    </VStack>
   );
 }
 

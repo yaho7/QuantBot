@@ -223,8 +223,15 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   await dialog.getByRole("button", { name: "隐藏 Token" }).click();
 
   await expect(dialog.getByRole("button", { name: "复制 AI 接入提示词" })).toBeVisible();
+  const isCentered = () => dialog.evaluate(el => {
+    const box = el.getBoundingClientRect();
+    return Math.abs(box.x + box.width / 2 - window.innerWidth / 2) < 2 &&
+      Math.abs(box.y + box.height / 2 - window.innerHeight / 2) < 2;
+  });
+  await expect.poll(isCentered).toBeTruthy();
   await page.screenshot({ path: testInfo.outputPath("strategy-api-desktop.png") });
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(isCentered).toBeTruthy();
   await expect.poll(() => dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBeTruthy();
   await page.screenshot({ path: testInfo.outputPath("strategy-api-mobile.png") });
   const mobileBox = await dialog.boundingBox();

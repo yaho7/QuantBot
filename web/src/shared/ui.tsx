@@ -1,5 +1,11 @@
-import * as Dialog from "@radix-ui/react-dialog";
-import { X, LoaderCircle } from "lucide-react";
+import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { VStack } from "@astryxdesign/core/VStack";
+import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useLanguage } from "./i18n";
 
@@ -9,38 +15,33 @@ export function Modal({
   open,
   onOpenChange,
   className,
+  purpose = "info",
 }: {
   title: string;
   children: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   className?: string;
+  purpose?: "info" | "form" | "required";
 }) {
   const { t } = useLanguage();
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content className={className ? "dialog-content " + className : "dialog-content"} aria-describedby={undefined}>
-          <header>
-            <Dialog.Title>{title}</Dialog.Title>
-            <Dialog.Close className="icon-button" aria-label={t("close")}>
-              <X size={18} />
-            </Dialog.Close>
-          </header>
-          {children}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog isOpen={open} onOpenChange={onOpenChange}
+      width={className === "connection-dialog" ? "32.5rem" : "31.25rem"} maxHeight="90dvh" padding={5} purpose={purpose}>
+      <DialogHeader title={title} hasDivider={false} endContent={
+        <IconButton label={t("close")} tooltip={t("close")} variant="ghost" size="sm"
+          icon={<X size={16} />} onClick={() => onOpenChange(false)} />
+      } />
+      <VStack className={className}>{children}</VStack>
+    </Dialog>
   );
 }
 export function Loading() {
   const { t } = useLanguage();
   return (
-    <div className="loading" role="status">
-      <LoaderCircle className="spin" size={18} />
-      {t("loading")}
-    </div>
+    <VStack className="loading">
+      <Spinner label={t("loading")} size="lg" shade="subtle" />
+    </VStack>
   );
 }
 export function ErrorView({
@@ -52,12 +53,10 @@ export function ErrorView({
 }) {
   const { t } = useLanguage();
   return (
-    <div className="error-state" role="alert">
-      <p>
-        {t("error")} · {error.message}
-      </p>
-      {retry && <button onClick={retry}>{t("retry")}</button>}
-    </div>
+    <VStack className="error-state" role="alert">
+      <Banner status="error" title={t("error")} description={error.message}
+        endContent={retry && <Button label={t("retry")} onClick={retry} />} />
+    </VStack>
   );
 }
 export function Badge({
@@ -67,7 +66,8 @@ export function Badge({
   children: ReactNode;
   tone?: string;
 }) {
-  return <span className={"badge " + tone}>{children}</span>;
+  const variant = tone === "success" ? "green" : tone === "warning" ? "yellow" : tone === "danger" ? "red" : "neutral";
+  return <AstryxBadge label={children} variant={variant} />;
 }
 export function decimalText(value: unknown) {
   if (typeof value !== "string" || !/^-?\d+(\.\d+)?$/.test(value)) return "—";
