@@ -1,0 +1,41 @@
+.topbar nav .nav-alert-link { position: relative; }
+.topbar nav .nav-alert-badge {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-end: 2px;
+  display: grid;
+  place-items: center;
+  min-inline-size: 16px;
+  block-size: 16px;
+  padding-inline: 3px;
+  border: 1px solid var(--canvas);
+  border-radius: 999px;
+  background: var(--warning);
+  color: var(--canvas);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  animation: alert-show 150ms cubic-bezier(.23, 1, .32, 1) both;
+}
+@keyframes alert-show { from { opacity: 0; transform: scale(.85); } }
+@media (prefers-reduced-motion: reduce) { .topbar nav .nav-alert-badge { animation: none; } }
+.attention-list { list-style: none; margin: 0; padding: 0; }
+.attention-list > li + li { border-top: 1px solid var(--line); }
+.attention-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 50px;
+  padding: 10px 16px;
+  border-radius: inherit;
+}
+.attention-row:hover { background: var(--raised); }
+.attention-row > strong { overflow-wrap: anywhere; font-size: 13px; }
+.attention-row > svg { color: var(--muted); }
+@media (max-width: 767px) {
+  .topbar nav .nav-alert-badge { inset-inline-end: max(2px, calc(50% - 19px)); }
+}

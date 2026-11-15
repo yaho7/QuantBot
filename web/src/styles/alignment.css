@@ -88,7 +88,6 @@
 
 /* The overview only contains the strategy snapshot and the saved board. */
 .overview-content { display: grid; gap: 16px; }
-.overview-content .attention-summary { margin: 0; }
 .overview-content .portfolio-hero { margin-block: 0; }
 .overview-content .portfolio-hero .portfolio-periods { margin-bottom: 4px; }
 .portfolio-record-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }

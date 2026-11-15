@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
-import { resource, type Command, type Datum } from "../shared/api";
+import { useOutletContext, useSearchParams } from "react-router-dom";
+import { alertsQuery, AttentionSummary, type Attention } from "../components/attention-summary";
+import { resource, type Command } from "../shared/api";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
 import { useLanguage } from "../shared/i18n";
 import { useDisplay } from "../shared/display";
@@ -10,7 +12,18 @@ import { CommandDialog } from "./control";
 
 export function ActivityPage({ strategyId }: { strategyId?: string }) {
   const { t } = useLanguage();
-  const [status, setStatus] = useState("");
+  const [embeddedStatus, setEmbeddedStatus] = useState("");
+  const [params, setParams] = useSearchParams();
+  const status = strategyId ? embeddedStatus : params.get("status") ?? "";
+  const setStatus = (value: string) => {
+    if (strategyId) {
+      setEmbeddedStatus(value);
+    } else {
+      const next = new URLSearchParams(params);
+      if (value) next.set("status", value); else next.delete("status");
+      setParams(next, { replace: true, preventScrollReset: true });
+    }
+  };
   const [selected, setSelected] = useState("");
   const query = useQuery(
     resource<Command[]>(
@@ -80,43 +93,48 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
 export function AlertsPage() {
   const { t } = useLanguage();
   const display = useDisplay();
-  const query = useQuery(resource<Datum[]>("/alerts"));
+  const query = useQuery(alertsQuery);
+  const attention = useOutletContext<Attention>();
   return (
     <Page title={t("alerts")}>
-      {query.isPending ? (
-        <Loading />
-      ) : query.error ? (
-        <ErrorView error={query.error} />
-      ) : (
-        <div className="surface">
-          {query.data.map((row) => (
-            <Link
-              className="activity-line"
-              key={row.strategyId + row.id}
-              to={"/strategies/" + row.strategyId}
-            >
-              <span>
-                <strong>{String(row.data.code)}</strong>
-                <small>{String(row.data.message)}</small>
-              </span>
-              <Badge
-                tone={
-                  row.data.severity === "error" ||
-                  row.data.severity === "critical"
-                    ? "danger"
-                    : "warning"
-                }
+      <AttentionSummary attention={attention} />
+      <section className="section">
+        <div className="section-heading"><h2>{t("alertHistory")}</h2></div>
+        {query.isPending ? (
+          <Loading />
+        ) : query.error ? (
+          <ErrorView error={query.error} />
+        ) : (
+          <div className="surface">
+            {query.data.map((row) => (
+              <Link
+                className="activity-line"
+                key={row.strategyId + row.id}
+                to={"/strategies/" + row.strategyId}
               >
-                {display.severity(String(row.data.severity ?? ""))}
-              </Badge>
-              <time>{timestamp(row.observedAt)}</time>
-            </Link>
-          ))}
-          {!query.data.length && (
-            <p className="empty-inline">{t("noEvents")}</p>
-          )}
-        </div>
-      )}
+                <span>
+                  <strong>{String(row.data.code)}</strong>
+                  <small>{String(row.data.message)}</small>
+                </span>
+                <Badge
+                  tone={
+                    row.data.severity === "error" ||
+                    row.data.severity === "critical"
+                      ? "danger"
+                      : "warning"
+                  }
+                >
+                  {display.severity(String(row.data.severity ?? ""))}
+                </Badge>
+                <time>{timestamp(row.observedAt)}</time>
+              </Link>
+            ))}
+            {!query.data.length && (
+              <p className="empty-inline">{t("noEvents")}</p>
+            )}
+          </div>
+        )}
+      </section>
     </Page>
   );
 }

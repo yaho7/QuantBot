@@ -1,5 +1,4 @@
 import { StrategyTable } from "../components/strategy-table";
-import { AttentionSummary } from "../components/attention-summary";
 import { lazy, Suspense, memo, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
@@ -80,7 +79,6 @@ export function Home() {
       <PortfolioPicker strategies={rows} selected={featured} select={setFeaturedId} />
     )}>
       <div className="overview-content">
-        <AttentionSummary strategies={rows} />
         {strategies.isPending ? <Loading /> : featured ? (
           <section className="portfolio-hero surface">
             <PortfolioSnapshot key={featured.id} strategyId={featured.id} />

@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 const messages = {
+  attentionCount: ["待关注事项", "Items requiring attention"],
+  alertHistory: ["告警记录", "Alert history"],
   noMatchingStrategies: ["没有符合筛选条件的策略", "No matching strategies"],
   accountDetails: ["账户明细", "Account details"],
   hosts: ["主机", "Hosts"],

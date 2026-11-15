@@ -47,6 +47,7 @@ import {
   type Session,
 } from "../shared/api";
 import { ErrorView, Loading } from "../shared/ui";
+import { useAttention } from "../components/attention-summary";
 import { BrandIcon } from "../components/brand-icon";
 import "../styles/antquant.css";
 import "../styles/wealthfolio.css";
@@ -192,6 +193,7 @@ function Logout() {
 }
 function Workbench() {
   const { t } = useLanguage();
+  const attention = useAttention();
   const tools = useContext(AppearanceTools);
   const query = useQuery(activeTheme);
   const location = useLocation();
@@ -221,12 +223,22 @@ function Workbench() {
           <div className="container topbar-inner">
             <Brand />
             <nav aria-label={t("workbench")}>
-              {monitor.map(([path, label, Icon]) => (
-                <NavLink end={path === "/"} key={path} to={path} title={t(label)} aria-label={t(label)}>
-                  <Icon size={18} />
-                  <span>{t(label)}</span>
-                </NavLink>
-              ))}
+              {monitor.map(([path, label, Icon]) => {
+                const hasAlert = label === "alerts" && attention.count > 0;
+                return (
+                  <NavLink end={path === "/"} key={path} to={path}
+                    className={label === "alerts" ? "nav-alert-link" : undefined}
+                    title={t(label)} aria-label={t(label)}
+                    aria-describedby={hasAlert ? "nav-alert-count" : undefined}>
+                    <Icon size={18} />
+                    <span>{t(label)}</span>
+                    {hasAlert && <>
+                      <i className="nav-alert-badge" aria-hidden="true">{attention.count > 99 ? "99+" : attention.count}</i>
+                      <span className="sr-only" id="nav-alert-count">{t("attentionCount")}: {attention.count}</span>
+                    </>}
+                  </NavLink>
+                );
+              })}
             </nav>
             <div className="actions">
               {antquant && tools}
@@ -261,7 +273,7 @@ function Workbench() {
                   onFailure={onFailure}
                 />
               </>
-            ) : <Outlet />}
+            ) : <Outlet context={attention} />}
           </RouteSurface>
         </main>
         {!antquant && tools}

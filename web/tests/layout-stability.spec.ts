@@ -52,6 +52,15 @@ test("day and night share spacing and page navigation fades only the route", asy
     }
   });
 
+  await page.goto("/");
+  await expect(page.locator("main .attention-section")).toHaveCount(0);
+  const bell = page.locator('.topbar nav a[href="/alerts"]');
+  await expect(bell.locator(".nav-alert-badge")).toBeVisible();
+  await expect(bell).toHaveAccessibleDescription(/待关注事项/);
+  await bell.click();
+  await expect(page).toHaveURL(/\/alerts$/);
+  await expect(page.locator(".attention-section").getByRole("link", { name: /布局样本/ })).toHaveAttribute("href", "/strategies/" + strategyId);
+
   for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
