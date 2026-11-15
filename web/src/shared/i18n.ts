@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 const messages = {
+  cardsView: ["卡片", "Cards"],
+  tableView: ["表格", "Table"],
   needsAttention: ["需要处理", "Needs attention"],
   executionProgress: ["命令执行进度", "Command progress"],
   awaitingClaim: ["等待领取", "Awaiting claim"],

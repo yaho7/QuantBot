@@ -36,3 +36,9 @@
 .command-steps li[data-complete="true"]::before { background: var(--accent); }
 .command-steps li[aria-current="step"] { color: var(--text); font-weight: 600; }
 .command-progress p { margin: 6px 0; }
+.strategy-table-container { position: relative; }
+.strategy-table-container table { width: 100%; min-width: 760px; font-variant-numeric: tabular-nums; }
+.strategy-table-container tbody th { text-align: left; font-weight: 600; }
+.strategy-table-container tbody a { text-underline-offset: 3px; }
+.strategy-table-container tbody a:hover { text-decoration: underline; }
+.strategy-table-container td { white-space: nowrap; }

@@ -1,3 +1,4 @@
+import { StrategyTable } from "../components/strategy-table";
 import { AttentionSummary } from "../components/attention-summary";
 import { lazy, Suspense, memo, useContext, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
@@ -10,7 +11,6 @@ import {
   Search,
   SlidersHorizontal,
   Square,
-  AlignJustify,
 } from "lucide-react";
 import {
   resource,
@@ -26,10 +26,8 @@ import { History, useTelemetryValues } from "./strategy";
 
 const WidgetBoard = lazy(() => import("../components/widget-board"));
 const views = [
-  ["large", Square],
-  ["compact", LayoutGrid],
-  ["mini", AlignJustify],
-  ["list", List],
+  ["cardsView", LayoutGrid],
+  ["tableView", List],
 ] as const;
 export function Home() {
   const { t } = useLanguage();
@@ -39,8 +37,8 @@ export function Home() {
   );
   const presentation = useContext(ThemeContext);
   const portfolio = useLocation().pathname === "/" && presentation.portfolio;
-  const [savedView, setView] = useState(localStorage.getItem("qb.view"));
-  const view = savedView ?? (portfolio ? "list" : presentation.cardView ?? "compact");
+  const [savedView, setView] = useState(localStorage.getItem("qb.strategyView") === "tableView" ? "tableView" : "cardsView");
+  const view = portfolio ? "list" : savedView;
   const sectionOrder = (name: string, fallback: number) => {
     const index = presentation.sections?.indexOf(name) ?? -1;
     return index >= 0 ? index : (presentation.sections?.length ?? 0) + fallback;
@@ -144,7 +142,7 @@ export function Home() {
               {t("strategies")}{" "}
               <span className="muted count">{rows.length}</span>
             </h2>
-            <div className="view-switch" role="group" aria-label={t("view")}>
+            {!portfolio && <div className="view-switch" role="group" aria-label={t("view")}>
               {views.map(([name, Icon]) => (
                 <button
                   key={name}
@@ -152,13 +150,13 @@ export function Home() {
                   aria-pressed={view === name}
                   onClick={() => {
                     setView(name);
-                    localStorage.setItem("qb.view", name);
+                    localStorage.setItem("qb.strategyView", name);
                   }}
                 >
-                  <Icon size={17} />
+                  <Icon size={17} /> {t(name)}
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
           <div className="filter-bar">
             <div className="segmented">
@@ -216,8 +214,10 @@ export function Home() {
                 {t("create")}
               </Link>
             </div>
+          ) : !portfolio && view === "tableView" ? (
+            <StrategyTable strategies={selected.slice(0, limit)} />
           ) : (
-            <div className={"strategy-grid view-" + view}>
+            <div className={"strategy-grid view-" + (portfolio ? "list" : "compact")}>
               {selected.slice(0, limit).map((strategy) => (
                 <StrategyCard
                   key={strategy.id}
@@ -235,11 +235,11 @@ export function Home() {
             </button>
           )}
         </section>
-        <div className="portfolio-widgets" style={{ order: sectionOrder("strategies", 1) + 0.5 }}>
+        {portfolio && <div className="portfolio-widgets" style={{ order: sectionOrder("strategies", 1) + 0.5 }}>
           <Suspense fallback={<Loading />}>
             <WidgetBoard />
           </Suspense>
-        </div>
+        </div>}
         <div className="portfolio-activity" style={{ order: sectionOrder("activity", 2) }}>
           {portfolio && featured && <HoldingsPreview strategyId={featured.id} />}
           <RecentActivity />
@@ -449,14 +449,6 @@ const StrategyCard = memo(function StrategyCard({
           </div>
         )}
       </div>
-      {view === "large" && (
-        <dl className="compact-dl">
-          <dt>{t("drawdown")}</dt>
-          <dd>{decimalText(values.equity?.data.drawdown)}</dd>
-          <dt>{t("executor")}</dt>
-          <dd>{strategy.executorInstance ?? t("noExecutor")}</dd>
-        </dl>
-      )}
       <footer>
         <span className="muted">
           {strategy.lastSeen
