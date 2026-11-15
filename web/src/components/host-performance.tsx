@@ -57,7 +57,7 @@ export function SampleStatus({ latest, stale }: { latest?: Reading<unknown> | nu
   </span>;
 }
 
-export function HostMetricsGrid({ host }: { host: Host }) {
+export function HostMetricsGrid({ host, compact = false }: { host: Host; compact?: boolean }) {
   const { t } = useLanguage();
   const { bytes, cores, percent } = useResourceFormat();
   const sample = host.latest?.data;
@@ -68,8 +68,8 @@ export function HostMetricsGrid({ host }: { host: Host }) {
     <div><dt>{t("availableMemory")}</dt><dd>{bytes(sample?.memory_available_bytes)}</dd>
       {host.capacity.memory_bytes > 0 && <small className="muted">{t("resourceLimit")} {bytes(host.capacity.memory_bytes)}</small>}
     </div>
-    <div><dt>{t("availableDisk")}</dt><dd>{bytes(sample?.disk_available_bytes)}</dd></div>
-    <div><dt>{t("swapUsed")}</dt><dd>{bytes(sample?.swap_used_bytes)}</dd></div>
+    {!compact && sample?.disk_available_bytes != null && <div><dt>{t("availableDisk")}</dt><dd>{bytes(sample.disk_available_bytes)}</dd></div>}
+    {!compact && sample?.swap_used_bytes != null && <div><dt>{t("swapUsed")}</dt><dd>{bytes(sample.swap_used_bytes)}</dd></div>}
   </dl>;
 }
 
@@ -82,6 +82,11 @@ export function ProcessMetricsGrid({ process }: { process: HostProcess }) {
     <div><dt>{t("processRSS")}</dt><dd>{bytes(data?.rss_bytes)}</dd></div>
     {data?.thread_count != null && <div><dt>{t("threadCount")}</dt><dd>{data.thread_count}</dd></div>}
   </dl>;
+}
+
+export function hostTrendAvailable<T>(history: Reading<T>[], value: (data: T) => number | undefined) {
+  const first = history.find(sample => value(sample.data) != null);
+  return first !== undefined && history.some(sample => sample.observedAt !== first.observedAt && value(sample.data) != null);
 }
 
 export function ResourceChart<T>({ readings, select, label }: {
@@ -126,35 +131,33 @@ export function StrategyPerformance({ strategyId, compact = false, widget = fals
 }) {
   const { t } = useLanguage();
   const query = useQuery({ ...resource<HostProcess[]>("/strategies/" + strategyId + "/performance"), refetchInterval: 15_000 });
-  const hosts = useQuery({ ...hostsQuery, enabled: widget && !!query.data?.length });
-  if (!widget && query.isSuccess && query.data.length === 0) return null;
+  const hosts = useQuery({ ...hostsQuery, enabled: widget && !compact && !!query.data?.length });
+  const linkedHosts = new Set(query.data?.map(process => process.hostId));
 
   const content = query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} /> :
     !query.data.length ? <p className="empty-inline">{t("noHostBinding")}</p> :
     <div className="performance-process-list">
-      {query.data.map(process => {
-        const host = widget && !compact ? hosts.data?.find(item => item.id === process.hostId) : undefined;
-        return <div key={process.instanceId} className={widget ? "performance-process" : "surface padded performance-process"}>
+      {widget && !compact && hosts.data?.filter(host => linkedHosts.has(host.id)).map(host =>
+        <div className="performance-widget-host" key={host.id}>
+          <Link className="performance-link" to={"/hosts/" + host.id}>{host.name}</Link>
+          <HostMetricsGrid host={host} compact />
+          <SampleStatus latest={host.latest} stale={host.stale} />
+        </div>
+      )}
+      {query.data.map(process => (
+        <div key={process.instanceId} className={widget ? "performance-process" : "surface padded performance-process"}>
           <div className="performance-process-heading">
             <strong>{process.instanceId}</strong>
             <Link className="performance-link" to={"/hosts/" + process.hostId}>{process.hostName}</Link>
           </div>
           <ProcessMetricsGrid process={process} />
           <SampleStatus latest={process.latest} stale={process.stale} />
-          {host && <div className="performance-widget-host">
-            <h4>{t("hostResources")}</h4>
-            <HostMetricsGrid host={host} />
-            <SampleStatus latest={host.latest} stale={host.stale} />
-          </div>}
           {!widget && <ProcessDetails process={process} />}
-        </div>;
-      })}
+        </div>
+      ))}
     </div>;
 
-  return widget ? content : <section className="section">
-    <div className="section-heading"><h2>{t("hostPerformance")}</h2></div>
-    {content}
-  </section>;
+  return content;
 }
 
 function ProcessDetails({ process }: { process: HostProcess }) {

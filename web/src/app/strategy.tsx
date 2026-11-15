@@ -42,7 +42,7 @@ export function StrategyDetail() {
   const query = useQuery(resource<Strategy>("/strategies/" + id));
   const { t } = useLanguage();
   const display = useDisplay();
-  const [panel, setPanel] = useState<"trading" | "events" | "activity">("trading");
+  const [panel, setPanel] = useState<"trading" | "events" | "activity" | "hosts">("trading");
   const catalog = useQuery({
     ...resource<CapabilityCatalog>("/strategies/" + id + "/capabilities"),
     refetchInterval: 5000,
@@ -105,9 +105,6 @@ export function StrategyDetail() {
             {t(strategy.mode)}
           </Badge>
           <a className="button" href="#strategy-controls">{t("controls")}</a>
-          <Link to={"/admin/integration?strategy=" + id}>
-            {t("integration")}
-          </Link>
         </>
       }
     >
@@ -121,13 +118,13 @@ export function StrategyDetail() {
             {t("uptime")} · {display.unit(Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)), "minute")}
           </span>
         )}
-        {health &&
+        {strategy.online && health && health.status !== "healthy" &&
           catalog.data?.capabilities.some(
             (entry) => entry.kind === "state" && entry.group === "health",
           ) && (
             <span role="status">
               {t("health")}{" "}
-              <Badge tone={health.status === "healthy" ? "success" : "warning"}>
+              <Badge tone="warning">
                 {t(health.status)}
               </Badge>
               {!!healthIssues?.length && " · " + healthIssues.join(", ")}
@@ -166,10 +163,9 @@ export function StrategyDetail() {
       <Suspense fallback={<Loading />}>
         <WidgetBoard key={id} strategyId={id} />
       </Suspense>
-      <StrategyPerformance strategyId={id} />
       <section className="section portfolio-records">
         <div className="segmented" role="group" aria-label={t("strategyPanels")}>
-          {(["trading", "events", "activity"] as const).map((item) => (
+          {(["trading", "events", "activity", "hosts"] as const).map((item) => (
             <button key={item} aria-pressed={panel === item} onClick={() => setPanel(item)}>
               {t(item)}
             </button>
@@ -177,14 +173,17 @@ export function StrategyDetail() {
         </div>
         {panel === "trading" ? (
           <>
-            {telemetry.error && <ErrorView error={telemetry.error} />}
-            {accounts.length > 0 && <DataTable title={t("equity")} rows={accounts} fields="standard" />}
-            <div className="portfolio-record-grid">
-              <DataTable title={t("positions")} rows={positions} fields="standard" />
-              <DataTable title={t("orders")} rows={orders} fields="standard" />
-            </div>
+            {telemetry.isPending ? <Loading /> : telemetry.error ? <ErrorView error={telemetry.error} /> :
+             !accounts.length && !positions.length && !orders.length ? <p className="empty-inline">{t("noEvents")}</p> : <>
+              {!!accounts.length && <DataTable title={t("accountDetails")} rows={accounts} fields="standard" />}
+              {(!!positions.length || !!orders.length) && <div className="portfolio-record-grid">
+                {!!positions.length && <DataTable title={t("positions")} rows={positions} fields="standard" />}
+                {!!orders.length && <DataTable title={t("orders")} rows={orders} fields="standard" />}
+              </div>}
+            </>}
           </>
-        ) : panel === "events" ? <RecordFeed id={id} /> : <ActivityPage strategyId={id} />}
+        ) : panel === "events" ? <RecordFeed id={id} /> :
+          panel === "hosts" ? <StrategyPerformance strategyId={id} /> : <ActivityPage strategyId={id} />}
       </section>
     </Page>
   );

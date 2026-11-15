@@ -1,6 +1,8 @@
 import { useSyncExternalStore } from "react";
 
 const messages = {
+  noMatchingStrategies: ["没有符合筛选条件的策略", "No matching strategies"],
+  accountDetails: ["账户明细", "Account details"],
   hosts: ["主机", "Hosts"],
   addHost: ["添加主机", "Add host"],
   noHosts: ["暂无主机。添加后可绑定正在运行的策略。", "No hosts yet. Add one to bind your running strategies."],

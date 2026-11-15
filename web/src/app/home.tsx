@@ -1,6 +1,6 @@
 import { StrategyTable } from "../components/strategy-table";
 import { AttentionSummary } from "../components/attention-summary";
-import { lazy, Suspense, memo, useContext, useMemo, useState } from "react";
+import { lazy, Suspense, memo, useMemo, useState } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
 import { Link, useLocation } from "react-router-dom";
 import {
@@ -10,17 +10,14 @@ import {
   List,
   Search,
   SlidersHorizontal,
-  Square,
 } from "lucide-react";
 import {
   resource,
-  type Command,
   type Datum,
   type Strategy,
 } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge, decimalText, ErrorView, Loading } from "../shared/ui";
-import { ThemeContext } from "../themes/catalog";
 import { Page } from "./App";
 import { History, useTelemetryValues } from "./strategy";
 
@@ -32,17 +29,8 @@ const views = [
 export function Home() {
   const { t } = useLanguage();
   const strategies = useQuery(resource<Strategy[]>("/strategies"));
-  const commands = useQuery(
-    resource<Command[]>("/commands?status=confirmation_required"),
-  );
-  const presentation = useContext(ThemeContext);
-  const portfolio = useLocation().pathname === "/" && presentation.portfolio;
-  const [savedView, setView] = useState(localStorage.getItem("qb.strategyView") === "tableView" ? "tableView" : "cardsView");
-  const view = portfolio ? "list" : savedView;
-  const sectionOrder = (name: string, fallback: number) => {
-    const index = presentation.sections?.indexOf(name) ?? -1;
-    return index >= 0 ? index : (presentation.sections?.length ?? 0) + fallback;
-  };
+  const directory = useLocation().pathname === "/strategies";
+  const [view, setView] = useState(localStorage.getItem("qb.strategyView") === "tableView" ? "tableView" : "cardsView");
   const [filter, setFilter] = useState("all");
   const [group, setGroup] = useState("");
   const [search, setSearch] = useState("");
@@ -51,7 +39,7 @@ export function Home() {
   const rows = strategies.data ?? [];
   const [featuredId, setFeaturedId] = useState("");
   const equitySources = useQueries({
-    queries: portfolio ? rows.map((strategy) =>
+    queries: !directory ? rows.map((strategy) =>
       resource<Datum[]>("/strategies/" + strategy.id + "/telemetry"),
     ) : [],
   });
@@ -79,23 +67,6 @@ export function Home() {
         ),
     [rows, search, group, filter, sort],
   );
-  const summary = [
-    {
-      label: t("online"),
-      value: rows.filter((row) => row.online).length,
-      tone: "success",
-    },
-    {
-      label: t("offline"),
-      value: rows.filter((row) => !row.online).length,
-      tone: "neutral",
-    },
-    {
-      label: t("confirmation"),
-      value: commands.data?.length ?? 0,
-      tone: "warning",
-    },
-  ];
   if (strategies.error)
     return (
       <ErrorView
@@ -103,220 +74,141 @@ export function Home() {
         retry={() => void strategies.refetch()}
       />
     );
-  return (
-    <Page
-      title={portfolio ? "" : t("strategies")}
-      actions={
-        <Link className="button" to="/controls">
-          <SlidersHorizontal size={16} />
-          {t("controls")}
-        </Link>
-      }
-    >
-      <AttentionSummary strategies={rows} />
-      <div className={"workbench-sections" + (portfolio && featured ? " portfolio-dashboard" : "")}>
-        {portfolio && featured && (
-          <PortfolioOverview strategies={rows} selected={featured} select={setFeaturedId} />
-        )}
-        <section
-          className="summary-grid portfolio-summary"
-          style={{ order: sectionOrder("overview", 0) }}
-        >
-          {summary.map((item) => (
-            <div className="summary-card" key={item.label}>
-              <span className="muted">{item.label}</span>
-              <strong className={item.tone}>
-                {strategies.isPending ? "—" : item.value}
-                <span className={"connection-dot " + item.tone} />
-              </strong>
-            </div>
-          ))}
-          <AbnormalCount strategies={rows} />
-        </section>
-        <section
-          className="section portfolio-strategies"
-          style={{ order: sectionOrder("strategies", 1) }}
-        >
-          <div className="section-heading">
-            <h2>
-              {t("strategies")}{" "}
-              <span className="muted count">{rows.length}</span>
-            </h2>
-            {!portfolio && <div className="view-switch" role="group" aria-label={t("view")}>
-              {views.map(([name, Icon]) => (
-                <button
-                  key={name}
-                  aria-label={t(name)}
-                  aria-pressed={view === name}
-                  onClick={() => {
-                    setView(name);
-                    localStorage.setItem("qb.strategyView", name);
-                  }}
-                >
-                  <Icon size={17} /> {t(name)}
-                </button>
-              ))}
-            </div>}
-          </div>
-          <div className="filter-bar">
-            <div className="segmented">
-              {(["all", "online", "offline"] as const).map((item) => (
-                <button
-                  key={item}
-                  aria-pressed={filter === item}
-                  onClick={() => setFilter(item)}
-                >
-                  {t(item)}
-                </button>
-              ))}
-            </div>
-            {groups.length > 0 && (
-              <label className="inline-filter">
-                <span className="sr-only">{t("group")}</span>
-                <select
-                  value={group}
-                  onChange={(e) => setGroup(e.target.value)}
-                >
-                  <option value="">{t("all")}</option>
-                  {groups.map((g) => (
-                    <option key={g}>{g}</option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <div className="filter-spacer" />
-            <label className="search-field">
-              <Search size={16} />
-              <input
-                placeholder={t("search")}
-                aria-label={t("search")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </label>
-            <select
-              aria-label={t("sort")}
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-            >
-              <option value="name">{t("name")}</option>
-              <option value="lastSeen">{t("lastSeen")}</option>
-            </select>
-          </div>
-          {strategies.isPending ? (
-            <Loading />
-          ) : !rows.length ? (
-            <div className="empty-state surface">
-              <LayoutGrid size={30} />
-              <h2>{t("empty")}</h2>
-              <p>{t("emptyDescription")}</p>
-              <Link className="button primary" to="/admin/strategies">
-                {t("create")}
-              </Link>
-            </div>
-          ) : !portfolio && view === "tableView" ? (
-            <StrategyTable strategies={selected.slice(0, limit)} />
-          ) : (
-            <div className={"strategy-grid view-" + (portfolio ? "list" : "compact")}>
-              {selected.slice(0, limit).map((strategy) => (
-                <StrategyCard
-                  key={strategy.id}
-                  strategy={strategy}
-                  view={view}
-                  portfolio={portfolio}
-                />
-              ))}
-            </div>
-          )}
-          {selected.length > limit && (
-            <button className="load-more" onClick={() => setLimit(limit + 50)}>
-              <ChevronDown />
-              +50
-            </button>
-          )}
-        </section>
-        {portfolio && <div className="portfolio-widgets" style={{ order: sectionOrder("strategies", 1) + 0.5 }}>
-          <Suspense fallback={<Loading />}>
-            <WidgetBoard />
-          </Suspense>
-        </div>}
-        <div className="portfolio-activity" style={{ order: sectionOrder("activity", 2) }}>
-          {portfolio && featured && <HoldingsPreview strategyId={featured.id} />}
-          <RecentActivity />
-        </div>
+  if (!directory) return (
+    <Page title={t("overview")} actions={featured && (
+      <PortfolioPicker strategies={rows} selected={featured} select={setFeaturedId} />
+    )}>
+      <div className="overview-content">
+        <AttentionSummary strategies={rows} />
+        {strategies.isPending ? <Loading /> : featured ? (
+          <section className="portfolio-hero surface">
+            <PortfolioSnapshot key={featured.id} strategyId={featured.id} />
+          </section>
+        ) : <EmptyStrategies />}
+        {!!featured && <Suspense fallback={<Loading />}><WidgetBoard /></Suspense>}
       </div>
+    </Page>
+  );
+
+  return (
+    <Page title={t("strategies")}>
+      <section className="section portfolio-strategies strategy-directory">
+        <div className="section-heading">
+          <span className="muted">{rows.length} · {t("strategies")}</span>
+            <div className="view-switch" role="group" aria-label={t("view")}>
+            {views.map(([name, Icon]) => (
+              <button
+                key={name}
+                aria-label={t(name)}
+                aria-pressed={view === name}
+                onClick={() => {
+                  setView(name);
+                  localStorage.setItem("qb.strategyView", name);
+                }}
+              >
+                <Icon size={17} /> {t(name)}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="filter-bar">
+          <div className="segmented">
+            {(["all", "online", "offline"] as const).map((item) => (
+              <button
+                key={item}
+                aria-pressed={filter === item}
+                onClick={() => setFilter(item)}
+              >
+                {t(item)}
+              </button>
+            ))}
+          </div>
+          {groups.length > 0 && (
+            <label className="inline-filter">
+              <span className="sr-only">{t("group")}</span>
+              <select
+                value={group}
+                onChange={(e) => setGroup(e.target.value)}
+              >
+                <option value="">{t("all")}</option>
+                {groups.map((g) => (
+                  <option key={g}>{g}</option>
+                ))}
+              </select>
+            </label>
+          )}
+          <div className="filter-spacer" />
+          <label className="search-field">
+            <Search size={16} />
+            <input
+              placeholder={t("search")}
+              aria-label={t("search")}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </label>
+          <select
+            aria-label={t("sort")}
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+          >
+            <option value="name">{t("name")}</option>
+            <option value="lastSeen">{t("lastSeen")}</option>
+          </select>
+        </div>
+        {strategies.isPending ? <Loading /> : !rows.length ? <EmptyStrategies /> :
+         !selected.length ? <p className="empty-inline">{t("noMatchingStrategies")}</p> :
+         view === "tableView" ? (
+          <StrategyTable strategies={selected.slice(0, limit)} />
+        ) : (
+          <div className="strategy-grid view-compact">
+            {selected.slice(0, limit).map((strategy) => (
+              <StrategyCard
+                key={strategy.id}
+                strategy={strategy}
+              />
+            ))}
+          </div>
+        )}
+        {selected.length > limit && (
+          <button className="load-more" onClick={() => setLimit(limit + 50)}>
+            <ChevronDown />
+            +50
+          </button>
+        )}
+      </section>
     </Page>
   );
 }
 
-function PortfolioOverview({ strategies, selected, select }: {
+function EmptyStrategies() {
+  const { t } = useLanguage();
+  return <div className="empty-state surface">
+    <LayoutGrid size={30} />
+    <h2>{t("empty")}</h2>
+    <p>{t("emptyDescription")}</p>
+    <Link className="button primary" to="/admin/strategies">{t("create")}</Link>
+  </div>;
+}
+
+function PortfolioPicker({ strategies, selected, select }: {
   strategies: Strategy[];
   selected: Strategy;
   select: (strategyId: string) => void;
 }) {
   const { t } = useLanguage();
   return (
-    <section className="portfolio-hero surface">
-      <header className="portfolio-toolbar">
-        <nav className="portfolio-tabs" aria-label={t("workbench")}>
-          <Link to="/" aria-current="page"><LayoutGrid size={14} />{t("overview")}</Link>
-          <Link to="/strategies"><Square size={14} />{t("strategies")}</Link>
-          <Link to="/controls"><SlidersHorizontal size={14} />{t("controls")}</Link>
-        </nav>
-        <div className="actions">
-          <select
-            aria-label={t("strategy")}
-            value={selected.id}
-            onChange={(event) => select(event.target.value)}
-          >
-            {strategies.map((strategy) => (
-              <option key={strategy.id} value={strategy.id}>{strategy.name}</option>
-            ))}
-          </select>
-          <Link className="icon-button button" to={"/strategies/" + selected.id}
-            aria-label={t("details")} title={t("details")}>
-            <ArrowUpRight size={16} />
-          </Link>
-        </div>
-      </header>
-      <PortfolioSnapshot key={selected.id} strategyId={selected.id} />
-    </section>
-  );
-}
-
-function HoldingsPreview({ strategyId }: { strategyId: string }) {
-  const { t } = useLanguage();
-  const { records, query } = useTelemetryValues(strategyId);
-  const positions = records
-    .filter((row) => row.kind === "position")
-    .flatMap((row) => {
-      const items = (row.data.positions ?? []) as Record<string, unknown>[];
-      return items.map((item) => ({ item, source: row.data.source, instance: row.instanceId }));
-    });
-  return (
-    <section className="section">
-      <div className="section-heading">
-        <h2>{t("positions")}</h2>
-        <Link className="text-button" to={"/strategies/" + strategyId}>
-          {t("details")} <ArrowUpRight size={14} />
-        </Link>
-      </div>
-      <div className="surface">
-        {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} /> :
-          positions.length ? positions.slice(0, 6).map(({ item, source, instance }, index) => (
-            <div className="portfolio-holding" key={JSON.stringify([instance, source, item.accountId, item.positionId, index])}>
-              <span>
-                <strong>{String(item.symbol ?? item.positionId ?? "—")}</strong>
-                <small className="muted">{String(item.accountId ?? "")}</small>
-              </span>
-              <span>
-                <strong>{decimalText(item.quantity)}</strong>
-                <small className="muted">{t("holdingQuantity")}</small>
-              </span>
-            </div>
-          )) : <p className="empty-inline">{t("missing")}</p>}
-      </div>
-    </section>
+    <>
+      <select aria-label={t("strategy")} value={selected.id} onChange={event => select(event.target.value)}>
+        {strategies.map(strategy => (
+          <option key={strategy.id} value={strategy.id}>{strategy.name}</option>
+        ))}
+      </select>
+      <Link className="icon-button button" to={"/strategies/" + selected.id}
+        aria-label={t("details")} title={t("details")}>
+        <ArrowUpRight size={16} />
+      </Link>
+    </>
   );
 }
 
@@ -346,64 +238,11 @@ function PortfolioSnapshot({ strategyId }: { strategyId: string }) {
     </>
   );
 }
-function AbnormalCount({ strategies }: { strategies: Strategy[] }) {
-  const { t } = useLanguage();
-  const snapshots = useQueries({
-    queries: strategies.map((strategy) =>
-      resource<Datum[]>("/strategies/" + strategy.id + "/telemetry"),
-    ),
-  });
-  const count = snapshots.filter(
-    (query, index) =>
-      strategies[index]?.online &&
-      query.data?.some(
-        (record) => record.kind === "status" && record.data.state === "error",
-      ),
-  ).length;
-  return (
-    <div className="summary-card">
-      <span className="muted">{t("abnormal")}</span>
-      <strong className="danger">
-        {count}
-        <span className="connection-dot danger" />
-      </strong>
-    </div>
-  );
-}
-const StrategyCard = memo(function StrategyCard({
-  strategy,
-  view,
-  portfolio = false,
-}: {
-  strategy: Strategy;
-  view: string;
-  portfolio?: boolean;
-}) {
+const StrategyCard = memo(function StrategyCard({ strategy }: { strategy: Strategy }) {
   const { t } = useLanguage();
   const values = useTelemetryValues(strategy.id);
   const error = values.records.some(
     (r) => r.kind === "status" && r.data.state === "error",
-  );
-  if (portfolio && view === "list") return (
-    <Link className="portfolio-strategy-row" to={"/strategies/" + strategy.id}>
-      <span className="portfolio-strategy-identity">
-        <strong>{strategy.name}</strong>
-        <span className="muted">
-          <span className={"connection-dot " + (strategy.online ? "online" : "")} />
-          {error ? t("abnormal") : t(strategy.online ? "online" : "offline")}
-          {" · "}{strategy.group || t(strategy.mode)}
-        </span>
-      </span>
-      <span className="portfolio-strategy-value">
-        <strong>{values.equity?.data.value != null ? decimalText(values.equity?.data.value) : "—"}{" "}
-          <small>{String(values.equity?.data.currency ?? "")}</small>
-        </strong>
-        <span className={String(values.performance?.data.dailyPnl).startsWith("-") ? "danger" : "muted"}>
-          {values.performance?.data.dailyPnl != null ? t("dailyPnl") + " " + decimalText(values.performance?.data.dailyPnl) : t("missing")}
-        </span>
-      </span>
-      <ArrowUpRight size={16} className="muted" />
-    </Link>
   );
   return (
     <article className={"strategy-card surface " + (error ? "has-error" : "")}>
@@ -434,7 +273,7 @@ const StrategyCard = memo(function StrategyCard({
             <small>{String(values.equity?.data.currency ?? "")}</small>
           </strong>
         </div>
-        {view !== "mini" && (
+        {(
           <div>
             <span>{t("dailyPnl")}</span>
             <strong
@@ -466,33 +305,3 @@ const StrategyCard = memo(function StrategyCard({
     </article>
   );
 });
-function RecentActivity() {
-  const { t } = useLanguage();
-  const query = useQuery(resource<Command[]>("/commands"));
-  return (
-    <section className="section">
-      <div className="section-heading">
-        <h2>{t("recent")}</h2>
-        <Link className="text-button" to="/activity">
-          {t("all")} <ArrowUpRight size={15} />
-        </Link>
-      </div>
-      <div className="surface">
-        {(query.data ?? []).slice(0, 5).map((cmd) => (
-          <Link
-            className="activity-line"
-            key={cmd.id}
-            to={"/strategies/" + cmd.strategyId}
-          >
-            <span>{cmd.controlId}</span>
-            <Badge tone={cmd.status === "unknown" ? "danger" : ""}>
-              {t(cmd.status as "pending")}
-            </Badge>
-            <time>{new Date(cmd.updatedAt).toLocaleString()}</time>
-          </Link>
-        ))}
-        {!query.data?.length && <p className="empty-inline">{t("noEvents")}</p>}
-      </div>
-    </section>
-  );
-}

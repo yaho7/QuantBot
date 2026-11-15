@@ -172,7 +172,7 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
   return (
     <section className="section widget-section">
       <div className="section-heading">
-        <h2>{t("widgets")} <small className="muted">{t(device === "mobile" ? "mobileLayout" : "desktopLayout")}</small></h2>
+        <h2>{t("widgets")}</h2>
         {deviceTools}
         <div className="actions">
           {editing ? (

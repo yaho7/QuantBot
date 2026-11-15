@@ -85,3 +85,18 @@
   .workbench-shell .portfolio-strategies .filter-bar .search-field { grid-column: 1; width: 100%; max-width: none; }
   .workbench-shell .portfolio-strategies .filter-bar > select { grid-column: 2; width: 100%; }
 }
+
+/* The overview only contains the strategy snapshot and the saved board. */
+.overview-content { display: grid; gap: 16px; }
+.overview-content .attention-summary { margin: 0; }
+.overview-content .portfolio-hero { margin-block: 0; }
+.overview-content .portfolio-hero .portfolio-periods { margin-bottom: 4px; }
+.portfolio-record-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.performance-widget-host { display: grid; gap: 8px; border-top: 0; padding: 0 0 10px; border-bottom: 1px solid var(--line); }
+@media (max-width: 767px) {
+  .portfolio-records > .segmented { max-width: 100%; flex-wrap: wrap; }
+  .portfolio-records > .segmented button { white-space: nowrap; }
+}
+
+.workbench-shell .page-header > .actions { max-width: 100%; }
+.workbench-shell .page-header > .actions > select { max-width: min(72vw, 280px); }

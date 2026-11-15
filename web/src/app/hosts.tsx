@@ -8,7 +8,7 @@ import { Badge, ErrorView, Loading, Modal } from "../shared/ui";
 import { Page } from "./App";
 import {
   HostMetricsGrid, hostsQuery, ProcessMetricsGrid, ResourceChart, SampleStatus,
-  useResourceFormat, type Host, type HostMetrics, type HostProcess, type Reading, type Resources,
+  hostTrendAvailable, useResourceFormat, type Host, type HostMetrics, type HostProcess, type Reading, type Resources,
 } from "../components/host-performance";
 
 type HostDetail = Host & { members: HostProcess[]; history: Reading<HostMetrics>[] };
@@ -27,7 +27,7 @@ export function HostsPage() {
           <Link className="performance-link" to={"/hosts/" + host.id}><h2>{host.name}</h2><ArrowUpRight size={15} /></Link>
           <Badge>{t(host.scope === "container" ? "hostContainer" : "hostMachine")}</Badge>
         </header>
-        <HostMetricsGrid host={host} />
+        <HostMetricsGrid host={host} compact />
         <SampleStatus latest={host.latest} stale={host.stale} />
       </article>)}</div>}
     {adding && <CreateHost close={() => setAdding(false)} created={value => { setAdding(false); setBinding(value); }} />}
@@ -102,13 +102,7 @@ export function HostDetailPage() {
           <HostMetricsGrid host={query.data} />
         </section>
         <CapacityPlanner key={id} host={query.data} />
-        <section className="section">
-          <div className="section-heading"><h2>{t("hostTrends")}</h2></div>
-          <div className="performance-trends">
-            <ResourceChart readings={query.data.history} select={hostCPU} label={t("hostCPU") + " · %"} />
-            <ResourceChart readings={query.data.history} select={hostMemory} label={t("availableMemory") + " · GiB"} />
-          </div>
-        </section>
+        <HostTrends history={query.data.history} />
         <section className="section">
           <div className="section-heading"><h2>{t("hostProcesses")}</h2></div>
           {!query.data.members.length ? <p className="surface empty-inline">{t("noHostBinding")}</p> :
@@ -124,16 +118,31 @@ export function HostDetailPage() {
             )}</div>}
         </section>
         <HostSuggestions host={query.data} />
-        <section className="section surface padded host-binding-panel">
-          <h2>{t("hostBinding")}</h2>
+        <details className="section surface padded performance-details host-binding-panel">
+          <summary>{t("hostBinding")}</summary>
           <dl className="compact-dl"><dt>host_id</dt><dd>{query.data.id}</dd>
             <dt>{t("hostReporterInstance")}</dt><dd>{query.data.reporterInstanceId}</dd></dl>
           <button disabled={rotate.isPending} onClick={() => { if (window.confirm(t("rotateHostKeyHint"))) rotate.mutate(); }}>{t("rotateHostKey")}</button>
           {rotate.error && <p className="error-text" role="alert">{rotate.error.message}</p>}
-        </section>
+        </details>
       </>}
     {binding && <BindingDialog binding={binding} close={() => setBinding(undefined)} />}
   </Page>;
+}
+
+function HostTrends({ history }: { history: Reading<HostMetrics>[] }) {
+  const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const cpu = hostTrendAvailable(history, hostCPU);
+  const memory = hostTrendAvailable(history, hostMemory);
+  if (!cpu && !memory) return null;
+  return <details className="section surface padded performance-details" onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>{t("hostTrends")}</summary>
+    {open && <div className="performance-trends">
+      {cpu && <ResourceChart readings={history} select={hostCPU} label={t("hostCPU") + " · %"} />}
+      {memory && <ResourceChart readings={history} select={hostMemory} label={t("availableMemory") + " · GiB"} />}
+    </div>}
+  </details>;
 }
 
 type Estimate = { additional: number | null; reason?: string; bottleneck?: string; budget?: Resources; source?: string; sampleMinutes?: number };

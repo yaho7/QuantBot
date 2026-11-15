@@ -28,7 +28,6 @@ import {
   Menu,
   Monitor,
   Moon,
-  Paintbrush,
   Plug,
   Settings,
   Server,
@@ -65,7 +64,6 @@ import { StrategyDetail, AllControls } from "./strategy";
 import { ActivityPage, AlertsPage } from "./activity";
 const HostsPage = lazy(() => import("./hosts").then(module => ({ default: module.HostsPage })));
 const HostDetailPage = lazy(() => import("./hosts").then(module => ({ default: module.HostDetailPage })));
-const ThemeAdmin = lazy(() => import("../admin/themes"));
 const Notifications = lazy(() => import("../admin/notifications"));
 const Storage = lazy(() =>
   import("../admin/system").then((module) => ({ default: module.Storage })),
@@ -111,7 +109,6 @@ const management = [
       ["notifications", "notifications", Bell],
     ],
   ],
-  ["外观", [["themes", "themes", Paintbrush]]],
   [
     "系统",
     [
@@ -424,7 +421,7 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", element: <AdminDashboard /> },
           { path: "notifications", element: <Notifications /> },
-          { path: "themes", element: <ThemeAdmin /> },
+          { path: "themes", element: <Navigate to="/admin/settings" replace /> },
           { path: "strategies", element: <AdminStrategies /> },
           { path: "integration", element: <Integration /> },
           { path: "audit", element: <Audit /> },
