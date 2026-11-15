@@ -1,223 +1,125 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Copy } from "lucide-react";
+import { Clipboard, FlaskConical } from "lucide-react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { api, client, resource, type Registry } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
 import { agentPrompt } from "./agent-prompt";
+import { ConnectionField, useCopyText } from "./connection-field";
 
 type SandboxStatus = {
   id: string;
-  strategyId: string;
   expiresAt: number;
+  endpoint?: string;
   status: "active" | "inactive" | "expired" | "revoked";
   passed: boolean;
   requests: { step: string; status: number; at: number }[];
 };
+type SandboxCredential = { id: string; token: string; endpoint: string; expiresAt: number };
+const path = "/admin/sandbox";
 
-type SandboxCredential = SandboxStatus & { token: string; endpoint: string };
-
-export function SandboxPanel({ strategyId }: { strategyId: string }) {
+export function SandboxPanel() {
   const { t } = useLanguage();
-  const path = "/admin/strategies/" + strategyId + "/sandbox";
-  const [credential, setCredential] = useState<SandboxCredential>();
+  const copy = useCopyText();
+  const [secret, setSecret] = useState<SandboxCredential>();
+  const [closing, setClosing] = useState(false);
   const [controlId, setControlId] = useState("");
-  const query = useQuery({
-    ...resource<SandboxStatus>(path),
-    refetchInterval: 2000,
-  });
+  const query = useQuery({ ...resource<SandboxStatus>(path), refetchInterval: 2000 });
   const current = query.data;
   const active = current?.status === "active";
-  const controls = useQuery({
-    ...resource<Registry>(path + "/controls"),
+  const token = active && secret?.id === current.id ? secret?.token : undefined;
+  const commands = useQuery({
+    queryKey: [path + "/controls", current?.id],
+    queryFn: () => api<Registry>(path + "/controls"),
     enabled: active,
     refetchInterval: 3000,
   });
-  const candidates =
-    controls.data?.controls.filter(
-      (control) =>
-        control.kind === "button" &&
-        control.actual?.available &&
-        !control.readOnly,
-    ) ?? [];
-  const selected =
-    candidates.find((control) => control.id === controlId) ?? candidates[0];
-  const mutation = useMutation({
-    mutationFn: async (action: "create" | "extend" | "revoke" | "command") => {
-      if (action === "command") {
-        const command = await api<{ id: string; status: string }>(
-          path + "/commands",
-          "POST",
-          {
-            controlId: selected?.id,
-            revision: controls.data?.revision,
-            input: null,
-          },
-          crypto.randomUUID(),
-        );
-        if (command.status === "confirmation_required")
-          await api(path + "/commands/" + command.id + "/confirm", "POST");
-        return;
-      }
-      if (action === "create") {
-        const issued = await api<SandboxCredential>(path, "POST");
-        setCredential(issued);
-        client.setQueryData([path], {
-          ...issued,
-          endpoint: undefined,
-          token: undefined,
-        });
-        try {
-          await navigator.clipboard.writeText(sandboxPrompt(issued));
-          toast.success(t("copied"));
-        } catch {
-          toast.error(t("copyFailed"));
-        }
-      } else if (action === "extend") {
-        const renewed = await api<SandboxStatus>(path, "PUT");
-        setCredential(
-          (previous) =>
-            previous && { ...previous, expiresAt: renewed.expiresAt },
-        );
-      } else {
+  const candidates = commands.data?.controls.filter(item => item.kind === "button" && item.actual?.available && !item.readOnly) ?? [];
+  const selected = candidates.find(item => item.id === controlId) ?? candidates[0];
+  const mutate = useMutation({
+    mutationFn: async (action: "start" | "stop" | "reveal" | "copy" | "command") => {
+      if (action === "start") {
+        const status = await api<SandboxStatus>(path, "POST");
+        client.setQueryData([path], status);
+      } else if (action === "stop") {
         await api(path, "DELETE");
-        setCredential(undefined);
+        setSecret(undefined);
+        setClosing(false);
+      } else if (action === "command") {
+        const command = await api<{ id: string; status: string }>(path + "/commands", "POST",
+          { controlId: selected?.id, revision: commands.data?.revision, input: null }, crypto.randomUUID());
+        if (command.status === "confirmation_required") await api(path + "/commands/" + command.id + "/confirm", "POST");
+      } else {
+        const issued = await api<SandboxCredential>(path + "/reveal", "POST");
+        if (action === "reveal") setSecret(issued);
+        else await copy(sandboxPrompt(issued));
       }
     },
     onSettled: () => void client.invalidateQueries({ queryKey: [path] }),
   });
 
-  return (
-    <section className="section surface padded">
-      <h2>Sandbox</h2>
-      <p className="muted">{t("sandboxHint")}</p>
-      {query.isPending && <Loading />}
-      {query.error && <ErrorView error={query.error} />}
-      <div className="actions">
-        <button
-          onClick={() => mutation.mutate("create")}
-          disabled={mutation.isPending}
-        >
-          <Copy size={16} />{" "}
-          {t(credential && active ? "sandboxReplaceKey" : "copyAgentPrompt")}
-        </button>
-        {credential && active && (
-          <button
-            onClick={() =>
-              void navigator.clipboard
-                .writeText(sandboxPrompt(credential))
-                .then(() => toast.success(t("copied")))
-                .catch(() => toast.error(t("copyFailed")))
-            }
-          >
-            {t("copy")}
-          </button>
-        )}
-        {active && (
-          <>
-            <button
-              onClick={() => mutation.mutate("extend")}
-              disabled={mutation.isPending}
-            >
-              {t("sandboxExtend")}
-            </button>
-            <button
-              onClick={() => mutation.mutate("revoke")}
-              disabled={mutation.isPending}
-            >
-              {t("revoke")}
-            </button>
-          </>
-        )}
+  if (query.isPending) return <Loading />;
+  if (query.error) return <ErrorView error={query.error} retry={() => void query.refetch()} />;
+  return <div className="connection-panel">
+    <div className="sandbox-state">
+      <FlaskConical size={19} aria-hidden="true" />
+      <div>
+        <strong>{t("sandboxShared")}</strong>
+        <p>{t(active ? "sandboxSharedHint" : "sandboxStartHint")}</p>
       </div>
-      {active && (
-        <p>
-          {t("expires")} {timestamp(current.expiresAt, true)}
-        </p>
-      )}
-      {credential && active && (
-        <details>
-          <summary>{t("sandboxKey")}</summary>
-          <code>{credential.token}</code>
-        </details>
-      )}
-      {(current?.status === "expired" || current?.status === "revoked") && (
-        <p role="status">{t("sandboxExpired")}</p>
-      )}
-      {active && selected && (
-        <div className="inline-form">
-          <label>
-            {t("controls")}{" "}
-            <select
-              value={selected.id}
-              onChange={(e) => setControlId(e.target.value)}
-            >
-              {candidates.map((control) => (
-                <option key={control.id} value={control.id}>
-                  {control.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button
-            onClick={() => mutation.mutate("command")}
-            disabled={mutation.isPending}
-          >
-            {t("sandboxSimulate")}
-          </button>
-        </div>
-      )}
-      {current?.passed && (
-        <p role="status">
-          <Badge tone="success">{t("sandboxPassed")}</Badge>
-        </p>
-      )}
-      {!!current?.requests.length && (
-        <details>
-          <summary>{t("sandboxRequests")}</summary>
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("protocol")}</th>
-                  <th>HTTP</th>
-                  <th>{t("time")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {current.requests
-                  .slice()
-                  .reverse()
-                  .map((entry, index) => (
-                    <tr key={entry.at + ":" + index}>
-                      <td>{entry.step}</td>
-                      <td>{entry.status}</td>
-                      <td>{timestamp(entry.at)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      )}
-      {mutation.error && (
-        <p className="error-text" role="alert">
-          {mutation.error.message}
-        </p>
-      )}
-    </section>
-  );
+      {active && <Badge tone="success">{t("sandboxRunning")}</Badge>}
+    </div>
+    {active && <>
+      <div className="connection-fields">
+        <ConnectionField field="test-endpoint" label="Endpoint" value={current.endpoint} copyLabel={t("copyEndpoint")} />
+        <ConnectionField field="test-token" label="Token" value={token} copyLabel={t("copySandboxToken")}
+          revealing={mutate.isPending} onReveal={() => token ? setSecret(undefined) : mutate.mutate("reveal")} />
+      </div>
+      <div className="connection-options">
+        <span className="muted">{t("expires")} · {timestamp(current.expiresAt, true)}</span>
+        <button type="button" className="text-button" disabled={mutate.isPending} onClick={() => {
+          if (!closing) mutate.reset();
+          setClosing(!closing);
+        }}>{t(closing ? "cancel" : "sandboxStop")}</button>
+      </div>
+      {closing && <div className="sandbox-confirm">
+        <p>{t("sandboxStopWarning")}</p>
+        <button type="button" className="danger" disabled={mutate.isPending} onClick={() => mutate.mutate("stop")}>
+          {t("sandboxStop")}
+        </button>
+      </div>}
+      {selected && <form className="sandbox-command" onSubmit={event => { event.preventDefault(); mutate.mutate("command"); }}>
+        <select aria-label={t("controls")} value={selected.id} onChange={event => setControlId(event.target.value)}>
+          {candidates.map(item => <option key={item.id} value={item.id}>{item.title}</option>)}
+        </select>
+        <button type="submit" disabled={mutate.isPending}>{t("sandboxSimulate")}</button>
+      </form>}
+      {current.passed && <p className="sandbox-passed" role="status">{t("sandboxPassed")}</p>}
+      {!!current.requests.length && <details className="connection-details">
+        <summary>{t("sandboxRequests")}</summary>
+        <ul className="sandbox-requests">
+          {current.requests.slice(-10).reverse().map((entry, index) => <li key={entry.at + ":" + index}>
+            <code>{entry.step}</code><span>{entry.status}</span><time>{timestamp(entry.at)}</time>
+          </li>)}
+        </ul>
+      </details>}
+    </>}
+    {mutate.error && <p className="error-text" role="alert">{mutate.error.message}</p>}
+    <div className="connection-footer sandbox-footer">
+      <button type="button" className="primary" disabled={mutate.isPending || closing}
+        onClick={() => mutate.mutate(active ? "copy" : "start")}>
+        {active ? <Clipboard size={16} /> : <FlaskConical size={16} />}
+        {t(active ? "copySandboxPrompt" : "sandboxStart")}
+      </button>
+    </div>
+  </div>;
 }
 
 function sandboxPrompt(credential: SandboxCredential) {
   return [
-    "Test the QuantBot integration in Sandbox with simulated data and operations. Keep broker connections disabled during the trial.",
-    "Strategy ID " + credential.strategyId,
-    "Sandbox endpoint " + credential.endpoint,
-    "Expires " + new Date(credential.expiresAt * 1000).toISOString(),
-    "Set QB_AGENT_TOKEN locally to the temporary credential below. Keep it out of source control and logs.",
-    credential.token,
+    "Test the QuantBot integration in the shared Sandbox. Use simulated data and operations. Keep real broker connections disabled.",
+    "Expires: " + new Date(credential.expiresAt * 1000).toISOString(),
+    "Set QB_AGENT_TOKEN locally to this temporary credential. Keep it out of source control and logs: " + credential.token,
     agentPrompt(location.origin, credential.endpoint),
     "After Sandbox passes, obtain the production endpoint and credential from the administrator.",
   ].join("\n\n");

@@ -28,7 +28,6 @@ import {
   Menu,
   Monitor,
   Moon,
-  Plug,
   Settings,
   Server,
   Shield,
@@ -79,7 +78,6 @@ const management = [
     "管理",
     [
       ["strategies", "strategies", ChartNoAxesCombined],
-      ["integration", "integration", Plug],
       ["notifications", "notifications", Bell],
     ],
   ],
@@ -419,7 +417,6 @@ const router = createBrowserRouter([
           { path: "notifications", lazy: async () => ({ Component: (await import("../admin/notifications")).default }) },
           { path: "themes", element: <Navigate to="/admin/settings" replace /> },
           { path: "strategies", lazy: async () => ({ Component: (await import("../admin/pages")).AdminStrategies }) },
-          { path: "integration", lazy: async () => ({ Component: (await import("../admin/pages")).Integration }) },
           { path: "audit", lazy: async () => ({ Component: (await import("../admin/pages")).Audit }) },
           { path: "security", lazy: async () => ({ Component: (await import("../admin/pages")).Security }) },
           { path: "storage", lazy: async () => ({ Component: (await import("../admin/system")).Storage }) },

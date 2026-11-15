@@ -8,18 +8,20 @@ export function Modal({
   children,
   open,
   onOpenChange,
+  className,
 }: {
   title: string;
   children: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  className?: string;
 }) {
   const { t } = useLanguage();
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content className="dialog-content" aria-describedby={undefined}>
+        <Dialog.Content className={className ? "dialog-content " + className : "dialog-content"} aria-describedby={undefined}>
           <header>
             <Dialog.Title>{title}</Dialog.Title>
             <Dialog.Close className="icon-button" aria-label={t("close")}>

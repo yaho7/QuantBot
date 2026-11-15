@@ -22,8 +22,8 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await dialog.getByLabel("策略名称").fill("动量 · BTC 趋势");
   await dialog.getByLabel("分组").fill("数字资产");
   await dialog.getByRole("button", { name: "创建策略", exact: true }).click();
-  await expect(dialog.locator(".secret code")).toContainText("qbt_");
-  const token = await dialog.locator(".secret code").innerText();
+  await expect(dialog.locator("[data-field=token] code")).toContainText("qbt_");
+  const token = await dialog.locator("[data-field=token] code").innerText();
   const agent = await request.post("/api/agent/session", {
     headers: { Authorization: "Bearer " + token },
     data: { instanceId: "browser-worker", bootId: "browser-boot" },
@@ -34,8 +34,8 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   const session = identity.session as string;
   const headers = { Authorization: "Bearer " + session };
   await expect(dialog.getByRole("button", { name: "复制 AI 接入提示词" })).toBeVisible();
-  await page.goto("/admin/integration?strategy=" + id);
-  await page
+  await dialog.getByText("执行器实例", { exact: true }).click();
+  await dialog
     .getByRole("combobox", { name: "执行器实例", exact: true })
     .selectOption("browser-worker");
   await page.getByRole("button", { name: "保存", exact: true }).click();
@@ -456,22 +456,18 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(widget("Agent 改名")).toHaveClass(/size-full/);
   await expect(widget("券商连接健康")).toBeVisible();
 
-  await page.goto("/admin/integration?strategy=" + id);
-  await page
-    .getByRole("button", { name: "复制 AI 接入提示词", exact: true })
-    .click();
-  await page.getByText("显示 Sandbox 密钥", { exact: true }).click();
-  const sandboxToken = await page
-    .locator("details")
-    .filter({ hasText: "显示 Sandbox 密钥" })
-    .locator("code")
-    .innerText();
-  const sandboxPath = "/api/admin/strategies/" + id + "/sandbox";
-  const sandboxInfo = await page.evaluate(
-    async (path) => (await fetch(path)).json(),
-    sandboxPath,
-  );
-  const sandboxEndpoint = "/api/agent/sandbox/" + sandboxInfo.id;
+  const openSandbox = async () => {
+    await page.getByRole("row").filter({ hasText: "动量 · BTC 趋势" }).getByRole("button", { name: "API", exact: true }).click();
+    await dialog.getByRole("button", { name: "Sandbox", exact: true }).click();
+    await expect(dialog.getByText("共享测试环境")).toBeVisible();
+  };
+  await page.goto("/admin/strategies");
+  await openSandbox();
+  await dialog.getByRole("button", { name: "查看 Token", exact: true }).click();
+  await expect(dialog.locator("[data-field=test-token] code")).toContainText("qbt_");
+  const sandboxToken = await dialog.locator("[data-field=test-token] code").innerText();
+  const endpoint = await dialog.locator("[data-field=test-endpoint] code").innerText();
+  const sandboxEndpoint = new URL(endpoint).pathname;
   const sandboxIdentity = await request.post(sandboxEndpoint + "/session", {
     headers: { Authorization: "Bearer " + sandboxToken },
     data: { instanceId: "sandbox-worker", bootId: "sandbox-boot" },
@@ -504,30 +500,15 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     },
   });
   expect(ready.status()).toBe(200);
-  const panel = page.locator("section").filter({
-    has: page.getByRole("heading", { name: "Sandbox", exact: true }),
-  });
-  await panel
-    .getByRole("button", { name: "下发模拟命令", exact: true })
-    .click();
-  await expect
-    .poll(
-      async () =>
-        (
-          await (
-            await request.get(sandboxEndpoint + "/commands?wait=0", {
-              headers: sandboxBearer,
-            })
-          ).json()
-        ).length,
-    )
-    .toBe(1);
-  await panel.getByText("Sandbox 请求记录").click();
-  await expect(
-    panel.getByRole("cell", { name: "capabilities", exact: true }),
-  ).toBeVisible();
-  await panel.getByRole("button", { name: "撤销", exact: true }).click();
-  await expect(panel.getByRole("status")).toContainText("Sandbox 密钥已失效");
+  await dialog.getByRole("button", { name: "下发模拟命令", exact: true }).click();
+  await expect.poll(async () =>
+    (await (await request.get(sandboxEndpoint + "/commands?wait=0", { headers: sandboxBearer })).json()).length,
+  ).toBe(1);
+  await dialog.getByText("Sandbox 请求记录").click();
+  await expect(dialog.getByText("capabilities", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
+  await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "开启测试", exact: true })).toBeVisible();
   expect(
     (
       await request.put(sandboxEndpoint + "/heartbeat", {
@@ -687,11 +668,12 @@ test("initialization, real reports, command receipt and responsive shells", asyn
         ["notifications", "/admin/notifications"],
         ["storage", "/admin/storage"],
         ["settings", "/admin/settings"],
-        ["sandbox", "/admin/integration?strategy=" + id],
+        ["sandbox", "/admin/strategies"],
         ["themes", "/admin/themes"],
       ]) {
         await page.goto(path);
         await expect(page.locator("h1")).toBeVisible();
+        if (label === "sandbox") await openSandbox();
         if (label === "detail")
           await expect(page.locator(".chart canvas").first()).toBeVisible();
         expect(

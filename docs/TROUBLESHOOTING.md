@@ -1,6 +1,6 @@
 # Agent troubleshooting
 
-Compare the configured Agent URL with the **Integration** page. For example, the local server uses `http://127.0.0.1:23456/api/agent`. Check connectivity with `GET /healthz`, then try an authenticated session request using the [paper strategy examples](INTEGRATION.md#try-the-protocol-on-a-paper-strategy).
+Compare the configured Agent URL with the **API** dialog in **Administration → Strategies**. For example, the local server uses `http://127.0.0.1:23456/api/agent`. Check connectivity with `GET /healthz`, then try an authenticated session request using the [paper strategy examples](INTEGRATION.md#try-the-protocol-on-a-paper-strategy).
 
 | Symptom | Check |
 | --- | --- |

@@ -112,7 +112,7 @@ test("day and night share spacing and page navigation fades only the route", asy
     }
     await page.goto("/admin/settings");
     const admin = await layoutBox(page);
-    for (const path of ["dashboard", "strategies", "integration", "notifications", "storage", "audit", "security", "settings"]) {
+    for (const path of ["dashboard", "strategies", "notifications", "storage", "audit", "security", "settings"]) {
       await page.goto("/admin/" + path);
       await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
       expect(await layoutBox(page)).toEqual(admin);
@@ -159,7 +159,7 @@ test("day and night share spacing and page navigation fades only the route", asy
 });
 
 
-test("strategy creation shows the token and copyable GitHub prompt; deletion revokes the credential", async ({ page }) => {
+test("strategy API dialog creates, reveals and replaces tokens and opens the shared test", async ({ page }, testInfo) => {
   const origin = "http://127.0.0.1:42357";
   const setup = await page.request.get("/api/auth/setup");
   const init = (await setup.json()).required as boolean;
@@ -184,7 +184,13 @@ test("strategy creation shows the token and copyable GitHub prompt; deletion rev
   await dialog.getByLabel("策略名称").fill(testName);
   await dialog.getByRole("button", { name: "创建策略", exact: true }).click();
   await expect(dialog.getByRole("heading", { name: "策略已创建" })).toBeVisible();
-  const token = await dialog.locator(".secret code").innerText();
+  const endpoint = dialog.locator("[data-field=endpoint] code");
+  const key = dialog.locator("[data-field=key] code");
+  const secret = dialog.locator("[data-field=token] code");
+  await expect(endpoint).toHaveText(origin + "/api/agent");
+  await expect(key).not.toHaveText("—");
+  const keyBefore = await key.innerText();
+  const token = await secret.innerText();
   expect(token).toMatch(/^qbt_/);
   await dialog.getByRole("button", { name: "复制 AI 接入提示词" }).click();
   const prompt = await page.evaluate(() => (window as Window & { qbTestCopy?: string }).qbTestCopy);
@@ -197,11 +203,50 @@ test("strategy creation shows the token and copyable GitHub prompt; deletion rev
   await expect(page).toHaveURL(/\/admin\/strategies$/);
   await page.keyboard.press("Escape");
   const row = page.getByRole("row").filter({ hasText: testName });
+  const openAPI = () => row.getByRole("button", { name: "API", exact: true }).click();
+  await openAPI();
+  await expect(secret).not.toContainText(token);
+  await dialog.getByRole("button", { name: "查看 Token" }).click();
+  await expect(secret).toHaveText(token);
+  await dialog.getByRole("button", { name: "重新生成 Token" }).click();
+  await expect(dialog.getByText(/旧 Token 和已连接的会话会立即失效/)).toBeVisible();
+  await dialog.getByRole("button", { name: "重新生成 Token" }).click();
+  await expect(key).not.toHaveText(keyBefore);
+  await expect(secret).toContainText("qbt_");
+  const replacement = await secret.innerText();
+  expect(replacement).not.toBe(token);
+  await dialog.getByRole("button", { name: "隐藏 Token" }).click();
+
+  await expect(dialog.getByRole("button", { name: "复制 AI 接入提示词" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("strategy-api-desktop.png") });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath("strategy-api-mobile.png") });
+  const mobileBox = await dialog.boundingBox();
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
+  expect(await dialog.boundingBox()).toEqual(mobileBox);
+
+  await dialog.getByRole("button", { name: "Sandbox", exact: true }).click();
+  await expect(dialog.getByText("测试中", { exact: true })).toBeVisible();
+  const testEndpoint = dialog.locator("[data-field=test-endpoint] code");
+  const firstEndpoint = await testEndpoint.innerText();
+  await dialog.getByRole("button", { name: "复制测试提示词" }).click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { qbTestCopy?: string }).qbTestCopy)).toContain(firstEndpoint);
+  await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
+  await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
+  await dialog.getByRole("button", { name: "开启测试" }).click();
+  await expect(testEndpoint).toBeVisible();
+  await expect(testEndpoint).not.toHaveText(firstEndpoint);
+  await expect.poll(() => dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBeTruthy();
+  await page.screenshot({ path: testInfo.outputPath("strategy-sandbox-mobile.png") });
+  await page.keyboard.press("Escape");
+
   await row.getByRole("button", { name: "删除策略" }).click();
   await dialog.getByRole("button", { name: "删除策略" }).click();
   await expect(row).toHaveCount(0);
   const agent = await page.request.post("/api/agent/session", {
-    headers: { Authorization: "Bearer " + token },
+    headers: { Authorization: "Bearer " + replacement },
     data: { instanceId: "removed", bootId: "new-boot" },
   });
   expect(agent.status()).toBe(401);
