@@ -51,7 +51,7 @@ Key, and Token shown in the strategy's API dialog:
 ```
 
 - `endpoint`: an origin gets `/api/agent` appended. A complete Agent or Sandbox
-  endpoint is used as written. Remote endpoints use HTTPS.
+  endpoint is used as written. Both HTTP and HTTPS are supported.
 - `key`: optional credential ID for reference. `secret`: required Agent Token,
   used as Bearer for the session exchange. Keep the returned session in memory.
 - `instance_name`: stable process identity mapped to `instanceId`. Give concurrently

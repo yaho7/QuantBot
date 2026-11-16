@@ -48,8 +48,8 @@ func loadConfig() (localConfig, error) {
 	}
 	u, err := url.Parse(cfg.Endpoint)
 	if err != nil || u.Hostname() == "" || u.User != nil || strings.ContainsAny(cfg.Endpoint, "?#\\ \t\r\n") ||
-		(u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"))) {
-		return cfg, errors.New("set endpoint to a QuantBot HTTPS URL or local loopback URL in quantbot.json")
+		(u.Scheme != "http" && u.Scheme != "https") {
+		return cfg, errors.New("set endpoint to a QuantBot HTTP or HTTPS URL in quantbot.json")
 	}
 	path := strings.TrimRight(u.EscapedPath(), "/")
 	if path == "" {

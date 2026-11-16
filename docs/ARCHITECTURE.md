@@ -31,7 +31,7 @@ Track `created → confirmation_required → pending → accepted → executing 
 
 ## HTTP and UI contract
 
-Every browser mutation requires a valid browser origin and, after login, CSRF protection. Use separate cookie and Bearer authentication contexts. Canonicalize the externally visible origin only through explicitly trusted reverse proxies. Remote access requires HTTPS. Response JSON errors have a stable code and message. JSON decoders reject unknown fields, ambiguous keys, invalid timestamps and unbounded bodies. API documentation and versioned report schemas are published with the service.
+Every browser mutation requires a same-origin request and, after login, CSRF protection. Use separate cookie and Bearer authentication contexts. The browser origin and API Endpoint use the request Host and scheme, including the HTTPS scheme forwarded by a TLS terminator. Only explicitly configured proxies can supply a forwarded client IP. Response JSON errors have a stable code and message. JSON decoders reject unknown fields, ambiguous keys, invalid timestamps and unbounded bodies. API documentation and versioned report schemas are published with the service.
 
 | Authority | Routes under `/api` | Contract |
 | --- | --- | --- |

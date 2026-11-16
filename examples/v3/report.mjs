@@ -16,11 +16,10 @@ async function loadConfig() {
     if (typeof config.endpoint !== "string" || /[\s?#\\]/.test(config.endpoint) || !/^https?:\/\/[^/@]+(?:\/|$)/.test(config.endpoint)) throw new Error();
     const url = new URL(config.endpoint);
     const path = url.pathname.replace(/\/+$/, "") || "/api/agent";
-    if (url.username || url.password || !/^\/api\/agent(?:\/sandbox\/[A-Za-z0-9_-]+)?$/.test(path) ||
-        (url.protocol === "http:" && !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname))) throw new Error();
+    if (url.username || url.password || !/^\/api\/agent(?:\/sandbox\/[A-Za-z0-9_-]+)?$/.test(path)) throw new Error();
     endpoint = url.origin + path;
   } catch {
-    throw new Error("Set endpoint to a QuantBot HTTPS URL or local loopback URL in quantbot.json");
+    throw new Error("Set endpoint to a QuantBot HTTP or HTTPS URL in quantbot.json");
   }
   const { secret, instance_name: instance, strategy_id: strategy, heartbeat_seconds: heartbeat = 15 } = config;
   if (typeof secret !== "string" || !/^qbt_[A-Za-z0-9_-]+$/.test(secret)) throw new Error("Paste the Agent Token into secret in quantbot.json");

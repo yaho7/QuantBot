@@ -40,6 +40,8 @@ YAML
 compose up --pull never --wait --wait-timeout 60 quantbot
 url="http://$(compose port quantbot 8888)"
 curl -fsS --retry 3 "$url/healthz" | jq -e '.status == "ok"'
+curl -fsS "$url/healthz" -H 'Host: 192.168.1.2:8888' | jq -e '.status == "ok"'
+curl -fsS "$url/healthz" -H 'Host: quantbot.example' -H 'X-Forwarded-Proto: https' | jq -e '.status == "ok"'
 curl -fsS "$url/api/auth/setup" | jq -e '.required'
 curl -fsS "$url/api/auth/setup" -H "Origin: $url" -H 'Content-Type: application/json' \
   --data '{"username":"smoke-admin","password":"quantbot-smoke-fixture"}' | jq -e '.userId == 1'

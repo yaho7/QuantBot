@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -56,36 +55,37 @@ func TestAdministratorLifecycle(t *testing.T) {
 	requestAuth(t, handler, "GET", "/session", "", "", current, "", 401)
 }
 
-func TestPublicTransportRequiresTrustedProxyAndHost(t *testing.T) {
-	handler := newAuthTestServer(t, config.Config{
-		PublicOrigin:   "https://quantbot.example",
-		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("192.0.2.10/32")},
-	})
-	send := func(peer, host, proto string, expected int) {
-		t.Helper()
-		request := httptest.NewRequest("POST", "http://"+host+"/api/auth/setup",
-			strings.NewReader(`{"username":"admin","password":"paper-test-password"}`))
-		request.RemoteAddr = peer + ":12345"
-		request.Header.Set("Origin", "https://"+host)
-		request.Header.Set("Content-Type", "application/json")
-		request.Header.Set("X-Forwarded-Proto", proto)
-		request.Header.Set("X-Forwarded-For", "127.0.0.1, 203.0.113.10")
-		result := httptest.NewRecorder()
-		handler.ServeHTTP(result, request)
-		if result.Code != expected {
-			t.Fatalf("peer=%s host=%s proto=%s: got %d want %d (%s)", peer, host, proto, result.Code, expected, result.Body)
-		}
-		if expected == 200 {
-			_, cookie := parseSession(t, result)
-			if !cookie.Secure {
-				t.Fatal("proxy-issued cookie must be Secure")
+func TestBrowserAccessWithoutPublicOriginConfiguration(t *testing.T) {
+	for _, test := range []struct {
+		name, host, proto, origin string
+		status                    int
+	}{
+		{"LAN HTTP", "192.168.1.2:8888", "", "http://192.168.1.2:8888", http.StatusOK},
+		{"Proxied HTTPS", "quantbot.example", "https", "https://quantbot.example", http.StatusOK},
+		{"Cross-origin", "quantbot.example", "https", "https://other.example", http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler := newAuthTestServer(t, config.Config{})
+			request := httptest.NewRequest("POST", "http://"+test.host+"/api/auth/setup",
+				strings.NewReader(`{"username":"admin","password":"paper-test-password"}`))
+			request.RemoteAddr = "192.0.2.10:12345"
+			request.Header.Set("Origin", test.origin)
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("X-Forwarded-Proto", test.proto)
+			request.Header.Set("X-Forwarded-Host", "other.example")
+			result := httptest.NewRecorder()
+			handler.ServeHTTP(result, request)
+			if result.Code != test.status {
+				t.Fatalf("got %d, want %d (%s)", result.Code, test.status, result.Body)
 			}
-		}
+			if test.status == http.StatusOK {
+				_, cookie := parseSession(t, result)
+				if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Secure != (test.proto == "https") {
+					t.Fatalf("unexpected session cookie: %#v", cookie)
+				}
+			}
+		})
 	}
-	send("192.0.2.11", "quantbot.example", "https", 403)
-	send("192.0.2.10", "other.example", "https", 403)
-	send("192.0.2.10", "quantbot.example", "http", 403)
-	send("192.0.2.10", "quantbot.example", "https", 200)
 }
 
 func TestProfilingRequiresOptInAndAdministratorSession(t *testing.T) {
@@ -115,31 +115,6 @@ func TestProfilingRequiresOptInAndAdministratorSession(t *testing.T) {
 			if rec.Code != test.status {
 				t.Errorf("enabled=%t authenticated=%t: got %d want %d", enabled, test.cookie != nil, rec.Code, test.status)
 			}
-		}
-	}
-}
-
-func TestDockerLoopbackRequiresBridgePeerAndLocalHost(t *testing.T) {
-	handler := newAuthTestServer(t, config.Config{LoopbackGateway: netip.MustParseAddr("172.18.0.1")})
-	for _, test := range []struct {
-		peer, host, forwarded string
-		status                int
-	}{
-		{"172.18.0.1", "localhost:8888", "", 200},
-		{"172.18.0.1", "127.0.0.1:8888", "", 200},
-		{"172.18.0.2", "localhost:8888", "", 403},
-		{"172.18.0.1", "quantbot.example", "", 403},
-		{"172.18.0.1", "localhost:8888", "203.0.113.10", 403},
-	} {
-		req := httptest.NewRequest("GET", "http://"+test.host+"/api/auth/setup", nil)
-		req.RemoteAddr = test.peer + ":12345"
-		if test.forwarded != "" {
-			req.Header.Set("X-Forwarded-For", test.forwarded)
-		}
-		result := httptest.NewRecorder()
-		handler.ServeHTTP(result, req)
-		if result.Code != test.status {
-			t.Errorf("peer=%s host=%s: got %d want %d", test.peer, test.host, result.Code, test.status)
 		}
 	}
 }

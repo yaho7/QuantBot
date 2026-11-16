@@ -17,13 +17,9 @@ type Peer struct {
 	Secure  bool
 }
 
-type Origins struct {
-	Public          string
-	Proxies         []netip.Prefix
-	LoopbackGateway netip.Addr
-}
+type Proxies []netip.Prefix
 
-func (origins Origins) Guard(next http.Handler) http.Handler {
+func (proxies Proxies) IdentifyPeer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		host, _, err := net.SplitHostPort(r.RemoteAddr)
 		if err != nil {
@@ -36,14 +32,12 @@ func (origins Origins) Guard(next http.Handler) http.Handler {
 			return
 		}
 		addr = addr.Unmap()
-		directPeer := addr
-		secure := r.TLS != nil
-		for _, proxy := range origins.Proxies {
+		// HTTPS terminators use this only to describe the external scheme.
+		// Forwarded client identity is trusted only for configured proxies.
+		secure := r.TLS != nil || strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https")
+		for _, proxy := range proxies {
 			if proxy.Contains(addr) {
-				if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
-					secure = true
-				}
-				addr = origins.clientAddress(r.Header.Get("X-Forwarded-For"), addr)
+				addr = proxies.clientAddress(r.Header.Get("X-Forwarded-For"), addr)
 				break
 			}
 		}
@@ -52,25 +46,12 @@ func (origins Origins) Guard(next http.Handler) http.Handler {
 			scheme = "https"
 		}
 		origin := scheme + "://" + strings.ToLower(r.Host)
-		hostName := r.Host
-		if host, _, err := net.SplitHostPort(r.Host); err == nil {
-			hostName = host
-		}
-		localIP, _ := netip.ParseAddr(strings.Trim(hostName, "[]"))
-		loopbackHost := strings.EqualFold(hostName, "localhost") || localIP.IsLoopback()
-		dockerLoopback := directPeer == origins.LoopbackGateway && r.Header.Get("X-Forwarded-For") == "" &&
-			r.Header.Get("X-Forwarded-Proto") == "" && r.Header.Get("Forwarded") == ""
-		local := loopbackHost && (addr.IsLoopback() || dockerLoopback)
-		if !local && (!secure || origins.Public == "" || origin != origins.Public) {
-			Error(w, http.StatusForbidden, "untrusted_origin", "Use the configured HTTPS address")
-			return
-		}
 		peer := Peer{Address: addr, Origin: origin, Secure: secure}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), peerKey{}, peer)))
 	})
 }
 
-func (origins Origins) clientAddress(forwarded string, proxy netip.Addr) netip.Addr {
+func (proxies Proxies) clientAddress(forwarded string, proxy netip.Addr) netip.Addr {
 	addresses := strings.Split(forwarded, ",")
 	for index := len(addresses) - 1; index >= 0; index-- {
 		addr, err := netip.ParseAddr(strings.TrimSpace(addresses[index]))
@@ -79,7 +60,7 @@ func (origins Origins) clientAddress(forwarded string, proxy netip.Addr) netip.A
 		}
 		addr = addr.Unmap()
 		trusted := false
-		for _, prefix := range origins.Proxies {
+		for _, prefix := range proxies {
 			trusted = trusted || prefix.Contains(addr)
 		}
 		if !trusted {

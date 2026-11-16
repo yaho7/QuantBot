@@ -5,8 +5,8 @@
 Save [compose.yml](../compose.yml) and run `docker compose up -d`. Open
 [http://127.0.0.1:8888](http://127.0.0.1:8888) to initialize the administrator.
 Both databases are kept in `./data` beside the Compose file. The image sets
-the listening port and data path, detects the Docker bridge gateway for loopback
-requests, and initializes the mounted directory with private permissions. The
+the listening port and data path and initializes the mounted directory with
+private permissions. The
 QuantBot process runs as UID/GID 10001. Keep the published port on the host
 loopback interface.
 
@@ -16,17 +16,20 @@ restore the backup into a separate directory before switching. An existing bind
 mount must contain files writable by UID/GID 10001; startup only prepares the
 mount point itself.
 
-On a remote host, use SSH forwarding for local administration or terminate HTTPS at a reverse proxy. Configure the exact public origin and the addresses of the trusted proxies:
+QuantBot accepts HTTP and HTTPS without a configured hostname. The example Compose file binds to loopback. For LAN access, bind the published port to the host's LAN IP. For HTTPS, direct your reverse proxy to `http://127.0.0.1:8888` on the Docker host or `http://quantbot:8888` on a shared Docker network.
+
+Preserve the request's `Host` and set `X-Forwarded-Proto` to the external scheme so QuantBot can generate the API URL and set browser cookies correctly. Allow at least 25 seconds for command polling and disable proxy buffering for SSE.
+
+To use proxy-reported client IPs for login rate limiting, optionally set `QB_TRUSTED_PROXIES` to the direct proxy's address as a CIDR:
 
 ```yaml
 services:
   quantbot:
     environment:
-      QB_PUBLIC_ORIGIN: "https://quantbot.example.com"
       QB_TRUSTED_PROXIES: "172.18.0.1/32"
 ```
 
-When the proxy runs on the Docker host, use the bridge gateway address reported by `docker inspect` for the QuantBot container. When it shares the Docker network, use a fixed proxy container address and the internal destination `http://quantbot:8888`. Preserve the original Host, forward the HTTPS scheme, allow at least 25 seconds for command polling, and disable proxy buffering for SSE. Caddy, Nginx, 1Panel and Cloudflare Tunnel can all use this arrangement. [Caddy configuration](../deploy/Caddyfile)
+Use the bridge gateway reported by `docker inspect` for a proxy connecting through the Docker host's published port, or a fixed proxy container address on a shared network. See the [Caddy configuration](../deploy/Caddyfile).
 
 ## Native Linux
 
@@ -40,7 +43,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now quantbot
 ```
 
-The default native listener is `127.0.0.1:23456`. Set `QB_LISTEN` to change the bind address. Configure `QB_PUBLIC_ORIGIN` and `QB_TRUSTED_PROXIES` for HTTPS reverse proxies. Other settings include `QB_AGENT_SESSION_TTL`, `QB_COMMAND_POLL`, `QB_METRICS_QUEUE`, `QB_METRICS_BATCH` and `QB_METRICS_FLUSH`.
+The default native listener is `127.0.0.1:23456`. Set `QB_LISTEN` to change the bind address. Other settings include `QB_AGENT_SESSION_TTL`, `QB_COMMAND_POLL`, `QB_METRICS_QUEUE`, `QB_METRICS_BATCH` and `QB_METRICS_FLUSH`.
 
 For performance diagnosis, set `QB_ENABLE_PPROF=true` and request a Go profile such as `/api/admin/pprof/heap` or `/api/admin/pprof/profile?seconds=10` with an administrator session. Profiles are disabled by default.
 

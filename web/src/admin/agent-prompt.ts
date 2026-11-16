@@ -66,7 +66,7 @@ ${strategy ? "目标策略：" + JSON.stringify({ id: strategy.id, name: strateg
 
 ${configuration}
 
-secret 用于 POST /session 的 Bearer；key 只是凭证 ID。instance_name 映射为稳定的 instanceId，多台机器同时运行时名称要不同；如果填写了 strategy_id，验证它与会话返回值一致。endpoint 只有域名时追加 /api/agent；完整的 Agent 或沙盒地址直接追加 /session 等相对路径。远程使用可访问的 HTTPS 地址。
+secret 用于 POST /session 的 Bearer；key 只是凭证 ID。instance_name 映射为稳定的 instanceId，多台机器同时运行时名称要不同；如果填写了 strategy_id，验证它与会话返回值一致。endpoint 只有域名时追加 /api/agent；完整的 Agent 或沙盒地址直接追加 /session 等相对路径。使用策略程序可访问的 HTTP 或 HTTPS 地址，公网优先用 HTTPS。
 
 ${references}
 
@@ -94,7 +94,7 @@ ${target}Read quantbot.json from the strategy's local working directory at start
 
 ${configuration}
 
-Use secret as the Bearer Token for POST /session; key is a credential identifier, not an authentication header. Map instance_name to a stable API instanceId; choose a different name for each concurrently running instance. If strategy_id is set, verify it against the session response before sending data. An endpoint containing only the origin gets /api/agent appended. Preserve a full Agent or Sandbox endpoint and append relative routes (such as /session). For a remote strategy, use the reachable HTTPS origin.
+Use secret as the Bearer Token for POST /session; key is a credential identifier, not an authentication header. Map instance_name to a stable API instanceId; choose a different name for each concurrently running instance. If strategy_id is set, verify it against the session response before sending data. An endpoint containing only the origin gets /api/agent appended. Preserve a full Agent or Sandbox endpoint and append relative routes (such as /session). Use an HTTP or HTTPS origin reachable by the strategy. Prefer HTTPS over public networks.
 The default heartbeat_seconds is 15. disconnect_policy "continue" keeps the local strategy, risk checks and exits on their existing schedule while QuantBot is disconnected. Do not accept remote commands during a disconnect or replay outcomes already executed.
 
 ${references}

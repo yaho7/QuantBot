@@ -15,9 +15,9 @@ config="$(jq -ce -s 'select(length == 1 and (.[0] | type == "object")) | .[0]' q
   { echo "Create a valid local quantbot.json using quantbot.example.json" >&2; exit 1; }
 endpoint="$(read_config '
   .endpoint | strings | sub("/+$"; "") | select(contains("\\") | not) |
-  select(test("^(https://[^/?#@\\s]+|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?)(/api/agent(/sandbox/[A-Za-z0-9_-]+)?)?$")) |
+  select(test("^https?://[^/?#@\\s]+(/api/agent(/sandbox/[A-Za-z0-9_-]+)?)?$")) |
   if test("^https?://[^/]+$") then . + "/api/agent" else . end
-' 'Set endpoint to a QuantBot HTTPS URL or local loopback URL in quantbot.json')"
+' 'Set endpoint to a QuantBot HTTP or HTTPS URL in quantbot.json')"
 token="$(read_config '.secret | strings | select(test("^qbt_[A-Za-z0-9_-]+$"))' 'Paste the Agent Token into secret in quantbot.json')"
 instance="$(read_config '.instance_name | strings | select(test("^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"))' 'Set a stable instance_name in quantbot.json')"
 strategy="$(read_config '(.strategy_id // "") | strings' 'strategy_id must be a string')"

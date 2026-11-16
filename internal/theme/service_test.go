@@ -24,7 +24,7 @@ func TestClassicalOnlyAndIsolatedLegacyAssets(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := chi.NewRouter()
-	r.Use((httpapi.Origins{}).Guard)
+	r.Use(httpapi.Proxies(nil).IdentifyPeer)
 	s.Register(r)
 	r.Get("/theme-assets/{id}/{revision}/*", s.Assets)
 	call := func(method, path, body, media string, expected int) *httptest.ResponseRecorder {

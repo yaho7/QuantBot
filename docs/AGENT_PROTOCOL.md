@@ -1,6 +1,6 @@
 # Agent protocol
 
-QuantBot speaks JSON over ordinary HTTP. Use HTTPS for remote integrations. Local loopback development can use HTTP. The strategy independently owns broker connectivity, operations and risk policy.
+QuantBot speaks JSON over HTTP or HTTPS. Use HTTPS when sending credentials over a public network. The strategy independently owns broker connectivity, operations and risk policy.
 
 ## Strategy identity and credentials
 

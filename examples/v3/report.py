@@ -29,12 +29,11 @@ def load_config():
         url = urllib.parse.urlsplit(raw if isinstance(raw, str) else "")
         host = url.hostname
         path = url.path.rstrip("/") or "/api/agent"
-        secure = url.scheme == "https" or url.scheme == "http" and host in ("localhost", "127.0.0.1", "::1")
-        if not (secure and host and not re.search(r"[\s?#\\]", raw) and not url.username and url.password is None
+        if not (url.scheme in ("http", "https") and host and not re.search(r"[\s?#\\]", raw) and not url.username and url.password is None
                 and "@" not in url.netloc and re.fullmatch(r"/api/agent(?:/sandbox/[A-Za-z0-9_-]+)?", path)):
             raise ValueError()
     except (ValueError, TypeError):
-        raise SystemExit("Set endpoint to a QuantBot HTTPS URL or local loopback URL in quantbot.json") from None
+        raise SystemExit("Set endpoint to a QuantBot HTTP or HTTPS URL in quantbot.json") from None
     secret, instance = config.get("secret"), config.get("instance_name")
     heartbeat = config.get("heartbeat_seconds", 15)
     if not isinstance(secret, str) or not re.fullmatch(r"qbt_[A-Za-z0-9_-]+", secret):

@@ -5,6 +5,7 @@ Compare the configured Agent URL with the **API** dialog in **Administration →
 | Symptom | Check |
 | --- | --- |
 | 401 | Use the Agent credential for `POST /api/agent/session` and the returned session Bearer for subsequent requests. Check scopes, expiration and revocation. |
+| Browser login returns `origin_required` | Preserve the public `Host` and set `X-Forwarded-Proto` to the browser's scheme at the reverse proxy. |
 | 409 | Check executor assignment, online presence, registry revision and boot identity. A failed claim provides no permission. |
 | 422 | Inspect rejected record indices, observation timestamps and the declared value type. |
 | 429 or 503 | Back off and retry the same batch IDs and contents. Honor `Retry-After` when present. |
