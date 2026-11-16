@@ -1,0 +1,14 @@
+{
+  "name": "quantbot",
+  "like": "neutral",
+  "mode": "both",
+  "settings": [
+    {
+      "thing": "accent",
+      "value": "#21866b",
+      "source": "dial"
+    }
+  ],
+  "lifted": [],
+  "palette": "dd6f12d687929610b3011e3b992fe11d49362079836b21c38ce94b702851730d"
+}

@@ -1,4 +1,4 @@
-import { Badge as AstryxBadge } from "@astryxdesign/core/Badge";
+import { Token } from "@astryxdesign/core/Token";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
@@ -40,7 +40,7 @@ export function Modal({
 export function Loading() {
   const { t } = useLanguage();
   return (
-    <VStack className="loading">
+    <VStack className="loading" minHeight="10rem" vAlign="center" hAlign="center">
       <Spinner label={t("loading")} size="lg" shade="subtle" />
     </VStack>
   );
@@ -68,7 +68,7 @@ export function Badge({
   tone?: string;
 }) {
   const variant = tone === "success" ? "green" : tone === "warning" ? "yellow" : tone === "danger" ? "red" : "neutral";
-  return <AstryxBadge label={children} variant={variant} />;
+  return <Token label={String(children ?? "")} color={variant === "neutral" ? "default" : variant} size="sm" />;
 }
 
 export function Choices<T extends string>({ label, value, options, select, disabled, fill = false, size = "md" }: {

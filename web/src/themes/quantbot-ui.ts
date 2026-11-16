@@ -1,41 +1,32 @@
 import { defineTheme } from "@astryxdesign/core/theme";
-import { neutralTheme } from "@astryxdesign/theme-neutral/built";
+import { quantbotTheme } from "./quantbot/quantbot";
 
-// QuantBot's saved palettes also color the Astryx controls and surfaces.
-export const quantbotUI = defineTheme({
-  name: "quantbot-ui",
-  extends: neutralTheme,
-  tokens: {
-    "--color-background-body": "var(--canvas)",
-    "--color-background-surface": "var(--surface)",
-    "--color-background-card": "var(--surface)",
-    "--color-background-popover": "var(--surface)",
-    "--color-background-muted": "var(--raised)",
-    "--color-overlay-hover": "var(--raised)",
-    "--color-neutral": "var(--raised)",
-    "--color-text-primary": "var(--text)",
-    "--color-text-secondary": "var(--muted)",
-    "--color-border": "var(--line)",
-    "--color-border-emphasized": "color-mix(in srgb, var(--line), var(--muted) 38%)",
-    "--color-accent": "var(--accent)",
-    "--color-accent-muted": "var(--accent-soft)",
-    "--color-on-accent": "var(--accent-ink)",
-    "--color-text-accent": "var(--accent)",
-    "--color-icon-accent": "var(--accent)",
-    "--color-track": "var(--line)",
-    "--color-background-green": "var(--success-bg)",
-    "--color-text-green": "var(--success)",
-    "--color-background-yellow": "var(--warning-bg)",
-    "--color-text-yellow": "var(--warning)",
-    "--color-background-red": "var(--danger-bg)",
-    "--color-text-red": "var(--danger)",
-    "--color-error": "var(--danger)",
-    "--color-error-muted": "var(--danger-bg)",
-    "--color-on-error-muted": "var(--danger)",
-    "--color-on-error": "var(--canvas)",
-    "--font-family-body": "var(--qb-font-family)",
-    "--font-family-heading": "var(--qb-font-family)",
+// One source of color and type for Astryx and the monitoring/chart adapters.
+const tokens = {
+    "--canvas": "var(--color-background-body)",
+    "--surface": "var(--color-background-surface)",
+    "--raised": "var(--color-background-muted)",
+    "--text": "var(--color-text-primary)",
+    "--muted": "var(--color-text-secondary)",
+    "--line": "var(--color-border)",
+    "--accent": "var(--color-text-accent)",
+    "--accent-soft": "var(--color-accent-muted)",
+    "--accent-ink": "var(--color-on-accent)",
+    "--success": "var(--color-text-green)",
+    "--success-bg": "var(--color-background-green)",
+    "--warning": "var(--color-text-yellow)",
+    "--warning-bg": "var(--color-background-yellow)",
+    "--danger": "var(--color-text-red)",
+    "--danger-bg": "var(--color-background-red)",
+    "--radius": "var(--radius-container)",
+    "--gap": "var(--spacing-4)",
+    "--qb-font-family": "var(--font-family-body)",
     "--size-element-md": "2.5rem",
     "--size-element-lg": "2.75rem",
-  },
+};
+export const quantbotUI = defineTheme({
+  name: "quantbot-ui",
+  extends: quantbotTheme,
+  tokens,
+  components: { "side-nav": { base: { width: "15rem" } } },
 });

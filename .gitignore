@@ -17,3 +17,8 @@ quantbot.json
 
 !/web/dist/
 !/web/dist/**
+
+# Astryx theme editor previews are reproducible local review artifacts.
+web/themes/*/preview*
+web/themes/*/sheet*
+web/themes/*/*.pictures.json

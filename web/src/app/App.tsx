@@ -1,201 +1,93 @@
-import {
-  createContext,
-  lazy,
-  Suspense,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, lazy, Suspense, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { version } from "../../package.json";
 import { Theme as AstryxTheme } from "@astryxdesign/core/theme";
 import { InternationalizationProvider } from "@astryxdesign/core/i18n";
+import { AppShell } from "@astryxdesign/core/AppShell";
+import { TopNav, TopNavItem } from "@astryxdesign/core/TopNav";
+import { SideNav, SideNavHeading, SideNavItem, SideNavSection } from "@astryxdesign/core/SideNav";
+import { LinkProvider } from "@astryxdesign/core/Link";
+import { Button } from "@astryxdesign/core/Button";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Badge } from "@astryxdesign/core/Badge";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
-import {
-  Navigate,
-  Outlet,
-  RouterProvider,
-  ScrollRestoration,
-  createBrowserRouter,
-  useLocation,
-} from "react-router-dom";
-import { Link, NavLink } from "../shared/page-links";
-import {
-  ArrowLeft,
-  Bell,
-  ChartNoAxesCombined,
-  ClipboardList,
-  Database,
-  LayoutDashboard,
-  Menu,
-  Monitor,
-  Moon,
-  Settings,
-  Server,
-  Shield,
-  SlidersHorizontal,
-  Sun,
-  LogOut,
-  X,
-} from "lucide-react";
+import { Text } from "@astryxdesign/core/Text";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Navigate, Outlet, RouterProvider, ScrollRestoration, createBrowserRouter, useLocation } from "react-router-dom";
+import { Link } from "../shared/page-links";
+import { ArrowLeft, Bell, ChartNoAxesCombined, ClipboardList, Database, LayoutDashboard, Monitor, Moon, Settings, Server, Shield, SlidersHorizontal, Sun, LogOut } from "lucide-react";
 import { Toaster } from "sonner";
-import {
-  api,
-  ApiError,
-  client,
-  resource,
-  setCSRF,
-  type Session,
-} from "../shared/api";
+import { api, ApiError, client, resource, setCSRF, type Session } from "../shared/api";
 import { ErrorView, Loading } from "../shared/ui";
 import { useAttention } from "../components/attention-summary";
 import { BrandIcon } from "../components/brand-icon";
-import "../styles/antquant.css";
-import "../styles/wealthfolio.css";
-import "../styles/alignment.css";
-import "../styles/route-layout.css";
 import { usePalette } from "../shared/preferences";
-import { useLanguage, type Message } from "../shared/i18n";
-const Login = lazy(() =>
-  import("./auth").then((module) => ({ default: module.Login })),
-);
+import { useLanguage } from "../shared/i18n";
 import { useRealtime } from "./realtime";
 import { activeTheme, ThemeContext } from "../themes/catalog";
 import { ThemeFrame, themeStyle } from "../themes/host";
 import { quantbotUI } from "../themes/quantbot-ui";
+const Login = lazy(() => import("./auth").then(module => ({ default: module.Login })));
 
 const monitor = [
-  ["/", "workbench", LayoutDashboard],
-  ["/strategies", "strategies", ChartNoAxesCombined],
-  ["/controls", "controls", SlidersHorizontal],
-  ["/hosts", "hosts", Server],
-  ["/activity", "activity", ClipboardList],
-  ["/alerts", "alerts", Bell],
+  ["/", "workbench", LayoutDashboard], ["/strategies", "strategies", ChartNoAxesCombined],
+  ["/controls", "controls", SlidersHorizontal], ["/hosts", "hosts", Server],
+  ["/activity", "activity", ClipboardList], ["/alerts", "alerts", Bell],
 ] as const;
 const management = [
-  ["", [["dashboard", "dashboard", LayoutDashboard]]],
-  [
-    "管理",
-    [
-      ["strategies", "strategies", ChartNoAxesCombined],
-      ["notifications", "notifications", Bell],
-    ],
-  ],
-  [
-    "系统",
-    [
-      ["storage", "storage", Database],
-      ["audit", "audit", ClipboardList],
-      ["security", "security", Shield],
-      ["settings", "settings", Settings],
-    ],
-  ],
+  ["总览", [["dashboard", "dashboard", LayoutDashboard]]],
+  ["管理", [["strategies", "strategies", ChartNoAxesCombined], ["notifications", "notifications", Bell]]],
+  ["系统", [["storage", "storage", Database], ["audit", "audit", ClipboardList], ["security", "security", Shield], ["settings", "settings", Settings]]],
 ] as const;
-
 const AppearanceTools = createContext<ReactNode>(null);
 
+function AstryxLink({ href, ...props }: React.ComponentProps<"a">) {
+  return <Link to={href ?? "/"} {...props} />;
+}
 function Root() {
   usePalette();
-  const session = useQuery({
-    ...resource<Session>("/auth/session"),
-    retry: false,
-  });
+  const session = useQuery({ ...resource<Session>("/auth/session"), retry: false });
   const connected = useRealtime(!!session.data);
   const { t, lang } = useLanguage();
-  const [mode, setMode] = useState(
-    localStorage.getItem("qb.appearance") ?? "system",
-  );
+  const [mode, setMode] = useState(localStorage.getItem("qb.appearance") ?? "system");
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
-    const sync = () => {
-      document.documentElement.dataset.appearance =
-        mode === "system" ? (media.matches ? "dark" : "light") : mode;
-    };
-    sync();
-    media.addEventListener("change", sync);
-    localStorage.setItem("qb.appearance", mode);
+    const sync = () => { document.documentElement.dataset.appearance = mode === "system" ? (media.matches ? "dark" : "light") : mode; };
+    sync(); media.addEventListener("change", sync); localStorage.setItem("qb.appearance", mode);
     return () => media.removeEventListener("change", sync);
   }, [mode]);
-  useEffect(() => {
-    if (session.data) setCSRF(session.data.csrf);
-  }, [session.data]);
+  useEffect(() => { if (session.data) setCSRF(session.data.csrf); }, [session.data]);
   const appearance = mode === "light" || mode === "dark" ? mode : "system";
-  const themed = (content: ReactNode) => (
-    <InternationalizationProvider locale={lang === "zh" ? "zh-Hans" : "en"}>
-      <AstryxTheme theme={quantbotUI} mode={appearance}>{content}</AstryxTheme>
-    </InternationalizationProvider>
-  );
+  const themed = (content: ReactNode) => <InternationalizationProvider locale={lang === "zh" ? "zh-Hans" : "en"}>
+    <AstryxTheme theme={quantbotUI} mode={appearance}><LinkProvider component={AstryxLink}>{content}</LinkProvider></AstryxTheme>
+  </InternationalizationProvider>;
   if (session.isPending) return themed(<Loading />);
-  if (
-    session.error &&
-    !(session.error instanceof ApiError && session.error.status === 401)
-  )
-    return themed(
-      <ErrorView error={session.error} retry={() => void session.refetch()} />
-    );
-  if (!session.data)
-    return themed(
-      <Suspense fallback={<Loading />}>
-        <Login />
-      </Suspense>
-    );
+  if (session.error && !(session.error instanceof ApiError && session.error.status === 401))
+    return themed(<ErrorView error={session.error} retry={() => void session.refetch()} />);
+  if (!session.data) return themed(<Suspense fallback={<Loading />}><Login /></Suspense>);
   setCSRF(session.data.csrf);
-  const themeIcons = { system: Monitor, light: Sun, dark: Moon } as const;
-  const ThemeIcon = themeIcons[appearance];
-  const tools = (
-    <div className="floating-tools" aria-label={t("appearance")}>
-      <span
-        className={"connection-dot " + (connected ? "online" : "")}
-        title={t(connected ? "connected" : "reconnecting")}
-      />
-      <button
-        className="icon-button"
-        aria-label={t("appearance") + ": " + t(appearance)}
-        title={t("appearance") + ": " + t(appearance)}
-        onClick={() =>
-          setMode(appearance === "system" ? "light" : appearance === "light" ? "dark" : "system")
-        }
-      >
-        <ThemeIcon size={17} />
-      </button>
-    </div>
-  );
-  return themed(
-    <AppearanceTools.Provider value={tools}>
-      <Suspense fallback={<Loading />}>
-        <Outlet />
-      </Suspense>
-      <ScrollRestoration />
-      <Toaster position="top-center" richColors />
-    </AppearanceTools.Provider>
-  );
+  const ThemeIcon = { system: Monitor, light: Sun, dark: Moon }[appearance];
+  const tools = <HStack gap={2} vAlign="center">
+    <StatusDot variant={connected ? "success" : "warning"} label={t(connected ? "connected" : "reconnecting")} tooltip={t(connected ? "connected" : "reconnecting")} />
+    <IconButton label={t("appearance") + ": " + t(appearance)} tooltip={t("appearance") + ": " + t(appearance)} variant="ghost"
+      icon={<ThemeIcon size={18} />} onClick={() => setMode(appearance === "system" ? "light" : appearance === "light" ? "dark" : "system")} />
+  </HStack>;
+  return themed(<AppearanceTools.Provider value={tools}>
+    <Suspense fallback={<Loading />}><Outlet /></Suspense>
+    <ScrollRestoration /><Toaster position="top-center" richColors />
+  </AppearanceTools.Provider>);
 }
 function Brand() {
-  return (
-    <Link className="brand" to="/">
-      <BrandIcon />
-      <strong>QuantBot</strong>
-    </Link>
-  );
+  return <HStack gap={2} vAlign="center"><BrandIcon /><Text weight="semibold">QuantBot</Text></HStack>;
 }
 function Logout() {
   const { t } = useLanguage();
-  return (
-    <button
-      className="icon-button"
-      aria-label={t("logout")}
-      onClick={() =>
-        void api("/auth/logout", "POST")
-          .then(() => client.clear())
-          .then(() => location.reload())
-      }
-    >
-      <LogOut size={18} />
-    </button>
-  );
+  return <IconButton variant="ghost" label={t("logout")} tooltip={t("logout")} icon={<LogOut size={18} />}
+    onClick={() => void api("/auth/logout", "POST").then(() => client.clear()).then(() => location.reload())} />;
 }
 function Workbench() {
   const { t } = useLanguage();
@@ -208,195 +100,58 @@ function Workbench() {
   const identity = (theme?.id ?? "") + ":" + (theme?.revision ?? "");
   const fallback = !!query.error || (failed !== "" && failed === identity);
   const selected = fallback ? undefined : theme;
-  const antquant = fallback || !selected || selected.id === "classical";
   const onFailure = useCallback(() => setFailed(identity), [identity]);
-  const full =
-    location.pathname === "/" &&
-    selected?.entryUrl &&
-    !new URLSearchParams(location.search).has("classic");
-  return (
-    <ThemeContext.Provider
-      value={fallback ? { cardView: "list" } : { ...selected?.presentation, portfolio: antquant }}
-    >
-      <div
-        className={"workbench-shell" + (antquant ? " antquant-workbench" : "")}
-        data-theme={selected?.id ?? "classical"}
-        data-theme-palette={selected && !selected.builtin ? "" : undefined}
-        data-theme-surface={selected?.presentation.surface}
-        style={themeStyle(selected)}
-      >
-        <header className="topbar">
-          <div className="container topbar-inner">
-            <Brand />
-            <nav aria-label={t("workbench")}>
-              {monitor.map(([path, label, Icon]) => {
-                const hasAlert = label === "alerts" && attention.count > 0;
-                return (
-                  <NavLink end={path === "/"} key={path} to={path}
-                    className={label === "alerts" ? "nav-alert-link" : undefined}
-                    title={t(label)} aria-label={t(label)}
-                    aria-describedby={hasAlert ? "nav-alert-count" : undefined}>
-                    <Icon size={18} />
-                    <span>{t(label)}</span>
-                    {hasAlert && <>
-                      <i className="nav-alert-badge" aria-hidden="true">{attention.count > 99 ? "99+" : attention.count}</i>
-                      <span className="sr-only" id="nav-alert-count">{t("attentionCount")}: {attention.count}</span>
-                    </>}
-                  </NavLink>
-                );
-              })}
-            </nav>
-            <div className="actions">
-              {antquant && tools}
-              <Link
-                className="admin-link"
-                to="/admin/settings"
-                aria-label={t("settings")}
-                title={t("settings")}
-              >
-                <Settings size={17} />
-                <span>{t("admin")}</span>
-              </Link>
-              <Logout />
-            </div>
-          </div>
-        </header>
-        <main className="container">
-          <RouteSurface>
-            {fallback && (
-              <p role="status" className="warning">
-                {t("themeFallback")}
-              </p>
-            )}
-            {full && selected ? (
-              <>
-                <Link className="button" to="/?classic=1">
-                  {t("themeHostView")}
-                </Link>
-                <ThemeFrame
-                  key={identity}
-                  theme={selected}
-                  onFailure={onFailure}
-                />
-              </>
-            ) : <Outlet context={attention} />}
-          </RouteSurface>
-        </main>
-        {!antquant && tools}
-      </div>
-    </ThemeContext.Provider>
-  );
+  const full = location.pathname === "/" && selected?.entryUrl && !new URLSearchParams(location.search).has("classic");
+  return <ThemeContext.Provider value={fallback ? { cardView: "compact" } : { ...selected?.presentation, portfolio: true }}>
+    <VStack className="workbench-shell" data-theme={selected?.id ?? "classical"}
+      data-theme-palette={selected && !selected.builtin ? "" : undefined} data-theme-surface={selected?.presentation.surface} style={themeStyle(selected)}>
+      <AppShell height="auto" variant="section" mobileNav={{ breakpoint: "xl" }}
+        topNav={<TopNav label={t("workbench")} heading={<Brand />} startContent={monitor.map(([path, label, Icon]) =>
+          <TopNavItem key={path} href={path} label={t(label)} icon={<Icon size={18} />}
+            isSelected={path === "/" ? location.pathname === "/" : location.pathname.startsWith(path)}>
+            <HStack gap={2} vAlign="center"><Text type="label">{t(label)}</Text>
+              {label === "alerts" && attention.count > 0 && <Badge label={attention.count} variant="red" />}
+            </HStack>
+          </TopNavItem>)} endContent={<HStack gap={1} vAlign="center">{tools}
+            <IconButton href="/admin/dashboard" label={t("admin")} tooltip={t("admin")} variant="ghost" icon={<Settings size={18} />} /><Logout />
+          </HStack>} />}>
+        <RouteSurface>{fallback && <Banner status="warning" title={t("themeFallback")} />}
+          {full && selected ? <VStack gap={4}><Button href="/?classic=1" label={t("themeHostView")} />
+            <ThemeFrame key={identity} theme={selected} onFailure={onFailure} /></VStack> : <Outlet context={attention} />}
+        </RouteSurface>
+      </AppShell>
+    </VStack>
+  </ThemeContext.Provider>;
 }
 function AdminShell() {
   const { lang, t } = useLanguage();
   const tools = useContext(AppearanceTools);
-  const [open, setOpen] = useState(false);
   const location = useLocation();
-  useEffect(() => setOpen(false), [location.pathname]);
-  return (
-    <div className="admin-shell">
-      <header className="mobile-admin-header">
-        <button
-          aria-label={t("menu")}
-          className="icon-button"
-          onClick={() => setOpen(true)}
-        >
-          <Menu />
-        </button>
-        <Brand />
-        <Logout />
-      </header>
-      {open && (
-        <button
-          className="drawer-backdrop"
-          aria-label={t("close")}
-          onClick={() => setOpen(false)}
-        />
-      )}
-      <aside className={"sidebar " + (open ? "open" : "")}>
-        <div className="sidebar-brand">
-          <Brand />
-          <button
-            className="mobile-close icon-button"
-            aria-label={t("close")}
-            onClick={() => setOpen(false)}
-          >
-            <X />
-          </button>
-        </div>
-        <nav>
-          {management.map(([heading, links]) => (
-            <div className="nav-group" key={heading}>
-              {heading && (
-                <small>
-                  {lang === "zh"
-                    ? heading
-                    : {
-                        管理: "Management",
-                        外观: "Appearance",
-                        系统: "System",
-                      }[heading]}
-                </small>
-              )}
-              {links.map(([path, label, Icon]) => (
-                <NavLink key={path} to={"/admin/" + path}>
-                  <Icon size={18} />
-                  {t(label as Message)}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
-        <footer>
-          <Link to="/">
-            <ArrowLeft size={16} />
-            {t("return")}
-          </Link>
-          <span className="muted">QuantBot {version}</span>
-        </footer>
-      </aside>
-      <main className="admin-main">
-        <RouteSurface><Outlet /></RouteSurface>
-      </main>
-      {tools}
-    </div>
-  );
+  return <AppShell height="auto" variant="wash" mobileNav={{ breakpoint: "md" }} sideNav={
+    <SideNav aria-label={t("admin")} header={<SideNavHeading heading="QuantBot" subheading={t("admin")} icon={<BrandIcon />} />}
+      footer={<VStack gap={3} padding={3}><Button href="/" label={t("return")} icon={<ArrowLeft size={16} />} variant="ghost" />
+        <HStack hAlign="between" vAlign="center"><Text type="supporting">v{version}</Text>{tools}<Logout /></HStack>
+      </VStack>}>
+      {management.map(([heading, links]) => <SideNavSection key={heading} title={lang === "zh" ? heading : { 总览: "Overview", 管理: "Management", 系统: "System" }[heading]}>
+        {links.map(([path, label, Icon]) => <SideNavItem key={path} href={"/admin/" + path} label={t(label)} icon={<Icon size={18} />}
+          isSelected={location.pathname === "/admin/" + path} />)}
+      </SideNavSection>)}
+    </SideNav>}><RouteSurface><Outlet /></RouteSurface></AppShell>;
 }
 function NotFound() {
-  return (
-    <div className="empty-state">
-      <h1>404</h1>
-      <Link to="/">QuantBot</Link>
-    </div>
-  );
+  return <EmptyState title="404" actions={<Button href="/" label="QuantBot" />} />;
 }
 function RouteSurface({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation();
-  return <div className="route-surface">
-    <div className={"route-frame" + (typeof document.startViewTransition === "function" ? "" : " route-fade-fallback")} key={pathname}>
-      <Suspense fallback={<Loading />}>{children}</Suspense>
-    </div>
-  </div>;
+  return <VStack className="min-w-0"><Suspense fallback={<Loading />}>{children}</Suspense></VStack>;
 }
-
-export function Page({
-  title,
-  actions,
-  children,
-}: {
-  title: string;
-  actions?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <VStack className="page-layout">
-      <header className="page-header">
-        <Heading level={1} weight="semibold">{title}</Heading>
-        {actions && <div className="actions">{actions}</div>}
-      </header>
-      <VStack className="page-body">{children}</VStack>
-    </VStack>
-  );
+export function Page({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
+  return <VStack gap={6} width="100%" maxWidth={1560} className="mx-auto min-w-0 px-4 py-6 md:px-8 md:py-8">
+    <HStack as="header" hAlign="between" vAlign="center" wrap="wrap" gap={4}>
+      <Heading level={1} weight="semibold">{title}</Heading>
+      {actions && <HStack gap={2} wrap="wrap" vAlign="center">{actions}</HStack>}
+    </HStack>
+    <VStack gap={6} className="min-w-0">{children}</VStack>
+  </VStack>;
 }
 
 const router = createBrowserRouter([

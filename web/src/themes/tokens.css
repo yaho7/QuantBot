@@ -2,6 +2,8 @@
 @import "@astryxdesign/core/reset.css";
 @import "tailwindcss" source("../");
 @import "@astryxdesign/core/astryx.css";
+@import "@astryxdesign/core/tailwind-theme.css";
+@import "./quantbot/quantbot.css";
 
 @layer qb-legacy {
 :root {
