@@ -1,0 +1,596 @@
+/* QuantBot UI refinement — designed to layer on the existing 3.0 styles.
+   Scoped theme treatments preserve custom theme and control security boundaries. */
+
+/* 1. The built-in Lumina is a distinct, polished monitoring surface. */
+.workbench-shell[data-theme="classical"] {
+  --canvas: #f2f5fa;
+  --surface: #ffffff;
+  --raised: #f6f8fc;
+  --text: #1c2b41;
+  --muted: #71809a;
+  --line: #e3e8f1;
+  --accent: #4b70d7;
+  --accent-soft: #eaf0ff;
+  --success: #148e77;
+  --success-bg: #e0f5ed;
+  --warning: #a46a1a;
+  --warning-bg: #fff1d8;
+  --danger: #c34b60;
+  --danger-bg: #fff0f2;
+  --radius: 17px;
+  --gap: 16px;
+  min-height: 100dvh;
+  background: radial-gradient(ellipse 85% 35% at 75% 0%, #e5edff 0%, transparent 72%), var(--canvas);
+  color: var(--text);
+  padding-bottom: 4px;
+}
+:root[data-appearance="dark"] .workbench-shell[data-theme="classical"] {
+  --canvas: #101823;
+  --surface: #1c2838;
+  --raised: #243347;
+  --text: #e6ecf6;
+  --muted: #a0aec1;
+  --line: #344459;
+  --accent: #96b3ff;
+  --accent-soft: #283e65;
+  --success: #70d8ba;
+  --success-bg: #24473d;
+  --warning: #efc483;
+  --warning-bg: #51412f;
+  --danger: #f3a0aa;
+  --danger-bg: #52323c;
+  background: radial-gradient(ellipse 75% 40% at 75% -5%, #1e3456 0%, transparent 75%), var(--canvas);
+}
+.workbench-shell[data-theme="classical"] .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 25;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom-color: color-mix(in srgb, var(--line) 85%, transparent);
+}
+.workbench-shell[data-theme="classical"] .topbar-inner {
+  min-height: 66px;
+  gap: clamp(14px, 3vw, 40px);
+}
+.workbench-shell[data-theme="classical"] .brand-icon {
+  width: 38px;
+  height: 38px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), var(--accent-soft));
+  border-radius: 13px;
+  box-shadow: inset 0 1px color-mix(in srgb, var(--surface) 70%, transparent);
+}
+.workbench-shell[data-theme="classical"] .brand strong {
+  font-weight: 750;
+  font-size: 19px;
+  letter-spacing: -0.7px;
+}
+.workbench-shell[data-theme="classical"] .topbar nav a {
+  border: 1px solid transparent;
+  transition: background 160ms, color 160ms;
+  font-weight: 520;
+}
+.workbench-shell[data-theme="classical"] .topbar nav a:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+.workbench-shell[data-theme="classical"] .topbar nav a.active {
+  border-color: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.workbench-shell[data-theme="classical"] .surface,
+.workbench-shell[data-theme="classical"] .summary-card,
+.workbench-shell[data-theme="classical"] .control-card {
+  background: color-mix(in srgb, var(--surface) 95%, transparent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 2px 5px rgba(14, 34, 65, 0.025), 0 10px 32px rgba(14, 34, 65, 0.035);
+}
+.workbench-shell[data-theme="classical"] .page-header {
+  margin-top: 32px;
+  margin-bottom: 22px;
+}
+.workbench-shell[data-theme="classical"] .page-header h1 {
+  font-size: clamp(22px, 2.2vw, 30px);
+  font-weight: 720;
+  letter-spacing: -0.9px;
+}
+.workbench-shell[data-theme="classical"] .section {
+  margin-top: 28px;
+}
+.workbench-shell[data-theme="classical"] .section-heading {
+  margin-bottom: 13px;
+}
+.workbench-shell[data-theme="classical"] .section-heading h2 {
+  font-size: 16px;
+  font-weight: 690;
+  letter-spacing: -0.2px;
+}
+.workbench-shell[data-theme="classical"] .summary-grid {
+  gap: 13px;
+}
+.workbench-shell[data-theme="classical"] .summary-card {
+  padding: 18px 20px;
+  min-height: 107px;
+  gap: 8px;
+}
+.workbench-shell[data-theme="classical"] .summary-card > span {
+  font-size: 12px;
+  font-weight: 520;
+  letter-spacing: .02em;
+}
+.workbench-shell[data-theme="classical"] .summary-card > strong {
+  font-size: clamp(24px, 2.2vw, 31px);
+  font-weight: 660;
+  line-height: 1.25;
+}
+.workbench-shell[data-theme="classical"] .strategy-grid {
+  gap: 14px;
+}
+.workbench-shell[data-theme="classical"] .strategy-card {
+  padding: 18px 20px 16px;
+  min-height: 192px;
+  position: relative;
+  transition: transform 160ms, box-shadow 160ms, border-color 160ms;
+}
+@media (hover: hover) {
+  .workbench-shell[data-theme="classical"] .strategy-card:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 27%, var(--line));
+    box-shadow: 0 7px 20px rgba(20, 42, 79, .055), 0 18px 50px rgba(20, 42, 79, .065);
+  }
+}
+.workbench-shell[data-theme="classical"] .strategy-card header {
+  align-items: center;
+  gap: 9px;
+}
+.workbench-shell[data-theme="classical"] .strategy-card h3 {
+  font-size: 15px;
+  font-weight: 670;
+  letter-spacing: -.2px;
+}
+.workbench-shell[data-theme="classical"] .strategy-tags {
+  margin: 9px 0 18px;
+}
+.workbench-shell[data-theme="classical"] .card-values {
+  margin-bottom: 18px;
+  gap: 14px;
+}
+.workbench-shell[data-theme="classical"] .card-values strong {
+  font-weight: 675;
+  font-size: clamp(18px, 2.1vw, 24px);
+  letter-spacing: -.5px;
+}
+.workbench-shell[data-theme="classical"] .card-values span {
+  margin-bottom: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.workbench-shell[data-theme="classical"] .strategy-card footer {
+  margin-top: auto;
+  color: var(--muted);
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+.workbench-shell[data-theme="classical"] .view-large .strategy-card {
+  min-height: 253px;
+}
+.workbench-shell[data-theme="classical"] .view-large .card-values strong {
+  font-size: clamp(24px, 2.8vw, 30px);
+}
+.workbench-shell[data-theme="classical"] .view-mini .strategy-card {
+  min-height: 137px;
+  padding: 14px;
+}
+.workbench-shell[data-theme="classical"] .view-mini .strategy-tags {
+  display: none;
+}
+.workbench-shell[data-theme="classical"] .view-mini .card-values {
+  margin: 13px 0;
+}
+.workbench-shell[data-theme="classical"] .view-list .strategy-card {
+  min-height: 74px;
+  padding-block: 13px;
+}
+.workbench-shell[data-theme="classical"] .badge {
+  border-radius: 6px;
+  font-weight: 590;
+  padding: 3px 7px;
+}
+.workbench-shell[data-theme="classical"] .filter-bar {
+  gap: 9px;
+}
+.workbench-shell[data-theme="classical"] .filter-bar select,
+.workbench-shell[data-theme="classical"] .search-field input,
+.workbench-shell[data-theme="classical"] .segmented,
+.workbench-shell[data-theme="classical"] .view-switch {
+  border-radius: 10px;
+}
+.workbench-shell[data-theme="classical"] .widget {
+  min-height: 122px;
+  border-top: 1px solid var(--line);
+  position: relative;
+  transition: border-color 160ms, box-shadow 160ms;
+}
+.workbench-shell[data-theme="classical"] .widget::before {
+  content: "";
+  width: 42px;
+  height: 2px;
+  position: absolute;
+  left: 17px;
+  top: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: .7;
+}
+.workbench-shell[data-theme="classical"] .widget-header {
+  padding: 15px 17px 9px;
+}
+.workbench-shell[data-theme="classical"] .widget-header h3 {
+  font-size: 13px;
+  font-weight: 660;
+}
+.workbench-shell[data-theme="classical"] .widget-body {
+  padding: 5px 17px 17px;
+}
+.workbench-shell[data-theme="classical"] .widget.size-small .equity-widget > strong {
+  font-size: 24px;
+}
+.workbench-shell[data-theme="classical"] .widget.size-medium .equity-widget > strong {
+  font-size: 27px;
+}
+.workbench-shell[data-theme="classical"] .widget .chart {
+  height: clamp(180px, 23vw, 270px);
+}
+.workbench-shell[data-theme="classical"] .widget.editing,
+.workbench-shell[data-theme="classical"] .widget-grid.editing .widget {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--line));
+  outline-offset: 2px;
+}
+.workbench-shell[data-theme="classical"] .floating-tools {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-radius: 14px;
+  box-shadow: 0 8px 34px #101f3b14;
+}
+
+/* 2. Keep only relevant data visible at the top of strategy detail. */
+.qb-quick-controls:has(.controls-grid > .empty-inline) {
+  display: none;
+}
+.qb-detail-sections {
+  display: grid;
+  gap: 10px;
+  margin-top: 28px;
+  margin-bottom: 32px;
+}
+.qb-detail-disclosure {
+  overflow: clip;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 18px #182c4705;
+}
+.qb-detail-disclosure > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 13px 18px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -.15px;
+}
+.qb-detail-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+.qb-detail-disclosure > summary::after {
+  content: "+";
+  color: var(--muted);
+  font-size: 23px;
+  font-weight: 350;
+  line-height: 1;
+}
+.qb-detail-disclosure[open] > summary::after {
+  content: "−";
+}
+.qb-detail-disclosure > summary:hover {
+  background: var(--raised);
+}
+.qb-detail-disclosure > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.qb-detail-content {
+  padding: 12px 18px 20px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+}
+.qb-detail-content > .section,
+.qb-detail-content > .data-section,
+.qb-detail-content .chart-card {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.qb-detail-content > .two-columns {
+  margin-top: 12px;
+}
+.qb-detail-content .table-scroll {
+  max-width: 100%;
+}
+
+/* 3. Declarative parameters: the real field lives in the workbench, command
+   confirmation and Agent receipts remain inside the trusted host. */
+.qb-inline-parameter {
+  display: block;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.qb-inline-parameter:disabled {
+  opacity: .65;
+}
+.qb-inline-parameter label {
+  font-weight: 520;
+  font-size: 12px;
+  color: var(--muted);
+}
+.qb-inline-parameter .switch-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.qb-inline-parameter input,
+.qb-inline-parameter select,
+.qb-inline-parameter textarea {
+  width: 100%;
+  max-width: 100%;
+}
+.qb-inline-parameter input[type="range"] {
+  min-height: 32px;
+}
+.qb-inline-parameter output {
+  display: inline-block;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--text);
+  margin-top: 4px;
+}
+.widget-compact .qb-inline-parameter {
+  margin: 0 0 12px;
+}
+.widget-compact .qb-inline-parameter label {
+  font-size: 12px;
+}
+.workbench-shell .widget-body .control-card > button {
+  min-height: 38px;
+  align-self: stretch;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  border-color: color-mix(in srgb, var(--accent) 15%, var(--line));
+}
+.workbench-shell .widget-body .control-card > button:disabled {
+  background: var(--raised);
+  color: var(--muted);
+}
+
+/* 4. Admin: Komari-like compact, consistent page hierarchy. */
+.admin-shell {
+  --radius: 13px;
+  --gap: 15px;
+}
+.admin-shell .sidebar {
+  background: var(--surface);
+  border-right-color: var(--line);
+}
+.admin-shell .sidebar-brand {
+  padding-block: 26px 25px;
+}
+.admin-shell .sidebar nav {
+  padding-inline: 12px;
+}
+.admin-shell .sidebar nav .nav-group {
+  margin-bottom: 22px;
+}
+.admin-shell .sidebar nav .nav-group > small {
+  font-size: 10px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.admin-shell .admin-main {
+  min-width: 0;
+}
+.admin-shell .page-header h1 {
+  letter-spacing: -.55px;
+  font-weight: 680;
+}
+.admin-shell .surface {
+  box-shadow: 0 3px 18px rgba(26, 46, 77, .028);
+}
+.admin-shell .summary-card {
+  min-height: 105px;
+}
+.admin-shell table {
+  font-variant-numeric: tabular-nums;
+}
+.admin-shell thead th {
+  background: var(--raised);
+}
+.admin-shell .table-scroll {
+  max-width: 100%;
+}
+.admin-shell .padded {
+  padding: clamp(17px, 2vw, 24px);
+}
+.admin-shell input:focus-visible,
+.admin-shell select:focus-visible,
+.admin-shell textarea:focus-visible {
+  outline-color: var(--accent);
+}
+
+/* 5. Responsive: preserve key information and avoid screen-wide horizontal scroll. */
+.workbench-shell,
+.workbench-shell main,
+.admin-main,
+.widget-grid,
+.strategy-grid {
+  min-width: 0;
+}
+.workbench-shell .view-list .strategy-card {
+  min-width: 0;
+}
+.workbench-shell .widget-body .control-card,
+.workbench-shell .widget-body .data-section,
+.workbench-shell .widget-body .chart-card {
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .workbench-shell[data-theme="classical"] .topbar-inner {
+    gap: 14px;
+  }
+  .workbench-shell[data-theme="classical"] .summary-card {
+    padding: 16px;
+  }
+  .workbench-shell .widget-grid {
+    gap: 12px;
+  }
+}
+@media (max-width: 800px) {
+  .workbench-shell[data-theme="classical"] .summary-grid:not(.detail-summary) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workbench-shell[data-theme="classical"] .view-list .strategy-card {
+    gap: 12px;
+  }
+  .admin-shell .admin-main {
+    width: 100%;
+  }
+}
+@media (max-width: 540px) {
+  .workbench-shell[data-theme="classical"] .topbar-inner {
+    min-height: 60px;
+    padding-top: 9px;
+    padding-bottom: 7px;
+    row-gap: 6px;
+  }
+  .workbench-shell[data-theme="classical"] .brand strong {
+    font-size: 17px;
+  }
+  .workbench-shell[data-theme="classical"] .topbar nav {
+    overflow-x: auto;
+    overflow-y: hidden;
+    justify-content: flex-start;
+    width: 100%;
+    scrollbar-width: none;
+    gap: 3px;
+  }
+  .workbench-shell[data-theme="classical"] .topbar nav::-webkit-scrollbar {
+    display: none;
+  }
+  .workbench-shell[data-theme="classical"] .topbar nav a {
+    font-size: 11px;
+    padding: 8px 11px;
+    min-height: 40px;
+    flex-shrink: 0;
+  }
+  .workbench-shell[data-theme="classical"] .summary-grid {
+    gap: 10px;
+  }
+  .workbench-shell[data-theme="classical"] .summary-card {
+    min-height: 92px;
+    padding: 14px;
+  }
+  .workbench-shell[data-theme="classical"] .summary-card > strong {
+    font-size: 25px;
+  }
+  .workbench-shell[data-theme="classical"] .strategy-card {
+    padding: 15px;
+    min-height: 170px;
+  }
+  .workbench-shell[data-theme="classical"] .view-mini .strategy-card {
+    padding: 11px;
+    min-height: 129px;
+  }
+  .workbench-shell[data-theme="classical"] .view-mini .card-values strong {
+    font-size: 19px;
+  }
+  .workbench-shell[data-theme="classical"] .view-list .strategy-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 88px;
+  }
+  .workbench-shell[data-theme="classical"] .view-list .strategy-card .card-values {
+    grid-column: 1 / -1;
+    display: flex;
+    margin: 0;
+    gap: 24px;
+  }
+  .workbench-shell[data-theme="classical"] .view-list .strategy-card footer {
+    display: none;
+  }
+  .workbench-shell .widget-grid {
+    gap: 10px;
+  }
+  .workbench-shell[data-theme="classical"] .widget-header {
+    padding-inline: 12px;
+    gap: 6px;
+  }
+  .workbench-shell[data-theme="classical"] .widget-body {
+    padding-inline: 12px;
+  }
+  .workbench-shell .widget.size-small:has(.qb-inline-parameter) {
+    grid-column: span 4;
+  }
+  .workbench-shell .widget.size-small:has(.chart) {
+    grid-column: span 4;
+  }
+  .qb-detail-content {
+    padding: 12px 10px 15px;
+  }
+  .qb-detail-disclosure > summary {
+    min-height: 52px;
+    padding: 12px 13px;
+  }
+  .admin-shell .padded {
+    padding: 15px;
+  }
+}
+@media (max-width: 360px) {
+  .workbench-shell .widget.size-small {
+    grid-column: span 4;
+  }
+  .workbench-shell[data-theme="classical"] .view-mini {
+    grid-template-columns: 1fr;
+  }
+  .workbench-shell[data-theme="classical"] .view-mini .strategy-card {
+    min-height: 120px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workbench-shell[data-theme="classical"] .strategy-card,
+  .workbench-shell[data-theme="classical"] .widget {
+    transition: none;
+  }
+}
+.qb-card-no-financial {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 13px;
+  color: var(--muted);
+  font-size: 12px;
+  border: 1px dashed var(--line);
+  padding: 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--raised) 60%, transparent);
+}

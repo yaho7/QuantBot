@@ -1,0 +1,33 @@
+.hosts-grid, .performance-trends {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 370px), 1fr));
+  align-items: start;
+  gap: 16px;
+}
+.performance-host, .performance-process, .capacity-panel { min-width: 0; display: grid; gap: 14px; }
+.performance-process-list { display: grid; gap: 12px; min-width: 0; }
+.performance-process-heading, .performance-sample-status, .performance-link {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0;
+}
+.performance-process-heading { justify-content: space-between; }
+.performance-link { color: var(--accent); overflow-wrap: anywhere; }
+.performance-link:hover { text-decoration: underline; }
+.performance-sample-status { font-size: 12px; }
+.performance-metrics {
+  display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%, 100px),1fr));
+  align-items: start; gap: 10px 16px; margin: 0;
+}
+.performance-metrics dt { color: var(--muted); font-size: 12px; }
+.performance-metrics dd { margin: 1px 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.performance-details > summary { cursor: pointer; color: var(--accent); }
+.performance-details[open] > summary { margin-bottom: 12px; }
+.resource-trend { min-width: 0; }
+.resource-trend h3 { margin: 0 0 8px; }
+.performance-widget-host { border-top: 1px solid var(--line); padding-top: 10px; }
+.performance-widget-host h4 { margin: 0 0 8px; }
+.capacity-fields { display: flex; flex-wrap: wrap; gap: 12px; }
+.capacity-fields label:first-child { flex: 1 1 230px; min-width: 0; max-width: 560px; }
+.capacity-fields label:last-child { width: 150px; }
+.capacity-fields select { width: 100%; }
+.capacity-result { display: grid; gap: 4px; }
+.capacity-result strong { font-size: 30px; font-variant-numeric: tabular-nums; }

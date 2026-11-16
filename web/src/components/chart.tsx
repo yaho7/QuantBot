@@ -9,8 +9,24 @@ import {
 } from "lightweight-charts";
 import type { Point } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
+import EquityChart from "./equity-chart";
 
 export default function Chart({
+  points,
+  candle = false,
+  featured = false,
+}: {
+  points: Point[];
+  candle?: boolean;
+  featured?: boolean;
+}) {
+  const { lang, t } = useLanguage();
+  return featured && !candle
+    ? <EquityChart points={points} lang={lang} valueLabel={t("chartValue")} />
+    : <MetricChart points={points} candle={candle} featured={featured} />;
+}
+
+function MetricChart({
   points,
   candle = false,
   featured = false,

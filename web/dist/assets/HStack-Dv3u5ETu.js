@@ -1,0 +1,1 @@
+import{i as e}from"./i18n-Bzk8TeE2.js";import{l as t}from"./themeProps-9UVAdo4n.js";var n=t();function r({ref:t,justify:r,align:i,hAlign:a,vAlign:o,...s}){return(0,n.jsx)(e,{...s,direction:`horizontal`,hAlign:a??r,vAlign:o??i,ref:t})}r.displayName=`HStack`;export{r as t};

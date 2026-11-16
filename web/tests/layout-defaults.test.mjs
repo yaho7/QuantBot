@@ -25,10 +25,11 @@ test("saved layouts keep removed and hidden widgets, and preserve an empty layou
   assert.deepEqual(effectiveWidgets({ revision: 3, widgets: [] }, next), []);
 });
 
-test("initial suggestions fit a layout that can be saved", () => {
+test("first-visit suggestions use a readable dashboard budget", () => {
   const show = { suggested: true, surface: ["overview"] };
   const sources = Array.from({ length: 10 }, (_, i) =>
     source("a" + i, Array.from({ length: 30 }, (_, j) => declare("metric" + j, show))),
   );
-  assert.equal(suggestedWidgets(sources, "overview").length, 256);
+  assert.equal(suggestedWidgets(sources, "overview").length, 12);
+  assert.equal(suggestedWidgets(sources, "strategy").length, 0);
 });

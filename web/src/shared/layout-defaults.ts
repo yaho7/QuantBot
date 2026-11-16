@@ -33,7 +33,7 @@ export function suggestedWidgets(
       a.order - b.order ||
       (a.widget.id < b.widget.id ? -1 : a.widget.id > b.widget.id ? 1 : 0),
     )
-    .slice(0, 256)
+    .slice(0, surface === "overview" ? 12 : 24)
     .map(({ widget }) => widget);
 }
 

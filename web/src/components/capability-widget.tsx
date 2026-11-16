@@ -1,5 +1,3 @@
-import { VStack } from "@astryxdesign/core/VStack";
-import { Text } from "@astryxdesign/core/Text";
 import { lazy, Suspense, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -130,9 +128,7 @@ export function CapabilityWidget({
   return (
     <>
       {description && capability.description && (
-        <Text as="p" className="muted text-secondary">
-          {capability.description}
-        </Text>
+        <p className="muted">{capability.description}</p>
       )}
       {error && <ErrorView error={error} />}
       {chart && !compact && (
@@ -146,9 +142,7 @@ export function CapabilityWidget({
         />
       )}
       {table && compact ? (
-        <Text as="p" className="muted text-secondary">
-          {t("expandForDetails")}
-        </Text>
+        <p className="muted">{t("expandForDetails")}</p>
       ) : table ? (
         <DataTable
           title=""
@@ -195,33 +189,24 @@ export function CapabilityWidget({
           }
         />
       ) : (
-        <VStack
-          gap={3}
-          className="equity-widget flex flex-col gap-2 tabular-nums"
-        >
-          <Text weight="semibold">
+        <div className="equity-widget">
+          <strong>
             {typeof value === "string" &&
             (chart || capability.renderer === "number")
               ? formatDecimal(value)
-              : capability.kind === "state" &&
-                  capability.group === "health" &&
-                  typeof value === "boolean"
+              : capability.kind === "state" && capability.group === "health" && typeof value === "boolean"
                 ? t(value ? "healthy" : "degraded")
                 : display.value(value)}{" "}
             {capability.unit}
-          </Text>
+          </strong>
           {detailed && recent && (
-            <time>
-              <Text type="supporting" className="muted text-secondary">
-                {timestamp(recent.observedAt)}
-              </Text>
-            </time>
+            <time className="muted">{timestamp(recent.observedAt)}</time>
           )}
           <RelatedRecords
             strategyId={strategyId}
             associations={record?.associations}
           />
-        </VStack>
+        </div>
       )}
       {(stale ||
         (resources.data?.observedAt &&
@@ -231,12 +216,10 @@ export function CapabilityWidget({
         <Badge tone="warning">{t("staleData")}</Badge>
       )}
       {capability.actual?.reason && (
-        <Text as="p" className="warning text-warning">
-          {capability.actual.reason}
-        </Text>
+        <p className="warning">{capability.actual.reason}</p>
       )}
       {detailed && suggestion && (
-        <Text type="supporting" className="muted text-secondary">
+        <small className="muted">
           {t(
             suggestion.type === "stale"
               ? "suggestStale"
@@ -249,7 +232,7 @@ export function CapabilityWidget({
               suggestion.threshold +
               (capability.unit ? " " + capability.unit : "")}{" "}
           · {t("alertInactive")}
-        </Text>
+        </small>
       )}
     </>
   );
@@ -275,9 +258,7 @@ function CapabilityChart({
       <Chart points={points} candle={candle} />
     </Suspense>
   ) : (
-    <Text as="p" className="empty-inline text-secondary text-center p-6">
-      {t("missing")}
-    </Text>
+    <p className="empty-inline">{t("missing")}</p>
   );
 }
 
