@@ -225,12 +225,12 @@ export function Home() {
     <Page
       title={directory ? t("strategies") : t("overview")}
       actions={
-        !directory &&
-        featured && (
+        !directory && (
           <PortfolioPicker
             strategies={rows}
             selected={featured}
             select={setFeaturedId}
+            loading={strategies.isPending}
           />
         )
       }
@@ -301,10 +301,12 @@ function PortfolioPicker({
   strategies,
   selected,
   select,
+  loading,
 }: {
   strategies: Strategy[];
-  selected: Strategy;
+  selected?: Strategy;
   select: (strategyId: string) => void;
+  loading: boolean;
 }) {
   const { t } = useLanguage();
   return (
@@ -312,7 +314,11 @@ function PortfolioPicker({
       <Selector
         label={t("strategy")}
         isLabelHidden
-        value={selected.id}
+        value={selected?.id ?? ""}
+        width="calc(var(--spacing-10) * 4)"
+        placeholder={loading ? t("loading") : t("empty")}
+        isDisabled={!selected}
+        isLoading={loading}
         onChange={select}
         options={strategies.map((strategy) => ({
           value: strategy.id,
@@ -320,7 +326,8 @@ function PortfolioPicker({
         }))}
       />
       <Button
-        href={"/strategies/" + selected.id}
+        href={selected ? "/strategies/" + selected.id : undefined}
+        isDisabled={!selected}
         label={t("details")}
         variant="ghost"
         icon={<AstryxIcon icon={ArrowUpRight} size="sm" />}

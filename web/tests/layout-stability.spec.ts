@@ -222,6 +222,49 @@ test("Astryx shells preserve alignment across palettes and five responsive width
   expect(errors).toEqual([]);
 });
 
+test("overview header keeps its position while strategy data is delayed", async ({ page }) => {
+  const origin = "http://127.0.0.1:42357";
+  const init = (await (await page.request.get("/api/auth/setup")).json()).required;
+  const session = await page.request.post(init ? "/api/auth/setup" : "/api/auth/login", {
+    headers: { Origin: origin },
+    data: { username: "browser-admin", password: "browser-test-password" },
+  });
+  expect(session.ok()).toBeTruthy();
+  const strategy = await page.request.post("/api/admin/strategies", {
+    headers: { Origin: origin, "X-CSRF-Token": (await session.json()).csrf },
+    data: { name: "延迟加载布局验证", mode: "paper" },
+  });
+  expect(strategy.ok()).toBeTruthy();
+
+  for (const width of [390, 430]) {
+    for (const colorScheme of ["light", "dark"] as const) {
+      await test.step(`${width}px ${colorScheme}`, async () => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+        let release!: () => void;
+        const pending = new Promise<void>((resolve) => { release = resolve; });
+        await page.route("**/api/strategies", async (route) => {
+          await pending;
+          await route.continue();
+        });
+        try {
+          await page.goto("/");
+          const picker = page.locator(".page-header").getByRole("combobox");
+          await expect(picker).toBeDisabled();
+          const loading = await layoutBox(page);
+          release();
+          await expect(picker).toBeEnabled();
+          expect(await layoutBox(page)).toEqual(loading);
+          expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+        } finally {
+          release();
+          await page.unroute("**/api/strategies");
+        }
+      });
+    }
+  }
+});
+
 test("strategy API dialog creates, reveals and replaces tokens and opens the shared test", async ({
   page,
 }, testInfo) => {

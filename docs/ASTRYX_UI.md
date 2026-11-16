@@ -52,11 +52,13 @@ Astryx Doctor also flags `className` usage conservatively; the remaining utiliti
 use its documented Tailwind token bridge. These are reviewed hints, not an
 additional visual system.
 
-Verified: TypeScript/build, UI guard, layout unit tests, Go tests, and all four
+Verified: TypeScript/build, UI guard, layout unit tests, Go tests, and all five
 Playwright flows. Browser coverage includes 390/430/768/1280/1600 widths in light
 and dark, setup/login, both shells, four strategy views, controls and receipts,
 layout persistence and keyboard resizing, Sandbox, notifications and settings.
 It also checks that installed theme colors cannot alter administration.
+Delayed-response coverage verifies that overview controls reserve their space
+while strategy data loads.
 
 The original user-authored QuantBot favicon artwork is retained in BrandIcon and
 rendered through Astryx Icon. Required-field markers are omitted from the UI;
