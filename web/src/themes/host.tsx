@@ -176,8 +176,7 @@ export function ThemeFrame({
         title={theme.manifest.name}
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
-        className="theme-frame"
-        style={{ visibility: ready ? "visible" : "hidden" }}
+        className={"theme-frame " + (ready ? "visible" : "invisible")}
       />
       {control && (
         <TrustedControl

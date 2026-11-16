@@ -403,9 +403,8 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     .getByRole("button", { name: "组件设置", exact: true })
     .click();
   await dialog.getByLabel("显示名称").fill("自定义延迟");
-  await dialog
-    .getByRole("combobox", { name: "组件尺寸", exact: true })
-    .selectOption("small");
+  await dialog.getByRole("combobox", { name: "组件尺寸", exact: true }).click();
+  await page.getByRole("option", { name: "small", exact: true }).click();
   await dialog
     .getByRole("button", { name: "关闭", exact: true })
     .last()

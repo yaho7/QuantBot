@@ -1,3 +1,10 @@
+import { Card } from "@astryxdesign/core/Card";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Text } from "@astryxdesign/core/Text";
+import { HStack } from "@astryxdesign/core/HStack";
+import { VStack } from "@astryxdesign/core/VStack";
+import { Table, proportional } from "@astryxdesign/core/Table";
 import { lazy, Suspense, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
@@ -50,18 +57,14 @@ export function StrategyDetail() {
     refetchInterval: 5000,
   });
   const layout = useQuery(layoutResource(id));
-  const widgetControls = new Set(
-    (layout.data?.widgets ?? []).flatMap((widget) =>
-      widget.controlId ? [widget.controlId] : [],
-    ),
-  );
-  for (const capability of catalog.data?.capabilities ?? []) {
-    if (
-      capability.presentation?.suggested &&
-      capability.presentation.surface?.includes("strategy")
-    )
-      widgetControls.add(capability.id);
-  }
+  // Only controls actually visible in the board should be excluded from quick controls.
+  // Hidden capabilities must never silently disappear from the strategy page.
+  const visibleControlIds = layout.data?.revision
+    ? layout.data.widgets.filter((widget) => !widget.hidden).map((widget) => widget.controlId)
+    : (catalog.data?.capabilities ?? [])
+        .filter((capability) => capability.presentation?.suggested && capability.presentation.surface?.includes("strategy"))
+        .map((capability) => capability.id);
+  const widgetControls = new Set(visibleControlIds.filter((id): id is string => !!id));
   const { health } = catalog.data ?? {};
   const healthIssues = health?.issues.map(
     (issue) =>
@@ -110,81 +113,79 @@ export function StrategyDetail() {
         </>
       }
     >
-      <div className="strategy-intro">
-        <div className="detail-meta muted">
-          {strategy.group && <span>{strategy.group}</span>}
-          <span>
+      <VStack gap={3} className="strategy-intro">
+        <HStack gap={3} wrap="wrap" vAlign="center" className="detail-meta muted">
+          {strategy.group && <Text>{strategy.group}</Text>}
+          <Text>
             {t("lastSeen")} · {timestamp(strategy.lastSeen, true)}
-          </span>
+          </Text>
           {runtime && (
-            <span>
+            <Text>
               {t("uptime")} · {display.unit(Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)), "minute")}
-            </span>
+            </Text>
           )}
           {strategy.online && health && health.status !== "healthy" &&
             catalog.data?.capabilities.some(
               (entry) => entry.kind === "state" && entry.group === "health",
             ) && (
-              <span role="status">
+              <Text role="status">
                 {t("health")}{" "}
                 <Badge tone="warning">
                   {t(health.status)}
                 </Badge>
                 {!!healthIssues?.length && " · " + healthIssues.join(", ")}
-              </span>
+              </Text>
             )}
-        </div>
-        <section className="portfolio-hero surface">
-          <div className="portfolio-amount">
-            <span className="muted">{t("equity")}</span>
-            <strong>{decimalText(equity?.data.value)} <small>{display.value(equity?.data.currency ?? "")}</small></strong>
-            <div className="portfolio-secondary">
+        </HStack>
+        <Card padding={5}><VStack gap={4}>
+          <VStack gap={3} className="portfolio-amount">
+            <Text className="muted">{t("equity")}</Text>
+            <strong>{decimalText(equity?.data.value)} <Text type="supporting">{display.value(equity?.data.currency ?? "")}</Text></strong>
+            <HStack gap={3} wrap="wrap" vAlign="center" className="portfolio-secondary">
               {equity && performance?.data.accountId === equity.data.accountId &&
                 performance?.data.currency === equity.data.currency && typeof performance?.data.dailyPnl === "string" && (
-                  <span className={performance.data.dailyPnl.startsWith("-") ? "danger" : "success"}>
+                  <Text className={performance.data.dailyPnl.startsWith("-") ? "danger" : "success"}>
                     {t("dailyPnl")} {decimalText(performance.data.dailyPnl)}
-                  </span>
+                  </Text>
                 )}
               {equity?.data.drawdown != null && (
-                <span className="muted">{t("drawdown")} {decimalText(equity.data.drawdown)}</span>
+                <Text className="muted">{t("drawdown")} {decimalText(equity.data.drawdown)}</Text>
               )}
-            </div>
-          </div>
+            </HStack>
+          </VStack>
           <History strategyId={id} embedded featured />
-        </section>
-      </div>
-      <section className="section" id="strategy-controls">
-        <div className="section-heading">
-          <h2>{t("controls")}</h2>
-        </div>
+        </VStack></Card>
+      </VStack>
+      <VStack as="section" gap={4} className="qb-quick-controls" id="strategy-controls">
+        <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading"><Heading level={2}>{t("controls")}</Heading></HStack>
         {layout.isSuccess && catalog.isSuccess && (
           <ControlPanel strategyId={id} exclude={widgetControls} />
         )}
         {(layout.error || catalog.error) && (
           <ErrorView error={(layout.error || catalog.error)!} />
         )}
-      </section>
+      </VStack>
       <Suspense fallback={<Loading />}>
         <WidgetBoard key={id} strategyId={id} />
       </Suspense>
       <section className="section portfolio-records">
         <Choices label={t("strategyPanels")} value={panel} select={setPanel}
           options={((["trading", "events", "activity", "hosts"]) as const).map(value => ({ value, label: t(value) }))} />
-        <div className="panel-enter" key={panel}>
+        <VStack gap={3} className="panel-enter" key={panel}>
           {panel === "trading" ? (
             <>
               {telemetry.isPending ? <Loading /> : telemetry.error ? <ErrorView error={telemetry.error} /> :
-               !accounts.length && !positions.length && !orders.length ? <p className="empty-inline">{t("noEvents")}</p> : <>
+               !accounts.length && !positions.length && !orders.length ? <Text as="p" className="empty-inline">{t("noEvents")}</Text> : <>
                 {!!accounts.length && <DataTable title={t("accountDetails")} rows={accounts} fields="standard" />}
-                {(!!positions.length || !!orders.length) && <div className="portfolio-record-grid">
+                {(!!positions.length || !!orders.length) && <VStack gap={3} className={"portfolio-record-grid" + " grid"}>
                   {!!positions.length && <DataTable title={t("positions")} rows={positions} fields="standard" />}
                   {!!orders.length && <DataTable title={t("orders")} rows={orders} fields="standard" />}
-                </div>}
+                </VStack>}
               </>}
             </>
           ) : panel === "events" ? <RecordFeed id={id} /> :
             panel === "hosts" ? <StrategyPerformance strategyId={id} /> : <ActivityPage strategyId={id} />}
-        </div>
+        </VStack>
       </section>
     </Page>
   );
@@ -201,17 +202,17 @@ export function AllControls() {
       ) : (
         query.data.map((strategy) => (
           <section className="section" key={strategy.id}>
-            <div className="section-heading">
-              <h2>
+            <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading">
+              <Heading level={2}>
                 <Link to={"/strategies/" + strategy.id}>{strategy.name}</Link>
-              </h2>
+              </Heading>
               <Badge>{t(strategy.online ? "online" : "offline")}</Badge>
-            </div>
+            </HStack>
             <ControlPanel strategyId={strategy.id} />
           </section>
         ))
       )}
-      {!query.data?.length && <p className="empty-inline">{t("empty")}</p>}
+      {!query.data?.length && <Text as="p" className="empty-inline">{t("empty")}</Text>}
     </Page>
   );
 }
@@ -267,27 +268,13 @@ export function History({
     enabled: !!series,
   });
   return (
-    <div className={(embedded ? "" : "surface ") + "chart-card" + (featured ? " portfolio-chart" : "")}>
-      <div className="filter-bar">
-        {(!seriesKind || options.length > 1) && <select
-          aria-label={t("series")}
-          value={seriesIdentity}
-          onChange={(e) => setSelected(e.target.value)}
-        >
-          {options.map((s) => (
-            <option value={keyFor(s)} key={keyFor(s)}>
-              {[display.kind(s.kind), display.series(s.kind, s.series), s.instanceId].filter(Boolean).join(" · ")}
-            </option>
-          ))}
-        </select>}
-        {!featured && <select
-          aria-label={t("timeRange")}
-          value={range}
-          onChange={(e) => setRange(Number(e.target.value))}
-        >
-          {periods.map((period) => <option value={period} key={period}>{periodLabel(period)}</option>)}
-        </select>}
-      </div>
+    <VStack gap={3} className={(embedded ? "" : "surface ") + "chart-card" + (featured ? " portfolio-chart" : "")}>
+      <HStack gap={3} wrap="wrap" vAlign="center" className="filter-bar">
+        {(!seriesKind || options.length > 1) && <Selector label={t("series")} isLabelHidden value={String(seriesIdentity)} onChange={(e) => setSelected(e)} options={[...options.map((s) => (
+            { value: String(keyFor(s)), label: String([display.kind(s.kind), display.series(s.kind, s.series), s.instanceId].filter(Boolean).join(" · ")) }
+          ))]}  />}
+        {!featured && <Selector label={t("timeRange")} isLabelHidden value={String(range)} onChange={(e) => setRange(Number(e))} options={[...periods.map((period) => ({ value: String(period), label: String(periodLabel(period)) }))]}  />}
+      </HStack>
       {query.error || history.error ? (
         <ErrorView error={(query.error || history.error)!} />
       ) : query.isPending || history.isFetching ? (
@@ -302,7 +289,7 @@ export function History({
           />{" "}
         </Suspense>
       ) : (
-        <p className="empty-inline chart-empty">{t("missing")}</p>
+        <Text as="p" className="empty-inline chart-empty">{t("missing")}</Text>
       )}
       {featured && (
         <Choices label={t("choosePeriod")} value={String(range)} size="sm"
@@ -310,11 +297,11 @@ export function History({
           select={period => setRange(Number(period))} />
       )}
       {history.data && history.data.resolutionMs > 0 && (
-        <small className="muted">
+        <Text type="supporting" className="muted">
           {display.unit(history.data.resolutionMs / 60000, "minute")} · {t("samples")} {history.data.points.length}
-        </small>
+        </Text>
       )}
-    </div>
+    </VStack>
   );
 }
 export function DataTable({
@@ -338,38 +325,13 @@ export function DataTable({
   );
   return (
     <section className="data-section">
-      {title && <h2>{title}</h2>}
-      <div className="surface table-scroll">
-        {rows.length ? (
-          <table>
-            <thead>
-              <tr>
-                {keys.map((key) => (
-                  <th key={key}>
-                    {fields === "standard" || (fields === "annotations" && ["Observed at", "Resource ID", "Related IDs"].includes(key))
-                      ? display.field(key)
-                      : key}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, i) => (
-                <tr key={i}>
-                  {keys.map((key) => (
-                    <td key={key}>
-                      {renderCell?.(key, row[key]) ??
-                        (fields === "standard" ? display.tableValue(key, row[key]) : display.value(row[key]))}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p className="empty-inline">{t("missing")}</p>
-        )}
-      </div>
+      {title && <Heading level={2}>{title}</Heading>}
+      <Table data={rows} density="balanced" hasHover columns={keys.map(key => ({
+        key,
+        header: fields === "standard" || (fields === "annotations" && ["Observed at", "Resource ID", "Related IDs"].includes(key)) ? display.field(key) : key,
+        width: proportional(1, { minWidth: 120 }),
+        renderCell: row => renderCell?.(key, row[key]) ?? (fields === "standard" ? display.tableValue(key, row[key]) : display.value(row[key])),
+      }))} emptyState={<Text as="p" className="empty-inline">{t("missing")}</Text>} />
     </section>
   );
 }
@@ -382,23 +344,18 @@ function RecordFeed({ id }: { id: string }) {
   );
   return (
     <>
-      <div className="segmented">
-        {["log", "fill", "signal", "risk", "alert"].map((k) => (
-          <button key={k} aria-pressed={kind === k} onClick={() => setKind(k)}>
-            {display.kind(k)}
-          </button>
-        ))}
-      </div>
-      <div className="surface">
+      <Choices label={t("events")} value={kind} select={setKind}
+        options={["log", "fill", "signal", "risk", "alert"].map(value => ({ value, label: display.kind(value) }))} />
+      <VStack gap={3} className="surface">
         {query.isPending ? (
           <Loading />
         ) : query.error ? (
           <ErrorView error={query.error} />
         ) : query.data.length ? (
           query.data.map((row) => (
-            <div className="event-line" key={row.id}>
+            <HStack gap={3} wrap="wrap" vAlign="center" className="event-line" key={row.id}>
               <time>{timestamp(row.observedAt)}</time>
-              <span>
+              <Text>
                 {typeof row.data.message === "string" && row.data.message
                   ? row.data.message
                   : Object.entries(row.data)
@@ -408,13 +365,13 @@ function RecordFeed({ id }: { id: string }) {
                   strategyId={id}
                   associations={row.associations}
                 />
-              </span>
-            </div>
+              </Text>
+            </HStack>
           ))
         ) : (
-          <p className="empty-inline">{t("noEvents")}</p>
+          <Text as="p" className="empty-inline">{t("noEvents")}</Text>
         )}
-      </div>
+      </VStack>
     </>
   );
 }

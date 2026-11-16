@@ -1,3 +1,5 @@
+import { VStack } from "@astryxdesign/core/VStack";
+import { Text } from "@astryxdesign/core/Text";
 import { lazy, Suspense, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -128,7 +130,7 @@ export function CapabilityWidget({
   return (
     <>
       {description && capability.description && (
-        <p className="muted">{capability.description}</p>
+        <Text as="p" className="muted">{capability.description}</Text>
       )}
       {error && <ErrorView error={error} />}
       {chart && !compact && (
@@ -142,7 +144,7 @@ export function CapabilityWidget({
         />
       )}
       {table && compact ? (
-        <p className="muted">{t("expandForDetails")}</p>
+        <Text as="p" className="muted">{t("expandForDetails")}</Text>
       ) : table ? (
         <DataTable
           title=""
@@ -189,7 +191,7 @@ export function CapabilityWidget({
           }
         />
       ) : (
-        <div className="equity-widget">
+        <VStack gap={3} className="equity-widget">
           <strong>
             {typeof value === "string" &&
             (chart || capability.renderer === "number")
@@ -206,7 +208,7 @@ export function CapabilityWidget({
             strategyId={strategyId}
             associations={record?.associations}
           />
-        </div>
+        </VStack>
       )}
       {(stale ||
         (resources.data?.observedAt &&
@@ -216,10 +218,10 @@ export function CapabilityWidget({
         <Badge tone="warning">{t("staleData")}</Badge>
       )}
       {capability.actual?.reason && (
-        <p className="warning">{capability.actual.reason}</p>
+        <Text as="p" className="warning">{capability.actual.reason}</Text>
       )}
       {detailed && suggestion && (
-        <small className="muted">
+        <Text type="supporting" className="muted">
           {t(
             suggestion.type === "stale"
               ? "suggestStale"
@@ -232,7 +234,7 @@ export function CapabilityWidget({
               suggestion.threshold +
               (capability.unit ? " " + capability.unit : "")}{" "}
           · {t("alertInactive")}
-        </small>
+        </Text>
       )}
     </>
   );
@@ -258,7 +260,7 @@ function CapabilityChart({
       <Chart points={points} candle={candle} />
     </Suspense>
   ) : (
-    <p className="empty-inline">{t("missing")}</p>
+    <Text as="p" className="empty-inline">{t("missing")}</Text>
   );
 }
 

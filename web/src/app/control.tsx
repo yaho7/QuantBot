@@ -1,3 +1,11 @@
+import { Selector } from "@astryxdesign/core/Selector";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { MultiSelector } from "@astryxdesign/core/MultiSelector";
+import { Card } from "@astryxdesign/core/Card";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Text } from "@astryxdesign/core/Text";
 import { CommandProgress } from "../components/command-progress";
 import { useEffect, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
@@ -45,8 +53,8 @@ export function ControlPanel({
     (control) => !exclude?.has(control.id),
   );
   return (
-    <div className="controls-grid">
-      {!controls.length && <p className="empty-inline">{t("noControls")}</p>}
+    <VStack gap={3} className={"controls-grid" + " grid"}>
+      {!controls.length && <Text as="p" className="empty-inline">{t("noControls")}</Text>}
       {controls.map((control) => (
         <ControlCard
           key={control.id}
@@ -56,7 +64,7 @@ export function ControlPanel({
           editing={editing}
         />
       ))}
-    </div>
+    </VStack>
   );
 }
 export function ControlCard({
@@ -85,6 +93,8 @@ export function ControlCard({
     control.readOnly ||
     control.kind === "status" ||
     control.kind === "metricDisplay";
+  // Render declared parameters in the widget itself; preserve trusted command confirmation.
+  const inlineParameter = embedded && control.capability?.kind === "parameter" && !readOnly;
   const blocked =
     editing ||
     submitPendingGuard(command, control) ||
@@ -127,10 +137,10 @@ export function ControlCard({
     },
   });
   return (
-    <article className="control-card">
+    <Card padding={4}><VStack as="article" className="control-card" gap={4}>
       {(!embedded || control.risk) && (
-        <header>
-          {!embedded && <h3>{control.title}</h3>}
+        <HStack as="header" gap={2} hAlign="between" vAlign="center">
+          {!embedded && <Heading level={3}>{control.title}</Heading>}
           {control.risk && (
             <Badge
               tone={
@@ -140,9 +150,9 @@ export function ControlCard({
               {display.risk(control.risk)}
             </Badge>
           )}
-        </header>
+        </HStack>
       )}
-      {control.description && <p className="muted">{control.description}</p>}
+      {control.description && <Text as="p" className="muted">{control.description}</Text>}
       <dl className="control-values">
         <dt>{t("actual")}</dt>
         <dd>{display.value(control.actual?.value, control)}</dd>
@@ -150,14 +160,19 @@ export function ControlCard({
         <dd>{display.value(control.desired?.value, control)}</dd>
       </dl>
       {control.actual?.reason && (
-        <p className="warning">{control.actual.reason}</p>
+        <Text as="p" className="warning">{control.actual.reason}</Text>
       )}
       {control.desired && <CommandProgress desired={control.desired} />}
+      {inlineParameter && (
+        <fieldset className="qb-inline-parameter" disabled={blocked}>
+          <ControlInput definition={control} value={value} disabled={blocked} onChange={setValue} />
+        </fieldset>
+      )}
       {!readOnly && (
-        <button
-          disabled={blocked}
+        <Button label={inlineParameter ? t("confirm") : t("execute")}
+          isDisabled={blocked}
           onClick={() => {
-            setValue(
+            if (!inlineParameter) setValue(
               editValue(
                 control,
                 control.capability?.kind === "action"
@@ -173,11 +188,11 @@ export function ControlCard({
             setOpen(true);
           }}
         >
-          {t("execute")}
+          {inlineParameter ? t("confirm") : t("execute")}
           <ArrowUpRight size={15} />
-        </button>
+        </Button>
       )}
-      {!registry.current && <small className="muted">{t("unavailable")}</small>}
+      {!registry.current && <Text type="supporting" className="muted">{t("unavailable")}</Text>}
       <Modal
         title={control.title}
         purpose="form"
@@ -188,11 +203,11 @@ export function ControlCard({
       >
         {command?.status === "confirmation_required" ? (
           <>
-            <p className="warning">
+            <Text as="p" className="warning">
               <AlertTriangle size={18} />
               {t("confirmationRequired")}
-            </p>
-            <p>{t("confirmHint")}</p>
+            </Text>
+            <Text as="p">{t("confirmHint")}</Text>
             <dl className="compact-dl">
               <dt>{t("strategy")}</dt>
               <dd>{strategyId}</dd>
@@ -215,33 +230,33 @@ export function ControlCard({
               }
             }}
           >
-            {control.description && <p>{control.description}</p>}
+            {control.description && <Text as="p">{control.description}</Text>}
             <ControlInput
               definition={control}
               value={value}
               onChange={setValue}
             />
             {inputError && (
-              <span className="error-text" role="alert">
+              <Text className="error-text" role="alert">
                 {t("invalidJSON")}
-              </span>
+              </Text>
             )}
             {control.capability?.unit && (
-              <small className="muted">{control.capability.unit}</small>
+              <Text type="supporting" className="muted">{control.capability.unit}</Text>
             )}
-            <div className="dialog-actions">
+            <HStack gap={3} wrap="wrap" vAlign="center" className="dialog-actions">
               <Button label={t("cancel")} isDisabled={submit.isPending} onClick={() => setOpen(false)} />
               <Button type="submit" label={t("execute")} variant="primary" isLoading={submit.isPending} />
-            </div>
+            </HStack>
           </form>
         )}
         {(submit.error || confirm.error) && (
-          <p className="error-text" role="alert">
+          <Text as="p" className="error-text" role="alert">
             {(submit.error || confirm.error)?.message}
-          </p>
+          </Text>
         )}
       </Modal>
-    </article>
+    </VStack></Card>
   );
 }
 function usesJSONInput(definition: Definition) {
@@ -321,14 +336,14 @@ function ControlInput({
   if (d.kind === "button") return null;
   if (usesJSONInput(d)) {
     return (
-      <label>
+      <VStack gap={2}>
         {d.capability?.kind === "parameter" ? d.title : t("commandInput")}
-        <textarea
+        <TextArea label={d.capability?.kind === "parameter" ? d.title : t("commandInput")} isLabelHidden
           rows={6}
           value={String(value)}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(event)}
         />
-      </label>
+      </VStack>
     );
   }
   if (d.kind === "toggle") {
@@ -364,45 +379,28 @@ function ControlInput({
         ))}
       </VStack>
     );
-  if (d.kind === "select" || d.kind === "multiSelect")
-    return (
-      <label>
-        {d.title}
-        <select
-          multiple={d.kind === "multiSelect"}
-          value={value as string | string[]}
-          onChange={(e) =>
-            onChange(
-              d.kind === "multiSelect"
-                ? Array.from(e.target.selectedOptions, (option) => option.value)
-                : e.target.value,
-            )
-          }
-        >
-          {d.options?.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-    );
+  if (d.kind === "select" || d.kind === "multiSelect") {
+    const options = d.options ?? [];
+    return d.kind === "multiSelect" ? <MultiSelector label={d.title} options={options}
+      value={Array.isArray(value) ? value as string[] : []} onChange={onChange} isDisabled={disabled} /> :
+      <Selector label={d.title} options={options} value={String(value ?? "")} onChange={onChange} isDisabled={disabled} />;
+  }
   // Keep decimals as strings through the entire control request.
   return (
-    <label>
+    <VStack gap={2}>
       {d.title}
-      <input
-        required
+      <TextInput label={d.title}
+        isRequired
         type="text"
         inputMode={d.kind === "textInput" ? "text" : "decimal"}
-        min={d.min}
-        max={d.max}
-        step={d.step}
-        maxLength={d.maxLength || 4096}
+
+
+
+        isDisabled={disabled}
         value={String(value ?? "")}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.slice(0, d.maxLength || 4096))}
       />
-    </label>
+    </VStack>
   );
 }
 export function CommandDialog({
@@ -445,10 +443,10 @@ export function CommandDialog({
         <ErrorView error={query.error} />
       ) : (
         <>
-          <p>
+          <Text as="p">
             <strong>{query.data.controlId}</strong>{" "}
             <Badge>{t(query.data.status as "pending")}</Badge>
-          </p>
+          </Text>
           <dl className="compact-dl">
             <dt>{t("desired")}</dt>
             <dd>{display.value(query.data.input)}</dd>
@@ -460,27 +458,27 @@ export function CommandDialog({
               <li key={i}>
                 <strong>{t(entry.status as "pending")}</strong>
                 <time>{new Date(entry.at).toLocaleTimeString()}</time>
-                <p>{display.reason(entry.reason)}</p>
+                <Text as="p">{display.reason(entry.reason)}</Text>
               </li>
             ))}
           </ol>
           {query.data.receipt && (
-            <p>{query.data.receipt.message ?? t(query.data.receipt.status as "succeeded")}</p>
+            <Text as="p">{query.data.receipt.message ?? t(query.data.receipt.status as "succeeded")}</Text>
           )}
           {query.data.status === "confirmation_required" && (
-            <button
+            <Button label={t("confirm")} variant="primary"
               className="primary"
               onClick={() => action.mutate("confirm")}
             >
               {t("confirm")}
-            </button>
+            </Button>
           )}
           {["confirmation_required", "pending", "accepted"].includes(
             query.data.status,
           ) && (
-            <button onClick={() => action.mutate("cancel")}>
+            <Button label={t("cancel")} onClick={() => action.mutate("cancel")}>
               {t("cancel")}
-            </button>
+            </Button>
           )}
           {query.data.status === "unknown" && (
             <form
@@ -489,33 +487,27 @@ export function CommandDialog({
                 action.mutate("reconcile");
               }}
             >
-              <label>
+              <VStack gap={2}>
                 {t("reconcile")}
-                <select
-                  value={outcome}
-                  onChange={(e) => setOutcome(e.target.value)}
-                >
-                  <option value="succeeded">{t("succeeded")}</option>
-                  <option value="failed">{t("failed")}</option>
-                </select>
-              </label>
-              <label>
+                <Selector label={t("status")} isLabelHidden value={String(outcome)} onChange={(e) => setOutcome(e)} options={[{ value: String("succeeded"), label: String(t("succeeded")) },{ value: String("failed"), label: String(t("failed")) }]}  />
+              </VStack>
+              <VStack gap={2}>
                 {t("note")}
-                <textarea
-                  required
+                <TextArea label={t("note")} isLabelHidden
+                  isRequired
                   value={note}
-                  onChange={(e) => setNote(e.target.value)}
+                  onChange={(e) => setNote(e)}
                 />
-              </label>
-              <button disabled={action.isPending}>{t("save")}</button>
+              </VStack>
+              <Button label={t("save")} type="submit" isDisabled={action.isPending}>{t("save")}</Button>
             </form>
           )}
         </>
       )}
       {action.error && (
-        <p role="alert" className="error-text">
+        <Text as="p" role="alert" className="error-text">
           {action.error.message}
-        </p>
+        </Text>
       )}
     </Modal>
   );

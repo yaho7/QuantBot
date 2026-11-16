@@ -1,3 +1,9 @@
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { Selector } from "@astryxdesign/core/Selector";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { Text } from "@astryxdesign/core/Text";
+import { Heading } from "@astryxdesign/core/Heading";
+import { VStack } from "@astryxdesign/core/VStack";
 import { Button } from "@astryxdesign/core/Button";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -56,7 +62,6 @@ import { capabilityCatalog, CapabilityWidget } from "./capability-widget";
 
 import { StrategyPerformance } from "./host-performance";
 import { ScrollHints } from "./scroll-hints";
-import "./workbench-ux.css";
 
 const Density = createContext("full");
 
@@ -79,10 +84,10 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
       options={["desktop", "mobile"].map(value => ({ value, label: t(value === "mobile" ? "mobileLayout" : "desktopLayout") }))} />
   </HStack>;
   return <>
-    <div className={device === "mobile" ? "mobile-layout-preview" : ""}>
+    <VStack gap={3} className={device === "mobile" ? "mobile-layout-preview" : ""}>
       <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device} deviceTools={deviceTools}
         onEditing={(active) => setLockedDevice(active ? device : undefined)} />
-    </div>
+    </VStack>
   </>;
 
 }
@@ -174,8 +179,8 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
   }
   return (
     <section className="section widget-section">
-      <div className="section-heading">
-        <h2>{t("widgets")}</h2>
+      <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading">
+        <Heading level={2}>{t("widgets")}</Heading>
         {deviceTools}
         <HStack className="widget-edit-tools" gap={2} wrap="wrap" vAlign="center">
           {editing ? (
@@ -198,9 +203,9 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
                   setSettings("");
                   setAdding(false);
                 }} />
-              <span className="muted layout-save-status" role="status" aria-live="polite">
+              <Text className="muted layout-save-status" role="status" aria-live="polite">
                 {save.isError ? t("saveFailed") : save.isPending || dirty ? t("savingLayout") : t("savedLayout")}
-              </span>
+              </Text>
               {save.isError && <Button label={t("retrySave")} onClick={() => save.mutate({ revision, widgets: draft })} />}
             </>
           ) : (
@@ -208,7 +213,7 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
               isDisabled={saved.isPending || !!saved.error || catalogs.some(catalog => catalog.isPending)} />
           )}
         </HStack>
-      </div>
+      </HStack>
       {saved.isPending ? (
         <Loading />
       ) : saved.error ? (
@@ -229,7 +234,7 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
           }}
         >
           <SortableContext items={widgets.map((w) => w.id)}>
-            <div className={"widget-grid " + (editing ? "editing" : "")}>
+            <VStack gap={4} className={"widget-grid " + (editing ? "editing" : "") + " grid"}>
               {widgets.map((widget) => (
                 <SortableWidget
                   key={widget.id}
@@ -269,12 +274,12 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
                 </SortableWidget>
               ))}
               {editing && !widgets.length && (
-                <button className="widget-add" onClick={() => setAdding(true)}>
+                <Button label={t("add")} className="widget-add" onClick={() => setAdding(true)}>
                   <Plus />
                   {t("add")}
-                </button>
+                </Button>
               )}
-            </div>
+            </VStack>
           </SortableContext>
         </DndContext>
       )}
@@ -284,9 +289,9 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
       )}
       {copyError && <ErrorView error={copyError} />}
       {save.error && (
-        <p className="error-text" role="alert">
+        <Text as="p" className="error-text" role="alert">
           {save.error.message}
-        </p>
+        </Text>
       )}
       {adding && (
         <AddWidget
@@ -328,76 +333,59 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
                   setSettings("");
                 }}
               >
-                <label>
+                <VStack gap={2}>
                   {t("displayName")}
-                  <input
-                    maxLength={160}
+                  <TextInput label={t("displayName")} isLabelHidden
                     value={widget.label ?? ""}
                     onChange={(e) =>
-                      update(widget.id, { label: e.target.value })
+                      update(widget.id, { label: e.slice(0, 160) })
                     }
                   />
-                </label>
-                <label>
+                </VStack>
+                <VStack gap={2}>
                   {t("size")}
-                  <select
-                    value={widget.size}
-                    onChange={(e) =>
+                  <Selector label={t("size")} isLabelHidden value={String(widget.size)} onChange={(e) =>
                       update(widget.id, {
-                        size: e.target.value as Widget["size"],
+                        size: e as Widget["size"],
                         width: undefined,
                       })
-                    }
-                  >
-                    {["small", "medium", "large", "full"].map((size) => (
-                      <option key={size}>{size}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
+                    } options={[...["small", "medium", "large", "full"].map((size) => (
+                      { value: String(size), label: String(size) }
+                    ))]}  />
+                </VStack>
+                <VStack gap={2}>
                   {t("color")}
-                  <input
-                    type="color"
-                    value={widget.color ?? "#4b76d8"}
-                    onChange={(e) =>
-                      update(widget.id, { color: e.target.value })
-                    }
-                  />
-                </label>
-                <label>
+                  <WidgetColor value={widget.color} commit={color => update(widget.id, { color })} />
+                </VStack>
+                <VStack gap={2}>
                   {t("icon")}
-                  <select
-                    value={widget.icon ?? "Activity"}
+                  <Selector label={t("icon")} isLabelHidden value={String(widget.icon ?? "Activity")} onChange={(e) =>
+                      update(widget.id, { icon: e })
+                    } options={[...Object.keys(icons).map((icon) => (
+                      { value: String(icon), label: String(icon) }
+                    ))]}  />
+                </VStack>
+                <VStack gap={2} className="check-label">
+                  <CheckboxInput label={t("showDescription")} isLabelHidden
+
+                    value={widget.description}
                     onChange={(e) =>
-                      update(widget.id, { icon: e.target.value })
-                    }
-                  >
-                    {Object.keys(icons).map((icon) => (
-                      <option key={icon}>{icon}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="check-label">
-                  <input
-                    type="checkbox"
-                    checked={widget.description}
-                    onChange={(e) =>
-                      update(widget.id, { description: e.target.checked })
+                      update(widget.id, { description: e })
                     }
                   />
                   {t("showDescription")}
-                </label>
-                <label className="check-label">
-                  <input
-                    type="checkbox"
-                    checked={widget.detailed}
+                </VStack>
+                <VStack gap={2} className="check-label">
+                  <CheckboxInput label={t("detailed")} isLabelHidden
+
+                    value={widget.detailed}
                     onChange={(e) =>
-                      update(widget.id, { detailed: e.target.checked })
+                      update(widget.id, { detailed: e })
                     }
                   />
                   {t("detailed")}
-                </label>
-                <button>{t("close")}</button>
+                </VStack>
+                <Button label={t("close")} type="submit">{t("close")}</Button>
               </form>
             ))}
         </Modal>
@@ -423,7 +411,7 @@ function SortableWidget({
   children: ReactNode;
 }) {
   const { t } = useLanguage();
-  const body = useRef<HTMLDivElement>(null);
+  const body = useRef<HTMLElement>(null);
   const [density, setDensity] = useState("full");
   const [expanded, setExpanded] = useState(false);
   useEffect(() => {
@@ -453,14 +441,18 @@ function SortableWidget({
         transition: sortable.transition,
         borderTopColor: widget.color,
         height: widget.height ? widget.height + "px" : undefined,
-        ...({ "--widget-width": widget.width } as import("react").CSSProperties),
+        ...({
+          "--widget-span-desktop": widget.width ? Math.max(1, Math.round(widget.width * 12 / 100)) : undefined,
+          "--widget-span-tablet": widget.width ? Math.max(1, Math.round(widget.width * 8 / 100)) : undefined,
+          "--widget-span-phone": widget.width ? Math.max(1, Math.round(widget.width * 4 / 100)) : undefined,
+        } as import("react").CSSProperties),
       }}
       data-widget={widget.id}
       data-density={density}
     >
       <header className="widget-header">
         <Icon size={16} />
-        <h3>
+        <Heading level={3}>
           {widget.label ||
             title ||
             t(
@@ -476,18 +468,18 @@ function SortableWidget({
                         ? "positions"
                         : widget.type === "performance" ? "hostPerformance" : "activity",
             )}
-        </h3>
+        </Heading>
         {!editing && <IconButton size="sm" label={t("expandWidget")} tooltip={t("expandWidget")} variant="ghost" icon={<Maximize2 size={16} />} onClick={() => setExpanded(true)} />}
         {editing && (
           <>
-            <button
+            <Button label={t("dragWidget")} type="submit"
               className="icon-button drag-handle"
               aria-label={t("dragWidget")}
               {...sortable.attributes}
               {...sortable.listeners}
             >
               <GripVertical size={17} />
-            </button>
+            </Button>
             <IconButton size="sm" label={t("widgetSettings")} tooltip={t("widgetSettings")} variant="ghost"
               icon={<Settings2 size={16} />} onClick={configure} />
             <IconButton size="sm" label={t("remove")} tooltip={t("remove")} variant="ghost"
@@ -495,7 +487,7 @@ function SortableWidget({
           </>
         )}
       </header>
-      <div className="widget-body" ref={body}><Density.Provider value={density}>{children}</Density.Provider></div>
+      <VStack gap={3} className="widget-body" ref={body}><Density.Provider value={density}>{children}</Density.Provider></VStack>
       <ScrollHints target={body} />
       {expanded && <Modal title={widget.label || title || t("details")} open onOpenChange={setExpanded}>
         <Density.Provider value="full">{children}</Density.Provider>
@@ -519,15 +511,15 @@ function WidgetContent({
   const density = useContext(Density);
   widget = { ...widget, description: widget.description && density === "full", detailed: widget.detailed && density === "full" };
   if (density === "compact" && widget.type === "chart")
-    return <p className="muted compact-widget-summary">{t("expandForDetails")}</p>;
+    return <Text as="p" className="muted compact-widget-summary">{t("expandForDetails")}</Text>;
   if (widget.type === "capability") {
     if (catalogError) return <ErrorView error={catalogError} />;
-    if (!catalog) return <p className="empty-inline">{t("unavailable")}</p>;
+    if (!catalog) return <Text as="p" className="empty-inline">{t("unavailable")}</Text>;
     const capability = catalog.capabilities.find(
       (entry) => entry.id === widget.controlId,
     );
     if (!capability)
-      return <p className="empty-inline">{t("capabilityMissing")}</p>;
+      return <Text as="p" className="empty-inline">{t("capabilityMissing")}</Text>;
     if (capability.kind === "parameter" || capability.kind === "action")
       return <ControlWidget widget={widget} editing={editing} />;
     return (
@@ -557,7 +549,7 @@ function TelemetryWidget({ widget }: { widget: Widget }) {
   if (values.query.error) return <ErrorView error={values.query.error} />;
   if (widget.type === "positions" && density === "compact") {
     const count = values.records.filter(r => r.kind === "position").reduce((n, r) => n + (Array.isArray(r.data.positions) ? r.data.positions.length : 0), 0);
-    return <div className="equity-widget"><strong>{values.query.isPending ? "—" : count}</strong><span className="muted">{t("positions")}</span></div>;
+    return <VStack gap={3} className="equity-widget"><strong>{values.query.isPending ? "—" : count}</strong><Text className="muted">{t("positions")}</Text></VStack>;
   }
   if (widget.type === "positions")
     return (
@@ -572,10 +564,10 @@ function TelemetryWidget({ widget }: { widget: Widget }) {
       />
     );
   return (
-    <div className="equity-widget">
-      <span className="muted">
+    <VStack gap={3} className="equity-widget">
+      <Text className="muted">
         {String(values.equity?.data.currency ?? t("missing"))}
-      </span>
+      </Text>
       <strong>{decimalText(values.equity?.data.value)}</strong>
       {widget.detailed && (
         <dl className="compact-dl">
@@ -585,7 +577,7 @@ function TelemetryWidget({ widget }: { widget: Widget }) {
           <dd>{decimalText(values.equity?.data.drawdown)}</dd>
         </dl>
       )}
-    </div>
+    </VStack>
   );
 }
 function ControlWidget({
@@ -602,9 +594,9 @@ function ControlWidget({
   if (query.isPending) return <Loading />;
   if (query.error) return <ErrorView error={query.error} />;
   const control = query.data.controls.find((c) => c.id === widget.controlId);
-  if (!control) return <p className="empty-inline">{t("noControls")}</p>;
+  if (!control) return <Text as="p" className="empty-inline">{t("noControls")}</Text>;
   return (
-    <div className={widget.detailed ? "" : "widget-compact"}>
+    <VStack gap={3} className={widget.detailed ? "" : "widget-compact"}>
       <ControlCard
         strategyId={widget.strategyId}
         registry={query.data}
@@ -616,7 +608,7 @@ function ControlWidget({
           description: widget.description ? control.description : undefined,
         }}
       />
-    </div>
+    </VStack>
   );
 }
 function ActivityWidget({ strategyId }: { strategyId: string }) {
@@ -626,15 +618,15 @@ function ActivityWidget({ strategyId }: { strategyId: string }) {
     resource<Command[]>("/commands?strategyId=" + strategyId),
   );
   return (
-    <div>
+    <VStack gap={3}>
       {query.data?.slice(0, density === "compact" ? 1 : density === "medium" ? 3 : 5).map((cmd) => (
-        <div className="event-line" key={cmd.id}>
-          <span>{cmd.controlId}</span>
+        <HStack gap={3} wrap="wrap" vAlign="center" className="event-line" key={cmd.id}>
+          <Text>{cmd.controlId}</Text>
           <Badge>{t(cmd.status as "pending")}</Badge>
-        </div>
+        </HStack>
       ))}
-      {!query.data?.length && <p className="empty-inline">{t("noEvents")}</p>}
-    </div>
+      {!query.data?.length && <Text as="p" className="empty-inline">{t("noEvents")}</Text>}
+    </VStack>
   );
 }
 function AddWidget({
@@ -689,30 +681,18 @@ function AddWidget({
           });
         }}
       >
-        <label>
+        <VStack gap={2}>
           {t("strategies")}
-          <select
-            required
-            value={strategyId}
-            onChange={(e) => {
-              setStrategyId(e.target.value);
+          <Selector label={t("strategy")} isLabelHidden value={String(strategyId)} onChange={(e) => {
+              setStrategyId(e);
               setControlId("");
-            }}
-          >
-            {strategies.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
+            }} options={[...strategies.map((s) => (
+              { value: String(s.id), label: String(s.name) }
+            ))]}  />
+        </VStack>
+        <VStack gap={2}>
           {t("widgetType")}
-          <select
-            value={type}
-            onChange={(e) => setType(e.target.value as Widget["type"])}
-          >
-            {[
+          <Selector label={t("widgetType")} isLabelHidden value={String(type)} onChange={(e) => setType(e as Widget["type"])} options={[...[
               ["equity", t("equity")],
               ["control", t("controls")],
               ["capability", t("capability")],
@@ -721,35 +701,33 @@ function AddWidget({
               ["activity", t("activity")],
               ["performance", t("hostPerformance")],
             ].map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+              { value: String(value), label: String(label) }
+            ))]}  />
+        </VStack>
         {hasSource && (
-          <label>
+          <VStack gap={2}>
             {t(type === "capability" ? "capability" : "controls")}
-            <select
-              required
-              value={selected}
-              onChange={(e) => setControlId(e.target.value)}
-            >
-              {sources?.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.title}
-                </option>
-              ))}
-            </select>
-          </label>
+            <Selector label={t(type === "capability" ? "capability" : "controls")} isLabelHidden value={String(selected)} onChange={(e) => setControlId(e)} options={[...(sources ?? []).map((c) => (
+                { value: String(c.id), label: String(c.title) }
+              ))]}  />
+          </VStack>
         )}
-        <button
+        <Button label={t("add")} type="submit" variant="primary"
           className="primary"
-          disabled={!strategyId || (hasSource && !selected)}
+          isDisabled={!strategyId || (hasSource && !selected)}
         >
           {t("add")}
-        </button>
+        </Button>
       </form>
     </Modal>
   );
+}
+
+function WidgetColor({ value, commit }: { value?: string; commit: (value: string | undefined) => void }) {
+  const { t } = useLanguage();
+  const [draft, setDraft] = useState(value ?? "");
+  const valid = draft === "" || /^#[a-f\d]{6}$/i.test(draft);
+  return <TextInput label={t("color")} isLabelHidden value={draft} onChange={setDraft}
+    status={!valid ? { type: "error", message: "#RRGGBB" } : undefined}
+    onBlur={() => { if (valid) commit(draft || undefined); }} />;
 }

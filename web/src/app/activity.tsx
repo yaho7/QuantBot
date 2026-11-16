@@ -1,3 +1,9 @@
+import { Heading } from "@astryxdesign/core/Heading";
+import { Text } from "@astryxdesign/core/Text";
+import { Button } from "@astryxdesign/core/Button";
+import { VStack } from "@astryxdesign/core/VStack";
+import { Selector } from "@astryxdesign/core/Selector";
+import { HStack } from "@astryxdesign/core/HStack";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
@@ -33,14 +39,8 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
   );
   const body = (
     <>
-      <div className="filter-bar">
-        <select
-          aria-label={t("status")}
-          value={status}
-          onChange={(e) => setStatus(e.target.value)}
-        >
-          <option value="">{t("all")}</option>
-          {[
+      <HStack gap={3} wrap="wrap" vAlign="center" className="filter-bar">
+        <Selector label={t("status")} isLabelHidden value={String(status)} onChange={(e) => setStatus(e)} options={[{ value: String(""), label: String(t("all")) },...[
             "confirmation_required",
             "pending",
             "executing",
@@ -50,38 +50,35 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
             "expired",
             "cancelled",
           ].map((s) => (
-            <option key={s} value={s}>
-              {t(s as "pending")}
-            </option>
-          ))}
-        </select>
-      </div>
+            { value: String(s), label: String(t(s as "pending")) }
+          ))]}  />
+      </HStack>
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
         <ErrorView error={query.error} />
       ) : (
-        <div className="surface">
+        <VStack gap={3} className="surface">
           {query.data.map((cmd) => (
-            <button
+            <Button label={cmd.controlId + " · " + t(cmd.status as "pending")}
               className="activity-line"
               key={cmd.id}
               onClick={() => setSelected(cmd.id)}
             >
-              <span>
+              <Text>
                 {cmd.controlId}
-                <small className="muted">{cmd.strategyId}</small>
-              </span>
+                <Text type="supporting" className="muted">{cmd.strategyId}</Text>
+              </Text>
               <Badge tone={cmd.status === "unknown" ? "danger" : ""}>
                 {t(cmd.status as "pending")}
               </Badge>
               <time>{timestamp(cmd.updatedAt)}</time>
-            </button>
+            </Button>
           ))}
           {!query.data.length && (
-            <p className="empty-inline">{t("noEvents")}</p>
+            <Text as="p" className="empty-inline">{t("noEvents")}</Text>
           )}
-        </div>
+        </VStack>
       )}
       {selected && (
         <CommandDialog commandId={selected} close={() => setSelected("")} />
@@ -99,23 +96,23 @@ export function AlertsPage() {
     <Page title={t("alerts")}>
       <AttentionSummary attention={attention} />
       <section className="section">
-        <div className="section-heading"><h2>{t("alertHistory")}</h2></div>
+        <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading"><Heading level={2}>{t("alertHistory")}</Heading></HStack>
         {query.isPending ? (
           <Loading />
         ) : query.error ? (
           <ErrorView error={query.error} />
         ) : (
-          <div className="surface">
+          <VStack gap={3} className="surface">
             {query.data.map((row) => (
               <Link
                 className="activity-line"
                 key={row.strategyId + row.id}
                 to={"/strategies/" + row.strategyId}
               >
-                <span>
+                <Text>
                   <strong>{String(row.data.code)}</strong>
-                  <small>{String(row.data.message)}</small>
-                </span>
+                  <Text type="supporting">{String(row.data.message)}</Text>
+                </Text>
                 <Badge
                   tone={
                     row.data.severity === "error" ||
@@ -130,9 +127,9 @@ export function AlertsPage() {
               </Link>
             ))}
             {!query.data.length && (
-              <p className="empty-inline">{t("noEvents")}</p>
+              <Text as="p" className="empty-inline">{t("noEvents")}</Text>
             )}
-          </div>
+          </VStack>
         )}
       </section>
     </Page>

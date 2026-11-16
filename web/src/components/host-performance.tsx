@@ -1,10 +1,13 @@
+import { HStack } from "@astryxdesign/core/HStack";
+import { Heading } from "@astryxdesign/core/Heading";
+import { VStack } from "@astryxdesign/core/VStack";
+import { Text } from "@astryxdesign/core/Text";
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
 import { resource, type Point } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
-import "./host-performance.css";
 
 const Chart = lazy(() => import("./chart"));
 export type Resources = { cpu_cores: number; memory_bytes: number };
@@ -48,12 +51,12 @@ export function useResourceFormat() {
 
 export function SampleStatus({ latest, stale }: { latest?: Reading<unknown> | null; stale: boolean }) {
   const { t } = useLanguage();
-  return <span className="performance-sample-status">
+  return <Text className="performance-sample-status">
     <Badge tone={latest && !stale ? "success" : latest ? "warning" : "neutral"}>
       {t(!latest ? "missing" : stale ? "performanceStale" : "performanceFresh")}
     </Badge>
     {latest && <time className="muted" dateTime={new Date(latest.observedAt).toISOString()}>{timestamp(latest.observedAt)}</time>}
-  </span>;
+  </Text>;
 }
 
 export function HostMetricsGrid({ host, compact = false }: { host: Host; compact?: boolean }) {
@@ -61,14 +64,14 @@ export function HostMetricsGrid({ host, compact = false }: { host: Host; compact
   const { bytes, cores, percent } = useResourceFormat();
   const sample = host.latest?.data;
   return <dl className="performance-metrics">
-    <div><dt>{t("hostCPU")}</dt><dd>{percent(sample?.cpu_usage_percent)}</dd>
-      {host.capacity && host.capacity.cpu_cores > 0 && <small className="muted">{cores(host.capacity.cpu_cores)}</small>}
-    </div>
-    <div><dt>{t("availableMemory")}</dt><dd>{bytes(sample?.memory_available_bytes)}</dd>
-      {host.capacity && host.capacity.memory_bytes > 0 && <small className="muted">{t("resourceLimit")} {bytes(host.capacity.memory_bytes)}</small>}
-    </div>
-    {!compact && sample?.disk_available_bytes != null && <div><dt>{t("availableDisk")}</dt><dd>{bytes(sample.disk_available_bytes)}</dd></div>}
-    {!compact && sample?.swap_used_bytes != null && <div><dt>{t("swapUsed")}</dt><dd>{bytes(sample.swap_used_bytes)}</dd></div>}
+    <VStack gap={3}><dt>{t("hostCPU")}</dt><dd>{percent(sample?.cpu_usage_percent)}</dd>
+      {host.capacity && host.capacity.cpu_cores > 0 && <Text type="supporting" className="muted">{cores(host.capacity.cpu_cores)}</Text>}
+    </VStack>
+    <VStack gap={3}><dt>{t("availableMemory")}</dt><dd>{bytes(sample?.memory_available_bytes)}</dd>
+      {host.capacity && host.capacity.memory_bytes > 0 && <Text type="supporting" className="muted">{t("resourceLimit")} {bytes(host.capacity.memory_bytes)}</Text>}
+    </VStack>
+    {!compact && sample?.disk_available_bytes != null && <VStack gap={3}><dt>{t("availableDisk")}</dt><dd>{bytes(sample.disk_available_bytes)}</dd></VStack>}
+    {!compact && sample?.swap_used_bytes != null && <VStack gap={3}><dt>{t("swapUsed")}</dt><dd>{bytes(sample.swap_used_bytes)}</dd></VStack>}
   </dl>;
 }
 
@@ -77,9 +80,9 @@ export function ProcessMetricsGrid({ process }: { process: HostProcess }) {
   const { bytes, cores } = useResourceFormat();
   const data = process.latest?.data;
   return <dl className="performance-metrics process-metrics">
-    <div><dt>{t("processCPU")}</dt><dd>{cores(data?.cpu_cores_used)}</dd></div>
-    <div><dt>{t("processRSS")}</dt><dd>{bytes(data?.rss_bytes)}</dd></div>
-    {data?.thread_count != null && <div><dt>{t("threadCount")}</dt><dd>{data.thread_count}</dd></div>}
+    <VStack gap={3}><dt>{t("processCPU")}</dt><dd>{cores(data?.cpu_cores_used)}</dd></VStack>
+    <VStack gap={3}><dt>{t("processRSS")}</dt><dd>{bytes(data?.rss_bytes)}</dd></VStack>
+    {data?.thread_count != null && <VStack gap={3}><dt>{t("threadCount")}</dt><dd>{data.thread_count}</dd></VStack>}
   </dl>;
 }
 
@@ -102,11 +105,11 @@ export function ResourceChart<T>({ readings, select, label }: {
     }
     return [...samples.values()];
   }, [readings, select]);
-  return <div className="surface padded resource-trend">
-    <h3>{label}</h3>
+  return <VStack gap={3} className="surface padded resource-trend">
+    <Heading level={3}>{label}</Heading>
     {points.length > 1 ? <Suspense fallback={<Loading />}><Chart points={points} /></Suspense> :
-      <p className="empty-inline">{t("performanceTrendEmpty")}</p>}
-  </div>;
+      <Text as="p" className="empty-inline">{t("performanceTrendEmpty")}</Text>}
+  </VStack>;
 }
 
 const processCPU = (d: ProcessMetrics) => d.cpu_cores_used;
@@ -119,10 +122,10 @@ function ProcessTrend({ process }: { process: HostProcess }) {
     refetchInterval: 15_000,
   });
   return history.isPending ? <Loading /> : history.error ? <ErrorView error={history.error} /> :
-    <div className="performance-trends">
+    <VStack gap={3} className="performance-trends">
       <ResourceChart readings={history.data} select={processCPU} label={t("processCPU") + " · " + t("cpuCores")} />
       <ResourceChart readings={history.data} select={processMemory} label={t("processRSS") + " · MiB"} />
-    </div>;
+    </VStack>;
 }
 
 export function StrategyPerformance({ strategyId, compact = false, widget = false }: {
@@ -134,27 +137,27 @@ export function StrategyPerformance({ strategyId, compact = false, widget = fals
   const linkedHosts = new Set(query.data?.map(process => process.hostId));
 
   const content = query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} /> :
-    !query.data.length ? <p className="empty-inline">{t("noHostBinding")}</p> :
-    <div className="performance-process-list">
+    !query.data.length ? <Text as="p" className="empty-inline">{t("noHostBinding")}</Text> :
+    <VStack gap={3} className="performance-process-list">
       {widget && !compact && hosts.data?.filter(host => linkedHosts.has(host.id)).map(host =>
-        <div className="performance-widget-host" key={host.id}>
+        <VStack gap={3} className="performance-widget-host" key={host.id}>
           <Link className="performance-link" to={"/hosts/" + host.id}>{host.name}</Link>
           <HostMetricsGrid host={host} compact />
           <SampleStatus latest={host.latest} stale={host.stale} />
-        </div>
+        </VStack>
       )}
       {query.data.map(process => (
-        <div key={process.instanceId} className={widget ? "performance-process" : "surface padded performance-process"}>
-          <div className="performance-process-heading">
+        <VStack gap={3} key={process.instanceId} className={widget ? "performance-process" : "surface padded performance-process"}>
+          <HStack gap={3} wrap="wrap" vAlign="center" className="performance-process-heading">
             <strong>{process.instanceId}</strong>
             <Link className="performance-link" to={"/hosts/" + process.hostId}>{process.hostName}</Link>
-          </div>
+          </HStack>
           <ProcessMetricsGrid process={process} />
           <SampleStatus latest={process.latest} stale={process.stale} />
           {!widget && <ProcessDetails process={process} />}
-        </div>
+        </VStack>
       ))}
-    </div>;
+    </VStack>;
 
   return content;
 }

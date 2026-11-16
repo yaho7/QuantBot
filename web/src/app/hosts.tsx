@@ -1,3 +1,7 @@
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
+import { HStack } from "@astryxdesign/core/HStack";
 import { Card } from "@astryxdesign/core/Card";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Grid } from "@astryxdesign/core/Grid";
@@ -57,18 +61,18 @@ export function HostDetailPage() {
         <CapacityPlanner key={id} host={query.data} />
         <HostTrends history={query.data.history} />
         <section className="section">
-          <div className="section-heading"><Heading level={2}>{t("hostProcesses")}</Heading></div>
-          {!query.data.members.length ? <p className="surface empty-inline">{t("noHostBinding")}</p> :
-            <div className="hosts-grid">{query.data.members.map(process =>
+          <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading"><Heading level={2}>{t("hostProcesses")}</Heading></HStack>
+          {!query.data.members.length ? <Text as="p" className="surface empty-inline">{t("noHostBinding")}</Text> :
+            <VStack gap={3} className={"hosts-grid" + " grid"}>{query.data.members.map(process =>
               <article className="surface padded performance-process" key={processKey(process)}>
-                <div className="performance-process-heading">
+                <HStack gap={3} wrap="wrap" vAlign="center" className="performance-process-heading">
                   <Link className="performance-link" to={"/strategies/" + process.strategyId}>{process.strategyName}</Link>
-                  <small className="muted">{process.instanceId}</small>
-                </div>
+                  <Text type="supporting" className="muted">{process.instanceId}</Text>
+                </HStack>
                 <ProcessMetricsGrid process={process} />
                 <SampleStatus latest={process.latest} stale={process.stale} />
               </article>
-            )}</div>}
+            )}</VStack>}
         </section>
         <HostSuggestions host={query.data} />
       </>}
@@ -83,10 +87,10 @@ function HostTrends({ history }: { history: Reading<HostMetrics>[] }) {
   if (!cpu && !memory) return null;
   return <details className="section surface padded performance-details" onToggle={event => setOpen(event.currentTarget.open)}>
     <summary>{t("hostTrends")}</summary>
-    {open && <div className="performance-trends">
+    {open && <VStack gap={3} className="performance-trends">
       {cpu && <ResourceChart readings={history} select={hostCPU} label={t("hostCPU") + " · %"} />}
       {memory && <ResourceChart readings={history} select={hostMemory} label={t("availableMemory") + " · GiB"} />}
-    </div>}
+    </VStack>}
   </details>;
 }
 
@@ -113,21 +117,19 @@ function CapacityPlanner({ host }: { host: HostDetail }) {
   const result = query.data;
   return <section className="section surface padded capacity-panel">
     <Heading level={2}>{t("capacityPlanner")}</Heading>
-    <p className="muted">{t("capacityHint")}</p>
-    {!instance ? <p>{t("noHostBinding")}</p> : <>
-      <div className="capacity-fields">
-        <label>{t("similarInstance")}<select value={processKey(instance)} onChange={e => setSelected(e.target.value)}>
-          {host.members.map(member => <option key={processKey(member)} value={processKey(member)}>{member.strategyName} · {member.instanceId}</option>)}
-        </select></label>
-        <label>{t("resourceReserve")}<input type="number" min={0} max={90} value={reserve} onChange={e => setReserve(Math.min(90, Math.max(0, Math.trunc(Number(e.target.value)))))} /></label>
-      </div>
+    <Text as="p" className="muted">{t("capacityHint")}</Text>
+    {!instance ? <Text as="p">{t("noHostBinding")}</Text> : <>
+      <VStack gap={3} className="capacity-fields">
+        <VStack gap={2}>{t("similarInstance")}<Selector label={t("similarInstance")} isLabelHidden value={String(processKey(instance))} onChange={e => setSelected(e)} options={[...host.members.map(member => ({ value: String(processKey(member)), label: String(member.strategyName + "·" + member.instanceId) }))]}  /></VStack>
+        <VStack gap={2}>{t("resourceReserve")}<TextInput label={t("resourceReserve")} isLabelHidden type="text" inputMode="numeric"   value={String(reserve)} onChange={e => setReserve(Math.min(90, Math.max(0, Math.trunc(Number(e)))))} /></VStack>
+      </VStack>
       {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} /> : result?.additional == null ?
-        <p className="muted" role="status">{t(reasons[result?.reason ?? ""] ?? "estimateMissing")}</p> :
-        <div className="capacity-result" role="status">
-          <div><strong>{result.additional.toLocaleString()}</strong> {t("additionalInstances")}</div>
-          <small>{t("limitingResource")}: {t(result.bottleneck === "cpu" ? "hostCPU" : result.bottleneck === "memory" ? "availableMemory" : "cpuAndMemory")}</small>
-          {result.budget && <small>{t(result.source === "declared" ? "declaredBudget" : "observedBudget")}: {formats.cores(result.budget.cpu_cores)} · {formats.bytes(result.budget.memory_bytes)}</small>}
-        </div>}
+        <Text as="p" className="muted" role="status">{t(reasons[result?.reason ?? ""] ?? "estimateMissing")}</Text> :
+        <VStack gap={3} className="capacity-result" role="status">
+          <VStack gap={3}><strong>{result.additional.toLocaleString()}</strong> {t("additionalInstances")}</VStack>
+          <Text type="supporting">{t("limitingResource")}: {t(result.bottleneck === "cpu" ? "hostCPU" : result.bottleneck === "memory" ? "availableMemory" : "cpuAndMemory")}</Text>
+          {result.budget && <Text type="supporting">{t(result.source === "declared" ? "declaredBudget" : "observedBudget")}: {formats.cores(result.budget.cpu_cores)} · {formats.bytes(result.budget.memory_bytes)}</Text>}
+        </VStack>}
     </>}
   </section>;
 }
@@ -144,7 +146,7 @@ function HostSuggestions({ host }: { host: Host }) {
   }
   if (!suggestions.length) return null;
   return <aside className="section surface padded">
-    <h2>{t("hostSuggestions")}</h2>
+    <Heading level={2}>{t("hostSuggestions")}</Heading>
     <ul>{suggestions.map(key => <li key={key}>{t(key)}</li>)}</ul>
   </aside>;
 }

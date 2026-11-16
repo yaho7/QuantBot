@@ -1,3 +1,4 @@
+import { Badge as CountBadge } from "@astryxdesign/core/Badge";
 import { Token } from "@astryxdesign/core/Token";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -68,6 +69,7 @@ export function Badge({
   tone?: string;
 }) {
   const variant = tone === "success" ? "green" : tone === "warning" ? "yellow" : tone === "danger" ? "red" : "neutral";
+  if (typeof children === "number") return <CountBadge label={children} variant={variant} />;
   return <Token label={String(children ?? "")} color={variant === "neutral" ? "default" : variant} size="sm" />;
 }
 

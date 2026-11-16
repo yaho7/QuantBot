@@ -1,8 +1,10 @@
+import { Button } from "@astryxdesign/core/Button";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useLanguage } from "../shared/i18n";
 
-export function ScrollHints({ target }: { target: RefObject<HTMLDivElement | null> }) {
+export function ScrollHints({ target }: { target: RefObject<HTMLElement | null> }) {
   const { t } = useLanguage();
   const [edges, setEdges] = useState({ down: false, right: false });
   const targets = useRef<{ down?: HTMLElement; right?: HTMLElement }>({});
@@ -40,8 +42,8 @@ export function ScrollHints({ target }: { target: RefObject<HTMLDivElement | nul
       behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
     });
   };
-  return <div className="scroll-hints">
-    {edges.down && <button className="scroll-cue down" onClick={() => scroll("down")} aria-label={t("scrollMoreDown")}><ChevronDown size={15} /></button>}
-    {edges.right && <button className="scroll-cue right" onClick={() => scroll("right")} aria-label={t("scrollMoreRight")}><ChevronRight size={15} /></button>}
-  </div>;
+  return <VStack gap={3} className="scroll-hints">
+    {edges.down && <Button label={t("scrollMoreDown")} className="scroll-cue down" onClick={() => scroll("down")} aria-label={t("scrollMoreDown")}><ChevronDown size={15} /></Button>}
+    {edges.right && <Button label={t("scrollMoreRight")} className="scroll-cue right" onClick={() => scroll("right")} aria-label={t("scrollMoreRight")}><ChevronRight size={15} /></Button>}
+  </VStack>;
 }

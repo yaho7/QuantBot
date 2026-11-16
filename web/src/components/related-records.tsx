@@ -1,3 +1,7 @@
+import { HStack } from "@astryxdesign/core/HStack";
+import { VStack } from "@astryxdesign/core/VStack";
+import { Text } from "@astryxdesign/core/Text";
+import { Button } from "@astryxdesign/core/Button";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { resource, type CapabilityRecord } from "../shared/api";
@@ -19,14 +23,14 @@ export function RelatedRecords({
       {Object.entries(associations ?? {})
         .filter(([, value]) => typeof value === "string")
         .map(([field, value]) => (
-          <button
+          <Button label={display.field(field) + " " + value}
             type="button"
             className="text-button"
             key={field}
             onClick={() => setSelected([field, value])}
           >
             {display.field(field)} {value}
-          </button>
+          </Button>
         ))}
       {selected && (
         <RelatedDialog
@@ -73,33 +77,33 @@ function RelatedDialog({
         if (!open) close();
       }}
     >
-      <p>
+      <Text as="p">
         <code>
           {display.field(field)} {value}
         </code>
-      </p>
+      </Text>
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
         <ErrorView error={query.error} />
       ) : (
-        <div className="surface">
+        <VStack gap={3} className="surface">
           {query.data.map((row) => (
-            <div
+            <HStack gap={3} wrap="wrap" vAlign="center"
               className="event-line"
               key={[row.capabilityId ?? row.kind, row.id, row.revision].join(
                 ":",
               )}
             >
               <time>{timestamp(row.observedAt)}</time>
-              <span>
+              <Text>
                 <strong>{row.capabilityId ?? display.kind(row.kind ?? "")}</strong> ·{" "}
                 {display.value(row.value)}
-              </span>
-            </div>
+              </Text>
+            </HStack>
           ))}
-          {!query.data.length && <p className="empty-inline">{t("missing")}</p>}
-        </div>
+          {!query.data.length && <Text as="p" className="empty-inline">{t("missing")}</Text>}
+        </VStack>
       )}
     </Modal>
   );

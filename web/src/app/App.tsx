@@ -142,15 +142,15 @@ function NotFound() {
   return <EmptyState title="404" actions={<Button href="/" label="QuantBot" />} />;
 }
 function RouteSurface({ children }: { children: ReactNode }) {
-  return <VStack className="min-w-0"><Suspense fallback={<Loading />}>{children}</Suspense></VStack>;
+  return <VStack className="route-surface min-w-0"><Suspense fallback={<Loading />}>{children}</Suspense></VStack>;
 }
 export function Page({ title, actions, children }: { title: string; actions?: ReactNode; children: ReactNode }) {
-  return <VStack gap={6} width="100%" maxWidth={1560} className="mx-auto min-w-0 px-4 py-6 md:px-8 md:py-8">
-    <HStack as="header" hAlign="between" vAlign="center" wrap="wrap" gap={4}>
+  return <VStack gap={6} width="100%" maxWidth={1560} className="page-layout mx-auto min-w-0 px-4 py-6 md:px-8 md:py-8">
+    <HStack as="header" className="page-header" hAlign="between" vAlign="center" wrap="wrap" gap={4}>
       <Heading level={1} weight="semibold">{title}</Heading>
       {actions && <HStack gap={2} wrap="wrap" vAlign="center">{actions}</HStack>}
     </HStack>
-    <VStack gap={6} className="min-w-0">{children}</VStack>
+    <VStack gap={6} className="page-body min-w-0">{children}</VStack>
   </VStack>;
 }
 

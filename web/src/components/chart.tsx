@@ -1,3 +1,5 @@
+import { chartColors } from "../shared/chart-colors";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useEffect, useRef, useState } from "react";
 import uPlot from "uplot";
 import {
@@ -5,7 +7,6 @@ import {
   CandlestickSeries,
   type UTCTimestamp,
 } from "lightweight-charts";
-import "uplot/dist/uPlot.min.css";
 import type { Point } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 
@@ -18,15 +19,14 @@ export default function Chart({
   candle?: boolean;
   featured?: boolean;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLElement>(null);
   const readout = useRef<HTMLOutputElement>(null);
   const { t, lang } = useLanguage();
   const valueLabel = t("chartValue");
   const [colors, setColors] = useState("");
   useEffect(() => {
     const read = () => {
-      const style = ref.current && getComputedStyle(ref.current);
-      if (style) setColors(style.getPropertyValue("--theme-chart").trim() + "|" + style.getPropertyValue("--muted").trim());
+      if (ref.current) setColors(chartColors(ref.current));
     };
     read();
     const observer = new MutationObserver(read);
@@ -52,9 +52,7 @@ export default function Chart({
     };
     showPoint();
     if (!colors) return;
-    const [stroke, labels] = colors.split("|");
-    const chartColor = stroke || "#638ded";
-    const labelColor = labels || "#8994a7";
+    const [chartColor = "currentColor", labelColor = "currentColor", gridColor = "transparent", positive = chartColor, negative = labelColor] = colors.split("|");
     if (candle) {
       const chart = createChart(element, {
         autoSize: true,
@@ -65,18 +63,18 @@ export default function Chart({
           textColor: labelColor,
         },
         grid: {
-          vertLines: { color: "#8994a720" },
-          horzLines: { color: "#8994a720" },
+          vertLines: { color: gridColor },
+          horzLines: { color: gridColor },
         },
         rightPriceScale: { borderVisible: false },
         timeScale: { timeVisible: true, borderVisible: false },
       });
       const series = chart.addSeries(CandlestickSeries, {
-        upColor: "#41ad87",
-        downColor: "#df6a72",
+        upColor: positive,
+        downColor: negative,
         borderVisible: false,
-        wickUpColor: "#41ad87",
-        wickDownColor: "#df6a72",
+        wickUpColor: positive,
+        wickDownColor: negative,
       });
       series.setData(
         points.map((p) => ({
@@ -95,7 +93,7 @@ export default function Chart({
       return () => chart.remove();
     }
     const plotHeight = () => featured ? 280 : 230;
-    const grid = { stroke: "#8994a71a", show: true };
+    const grid = { stroke: gridColor, show: true };
     const plot = new uPlot(
       {
         width: element.clientWidth,
@@ -140,8 +138,8 @@ export default function Chart({
       plot.destroy();
     };
   }, [points, candle, featured, valueLabel, lang, colors]);
-  return <div className="chart-with-values">
+  return <VStack className="chart-with-values">
     <output ref={readout} className="chart-value-readout">{points.length ? "" : "—"}</output>
-    <div className={"chart" + (featured ? " portfolio-plot" : "")} ref={ref} />
-  </div>;
+    <VStack className={"chart" + (featured ? " portfolio-plot" : "")} ref={ref} />
+  </VStack>;
 }

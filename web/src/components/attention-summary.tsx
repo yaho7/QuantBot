@@ -1,3 +1,5 @@
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
 import { useEffect, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
@@ -5,7 +7,6 @@ import { ArrowUpRight } from "lucide-react";
 import { resource, type Command, type Datum, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge } from "../shared/ui";
-import "./attention.css";
 
 export const alertsQuery = resource<Datum[]>("/alerts");
 const recentWindow = 15 * 60_000;
@@ -47,7 +48,7 @@ export function AttentionSummary({ attention }: { attention: Attention }) {
   const { issues, waitingCount, unknownCount } = attention;
   if (!issues.length && !waitingCount && !unknownCount) return null;
   return <section className="section attention-section" aria-label={t("needsAttention")}>
-    <div className="section-heading"><h2>{t("needsAttention")}</h2></div>
+    <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading"><Heading level={2}>{t("needsAttention")}</Heading></HStack>
     <ul className="surface attention-list">
       {unknownCount > 0 && <li><Link className="attention-row" to="/activity?status=unknown">
         <strong>{t("unknown")}</strong><Badge tone="danger">{unknownCount}</Badge><ArrowUpRight size={16} />

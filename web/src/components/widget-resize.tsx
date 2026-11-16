@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { Widget } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
-import "./widget-resize.css";
 
 const sizes: Widget["size"][] = ["small", "medium", "large", "full"];
 
@@ -48,7 +47,8 @@ export function WidgetResize({ widget, commit }: {
         card.dataset.resizing = "true";
         const paint = () => {
           frame = 0;
-          card.style.gridColumn = "span " + percent();
+          const columns = getComputedStyle(card.parentElement!).gridTemplateColumns.split(" ").length;
+          card.style.gridColumn = "span " + Math.max(1, Math.round(percent() * columns / 100));
           card.style.height = Math.round(height / 8) * 8 + "px";
         };
         handle.setPointerCapture(id);
