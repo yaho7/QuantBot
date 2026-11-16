@@ -11,9 +11,31 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   page.on("pageerror", (error) => errors.push(error.message));
   const { required } = await (await request.get("/api/auth/setup")).json();
   await page.goto("/");
+  for (const mode of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: mode });
+    for (const width of [390, 430, 768, 1280, 1600]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByLabel(/用户名/)).toBeVisible();
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= innerWidth,
+        ),
+      ).toBeTruthy();
+      await page.screenshot({
+        path: testInfo.outputPath(`login-${width}-${mode}.png`),
+      });
+    }
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.emulateMedia({ colorScheme: "light" });
   await page.getByLabel(/用户名/).fill("browser-admin");
   await page.getByLabel(/密码/).fill("browser-test-password");
-  await page.getByRole("button", { name: required ? "初始化管理员" : "登录", exact: true }).click();
+  await page
+    .getByRole("button", {
+      name: required ? "初始化管理员" : "登录",
+      exact: true,
+    })
+    .click();
   await expect(
     page.getByRole("heading", { name: "运行总览", exact: true }),
   ).toBeVisible();
@@ -35,11 +57,14 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   const id = identity.strategyId as string;
   const session = identity.session as string;
   const headers = { Authorization: "Bearer " + session };
-  await expect(dialog.getByRole("button", { name: "复制 AI 接入提示词" })).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "复制 AI 接入提示词" }),
+  ).toBeVisible();
   await dialog.getByText("执行器实例", { exact: true }).click();
   await dialog
     .getByRole("combobox", { name: "执行器实例", exact: true })
-    .selectOption("browser-worker");
+    .click();
+  await page.getByRole("option", { name: /browser-worker/ }).click();
   await page.getByRole("button", { name: "保存", exact: true }).click();
   await expect(page.getByText("当前会话 · browser-worker")).toBeVisible();
   const declarations = [
@@ -235,9 +260,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(
     page.getByRole("heading", { name: "允许新开仓", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".portfolio-amount")).toContainText(
-    "104,825.37",
-  );
+  await expect(page.locator(".portfolio-amount")).toContainText("104,825.37");
   await page
     .locator(".control-card")
     .filter({ hasText: "允许新开仓" })
@@ -364,7 +387,9 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     });
   await expect(widget("声明式行情延迟")).toContainText("2.40 ms");
   const expand = (title: string) =>
-    widget(title).getByRole("button", { name: "展开组件", exact: true }).click();
+    widget(title)
+      .getByRole("button", { name: "展开组件", exact: true })
+      .click();
   for (const title of ["声明式行情延迟", "声明式 K 线"]) {
     await expand(title);
     await expect(dialog.locator(".chart canvas").first()).toBeVisible();
@@ -374,9 +399,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expand("策略原始信号");
   await expect(dialog).toContainText("真实信号");
   await expect(dialog).toContainText("order-paper-42");
-  await dialog
-    .getByRole("button", { name: "订单编号 order-paper-42" })
-    .click();
+  await dialog.getByRole("button", { name: "订单编号 order-paper-42" }).click();
   const related = page.getByRole("dialog", { name: "关联记录" });
   await expect(related).toContainText("真实信号");
   await expect(related).not.toContainText("声明式行情延迟");
@@ -465,19 +488,47 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(widgets).toHaveCount(1);
   await page.goto("/strategies/" + id);
   await expect(widget("Agent 改名")).toHaveClass(/size-full/);
+  await page.getByRole("button", { name: "编辑布局", exact: true }).click();
+  await expect(
+    page
+      .locator("#strategy-controls")
+      .getByRole("button", { name: "下发指令", exact: true })
+      .last(),
+  ).toBeDisabled();
+  const sizeHandle = widget("Agent 改名").getByRole("button", {
+    name: "拖动调整大小，方向键微调",
+    exact: true,
+  });
+  const beforeResize = (await widget("Agent 改名").boundingBox())!.height;
+  await sizeHandle.press("ArrowDown");
+  await expect
+    .poll(async () => (await widget("Agent 改名").boundingBox())!.height)
+    .toBeGreaterThan(beforeResize);
+  await page.getByRole("button", { name: "完成", exact: true }).click();
+
   await expect(widget("券商连接健康")).toBeVisible();
 
   const openSandbox = async () => {
-    await page.getByRole("row").filter({ hasText: "动量 · BTC 趋势" }).getByRole("button", { name: "API", exact: true }).click();
+    await page
+      .getByRole("row")
+      .filter({ hasText: "动量 · BTC 趋势" })
+      .getByRole("button", { name: "API", exact: true })
+      .click();
     await dialog.getByRole("radio", { name: "沙盒测试", exact: true }).click();
     await expect(dialog.getByText("共享测试环境")).toBeVisible();
   };
   await page.goto("/admin/strategies");
   await openSandbox();
   await dialog.getByRole("button", { name: "查看 Token", exact: true }).click();
-  await expect(dialog.locator("[data-field=test-token] code")).toContainText("qbt_");
-  const sandboxToken = await dialog.locator("[data-field=test-token] code").innerText();
-  const endpoint = await dialog.locator("[data-field=test-endpoint] code").innerText();
+  await expect(dialog.locator("[data-field=test-token] code")).toContainText(
+    "qbt_",
+  );
+  const sandboxToken = await dialog
+    .locator("[data-field=test-token] code")
+    .innerText();
+  const endpoint = await dialog
+    .locator("[data-field=test-endpoint] code")
+    .innerText();
   const sandboxEndpoint = new URL(endpoint).pathname;
   const sandboxIdentity = await request.post(sandboxEndpoint + "/session", {
     headers: { Authorization: "Bearer " + sandboxToken },
@@ -511,15 +562,28 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     },
   });
   expect(ready.status()).toBe(200);
-  await dialog.getByRole("button", { name: "下发模拟命令", exact: true }).click();
-  await expect.poll(async () =>
-    (await (await request.get(sandboxEndpoint + "/commands?wait=0", { headers: sandboxBearer })).json()).length,
-  ).toBe(1);
+  await dialog
+    .getByRole("button", { name: "下发模拟命令", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (
+          await (
+            await request.get(sandboxEndpoint + "/commands?wait=0", {
+              headers: sandboxBearer,
+            })
+          ).json()
+        ).length,
+    )
+    .toBe(1);
   await dialog.getByText("沙盒请求记录").click();
   await expect(dialog.getByText("capabilities", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
   await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
-  await expect(dialog.getByRole("button", { name: "开启测试", exact: true })).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "开启测试", exact: true }),
+  ).toBeVisible();
   expect(
     (
       await request.put(sandboxEndpoint + "/heartbeat", {
@@ -545,21 +609,32 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await page.goto("/admin/themes");
   await expect(page).toHaveURL(/\/admin\/settings$/);
   await expect(page.getByRole("heading", { name: /Classical/ })).toBeVisible();
-  await page.getByRole("button", { name: "海蓝", exact: true }).click();
+  await page.getByRole("radio", { name: "海蓝", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
-  const themeCatalogue = await page.evaluate(async () => (await fetch("/api/admin/themes")).json());
+  const themeCatalogue = await page.evaluate(async () =>
+    (await fetch("/api/admin/themes")).json(),
+  );
   expect(themeCatalogue.active).toBe("classical");
-  expect(themeCatalogue.themes.map((theme: { id: string }) => theme.id)).toEqual(["classical"]);
+  expect(
+    themeCatalogue.themes.map((theme: { id: string }) => theme.id),
+  ).toEqual(["classical"]);
   await page.goto("/");
-  await expect(page.locator(".workbench-shell")).toHaveAttribute("data-theme", "classical");
+  await expect(page.locator(".workbench-shell")).toHaveAttribute(
+    "data-theme",
+    "classical",
+  );
   await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
   await expect(widget("自定义延迟")).toBeVisible();
 
   await page.goto("/admin/storage");
   await expect(page.getByRole("heading", { name: "备份与恢复" })).toBeVisible();
-  await expect(page.getByRole("row", { name: /control.db/ })).toContainText("MB");
+  await expect(page.getByRole("row", { name: /control.db/ })).toContainText(
+    "MB",
+  );
   await page.goto("/admin/settings");
-  await expect(page.getByRole("heading", { name: "当前服务配置" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "当前服务配置" }),
+  ).toBeVisible();
   await expect(page.getByText("3,600秒", { exact: true })).toBeVisible();
   await expect(page.getByText("45秒", { exact: true })).toBeVisible();
 
@@ -583,8 +658,10 @@ test("initialization, real reports, command receipt and responsive shells", asyn
         await page.goto(path);
         await expect(page.locator("h1")).toBeVisible();
         if (label === "sandbox") await openSandbox();
-        if (label === "detail")
-          await expect(page.locator(".chart canvas").first()).toBeVisible();
+        if (label === "detail" || label === "home")
+          await expect(
+            page.locator(".portfolio-chart .chart canvas").first(),
+          ).toBeVisible();
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth,

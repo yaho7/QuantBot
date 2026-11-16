@@ -1,3 +1,7 @@
+import { VStack } from "@astryxdesign/core/VStack";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Card } from "@astryxdesign/core/Card";
+import { HStack } from "@astryxdesign/core/HStack";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Text } from "@astryxdesign/core/Text";
@@ -35,47 +39,89 @@ export function Login() {
     },
   });
   return (
-    <main className="login-page">
-      <section className="login-card">
-        <div className="brand">
-          <BrandIcon />
-          <strong>QuantBot</strong>
-          <small>{version}</small>
-        </div>
-        {setup.isPending ? (
-          <Loading />
-        ) : setup.error ? (
-          <ErrorView error={setup.error} retry={() => void setup.refetch()} />
-        ) : (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (username && password && !mutation.isPending) mutation.mutate();
-            }}
-          >
-            <Heading level={1}>{setup.data.required ? t("setup") : t("login")}</Heading>
-            <Text as="p" type="supporting">{setup.data.required ? t("setupHint") : t("loginHint")}</Text>
-            <TextInput label={t("username")} autoComplete="username" htmlName="username" isRequired
-              hasAutoFocus value={username} onChange={setUsername} />
-            <TextInput label={t("password")} type="password" htmlName="password"
-              autoComplete={setup.data.required ? "new-password" : "current-password"} isRequired
-              value={password} onChange={setPassword} />
-            {mutation.error && (
-              <p role="alert" className="error-text">
-                {mutation.error.message}
-              </p>
-            )}
-            <Button variant="primary" type="submit" label={setup.data.required ? t("setup") : t("login")}
-              isLoading={mutation.isPending} isDisabled={!username || !password} />
-          </form>
-        )}
-        <button
-          className="text-button"
-          onClick={() => setLanguage(lang === "zh" ? "en" : "zh")}
-        >
-          {lang === "zh" ? "English" : "简体中文"}
-        </button>
-      </section>
-    </main>
+    <VStack
+      as="main"
+      minHeight="100dvh"
+      vAlign="center"
+      hAlign="center"
+      padding={5}
+      className="bg-body"
+    >
+      <Card padding={6} width="100%" maxWidth="26rem">
+        <VStack gap={6}>
+          <HStack gap={3} vAlign="center">
+            <BrandIcon />
+            <VStack gap={1}>
+              <Text weight="semibold">QuantBot</Text>
+              <Text type="supporting">v{version}</Text>
+            </VStack>
+          </HStack>
+          {setup.isPending ? (
+            <Loading />
+          ) : setup.error ? (
+            <ErrorView error={setup.error} retry={() => void setup.refetch()} />
+          ) : (
+            <VStack
+              as="form"
+              gap={5}
+              onSubmit={(event: React.FormEvent) => {
+                event.preventDefault();
+                if (username && password && !mutation.isPending)
+                  mutation.mutate();
+              }}
+            >
+              <VStack gap={2}>
+                <Heading level={1}>
+                  {setup.data.required ? t("setup") : t("login")}
+                </Heading>
+                <Text type="supporting">
+                  {setup.data.required ? t("setupHint") : t("loginHint")}
+                </Text>
+              </VStack>
+              <TextInput
+                label={t("username")}
+                autoComplete="username"
+                htmlName="username"
+                isRequired
+                hasAutoFocus
+                value={username}
+                onChange={setUsername}
+              />
+              <TextInput
+                label={t("password")}
+                type="password"
+                htmlName="password"
+                autoComplete={
+                  setup.data.required ? "new-password" : "current-password"
+                }
+                isRequired
+                value={password}
+                onChange={setPassword}
+              />
+              {mutation.error && (
+                <Banner
+                  status="error"
+                  title={t("error")}
+                  description={mutation.error.message}
+                />
+              )}
+              <Button
+                variant="primary"
+                type="submit"
+                label={setup.data.required ? t("setup") : t("login")}
+                isLoading={mutation.isPending}
+                isDisabled={!username || !password}
+                width="100%"
+              />
+            </VStack>
+          )}
+          <Button
+            variant="ghost"
+            label={lang === "zh" ? "English" : "简体中文"}
+            onClick={() => setLanguage(lang === "zh" ? "en" : "zh")}
+          />
+        </VStack>
+      </Card>
+    </VStack>
   );
 }

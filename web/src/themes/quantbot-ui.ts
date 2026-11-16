@@ -1,32 +1,19 @@
-import { defineTheme } from "@astryxdesign/core/theme";
-import { quantbotTheme } from "./quantbot/quantbot";
+import { themes, defaultThemeSlug } from "../astryx-themes";
+import { quantbotAppTheme } from "../../themes/quantbot-app/quantbot-app.js";
+import { quantbotOceanTheme } from "../../themes/quantbot-app/quantbot-ocean.js";
+import { quantbotVioletTheme } from "../../themes/quantbot-app/quantbot-violet.js";
+import { quantbotAmberTheme } from "../../themes/quantbot-app/quantbot-amber.js";
+import { quantbotGraphiteTheme } from "../../themes/quantbot-app/quantbot-graphite.js";
 
-// One source of color and type for Astryx and the monitoring/chart adapters.
-const tokens = {
-    "--canvas": "var(--color-background-body)",
-    "--surface": "var(--color-background-surface)",
-    "--raised": "var(--color-background-muted)",
-    "--text": "var(--color-text-primary)",
-    "--muted": "var(--color-text-secondary)",
-    "--line": "var(--color-border)",
-    "--accent": "var(--color-text-accent)",
-    "--accent-soft": "var(--color-accent-muted)",
-    "--accent-ink": "var(--color-on-accent)",
-    "--success": "var(--color-text-green)",
-    "--success-bg": "var(--color-background-green)",
-    "--warning": "var(--color-text-yellow)",
-    "--warning-bg": "var(--color-background-yellow)",
-    "--danger": "var(--color-text-red)",
-    "--danger-bg": "var(--color-background-red)",
-    "--radius": "var(--radius-container)",
-    "--gap": "var(--spacing-4)",
-    "--qb-font-family": "var(--font-family-body)",
-    "--size-element-md": "2.5rem",
-    "--size-element-lg": "2.75rem",
+// Fixed palettes ship as compiled Astryx themes: no runtime styling layer.
+export const quantbotThemes = {
+  forest: quantbotAppTheme,
+  ocean: quantbotOceanTheme,
+  violet: quantbotVioletTheme,
+  amber: quantbotAmberTheme,
+  graphite: quantbotGraphiteTheme,
 };
-export const quantbotUI = defineTheme({
-  name: "quantbot-ui",
-  extends: quantbotTheme,
-  tokens,
-  components: { "side-nav": { base: { width: "15rem" } } },
-});
+
+export function appTheme(palette: string) {
+  return quantbotThemes[palette as keyof typeof quantbotThemes] ?? themes[defaultThemeSlug];
+}

@@ -1,14 +1,19 @@
+import { List, ListItem } from "@astryxdesign/core/List";
+import { Section } from "@astryxdesign/core/Section";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Text } from "@astryxdesign/core/Text";
-import { Button } from "@astryxdesign/core/Button";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Selector } from "@astryxdesign/core/Selector";
 import { HStack } from "@astryxdesign/core/HStack";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "../shared/page-links";
 import { useOutletContext, useSearchParams } from "react-router-dom";
-import { alertsQuery, AttentionSummary, type Attention } from "../components/attention-summary";
+import {
+  alertsQuery,
+  AttentionSummary,
+  type Attention,
+} from "../components/attention-summary";
 import { resource, type Command } from "../shared/api";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
 import { useLanguage } from "../shared/i18n";
@@ -20,13 +25,14 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
   const { t } = useLanguage();
   const [embeddedStatus, setEmbeddedStatus] = useState("");
   const [params, setParams] = useSearchParams();
-  const status = strategyId ? embeddedStatus : params.get("status") ?? "";
+  const status = strategyId ? embeddedStatus : (params.get("status") ?? "");
   const setStatus = (value: string) => {
     if (strategyId) {
       setEmbeddedStatus(value);
     } else {
       const next = new URLSearchParams(params);
-      if (value) next.set("status", value); else next.delete("status");
+      if (value) next.set("status", value);
+      else next.delete("status");
       setParams(next, { replace: true, preventScrollReset: true });
     }
   };
@@ -40,45 +46,55 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
   const body = (
     <>
       <HStack gap={3} wrap="wrap" vAlign="center" className="filter-bar">
-        <Selector label={t("status")} isLabelHidden value={String(status)} onChange={(e) => setStatus(e)} options={[{ value: String(""), label: String(t("all")) },...[
-            "confirmation_required",
-            "pending",
-            "executing",
-            "unknown",
-            "succeeded",
-            "failed",
-            "expired",
-            "cancelled",
-          ].map((s) => (
-            { value: String(s), label: String(t(s as "pending")) }
-          ))]}  />
+        <Selector
+          label={t("status")}
+          isLabelHidden
+          value={String(status)}
+          onChange={(e) => setStatus(e)}
+          options={[
+            { value: String(""), label: String(t("all")) },
+            ...[
+              "confirmation_required",
+              "pending",
+              "executing",
+              "unknown",
+              "succeeded",
+              "failed",
+              "expired",
+              "cancelled",
+            ].map((s) => ({
+              value: String(s),
+              label: String(t(s as "pending")),
+            })),
+          ]}
+        />
       </HStack>
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
         <ErrorView error={query.error} />
       ) : (
-        <VStack gap={3} className="surface">
-          {query.data.map((cmd) => (
-            <Button label={cmd.controlId + " · " + t(cmd.status as "pending")}
-              className="activity-line"
-              key={cmd.id}
-              onClick={() => setSelected(cmd.id)}
-            >
-              <Text>
-                {cmd.controlId}
-                <Text type="supporting" className="muted">{cmd.strategyId}</Text>
-              </Text>
-              <Badge tone={cmd.status === "unknown" ? "danger" : ""}>
-                {t(cmd.status as "pending")}
-              </Badge>
-              <time>{timestamp(cmd.updatedAt)}</time>
-            </Button>
-          ))}
-          {!query.data.length && (
-            <Text as="p" className="empty-inline">{t("noEvents")}</Text>
-          )}
-        </VStack>
+        <Section padding={0}>
+          <List hasDividers>
+            {query.data.map((cmd) => (
+              <ListItem
+                key={cmd.id}
+                label={cmd.controlId}
+                description={cmd.strategyId}
+                onClick={() => setSelected(cmd.id)}
+                endContent={
+                  <HStack gap={3} vAlign="center" wrap="wrap">
+                    <Badge tone={cmd.status === "unknown" ? "danger" : ""}>
+                      {t(cmd.status as "pending")}
+                    </Badge>
+                    <Text type="supporting">{timestamp(cmd.updatedAt)}</Text>
+                  </HStack>
+                }
+              />
+            ))}
+          </List>
+          {!query.data.length && <EmptyState isCompact title={t("noEvents")} />}
+        </Section>
       )}
       {selected && (
         <CommandDialog commandId={selected} close={() => setSelected("")} />
@@ -95,43 +111,58 @@ export function AlertsPage() {
   return (
     <Page title={t("alerts")}>
       <AttentionSummary attention={attention} />
-      <section className="section">
-        <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading"><Heading level={2}>{t("alertHistory")}</Heading></HStack>
+      <VStack
+        as="section"
+        gap={4}
+        className="section flex flex-col gap-4 min-w-0"
+      >
+        <HStack
+          gap={3}
+          wrap="wrap"
+          vAlign="center"
+          hAlign="between"
+          className="section-heading"
+        >
+          <Heading level={2}>{t("alertHistory")}</Heading>
+        </HStack>
         {query.isPending ? (
           <Loading />
         ) : query.error ? (
           <ErrorView error={query.error} />
         ) : (
-          <VStack gap={3} className="surface">
-            {query.data.map((row) => (
-              <Link
-                className="activity-line"
-                key={row.strategyId + row.id}
-                to={"/strategies/" + row.strategyId}
-              >
-                <Text>
-                  <strong>{String(row.data.code)}</strong>
-                  <Text type="supporting">{String(row.data.message)}</Text>
-                </Text>
-                <Badge
-                  tone={
-                    row.data.severity === "error" ||
-                    row.data.severity === "critical"
-                      ? "danger"
-                      : "warning"
+          <Section padding={0}>
+            <List hasDividers>
+              {query.data.map((row) => (
+                <ListItem
+                  key={row.strategyId + row.id}
+                  href={"/strategies/" + row.strategyId}
+                  label={String(row.data.code)}
+                  description={String(row.data.message)}
+                  endContent={
+                    <HStack gap={3} wrap="wrap" vAlign="center">
+                      <Badge
+                        tone={
+                          ["error", "critical"].includes(
+                            String(row.data.severity),
+                          )
+                            ? "danger"
+                            : "warning"
+                        }
+                      >
+                        {display.severity(String(row.data.severity ?? ""))}
+                      </Badge>
+                      <Text type="supporting">{timestamp(row.observedAt)}</Text>
+                    </HStack>
                   }
-                >
-                  {display.severity(String(row.data.severity ?? ""))}
-                </Badge>
-                <time>{timestamp(row.observedAt)}</time>
-              </Link>
-            ))}
+                />
+              ))}
+            </List>
             {!query.data.length && (
-              <Text as="p" className="empty-inline">{t("noEvents")}</Text>
+              <EmptyState isCompact title={t("noEvents")} />
             )}
-          </VStack>
+          </Section>
         )}
-      </section>
+      </VStack>
     </Page>
   );
 }

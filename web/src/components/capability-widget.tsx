@@ -130,7 +130,9 @@ export function CapabilityWidget({
   return (
     <>
       {description && capability.description && (
-        <Text as="p" className="muted">{capability.description}</Text>
+        <Text as="p" className="muted text-secondary">
+          {capability.description}
+        </Text>
       )}
       {error && <ErrorView error={error} />}
       {chart && !compact && (
@@ -144,7 +146,9 @@ export function CapabilityWidget({
         />
       )}
       {table && compact ? (
-        <Text as="p" className="muted">{t("expandForDetails")}</Text>
+        <Text as="p" className="muted text-secondary">
+          {t("expandForDetails")}
+        </Text>
       ) : table ? (
         <DataTable
           title=""
@@ -191,18 +195,27 @@ export function CapabilityWidget({
           }
         />
       ) : (
-        <VStack gap={3} className="equity-widget">
-          <strong>
+        <VStack
+          gap={3}
+          className="equity-widget flex flex-col gap-2 tabular-nums"
+        >
+          <Text weight="semibold">
             {typeof value === "string" &&
             (chart || capability.renderer === "number")
               ? formatDecimal(value)
-              : capability.kind === "state" && capability.group === "health" && typeof value === "boolean"
+              : capability.kind === "state" &&
+                  capability.group === "health" &&
+                  typeof value === "boolean"
                 ? t(value ? "healthy" : "degraded")
                 : display.value(value)}{" "}
             {capability.unit}
-          </strong>
+          </Text>
           {detailed && recent && (
-            <time className="muted">{timestamp(recent.observedAt)}</time>
+            <time>
+              <Text type="supporting" className="muted text-secondary">
+                {timestamp(recent.observedAt)}
+              </Text>
+            </time>
           )}
           <RelatedRecords
             strategyId={strategyId}
@@ -218,10 +231,12 @@ export function CapabilityWidget({
         <Badge tone="warning">{t("staleData")}</Badge>
       )}
       {capability.actual?.reason && (
-        <Text as="p" className="warning">{capability.actual.reason}</Text>
+        <Text as="p" className="warning text-warning">
+          {capability.actual.reason}
+        </Text>
       )}
       {detailed && suggestion && (
-        <Text type="supporting" className="muted">
+        <Text type="supporting" className="muted text-secondary">
           {t(
             suggestion.type === "stale"
               ? "suggestStale"
@@ -260,7 +275,9 @@ function CapabilityChart({
       <Chart points={points} candle={candle} />
     </Suspense>
   ) : (
-    <Text as="p" className="empty-inline">{t("missing")}</Text>
+    <Text as="p" className="empty-inline text-secondary text-center p-6">
+      {t("missing")}
+    </Text>
   );
 }
 

@@ -51,7 +51,9 @@ export function StrategyDetail() {
   const query = useQuery(resource<Strategy>("/strategies/" + id));
   const { t } = useLanguage();
   const display = useDisplay();
-  const [panel, setPanel] = useState<"trading" | "events" | "activity" | "hosts">("trading");
+  const [panel, setPanel] = useState<
+    "trading" | "events" | "activity" | "hosts"
+  >("trading");
   const catalog = useQuery({
     ...resource<CapabilityCatalog>("/strategies/" + id + "/capabilities"),
     refetchInterval: 5000,
@@ -60,11 +62,19 @@ export function StrategyDetail() {
   // Only controls actually visible in the board should be excluded from quick controls.
   // Hidden capabilities must never silently disappear from the strategy page.
   const visibleControlIds = layout.data?.revision
-    ? layout.data.widgets.filter((widget) => !widget.hidden).map((widget) => widget.controlId)
+    ? layout.data.widgets
+        .filter((widget) => !widget.hidden)
+        .map((widget) => widget.controlId)
     : (catalog.data?.capabilities ?? [])
-        .filter((capability) => capability.presentation?.suggested && capability.presentation.surface?.includes("strategy"))
+        .filter(
+          (capability) =>
+            capability.presentation?.suggested &&
+            capability.presentation.surface?.includes("strategy"),
+        )
         .map((capability) => capability.id);
-  const widgetControls = new Set(visibleControlIds.filter((id): id is string => !!id));
+  const widgetControls = new Set(
+    visibleControlIds.filter((id): id is string => !!id),
+  );
   const { health } = catalog.data ?? {};
   const healthIssues = health?.issues.map(
     (issue) =>
@@ -109,55 +119,108 @@ export function StrategyDetail() {
           <Badge tone={strategy.mode === "live" ? "warning" : ""}>
             {t(strategy.mode)}
           </Badge>
-          <a className="button" href="#strategy-controls">{t("controls")}</a>
+          <a
+            className="inline-flex items-center gap-2 rounded-lg bg-muted px-4 py-2"
+            href="#strategy-controls"
+          >
+            {t("controls")}
+          </a>
         </>
       }
     >
       <VStack gap={3} className="strategy-intro">
-        <HStack gap={3} wrap="wrap" vAlign="center" className="detail-meta muted">
+        <HStack
+          gap={3}
+          wrap="wrap"
+          vAlign="center"
+          className="detail-meta text-secondary   muted text-secondary"
+        >
           {strategy.group && <Text>{strategy.group}</Text>}
           <Text>
             {t("lastSeen")} · {timestamp(strategy.lastSeen, true)}
           </Text>
           {runtime && (
             <Text>
-              {t("uptime")} · {display.unit(Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)), "minute")}
+              {t("uptime")} ·{" "}
+              {display.unit(
+                Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)),
+                "minute",
+              )}
             </Text>
           )}
-          {strategy.online && health && health.status !== "healthy" &&
+          {strategy.online &&
+            health &&
+            health.status !== "healthy" &&
             catalog.data?.capabilities.some(
               (entry) => entry.kind === "state" && entry.group === "health",
             ) && (
               <Text role="status">
-                {t("health")}{" "}
-                <Badge tone="warning">
-                  {t(health.status)}
-                </Badge>
+                {t("health")} <Badge tone="warning">{t(health.status)}</Badge>
                 {!!healthIssues?.length && " · " + healthIssues.join(", ")}
               </Text>
             )}
         </HStack>
-        <Card padding={5}><VStack gap={4}>
-          <VStack gap={3} className="portfolio-amount">
-            <Text className="muted">{t("equity")}</Text>
-            <strong>{decimalText(equity?.data.value)} <Text type="supporting">{display.value(equity?.data.currency ?? "")}</Text></strong>
-            <HStack gap={3} wrap="wrap" vAlign="center" className="portfolio-secondary">
-              {equity && performance?.data.accountId === equity.data.accountId &&
-                performance?.data.currency === equity.data.currency && typeof performance?.data.dailyPnl === "string" && (
-                  <Text className={performance.data.dailyPnl.startsWith("-") ? "danger" : "success"}>
-                    {t("dailyPnl")} {decimalText(performance.data.dailyPnl)}
+        <Card padding={5}>
+          <VStack gap={4}>
+            <VStack gap={3} className="portfolio-amount tabular-nums">
+              <Text className="muted text-secondary">{t("equity")}</Text>
+              <Text
+                type="large"
+                className="text-3xl"
+                weight="semibold"
+                hasTabularNumbers
+              >
+                {decimalText(equity?.data.value)}{" "}
+                <Text type="supporting">
+                  {display.value(equity?.data.currency ?? "")}
+                </Text>
+              </Text>
+              <HStack
+                gap={3}
+                wrap="wrap"
+                vAlign="center"
+                className="portfolio-secondary text-secondary"
+              >
+                {equity &&
+                  performance?.data.accountId === equity.data.accountId &&
+                  performance?.data.currency === equity.data.currency &&
+                  typeof performance?.data.dailyPnl === "string" && (
+                    <Text
+                      className={
+                        performance.data.dailyPnl.startsWith("-")
+                          ? "danger text-error"
+                          : "success text-success"
+                      }
+                    >
+                      {t("dailyPnl")} {decimalText(performance.data.dailyPnl)}
+                    </Text>
+                  )}
+                {equity?.data.drawdown != null && (
+                  <Text className="muted text-secondary">
+                    {t("drawdown")} {decimalText(equity.data.drawdown)}
                   </Text>
                 )}
-              {equity?.data.drawdown != null && (
-                <Text className="muted">{t("drawdown")} {decimalText(equity.data.drawdown)}</Text>
-              )}
-            </HStack>
+              </HStack>
+            </VStack>
+            <History strategyId={id} embedded featured />
           </VStack>
-          <History strategyId={id} embedded featured />
-        </VStack></Card>
+        </Card>
       </VStack>
-      <VStack as="section" gap={4} className="qb-quick-controls" id="strategy-controls">
-        <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading"><Heading level={2}>{t("controls")}</Heading></HStack>
+      <VStack
+        as="section"
+        gap={4}
+        className="qb-quick-controls"
+        id="strategy-controls"
+      >
+        <HStack
+          gap={3}
+          wrap="wrap"
+          vAlign="center"
+          hAlign="between"
+          className="section-heading"
+        >
+          <Heading level={2}>{t("controls")}</Heading>
+        </HStack>
         {layout.isSuccess && catalog.isSuccess && (
           <ControlPanel strategyId={id} exclude={widgetControls} />
         )}
@@ -168,25 +231,78 @@ export function StrategyDetail() {
       <Suspense fallback={<Loading />}>
         <WidgetBoard key={id} strategyId={id} />
       </Suspense>
-      <section className="section portfolio-records">
-        <Choices label={t("strategyPanels")} value={panel} select={setPanel}
-          options={((["trading", "events", "activity", "hosts"]) as const).map(value => ({ value, label: t(value) }))} />
+      <VStack
+        as="section"
+        gap={4}
+        className="section flex flex-col gap-4 min-w-0   portfolio-records"
+      >
+        <Choices
+          label={t("strategyPanels")}
+          value={panel}
+          select={setPanel}
+          options={(["trading", "events", "activity", "hosts"] as const).map(
+            (value) => ({ value, label: t(value) }),
+          )}
+        />
         <VStack gap={3} className="panel-enter" key={panel}>
           {panel === "trading" ? (
             <>
-              {telemetry.isPending ? <Loading /> : telemetry.error ? <ErrorView error={telemetry.error} /> :
-               !accounts.length && !positions.length && !orders.length ? <Text as="p" className="empty-inline">{t("noEvents")}</Text> : <>
-                {!!accounts.length && <DataTable title={t("accountDetails")} rows={accounts} fields="standard" />}
-                {(!!positions.length || !!orders.length) && <VStack gap={3} className={"portfolio-record-grid" + " grid"}>
-                  {!!positions.length && <DataTable title={t("positions")} rows={positions} fields="standard" />}
-                  {!!orders.length && <DataTable title={t("orders")} rows={orders} fields="standard" />}
-                </VStack>}
-              </>}
+              {telemetry.isPending ? (
+                <Loading />
+              ) : telemetry.error ? (
+                <ErrorView error={telemetry.error} />
+              ) : !accounts.length && !positions.length && !orders.length ? (
+                <Text
+                  as="p"
+                  className="empty-inline text-secondary text-center p-6"
+                >
+                  {t("noEvents")}
+                </Text>
+              ) : (
+                <>
+                  {!!accounts.length && (
+                    <DataTable
+                      title={t("accountDetails")}
+                      rows={accounts}
+                      fields="standard"
+                    />
+                  )}
+                  {(!!positions.length || !!orders.length) && (
+                    <VStack
+                      gap={3}
+                      className={
+                        "portfolio-record-grid grid grid-cols-1 lg:grid-cols-2 gap-4" +
+                        "   grid"
+                      }
+                    >
+                      {!!positions.length && (
+                        <DataTable
+                          title={t("positions")}
+                          rows={positions}
+                          fields="standard"
+                        />
+                      )}
+                      {!!orders.length && (
+                        <DataTable
+                          title={t("orders")}
+                          rows={orders}
+                          fields="standard"
+                        />
+                      )}
+                    </VStack>
+                  )}
+                </>
+              )}
             </>
-          ) : panel === "events" ? <RecordFeed id={id} /> :
-            panel === "hosts" ? <StrategyPerformance strategyId={id} /> : <ActivityPage strategyId={id} />}
+          ) : panel === "events" ? (
+            <RecordFeed id={id} />
+          ) : panel === "hosts" ? (
+            <StrategyPerformance strategyId={id} />
+          ) : (
+            <ActivityPage strategyId={id} />
+          )}
         </VStack>
-      </section>
+      </VStack>
     </Page>
   );
 }
@@ -201,18 +317,33 @@ export function AllControls() {
         <ErrorView error={query.error} />
       ) : (
         query.data.map((strategy) => (
-          <section className="section" key={strategy.id}>
-            <HStack gap={3} wrap="wrap" vAlign="center" hAlign="between" className="section-heading">
+          <VStack
+            as="section"
+            gap={4}
+            className="section flex flex-col gap-4 min-w-0"
+            key={strategy.id}
+          >
+            <HStack
+              gap={3}
+              wrap="wrap"
+              vAlign="center"
+              hAlign="between"
+              className="section-heading"
+            >
               <Heading level={2}>
                 <Link to={"/strategies/" + strategy.id}>{strategy.name}</Link>
               </Heading>
               <Badge>{t(strategy.online ? "online" : "offline")}</Badge>
             </HStack>
             <ControlPanel strategyId={strategy.id} />
-          </section>
+          </VStack>
         ))
       )}
-      {!query.data?.length && <Text as="p" className="empty-inline">{t("empty")}</Text>}
+      {!query.data?.length && (
+        <Text as="p" className="empty-inline text-secondary text-center p-6">
+          {t("empty")}
+        </Text>
+      )}
     </Page>
   );
 }
@@ -238,16 +369,25 @@ export function History({
   const [range, setRange] = useState(24);
   const { t } = useLanguage();
   const display = useDisplay();
-  const options = (query.data?.series ?? []).filter((item) =>
-    (!seriesKind || item.kind === seriesKind) &&
-    (!seriesKey || item.series === seriesKey) &&
-    (!instanceId || item.instanceId === instanceId),
+  const options = (query.data?.series ?? []).filter(
+    (item) =>
+      (!seriesKind || item.kind === seriesKind) &&
+      (!seriesKey || item.series === seriesKey) &&
+      (!instanceId || item.instanceId === instanceId),
   );
-  const keyFor = (item: Series) => JSON.stringify([item.kind, item.series, item.instanceId]);
-  const series = options.find((item) => keyFor(item) === selected) ??
-    options.find((item) => item.kind === "equity") ?? options[0];
+  const keyFor = (item: Series) =>
+    JSON.stringify([item.kind, item.series, item.instanceId]);
+  const series =
+    options.find((item) => keyFor(item) === selected) ??
+    options.find((item) => item.kind === "equity") ??
+    options[0];
   const seriesIdentity = series ? keyFor(series) : "";
-  const rangeEnd = Math.ceil((series?.observedAt || query.dataUpdatedAt || Date.now()) / 60_000) * 60_000 + 1;
+  const rangeEnd =
+    Math.ceil(
+      (series?.observedAt || query.dataUpdatedAt || Date.now()) / 60_000,
+    ) *
+      60_000 +
+    1;
   const periods = [1, 24, 168, 720];
   const periodLabel = (hours: number) =>
     hours < 168 ? display.unit(hours, "hour") : display.unit(hours / 24, "day");
@@ -268,16 +408,57 @@ export function History({
     enabled: !!series,
   });
   return (
-    <VStack gap={3} className={(embedded ? "" : "surface ") + "chart-card" + (featured ? " portfolio-chart" : "")}>
+    <VStack
+      gap={3}
+      className={
+        (embedded
+          ? ""
+          : "surface bg-surface border border-border rounded-lg   ") +
+        "chart-card min-w-0" +
+        (featured ? "   portfolio-chart min-w-0" : "")
+      }
+    >
       <HStack gap={3} wrap="wrap" vAlign="center" className="filter-bar">
-        {(!seriesKind || options.length > 1) && <Selector label={t("series")} isLabelHidden value={String(seriesIdentity)} onChange={(e) => setSelected(e)} options={[...options.map((s) => (
-            { value: String(keyFor(s)), label: String([display.kind(s.kind), display.series(s.kind, s.series), s.instanceId].filter(Boolean).join(" · ")) }
-          ))]}  />}
-        {!featured && <Selector label={t("timeRange")} isLabelHidden value={String(range)} onChange={(e) => setRange(Number(e))} options={[...periods.map((period) => ({ value: String(period), label: String(periodLabel(period)) }))]}  />}
+        {(!seriesKind || options.length > 1) && (
+          <Selector
+            label={t("series")}
+            isLabelHidden
+            value={String(seriesIdentity)}
+            onChange={(e) => setSelected(e)}
+            options={[
+              ...options.map((s) => ({
+                value: String(keyFor(s)),
+                label: String(
+                  [
+                    display.kind(s.kind),
+                    display.series(s.kind, s.series),
+                    s.instanceId,
+                  ]
+                    .filter(Boolean)
+                    .join(" · "),
+                ),
+              })),
+            ]}
+          />
+        )}
+        {!featured && (
+          <Selector
+            label={t("timeRange")}
+            isLabelHidden
+            value={String(range)}
+            onChange={(e) => setRange(Number(e))}
+            options={[
+              ...periods.map((period) => ({
+                value: String(period),
+                label: String(periodLabel(period)),
+              })),
+            ]}
+          />
+        )}
       </HStack>
       {query.error || history.error ? (
         <ErrorView error={(query.error || history.error)!} />
-      ) : query.isPending || history.isFetching ? (
+      ) : query.isPending || (!!series && history.isPending) ? (
         <Loading />
       ) : history.data?.points.length ? (
         <Suspense fallback={<Loading />}>
@@ -289,16 +470,29 @@ export function History({
           />{" "}
         </Suspense>
       ) : (
-        <Text as="p" className="empty-inline chart-empty">{t("missing")}</Text>
+        <Text
+          as="p"
+          className="empty-inline text-secondary text-center p-6   chart-empty min-h-64 flex items-center justify-center"
+        >
+          {t("missing")}
+        </Text>
       )}
       {featured && (
-        <Choices label={t("choosePeriod")} value={String(range)} size="sm"
-          options={periods.map(period => ({ value: String(period), label: periodLabel(period) }))}
-          select={period => setRange(Number(period))} />
+        <Choices
+          label={t("choosePeriod")}
+          value={String(range)}
+          size="sm"
+          options={periods.map((period) => ({
+            value: String(period),
+            label: periodLabel(period),
+          }))}
+          select={(period) => setRange(Number(period))}
+        />
       )}
       {history.data && history.data.resolutionMs > 0 && (
-        <Text type="supporting" className="muted">
-          {display.unit(history.data.resolutionMs / 60000, "minute")} · {t("samples")} {history.data.points.length}
+        <Text type="supporting" className="muted text-secondary">
+          {display.unit(history.data.resolutionMs / 60000, "minute")} ·{" "}
+          {t("samples")} {history.data.points.length}
         </Text>
       )}
     </VStack>
@@ -324,15 +518,38 @@ export function DataTable({
     maxColumns,
   );
   return (
-    <section className="data-section">
+    <VStack
+      as="section"
+      gap={4}
+      className="data-section flex flex-col gap-3 min-w-0"
+    >
       {title && <Heading level={2}>{title}</Heading>}
-      <Table data={rows} density="balanced" hasHover columns={keys.map(key => ({
-        key,
-        header: fields === "standard" || (fields === "annotations" && ["Observed at", "Resource ID", "Related IDs"].includes(key)) ? display.field(key) : key,
-        width: proportional(1, { minWidth: 120 }),
-        renderCell: row => renderCell?.(key, row[key]) ?? (fields === "standard" ? display.tableValue(key, row[key]) : display.value(row[key])),
-      }))} emptyState={<Text as="p" className="empty-inline">{t("missing")}</Text>} />
-    </section>
+      <Table
+        data={rows}
+        density="balanced"
+        hasHover
+        columns={keys.map((key) => ({
+          key,
+          header:
+            fields === "standard" ||
+            (fields === "annotations" &&
+              ["Observed at", "Resource ID", "Related IDs"].includes(key))
+              ? display.field(key)
+              : key,
+          width: proportional(1, { minWidth: 120 }),
+          renderCell: (row) =>
+            renderCell?.(key, row[key]) ??
+            (fields === "standard"
+              ? display.tableValue(key, row[key])
+              : display.value(row[key])),
+        }))}
+        emptyState={
+          <Text as="p" className="empty-inline text-secondary text-center p-6">
+            {t("missing")}
+          </Text>
+        }
+      />
+    </VStack>
   );
 }
 function RecordFeed({ id }: { id: string }) {
@@ -344,22 +561,45 @@ function RecordFeed({ id }: { id: string }) {
   );
   return (
     <>
-      <Choices label={t("events")} value={kind} select={setKind}
-        options={["log", "fill", "signal", "risk", "alert"].map(value => ({ value, label: display.kind(value) }))} />
-      <VStack gap={3} className="surface">
+      <Choices
+        label={t("events")}
+        value={kind}
+        select={setKind}
+        options={["log", "fill", "signal", "risk", "alert"].map((value) => ({
+          value,
+          label: display.kind(value),
+        }))}
+      />
+      <VStack
+        gap={3}
+        className="surface bg-surface border border-border rounded-lg"
+      >
         {query.isPending ? (
           <Loading />
         ) : query.error ? (
           <ErrorView error={query.error} />
         ) : query.data.length ? (
           query.data.map((row) => (
-            <HStack gap={3} wrap="wrap" vAlign="center" className="event-line" key={row.id}>
-              <time>{timestamp(row.observedAt)}</time>
+            <HStack
+              gap={3}
+              wrap="wrap"
+              vAlign="center"
+              className="event-line"
+              key={row.id}
+            >
+              <time>
+                <Text type="supporting">{timestamp(row.observedAt)}</Text>
+              </time>
               <Text>
                 {typeof row.data.message === "string" && row.data.message
                   ? row.data.message
                   : Object.entries(row.data)
-                      .map(([key, value]) => display.field(key) + "：" + display.tableValue(key, value))
+                      .map(
+                        ([key, value]) =>
+                          display.field(key) +
+                          "：" +
+                          display.tableValue(key, value),
+                      )
                       .join(" · ")}
                 <RelatedRecords
                   strategyId={id}
@@ -369,7 +609,9 @@ function RecordFeed({ id }: { id: string }) {
             </HStack>
           ))
         ) : (
-          <Text as="p" className="empty-inline">{t("noEvents")}</Text>
+          <Text as="p" className="empty-inline text-secondary text-center p-6">
+            {t("noEvents")}
+          </Text>
         )}
       </VStack>
     </>

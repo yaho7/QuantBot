@@ -7,6 +7,17 @@
       "thing": "accent",
       "value": "#21866b",
       "source": "dial"
+    },
+    {
+      "thing": "padding",
+      "value": "0",
+      "source": "property",
+      "on": "dialog-header"
+    },
+    {
+      "thing": "font",
+      "value": "system",
+      "source": "dial"
     }
   ],
   "lifted": [],

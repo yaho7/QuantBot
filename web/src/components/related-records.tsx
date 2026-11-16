@@ -23,7 +23,8 @@ export function RelatedRecords({
       {Object.entries(associations ?? {})
         .filter(([, value]) => typeof value === "string")
         .map(([field, value]) => (
-          <Button label={display.field(field) + " " + value}
+          <Button
+            label={display.field(field) + " " + value}
             type="button"
             className="text-button"
             key={field}
@@ -79,7 +80,9 @@ function RelatedDialog({
     >
       <Text as="p">
         <code>
-          {display.field(field)} {value}
+          <Text type="code">
+            {display.field(field)} {value}
+          </Text>
         </code>
       </Text>
       {query.isPending ? (
@@ -87,22 +90,39 @@ function RelatedDialog({
       ) : query.error ? (
         <ErrorView error={query.error} />
       ) : (
-        <VStack gap={3} className="surface">
+        <VStack
+          gap={3}
+          className="surface bg-surface border border-border rounded-lg"
+        >
           {query.data.map((row) => (
-            <HStack gap={3} wrap="wrap" vAlign="center"
+            <HStack
+              gap={3}
+              wrap="wrap"
+              vAlign="center"
               className="event-line"
               key={[row.capabilityId ?? row.kind, row.id, row.revision].join(
                 ":",
               )}
             >
-              <time>{timestamp(row.observedAt)}</time>
+              <time>
+                <Text type="supporting">{timestamp(row.observedAt)}</Text>
+              </time>
               <Text>
-                <strong>{row.capabilityId ?? display.kind(row.kind ?? "")}</strong> ·{" "}
-                {display.value(row.value)}
+                <Text weight="semibold">
+                  {row.capabilityId ?? display.kind(row.kind ?? "")}
+                </Text>{" "}
+                · {display.value(row.value)}
               </Text>
             </HStack>
           ))}
-          {!query.data.length && <Text as="p" className="empty-inline">{t("missing")}</Text>}
+          {!query.data.length && (
+            <Text
+              as="p"
+              className="empty-inline text-secondary text-center p-6"
+            >
+              {t("missing")}
+            </Text>
+          )}
         </VStack>
       )}
     </Modal>

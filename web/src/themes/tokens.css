@@ -1,119 +1,19 @@
-@layer reset, theme, base, qb-layout, astryx-base, astryx-theme, components, utilities;
+@layer reset, theme, base, qb-geometry, astryx-base, astryx-theme, components, utilities;
 @import "@astryxdesign/core/reset.css";
 @import "tailwindcss" source("../");
 @import "@astryxdesign/core/astryx.css";
 @import "@astryxdesign/core/tailwind-theme.css";
-@import "./quantbot/quantbot.css";
-@import "../components/workbench-ux.css" layer(qb-layout);
-@import "../components/widget-resize.css" layer(qb-layout);
-@import "../components/host-performance.css" layer(qb-layout);
-@import "../components/attention.css" layer(qb-layout);
-@import "../admin/connection.css" layer(qb-layout);
+@import "../../themes/quantbot-app/quantbot-app.css";
+@import "../../themes/quantbot-app/quantbot-ocean.css";
+@import "../../themes/quantbot-app/quantbot-violet.css";
+@import "../../themes/quantbot-app/quantbot-amber.css";
+@import "../../themes/quantbot-app/quantbot-graphite.css";
+@import "../components/widget-resize.css" layer(qb-geometry);
 @import "uplot/dist/uPlot.min.css";
 
-/* Domain geometry only. Astryx owns surfaces, colors, typography and controls. */
-@layer qb-layout {
-html { scrollbar-gutter: stable; }
-body { margin: 0; }
-* { box-sizing: border-box; }
-a { color: inherit; text-decoration: none; }
-button, input, textarea { font: inherit; }
-form { display: flex; flex-direction: column; gap: var(--spacing-4); min-width: 0; }
-fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
-legend { margin-block-end: var(--spacing-2); }
-pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--spacing-4); background: var(--raised); border-radius: var(--radius); }
-code, pre { font-family: var(--font-family-code); font-size: var(--font-size-sm); }
-strong { font-weight: 600; }
-.muted { color: var(--muted); }
-.success { color: var(--success); }
-.warning { color: var(--warning); }
-.danger, .error-text { color: var(--danger); }
-.surface { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
-.padded { padding: var(--spacing-5); }
-.section { margin-block: 0; display: flex; flex-direction: column; gap: var(--spacing-4); min-width: 0; }
-.section-heading { min-width: 0; }
-.actions, .dialog-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--spacing-2); flex-wrap: wrap; }
-.button { display: inline-flex; align-items: center; gap: var(--spacing-2); padding: var(--spacing-2) var(--spacing-4); border-radius: var(--radius-element); background: var(--raised); }
-.button.primary { background: var(--color-accent); color: var(--color-on-accent); }
-.empty-inline { padding: var(--spacing-6); color: var(--muted); text-align: center; }
-.table-scroll { overflow: auto; min-width: 0; max-width: 100%; }
-.two-columns, .portfolio-record-grid, .hosts-grid, .controls-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr)); gap: var(--spacing-4); }
-.system-dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: var(--spacing-4); }
-.system-dl > div { display: flex; flex-direction: column; gap: var(--spacing-1); padding-block: var(--spacing-3); border-bottom: 1px solid var(--line); }
-dl, dd { margin: 0; }
-dt { color: var(--muted); }
-.control-values, .compact-dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: var(--spacing-2) var(--spacing-4); }
-dd { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.control-card { height: 100%; }
-.control-card > .astryx-button { margin-block-start: auto; }
-.control-card header { min-width: 0; }
-.control-card p { margin: 0; }
-.strategy-intro { min-width: 0; }
-.portfolio-amount { font-variant-numeric: tabular-nums; }
-.portfolio-amount > strong { font-size: var(--font-size-3xl); }
-.chart-card { min-width: 0; padding: var(--spacing-4); }
-.chart { height: 16rem; width: 100%; min-width: 0; }
-.chart-empty { min-height: 12rem; display: grid; place-items: center; }
-.chart-with-values { min-width: 0; }
-.chart-values { display: flex; justify-content: space-between; gap: var(--spacing-3); color: var(--muted); font-variant-numeric: tabular-nums; }
-.portfolio-chart { padding: 0; }
-.event-line, .activity-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--spacing-3); padding: var(--spacing-4); width: 100%; border-bottom: 1px solid var(--line); text-align: start; border-radius: 0; }
-.activity-line > span:first-child { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.activity-line small, .event-line time { color: var(--muted); }
-.timeline { padding-inline-start: var(--spacing-5); }
-.timeline li { padding: var(--spacing-3); border-inline-start: 1px solid var(--line); }
-.timeline time { color: var(--muted); margin-inline-start: var(--spacing-3); }
-.widget { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); overflow: hidden; min-width: 0; display: flex; flex-direction: column; position: relative; }
-.widget-header { display: flex; align-items: center; gap: var(--spacing-2); padding: var(--spacing-4); }
-.widget-header h3 { flex: 1; min-width: 0; }
-.widget-body { padding: 0 var(--spacing-4) var(--spacing-4); min-width: 0; flex: 1; }
-.widget-body .chart-card { padding: 0; }
-.widget-body .control-card { border: 0; background: transparent; }
-.widget.dragging { opacity: .65; z-index: 10; }
-.widget-compact .control-values { font-size: var(--font-size-sm); }
-.equity-widget { display: flex; flex-direction: column; gap: var(--spacing-2); font-variant-numeric: tabular-nums; }
-.equity-widget > strong { font-size: var(--font-size-2xl); }
-.secret { display: flex; align-items: center; gap: var(--spacing-2); padding: var(--spacing-3); background: var(--raised); border-radius: var(--radius); }
-.secret code { overflow-wrap: anywhere; flex: 1; min-width: 0; }
-.check-label { display: flex; align-items: center; gap: var(--spacing-2); }
-.inline-form { display: flex; align-items: end; gap: var(--spacing-3); flex-wrap: wrap; }
+/* The only app CSS is saved-grid geometry and the isolated theme host bridge.
+   All product surfaces, typography and interactions use Astryx props/tokens. */
+@layer qb-geometry {
+.widget[data-resizing="true"] { transition: none !important; user-select: none; }
 .theme-frame { width: 100%; min-height: 75dvh; border: 0; }
-.theme-preview { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-.connection-dot { display: inline-block; width: var(--spacing-2); height: var(--spacing-2); background: var(--muted); border-radius: 50%; }
-.connection-dot.online { background: var(--success); }
-.workbench-shell[data-theme-palette] {
-  color: var(--text);
-  background-color: var(--canvas);
-  background-position: center;
-  background-size: cover;
-  min-height: 100vh;
-}
-:root:not([data-appearance="dark"]) .workbench-shell[data-theme-palette] {
-  --canvas: var(--canvas-light, #f5f6f8);
-  --surface: var(--surface-light, #fff);
-  --text: var(--text-light, #263346);
-  --muted: var(--muted-light, #7b8797);
-  --line: var(--line-light, #e6e9ef);
-  --accent: var(--accent-light, #4b76d8);
-  --success: var(--success-light, #269675);
-  --danger: var(--danger-light, #c75363);
-  --theme-chart: var(--theme-chart-light, #638ded);
-}
-:root[data-appearance="dark"] .workbench-shell[data-theme-palette] {
-  --canvas: var(--canvas-dark, #1b212a);
-  --surface: var(--surface-dark, #242c37);
-  --text: var(--text-dark, #d5dce8);
-  --muted: var(--muted-dark, #91a0b4);
-  --line: var(--line-dark, #374151);
-  --accent: var(--accent-dark, #81a9ff);
-  --success: var(--success-dark, #6ac9a2);
-  --danger: var(--danger-dark, #ee9a9e);
-  --theme-chart: var(--theme-chart-dark, #638ded);
-}
-.workbench-shell[data-theme-surface="glass"] .surface {
-  background: color-mix(in srgb, var(--surface) 84%, transparent);
-  backdrop-filter: blur(12px);
-}
-
 }

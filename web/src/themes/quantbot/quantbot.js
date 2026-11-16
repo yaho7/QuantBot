@@ -92,8 +92,8 @@ export const quantbotTheme = {
     "--_astryx-pre-tempo-duration-slow": "700ms",
     "--_astryx-pre-tempo-duration-slow-max": "935ms",
     "--_astryx-motion-tempo": "1",
-    "--font-family-body": "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
-    "--font-family-heading": "Figtree, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+    "--font-family-body": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+    "--font-family-heading": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
     "--font-family-code": "ui-monospace, \"SF Mono\", Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace",
     "--color-syntax-keyword": "light-dark(#6b187c, #efa8ff)",
     "--color-syntax-string": "light-dark(#0b5615, #a4d6a3)",
@@ -433,6 +433,11 @@ export const quantbotTheme = {
       "base": {
         "padding": "var(--spacing-3)"
       }
+    },
+    "dialog-header": {
+      "base": {
+        "padding": "0"
+      }
     }
   },
   __onDark: {
@@ -485,12 +490,12 @@ export const quantbotTheme = {
         "ratio": 1.2
       },
       "body": {
-        "family": "Figtree",
-        "fallbacks": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif"
+        "family": "system-ui",
+        "fallbacks": "-apple-system, \"Segoe UI\", Roboto, sans-serif"
       },
       "heading": {
-        "family": "Figtree",
-        "fallbacks": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif",
+        "family": "system-ui",
+        "fallbacks": "-apple-system, \"Segoe UI\", Roboto, sans-serif",
         "weights": {
           "3": "bold",
           "4": "bold"

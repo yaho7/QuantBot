@@ -32,3 +32,28 @@ at the repository's pinned baselines:
 
 The redesign independently implements these interactions with Astryx. It does
 not copy upstream monitoring models, source, media or compiled themes.
+
+The five fixed product palettes are compiled from `web/themes/quantbot-app` with
+`astryx theme build`; runtime `defineTheme` is reserved for user-installed,
+validated declarative presentation settings. The theme host adapts those settings
+to Astryx tokens, scoped to the workbench. Administration keeps the product theme.
+The default font uses the system stack and needs no font service.
+
+All former page CSS layers have been removed. Layout props and token-backed
+Tailwind utilities provide spacing and responsive composition. The remaining
+application stylesheet contains only saved-grid/resize geometry and iframe size;
+uPlot retains its required renderer stylesheet. Native `code`, `time`, `dt` and
+`dd` keep their document semantics around Astryx text. Lucide artwork is rendered
+through Astryx Icon, retaining the project's icon set.
+
+Run `npm run check:ui` to reject raw layout/control/table elements, page CSS
+imports, arbitrary utility values and hardcoded product colors in React source.
+Astryx Doctor also flags `className` usage conservatively; the remaining utilities
+use its documented Tailwind token bridge. These are reviewed hints, not an
+additional visual system.
+
+Verified: TypeScript/build, UI guard, layout unit tests, Go tests, and all four
+Playwright flows. Browser coverage includes 390/430/768/1280/1600 widths in light
+and dark, setup/login, both shells, four strategy views, controls and receipts,
+layout persistence and keyboard resizing, Sandbox, notifications and settings.
+It also checks that installed theme colors cannot alter administration.

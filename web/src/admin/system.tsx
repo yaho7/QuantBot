@@ -1,5 +1,6 @@
+import { Text } from "@astryxdesign/core/Text";
 import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
+import { Section } from "@astryxdesign/core/Section";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Table } from "@astryxdesign/core/Table";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -24,7 +25,7 @@ const commands = {
     "docker compose run --rm --no-deps quantbot backup /data/backup.zip",
     "docker compose run --rm --no-deps -e QB_DATA_DIR=/data/restored quantbot restore /data/backup.zip",
   ].join("\n"),
-  "Linux": [
+  Linux: [
     "systemctl --user stop quantbot",
     "QB_DATA_DIR=/path/to/data quantbot backup /path/to/backup.zip",
     "QB_DATA_DIR=/path/to/restored quantbot restore /path/to/backup.zip",
@@ -50,29 +51,52 @@ export function Storage() {
       ) : query.error ? (
         <ErrorView error={query.error} retry={() => void query.refetch()} />
       ) : (
-        <Card padding={0}><Table
-          data={["control", "metrics"].map(name => ({
-            name: name + ".db", size: size(query.data.databaseBytes[name]), wal: size(query.data.walBytes[name]),
-          }))}
-          columns={[{ key: "name", header: "SQLite" }, { key: "size", header: t("databaseSize"), align: "end" },
-            { key: "wal", header: "WAL", align: "end" }]}
-          idKey="name" /></Card>
+        <Section padding={0}>
+          <Table
+            data={["control", "metrics"].map((name) => ({
+              name: name + ".db",
+              size: size(query.data.databaseBytes[name]),
+              wal: size(query.data.walBytes[name]),
+            }))}
+            columns={[
+              { key: "name", header: "SQLite" },
+              { key: "size", header: t("databaseSize"), align: "end" },
+              { key: "wal", header: "WAL", align: "end" },
+            ]}
+            idKey="name"
+          />
+        </Section>
       )}
-      <Card padding={4}><VStack as="section" gap={4}>
-        <Heading level={2}>{t("backupRestore")}</Heading>
-        <p className="muted">{t("backupHint")}</p>
-        <p className="muted">{t("restoreHint")}</p>
-        {Object.entries(commands).map(([name, snippet]) => (
-          <VStack key={name} gap={2} hAlign="start">
-            <Heading level={3}>{name}</Heading>
-            <pre>{snippet}</pre>
-            <Button label={t("copy") + " " + name} onClick={async () => {
-              try { await navigator.clipboard.writeText(snippet); toast.success(t("copied")); }
-              catch { toast.error(t("copyFailed")); }
-            }} />
-          </VStack>
-        ))}
-      </VStack></Card>
+      <Section padding={4}>
+        <VStack as="section" gap={4}>
+          <Heading level={2}>{t("backupRestore")}</Heading>
+          <Text as="p" className="muted text-secondary">
+            {t("backupHint")}
+          </Text>
+          <Text as="p" className="muted text-secondary">
+            {t("restoreHint")}
+          </Text>
+          {Object.entries(commands).map(([name, snippet]) => (
+            <VStack key={name} gap={2} hAlign="start">
+              <Heading level={3}>{name}</Heading>
+              <pre className="m-0 overflow-auto whitespace-pre-wrap break-all">
+                <Text type="code">{snippet}</Text>
+              </pre>
+              <Button
+                label={t("copy") + " " + name}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(snippet);
+                    toast.success(t("copied"));
+                  } catch {
+                    toast.error(t("copyFailed"));
+                  }
+                }}
+              />
+            </VStack>
+          ))}
+        </VStack>
+      </Section>
     </Page>
   );
 }
@@ -91,28 +115,42 @@ export function Settings() {
       ) : query.error ? (
         <ErrorView error={query.error} retry={() => void query.refetch()} />
       ) : settings ? (
-        <Card padding={4}><VStack as="section" gap={3}>
-          <Heading level={2}>{t("runtimeSettings")}</Heading>
-          <p className="muted">{t("runtimeHint")}</p>
-          <dl className="system-dl">
-            {[
-              [t("hostVersion"), query.data.version],
-              [t("sessionLifetime"), unit(settings.sessionSeconds, "second")],
-              [t("renewBefore"), unit(settings.renewBeforeSeconds, "second")],
-              [t("heartbeatInterval"), unit(settings.heartbeatSeconds, "second")],
-              [t("offlineAfter"), unit(settings.offlineSeconds, "second")],
-              [t("maxPoll"), unit(settings.commandPollSeconds, "second")],
-              [t("metricsQueue"), settings.metricsQueue],
-              [t("metricsBatch"), settings.metricsBatch],
-              [t("metricsFlush"), unit(settings.metricsFlushMilliseconds, "millisecond")],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </VStack></Card>
+        <Section padding={4}>
+          <VStack as="section" gap={3}>
+            <Heading level={2}>{t("runtimeSettings")}</Heading>
+            <Text as="p" className="muted text-secondary">
+              {t("runtimeHint")}
+            </Text>
+            <dl className="system-dl grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              {[
+                [t("hostVersion"), query.data.version],
+                [t("sessionLifetime"), unit(settings.sessionSeconds, "second")],
+                [t("renewBefore"), unit(settings.renewBeforeSeconds, "second")],
+                [
+                  t("heartbeatInterval"),
+                  unit(settings.heartbeatSeconds, "second"),
+                ],
+                [t("offlineAfter"), unit(settings.offlineSeconds, "second")],
+                [t("maxPoll"), unit(settings.commandPollSeconds, "second")],
+                [t("metricsQueue"), settings.metricsQueue],
+                [t("metricsBatch"), settings.metricsBatch],
+                [
+                  t("metricsFlush"),
+                  unit(settings.metricsFlushMilliseconds, "millisecond"),
+                ],
+              ].map(([label, value]) => (
+                <VStack gap={3} key={label}>
+                  <dt>
+                    <Text type="supporting">{label}</Text>
+                  </dt>
+                  <dd className="m-0">
+                    <Text hasTabularNumbers>{value}</Text>
+                  </dd>
+                </VStack>
+              ))}
+            </dl>
+          </VStack>
+        </Section>
       ) : null}
     </Page>
   );

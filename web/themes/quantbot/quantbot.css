@@ -171,8 +171,8 @@
     --_astryx-pre-tempo-duration-slow: 700ms;
     --_astryx-pre-tempo-duration-slow-max: 935ms;
     --_astryx-motion-tempo: 1;
-    --font-family-body: Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --font-family-heading: Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-family-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-family-heading: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-family-code: ui-monospace, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     --color-syntax-keyword: light-dark(#6b187c, #efa8ff);
     --color-syntax-string: light-dark(#0b5615, #a4d6a3);
@@ -536,6 +536,10 @@
     --astryx-section-padding: var(--spacing-3);
   }
 
+  .astryx-dialog-header {
+    padding: 0;
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }
@@ -662,8 +666,8 @@
     --text-display-3-size: var(--font-size-3xl);
     --text-display-3-weight: var(--font-weight-normal);
     --text-display-3-leading: 1.4667;
-    --font-family-body: Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    --font-family-heading: Figtree, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-family-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-family-heading: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     --font-family-code: ui-monospace, "SF Mono", Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   }
   }
