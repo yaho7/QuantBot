@@ -36,6 +36,13 @@ func Handler() http.Handler {
 			files.ServeHTTP(w, r)
 			return
 		}
+		if name == "astryx-theme.zip" {
+			w.Header().Set("Content-Type", "application/zip")
+			w.Header().Set("Content-Disposition", `attachment; filename="astryx-theme.zip"`)
+			w.Header().Set("Cache-Control", "no-cache")
+			files.ServeHTTP(w, r)
+			return
+		}
 		w.Header().Set("Cache-Control", "no-cache")
 		body, err := fs.ReadFile(root, "index.html")
 		if err != nil {

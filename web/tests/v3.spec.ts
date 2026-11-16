@@ -557,14 +557,14 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   );
   expect(JSON.stringify(channels)).not.toContain("local-browser-test-token");
 
-  await page.goto("/admin/themes");
+  await page.goto("/admin/settings");
   await expect(page).toHaveURL(/\/admin\/settings$/);
   await expect(page.getByRole("heading", { name: /Classical/ })).toBeVisible();
   await page.getByRole("button", { name: "海蓝", exact: true }).click();
   await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
   const themeCatalogue = await page.evaluate(async () => (await fetch("/api/admin/themes")).json());
   expect(themeCatalogue.active).toBe("classical");
-  expect(themeCatalogue.themes.map((theme: { id: string }) => theme.id)).toEqual(["classical"]);
+  expect(themeCatalogue.themes.filter((theme: { builtin: boolean }) => theme.builtin).map((theme: { id: string }) => theme.id)).toEqual(["classical"]);
   await page.goto("/");
   await expect(page.locator(".workbench-shell")).toHaveAttribute("data-theme", "classical");
   await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");

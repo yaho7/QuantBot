@@ -133,6 +133,8 @@ const messages = {
   integration: ["API 与接入", "Integration"],
   notifications: ["通知渠道", "Notifications"],
   themeZip: ["主题 ZIP", "Theme ZIP"],
+  installAstryx: ["安装 Astryx 主题", "Install Astryx theme"],
+  themeDownload: ["下载 Astryx 主题包", "Download Astryx theme package"],
   themeUpload: ["安装或更新", "Install or update"],
   themeRestore: ["恢复 Classic", "Restore Classic"],
   themeActive: ["使用中", "Active"],

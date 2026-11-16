@@ -32,7 +32,7 @@ function inspect(directory) {
     }
   }
 }
-inspect(join(process.cwd(), "src"));
+inspect(join(process.cwd(), process.argv[2] ?? "src"));
 if (violations.length) {
   process.stderr.write(violations.join("\n") + "\n");
   process.exitCode = 1;

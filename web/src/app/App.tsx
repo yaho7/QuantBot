@@ -82,6 +82,7 @@ const management = [
     [
       ["strategies", "strategies", ChartNoAxesCombined],
       ["notifications", "notifications", Bell],
+      ["themes", "themes", Settings],
     ],
   ],
   [
@@ -208,7 +209,10 @@ function Workbench() {
   const identity = (theme?.id ?? "") + ":" + (theme?.revision ?? "");
   const fallback = !!query.error || (failed !== "" && failed === identity);
   const selected = fallback ? undefined : theme;
-  const antquant = fallback || !selected || selected.id === "classical";
+  // Frontend packages own the iframe, while host navigation and native pages
+  // retain the original Classical shell and trusted controls.
+  const hostTheme = selected?.manifest.type === "frontend" || new URLSearchParams(location.search).has("classic") ? undefined : selected;
+  const antquant = fallback || !hostTheme || hostTheme.id === "classical";
   const onFailure = useCallback(() => setFailed(identity), [identity]);
   const full =
     location.pathname === "/" &&
@@ -216,14 +220,14 @@ function Workbench() {
     !new URLSearchParams(location.search).has("classic");
   return (
     <ThemeContext.Provider
-      value={fallback ? { cardView: "list" } : { ...selected?.presentation, portfolio: antquant }}
+      value={fallback ? { cardView: "list" } : { ...(hostTheme?.presentation ?? { cardView: "list" }), portfolio: antquant }}
     >
       <div
         className={"workbench-shell" + (antquant ? " antquant-workbench" : "")}
-        data-theme={selected?.id ?? "classical"}
-        data-theme-palette={selected && !selected.builtin ? "" : undefined}
-        data-theme-surface={selected?.presentation.surface}
-        style={themeStyle(selected)}
+        data-theme={hostTheme?.id ?? "classical"}
+        data-theme-palette={hostTheme && !hostTheme.builtin ? "" : undefined}
+        data-theme-surface={hostTheme?.presentation.surface}
+        style={themeStyle(hostTheme)}
       >
         <header className="topbar">
           <div className="container topbar-inner">
@@ -423,7 +427,7 @@ const router = createBrowserRouter([
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", lazy: async () => ({ Component: (await import("../admin/pages")).AdminDashboard }) },
           { path: "notifications", lazy: async () => ({ Component: (await import("../admin/notifications")).default }) },
-          { path: "themes", element: <Navigate to="/admin/settings" replace /> },
+          { path: "themes", lazy: async () => ({ Component: (await import("../admin/themes")).default }) },
           { path: "strategies", lazy: async () => ({ Component: (await import("../admin/pages")).AdminStrategies }) },
           { path: "audit", lazy: async () => ({ Component: (await import("../admin/pages")).Audit }) },
           { path: "security", lazy: async () => ({ Component: (await import("../admin/pages")).Security }) },

@@ -17,3 +17,5 @@ quantbot.json
 
 !/web/dist/
 !/web/dist/**
+
+web/.theme-build/

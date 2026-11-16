@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 import { Link } from "../shared/page-links";
 import { ControlCard } from "../app/control";
-import { resource, type Registry, type Strategy } from "../shared/api";
+import { client, resource, type Registry, type Strategy } from "../shared/api";
+import { readThemeStrategy } from "./bridge-data";
 import { useLanguage } from "../shared/i18n";
 import { ErrorView, Loading, Modal } from "../shared/ui";
 import type { Palette, Theme } from "./catalog";
@@ -60,8 +62,13 @@ export function ThemeFrame({
   theme: Theme;
   onFailure: () => void;
 }) {
+  const navigate = useNavigate();
+  const { lang } = useLanguage();
+  const language = useRef(lang);
+  language.current = lang;
   const frame = useRef<HTMLIFrameElement>(null);
   const [ready, setReady] = useState(false);
+  const [height, setHeight] = useState<number>();
   const [control, setControl] = useState<ControlRequest>();
   const strategies = useQuery(resource<Strategy[]>("/strategies"));
   const strategyData = useRef(strategies.data);
@@ -81,11 +88,21 @@ export function ThemeFrame({
     let lastControl = 0;
     let windowStarted = Date.now();
     let count = 0;
+    let reads = 0;
     const send = (message: object) =>
       frame.current?.contentWindow?.postMessage(
         { version: 1, ...message },
         "*",
       );
+    const context = () => ({
+      language: language.current,
+      appearance: document.documentElement.dataset.appearance === "dark" ? "dark" : "light",
+      palette: document.documentElement.dataset.palette ?? "forest",
+    });
+    const observer = new MutationObserver(() => {
+      if (acknowledged) send({ type: "quantbot:context", ...context() });
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-appearance", "data-palette", "lang"] });
     const receive = (event: MessageEvent) => {
       if (
         event.source !== frame.current?.contentWindow ||
@@ -106,12 +123,16 @@ export function ThemeFrame({
         acknowledged = true;
         clearTimeout(timeout);
         setReady(true);
-        send({ type: "quantbot:ready", settings: settings.current });
+        send({ type: "quantbot:ready", settings: settings.current, ...context() });
         return;
       }
       if (!acknowledged) return;
       if (message.type === "quantbot:error") {
         onFailure();
+        return;
+      }
+      if (message.type === "quantbot:resize" && Number.isInteger(message.height) && message.height >= 320 && message.height <= 8000) {
+        setHeight(message.height);
         return;
       }
       if (
@@ -120,7 +141,8 @@ export function ThemeFrame({
       )
         return;
       if (message.type === "quantbot:strategies") {
-        const items = (strategyData.current ?? []).map(
+        void client.fetchQuery(resource<Strategy[]>("/strategies")).then(rows => {
+        const items = rows.map(
           ({ id, name, group, online, mode, lastSeen }) => ({
             id,
             name,
@@ -135,6 +157,19 @@ export function ThemeFrame({
           requestId: message.requestId,
           items,
         });
+        }).catch(() => send({ type: "quantbot:strategies", requestId: message.requestId, error: "unavailable" }));
+        return;
+      }
+      const allowedStrategy = (strategyData.current ?? client.getQueryData<Strategy[]>(["/strategies"]))?.some(row => row.id === message.strategyId);
+      if (message.type === "quantbot:strategy" && allowedStrategy && [1, 24, 168, 720].includes(message.hours) && reads < 2) {
+        reads++;
+        void readThemeStrategy(message.strategyId, message.hours).then(data => {
+          send({ type: "quantbot:strategy", requestId: message.requestId, data });
+        }).catch(() => send({ type: "quantbot:strategy", requestId: message.requestId, error: "unavailable" })).finally(() => { reads--; });
+        return;
+      }
+      if (message.type === "quantbot:open-strategy" && allowedStrategy) {
+        navigate("/strategies/" + encodeURIComponent(message.strategyId));
         return;
       }
       if (
@@ -163,10 +198,11 @@ export function ThemeFrame({
     window.addEventListener("message", receive);
     return () => {
       clearTimeout(timeout);
+      observer.disconnect();
       window.removeEventListener("message", receive);
       element?.removeEventListener("load", navigation);
     };
-  }, [onFailure]);
+  }, [onFailure, navigate]);
   return (
     <>
       {!ready && <Loading />}
@@ -177,7 +213,7 @@ export function ThemeFrame({
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
         className="theme-frame"
-        style={{ visibility: ready ? "visible" : "hidden" }}
+        style={{ visibility: ready ? "visible" : "hidden", height }}
       />
       {control && (
         <TrustedControl

@@ -20,6 +20,10 @@ Set the type to `frontend` and point `entry` at an HTML document that loads bund
 The iframe sends versioned messages to its host with `parent.postMessage`. Use the origin of its entry URL as the target origin. Wait for `{version:1,type:"quantbot:ready",settings:{...}}` after sending `{version:1,type:"quantbot:ready"}`.
 
 - `quantbot:strategies` with `requestId` returns strategy summaries and their last-seen time.
+- `quantbot:strategy` with `requestId`, `strategyId` and `hours` (1, 24, 168 or 720) returns a read-only projection: current equity/P&L, at most 500 historical equity points and writable-control summaries. The ID must belong to the authenticated host's strategy list; at most two reads run concurrently. No arbitrary API path is accepted.
+- `quantbot:open-strategy` with `requestId` and an authorized `strategyId` opens its host-rendered detail page.
+- `quantbot:resize` with an integer `height` from 320 to 8000 adjusts the iframe's presentation height.
+- Ready and `quantbot:context` messages supply the host language, appearance and selected palette. No browser credential or session data is supplied.
 - `quantbot:control` with `requestId`, `strategyId` and `controlId` requests the trusted control dialog. Its acknowledgment only means the dialog opens.
 - `quantbot:error` asks the host to fall back after a fatal render error.
 
@@ -30,3 +34,13 @@ The host validates the source iframe, opaque origin, protocol version and reques
 The optional settings file has a `fields` array. Each field declares `key`, `label`, `type` and `default`. Types include switch, select, number, text, color, image, background and slider. Select fields declare `options`. Number and slider fields may declare `min` and `max`. Image and background fields use an asset path or the empty string.
 
 The admin API accepts a request body of `application/zip` at `POST /api/admin/themes`. Select a packaged or built-in theme using `PUT /api/admin/themes/active` with `{"id":"theme-id"}`. Upload a higher version with the same ID to update the package. Settings are preserved when compatible with the new schema. Use `POST /api/admin/themes/{id}/rollback` to restore the previous revision, and `DELETE /api/admin/themes/{id}` to delete a package.
+
+## Bundled Astryx package
+
+The default remains Classical. `npm run build` also builds the isolated Astryx
+monitoring-home package from `web/theme-plugins/astryx`, reusing the existing
+compiled palettes under `web/themes/quantbot-app`. It writes the deterministic
+`web/dist/astryx-theme.zip`, served at `/astryx-theme.zip` and included in releases.
+Administration > Themes can install the bundle, preview it and explicitly enable
+it. Installation does not change the active theme. Its controls open the host's
+trusted dialog; they never dispatch commands directly.

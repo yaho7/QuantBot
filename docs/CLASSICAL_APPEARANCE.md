@@ -1,9 +1,10 @@
 # Classical appearance
 
-Classical (`classical`) is the sole enabled theme and the default for both
-new and existing installations. It retains the former Lumina dashboard layout.
-The theme API lists only Classical. Theme upload, package settings, rollback,
-and deletion routes are no longer exposed; existing package files are not deleted.
+Classical (`classical`) remains the default and retains the original dashboard
+and administration layouts. Astryx is now an optional frontend theme package.
+Install it from Administration > Themes and explicitly enable it to replace the
+monitoring home. Restore Classical to return to the original view. Administration,
+strategy pages and trusted command flows remain owned by the host.
 
 Settings > Appearance provides Forest, Ocean, Violet, Amber, and Graphite
 palettes. The selected palette is applied to both the monitoring workspace and

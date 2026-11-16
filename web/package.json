@@ -5,10 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:astryx",
     "typecheck": "tsc -b --noEmit",
     "test:unit": "node --test tests/layout-defaults.test.mjs",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:astryx": "vite build --config theme-plugins/astryx/vite.config.ts && node scripts/package-astryx-theme.mjs",
+    "check:ui": "node scripts/check-astryx-ui.mjs theme-plugins/astryx/src"
   },
   "dependencies": {
     "@astryxdesign/core": "0.7.16",

@@ -19,8 +19,8 @@ function translucent(color: string, opacity: number) {
   const context = document.createElement("canvas").getContext("2d")!;
   context.fillStyle = color;
   context.fillRect(0, 0, 1, 1);
-  const [red, green, blue] = context.getImageData(0, 0, 1, 1).data;
-  return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+  const [red, green, blue, alpha = 255] = context.getImageData(0, 0, 1, 1).data;
+  return `rgba(${red}, ${green}, ${blue}, ${opacity * alpha / 255})`;
 }
 
 export default function EquityChart({ points, lang, valueLabel }: {
@@ -98,6 +98,7 @@ export default function EquityChart({ points, lang, valueLabel }: {
         timeVisible: true,
         secondsVisible: false,
         borderVisible: false,
+        lockVisibleTimeRangeOnResize: true,
         tickMarkFormatter: (time: Time, kind: TickMarkType) => {
           if (typeof time !== "number") return null;
           const value = new Date(time * 1000);

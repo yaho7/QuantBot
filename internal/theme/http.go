@@ -25,7 +25,11 @@ func (e invalid) Error() string { return string(e) }
 func (s *Service) Register(r chi.Router) {
 	r.Get("/theme", s.active)
 	r.Get("/admin/themes", s.list)
+	r.Post("/admin/themes", s.upload)
 	r.Put("/admin/themes/active", s.activate)
+	r.Put("/admin/themes/{id}/settings", s.configuration)
+	r.Post("/admin/themes/{id}/rollback", s.rollback)
+	r.Delete("/admin/themes/{id}", s.remove)
 }
 
 func (s *Service) active(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +44,29 @@ func (s *Service) active(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) list(w http.ResponseWriter, r *http.Request) {
-	httpapi.JSON(w, http.StatusOK, map[string]any{"active": BuiltinClassical, "themes": []instance{builtin(BuiltinClassical)}})
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	q := controldb.New(s.store.Read)
+	active, err := s.getActive(r.Context(), q)
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	rows, err := q.ListThemes(r.Context())
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	themes := []instance{builtin(BuiltinClassical)}
+	for _, row := range rows {
+		item, err := s.readInstance(controldb.GetThemeRow(row))
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		themes = append(themes, item)
+	}
+	httpapi.JSON(w, http.StatusOK, map[string]any{"active": active.ID, "themes": themes})
 }
 
 func (s *Service) upload(w http.ResponseWriter, r *http.Request) {
@@ -74,7 +100,7 @@ func (s *Service) activate(w http.ResponseWriter, r *http.Request) {
 	if !httpapi.ReadJSON(w, r, &input, 4096) {
 		return
 	}
-	if input.ID != BuiltinClassical {
+	if !identifier.MatchString(input.ID) {
 		fail(w, invalid("Invalid theme ID"))
 		return
 	}
@@ -83,7 +109,19 @@ func (s *Service) activate(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	err := storage.WithTx(ctx, s.store.Write, func(tx *sql.Tx) error {
 		q := controldb.New(tx)
-
+		if input.ID != BuiltinClassical {
+			row, err := q.GetTheme(ctx, input.ID)
+			if err != nil {
+				return err
+			}
+			item, err := s.readInstance(row)
+			if err != nil {
+				return err
+			}
+			if !item.Available {
+				return invalid("Theme is missing its entry or is incompatible")
+			}
+		}
 		if err := setActive(ctx, q, input.ID); err != nil {
 			return err
 		}

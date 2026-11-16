@@ -302,10 +302,28 @@ func (s *Service) removeDirectory(dir string) {
 }
 
 func (s *Service) getActive(ctx context.Context, q *controldb.Queries) (instance, error) {
+	active, err := activeTheme(ctx, q)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && (active == "" || active == BuiltinClassical) {
+		return builtin(BuiltinClassical), nil
+	}
+	if err != nil {
+		return instance{}, err
+	}
+	row, err := q.GetTheme(ctx, active)
+	if err == nil {
+		view, readErr := s.readInstance(row)
+		if readErr == nil && view.Available {
+			return view, nil
+		}
+		err = readErr
+	}
+	slog.Warn("active theme fallback", "theme", active, "error", err)
 	return builtin(BuiltinClassical), nil
 }
 
 // CheckActive validates the configured theme without creating data directories.
 func CheckActive(ctx context.Context, db *sql.DB, dir, version string) (string, error) {
-	return BuiltinClassical, nil
+	s := &Service{store: storage.Database{Read: db}, dir: filepath.Join(dir, "themes"), version: version}
+	view, err := s.getActive(ctx, controldb.New(db))
+	return view.ID, err
 }
