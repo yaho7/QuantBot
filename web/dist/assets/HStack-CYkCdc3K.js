@@ -1,0 +1,1 @@
+import{ft as e}from"./fieldParts-8M2jL7I7.js";import{t}from"./jsx-runtime-Wy9s6hX0.js";var n=t();function r({ref:t,justify:r,align:i,hAlign:a,vAlign:o,...s}){return(0,n.jsx)(e,{...s,direction:`horizontal`,hAlign:a??r,vAlign:o??i,ref:t})}r.displayName=`HStack`;export{r as t};

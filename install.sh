@@ -3,7 +3,7 @@
 set -euo pipefail
 
 repo="${QUANTBOT_REPO:-https://github.com/yaho7/QuantBot}"
-tag="${QUANTBOT_REF:-v3.1.1}"
+tag="${QUANTBOT_REF:-v3.1.2}"
 destination="${QUANTBOT_INSTALL_DIR:-$HOME/.local/bin}"
 
 case "${1:-}" in
@@ -25,7 +25,7 @@ case "${1:-}" in
     ;;
 esac
 if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  printf '%s\n' 'Use a release tag such as v3.1.1.' >&2
+  printf '%s\n' 'Use a release tag such as v3.1.2.' >&2
   exit 2
 fi
 case "$(uname -s):$(uname -m)" in
