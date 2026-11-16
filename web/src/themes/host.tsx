@@ -1,3 +1,4 @@
+import { defineTheme, type DefinedTheme } from "@astryxdesign/core/theme";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
@@ -8,14 +9,14 @@ import { ErrorView, Loading, Modal } from "../shared/ui";
 import type { Palette, Theme } from "./catalog";
 
 const paletteTokens: Record<keyof Palette, string> = {
-  background: "--canvas",
-  surface: "--surface",
-  foreground: "--text",
-  muted: "--muted",
-  border: "--line",
-  accent: "--accent",
-  positive: "--success",
-  negative: "--danger",
+  background: "--color-background-body",
+  surface: "--color-background-surface",
+  foreground: "--color-text-primary",
+  muted: "--color-text-secondary",
+  border: "--color-border",
+  accent: "--color-accent",
+  positive: "--color-text-green",
+  negative: "--color-text-red",
   chart: "--theme-chart",
 };
 const fonts: Record<string, string> = {
@@ -25,30 +26,67 @@ const fonts: Record<string, string> = {
   system: "system-ui, sans-serif",
 };
 
-export function themeStyle(theme?: Theme): CSSProperties {
-  if (!theme) return {};
+// Runtime themes are used only for administrator-installed, declarative branding.
+// The same Astryx token API applies; these tokens never enter the admin shell.
+export function presentationTheme(base: DefinedTheme, theme?: Theme) {
+  if (!theme || theme.builtin) return base;
   const p = theme.presentation;
-  const style: Record<string, string> = {};
-  for (const [appearance, palette] of [
-    ["light", p.light],
-    ["dark", p.dark],
-  ] as const) {
-    for (const [name, color] of Object.entries(palette ?? {})) {
-      if (/^#[a-f\d]{6}$/i.test(color) && name in paletteTokens)
-        style[paletteTokens[name as keyof Palette] + "-" + appearance] = color;
-    }
+  const tokens: Record<string, string | [string, string]> = {};
+  for (const [key, token] of Object.entries(paletteTokens)) {
+    const light = p.light?.[key as keyof Palette],
+      dark = p.dark?.[key as keyof Palette];
+    const valid = (value?: string): value is string =>
+      !!value && /^#[a-f\d]{6}$/i.test(value);
+    if (valid(light) || valid(dark))
+      tokens[token] = [
+        valid(light) ? light : dark!,
+        valid(dark) ? dark : light!,
+      ];
   }
-  if (p.radius !== undefined) style["--radius"] = p.radius + "px";
-  if (p.gap !== undefined) style["--gap"] = p.gap + "px";
+  if (tokens["--color-background-surface"]) {
+    tokens["--color-background-card"] = tokens["--color-background-surface"];
+    tokens["--color-background-popover"] = tokens["--color-background-surface"];
+  }
+  if (tokens["--color-accent"]) {
+    tokens["--color-text-accent"] = tokens["--color-accent"];
+    tokens["--color-icon-accent"] = tokens["--color-accent"];
+  }
+  if (p.radius !== undefined) tokens["--radius-container"] = p.radius + "px";
+  if (p.gap !== undefined) tokens["--spacing-4"] = p.gap + "px";
   const font = p.font && fonts[p.font];
-  if (font) style.fontFamily = font;
-  if (p.background && theme.assetBase && theme.assets?.includes(p.background))
-    style.backgroundImage =
-      'url("' +
-      theme.assetBase +
-      p.background.split("/").map(encodeURIComponent).join("/") +
-      '")';
-  return style;
+  if (font) {
+    tokens["--font-family-body"] = font;
+    tokens["--font-family-heading"] = font;
+  }
+  return defineTheme({
+    name: "installed-" + theme.id + "-" + theme.revision,
+    extends: base,
+    tokens,
+    components:
+      p.surface === "glass"
+        ? {
+            card: {
+              base: {
+                background:
+                  "color-mix(in srgb, var(--color-background-card) 84%, transparent)",
+                backdropFilter: "blur(var(--spacing-3))",
+              },
+            },
+          }
+        : undefined,
+  });
+}
+export function themeStyle(theme?: Theme): CSSProperties {
+  const p = theme?.presentation;
+  if (p?.background && theme?.assetBase && theme.assets?.includes(p.background))
+    return {
+      backgroundImage:
+        'url("' +
+        theme.assetBase +
+        p.background.split("/").map(encodeURIComponent).join("/") +
+        '")',
+    };
+  return {};
 }
 
 type ControlRequest = { strategyId: string; controlId: string };
@@ -176,8 +214,7 @@ export function ThemeFrame({
         title={theme.manifest.name}
         sandbox="allow-scripts"
         referrerPolicy="no-referrer"
-        className="theme-frame"
-        style={{ visibility: ready ? "visible" : "hidden" }}
+        className={"theme-frame " + (ready ? "visible" : "invisible")}
       />
       {control && (
         <TrustedControl

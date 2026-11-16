@@ -1,41 +1,19 @@
-import { defineTheme } from "@astryxdesign/core/theme";
-import { neutralTheme } from "@astryxdesign/theme-neutral/built";
+import { themes, defaultThemeSlug } from "../astryx-themes";
+import { quantbotAppTheme } from "../../themes/quantbot-app/quantbot-app.js";
+import { quantbotOceanTheme } from "../../themes/quantbot-app/quantbot-ocean.js";
+import { quantbotVioletTheme } from "../../themes/quantbot-app/quantbot-violet.js";
+import { quantbotAmberTheme } from "../../themes/quantbot-app/quantbot-amber.js";
+import { quantbotGraphiteTheme } from "../../themes/quantbot-app/quantbot-graphite.js";
 
-// QuantBot's saved palettes also color the Astryx controls and surfaces.
-export const quantbotUI = defineTheme({
-  name: "quantbot-ui",
-  extends: neutralTheme,
-  tokens: {
-    "--color-background-body": "var(--canvas)",
-    "--color-background-surface": "var(--surface)",
-    "--color-background-card": "var(--surface)",
-    "--color-background-popover": "var(--surface)",
-    "--color-background-muted": "var(--raised)",
-    "--color-overlay-hover": "var(--raised)",
-    "--color-neutral": "var(--raised)",
-    "--color-text-primary": "var(--text)",
-    "--color-text-secondary": "var(--muted)",
-    "--color-border": "var(--line)",
-    "--color-border-emphasized": "color-mix(in srgb, var(--line), var(--muted) 38%)",
-    "--color-accent": "var(--accent)",
-    "--color-accent-muted": "var(--accent-soft)",
-    "--color-on-accent": "var(--accent-ink)",
-    "--color-text-accent": "var(--accent)",
-    "--color-icon-accent": "var(--accent)",
-    "--color-track": "var(--line)",
-    "--color-background-green": "var(--success-bg)",
-    "--color-text-green": "var(--success)",
-    "--color-background-yellow": "var(--warning-bg)",
-    "--color-text-yellow": "var(--warning)",
-    "--color-background-red": "var(--danger-bg)",
-    "--color-text-red": "var(--danger)",
-    "--color-error": "var(--danger)",
-    "--color-error-muted": "var(--danger-bg)",
-    "--color-on-error-muted": "var(--danger)",
-    "--color-on-error": "var(--canvas)",
-    "--font-family-body": "var(--qb-font-family)",
-    "--font-family-heading": "var(--qb-font-family)",
-    "--size-element-md": "2.5rem",
-    "--size-element-lg": "2.75rem",
-  },
-});
+// Fixed palettes ship as compiled Astryx themes: no runtime styling layer.
+export const quantbotThemes = {
+  forest: quantbotAppTheme,
+  ocean: quantbotOceanTheme,
+  violet: quantbotVioletTheme,
+  amber: quantbotAmberTheme,
+  graphite: quantbotGraphiteTheme,
+};
+
+export function appTheme(palette: string) {
+  return quantbotThemes[palette as keyof typeof quantbotThemes] ?? themes[defaultThemeSlug];
+}

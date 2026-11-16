@@ -1,8 +1,23 @@
+import { Icon as AstryxIcon } from "@astryxdesign/core/Icon";
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { Selector } from "@astryxdesign/core/Selector";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { Heading } from "@astryxdesign/core/Heading";
+import {
+  Table,
+  TableHeader,
+  TableRow,
+  TableHeaderCell,
+  TableBody,
+  TableCell,
+} from "@astryxdesign/core/Table";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { IconButton } from "@astryxdesign/core/IconButton";
 import { Switch } from "@astryxdesign/core/Switch";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -65,51 +80,108 @@ export default function Notifications() {
   return (
     <Page
       title={t("notifications")}
-      actions={<Button label={t("addChannel")} variant="primary" icon={<Plus size={16} />} onClick={() => setEditing("new")} />}
+      actions={
+        <Button
+          label={t("addChannel")}
+          variant="primary"
+          icon={<AstryxIcon icon={Plus} size="sm" />}
+          onClick={() => setEditing("new")}
+        />
+      }
     >
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
         <ErrorView error={query.error} />
       ) : (
-        <div className="controls-grid">
+        <VStack
+          gap={3}
+          className={
+            "controls-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" +
+            "   grid"
+          }
+        >
           {query.data.map((channel) => (
-            <Card padding={4} key={channel.id}><VStack as="article" className="channel-card" gap={3}>
-              <header>
-                <Bell size={18} />
-                <h2>{providers.find(([id]) => id === channel.provider)?.[1] ?? channel.provider}</h2>
-                <Badge tone={channel.enabled ? "success" : ""}>
-                  {channel.enabled ? t("enabled") : t("disabled")}
-                </Badge>
-              </header>
-              <div className="channel-events">
-                {channel.events.map((event) => (
-                  <Badge key={event}>{display.kind(event)}</Badge>
-                ))}
-              </div>
-              <div className="channel-actions">
-                <Button label={t("editChannel")} icon={<Pencil size={16} />} onClick={() => setEditing(channel)} />
-                <Button label={t("testDelivery")} icon={<Send size={16} />} isDisabled={action.isPending}
-                  onClick={() => {
-                    setSelected(channel.id);
-                    action.mutate({ id: channel.id, method: "POST", suffix: "/test" });
-                  }} />
-                <IconButton label={channel.name + " " + t("remove")} tooltip={t("remove")} variant="ghost"
-                  icon={<Trash2 size={16} />} isDisabled={action.isPending}
-                  onClick={() => action.mutate({ id: channel.id, method: "DELETE" })} />
-              </div>
-              <Button label={t("deliveryHistory")} variant="ghost" size="sm" onClick={() => setSelected(channel.id)} />
-            </VStack></Card>
+            <Card padding={4} key={channel.id}>
+              <VStack as="article" className="channel-card" gap={3}>
+                <HStack
+                  as="header"
+                  hAlign="between"
+                  vAlign="center"
+                  gap={2}
+                  wrap="wrap"
+                >
+                  <AstryxIcon icon={Bell} size="md" />
+                  <Heading level={2}>
+                    {providers.find(([id]) => id === channel.provider)?.[1] ??
+                      channel.provider}
+                  </Heading>
+                  <Badge tone={channel.enabled ? "success" : ""}>
+                    {channel.enabled ? t("enabled") : t("disabled")}
+                  </Badge>
+                </HStack>
+                <HStack gap={2} wrap="wrap" className="channel-events">
+                  {channel.events.map((event) => (
+                    <Badge key={event}>{display.kind(event)}</Badge>
+                  ))}
+                </HStack>
+                <HStack
+                  gap={3}
+                  wrap="wrap"
+                  vAlign="center"
+                  className="channel-actions"
+                >
+                  <Button
+                    label={t("editChannel")}
+                    icon={<AstryxIcon icon={Pencil} size="sm" />}
+                    onClick={() => setEditing(channel)}
+                  />
+                  <Button
+                    label={t("testDelivery")}
+                    icon={<AstryxIcon icon={Send} size="sm" />}
+                    isDisabled={action.isPending}
+                    onClick={() => {
+                      setSelected(channel.id);
+                      action.mutate({
+                        id: channel.id,
+                        method: "POST",
+                        suffix: "/test",
+                      });
+                    }}
+                  />
+                  <IconButton
+                    label={channel.name + " " + t("remove")}
+                    tooltip={t("remove")}
+                    variant="ghost"
+                    icon={<AstryxIcon icon={Trash2} size="sm" />}
+                    isDisabled={action.isPending}
+                    onClick={() =>
+                      action.mutate({ id: channel.id, method: "DELETE" })
+                    }
+                  />
+                </HStack>
+                <Button
+                  label={t("deliveryHistory")}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelected(channel.id)}
+                />
+              </VStack>
+            </Card>
           ))}
           {!query.data.length && (
-            <EmptyState title={t("noChannels")} headingLevel={2} icon={<Bell size={24} />} />
+            <EmptyState
+              title={t("noChannels")}
+              headingLevel={2}
+              icon={<AstryxIcon icon={Bell} size="lg" />}
+            />
           )}
-        </div>
+        </VStack>
       )}
       {action.error && (
-        <p className="error-text" role="alert">
+        <Text as="p" className="error-text text-error" role="alert">
           {action.error.message}
-        </p>
+        </Text>
       )}
       {editing && (
         <ChannelForm
@@ -118,34 +190,41 @@ export default function Notifications() {
         />
       )}
       {selected && (
-        <section className="section">
-          <h2>{t("deliveryHistory")}</h2>
-          <div className="surface table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("type")}</th>
-                  <th>{t("status")}</th>
-                  <th>{t("attempts")}</th>
-                  <th>{t("nextAttempt")}</th>
-                  <th>{t("details")}</th>
-                </tr>
-              </thead>
-              <tbody>
+        <VStack
+          as="section"
+          gap={4}
+          className="section flex flex-col gap-4 min-w-0"
+        >
+          <Heading level={2}>{t("deliveryHistory")}</Heading>
+          <VStack
+            gap={3}
+            className="surface bg-surface border border-border rounded-lg   table-scroll overflow-auto min-w-0 max-w-full"
+          >
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHeaderCell>{t("type")}</TableHeaderCell>
+                  <TableHeaderCell>{t("status")}</TableHeaderCell>
+                  <TableHeaderCell>{t("attempts")}</TableHeaderCell>
+                  <TableHeaderCell>{t("nextAttempt")}</TableHeaderCell>
+                  <TableHeaderCell>{t("details")}</TableHeaderCell>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {history.data?.map((delivery) => (
-                  <tr key={delivery.id}>
-                    <td>{display.kind(delivery.kind)}</td>
-                    <td>{display.delivery(delivery.status)}</td>
-                    <td>{delivery.attempts}</td>
-                    <td>{timestamp(delivery.nextAt)}</td>
-                    <td>{delivery.lastError}</td>
-                  </tr>
+                  <TableRow key={delivery.id}>
+                    <TableCell>{display.kind(delivery.kind)}</TableCell>
+                    <TableCell>{display.delivery(delivery.status)}</TableCell>
+                    <TableCell>{delivery.attempts}</TableCell>
+                    <TableCell>{timestamp(delivery.nextAt)}</TableCell>
+                    <TableCell>{delivery.lastError}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
             {history.error && <ErrorView error={history.error} />}
-          </div>
-        </section>
+          </VStack>
+        </VStack>
       )}
     </Page>
   );
@@ -207,106 +286,125 @@ function ChannelForm({
           if (events.length && !mutation.isPending) mutation.mutate();
         }}
       >
-        <label>
+        <VStack gap={2}>
           {t("provider")}
-          <select
-            value={provider}
+          <Selector
+            label={t("provider")}
+            isLabelHidden
+            value={String(provider)}
             onChange={(e) => {
-              setProvider(e.target.value);
+              setProvider(e);
               setReplace(true);
             }}
-          >
-            {providers.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+            options={[
+              ...providers.map(([value, label]) => ({
+                value: String(value),
+                label: String(label),
+              })),
+            ]}
+          />
+        </VStack>
         <Switch label={t("enabled")} value={enabled} onChange={setEnabled} />
         <fieldset>
           <legend>{t("events")}</legend>
           {["alert", "risk", "fill", "command"].map((event) => (
-            <label className="check-label" key={event}>
-              <input
-                type="checkbox"
-                checked={events.includes(event)}
+            <VStack
+              gap={2}
+              className="check-label flex flex-row items-center gap-2"
+              key={event}
+            >
+              <CheckboxInput
+                label={display.kind(event)}
+                isLabelHidden
+                value={events.includes(event)}
                 onChange={(e) =>
                   setEvents(
-                    e.target.checked
-                      ? [...events, event]
-                      : events.filter((v) => v !== event),
+                    e ? [...events, event] : events.filter((v) => v !== event),
                   )
                 }
               />
               {display.kind(event)}
-            </label>
+            </VStack>
           ))}
         </fieldset>
         {channel && (
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={replace}
-              onChange={(e) => setReplace(e.target.checked)}
+          <VStack
+            gap={2}
+            className="check-label flex flex-row items-center gap-2"
+          >
+            <CheckboxInput
+              label={t("replaceCredentials")}
+              isLabelHidden
+              value={replace}
+              onChange={(e) => setReplace(e)}
             />
             {t("replaceCredentials")}
-          </label>
+          </VStack>
         )}
         {replace &&
           (provider === "telegram" ? (
             <>
-              <label>
+              <VStack gap={2}>
                 Bot Token
-                <input
+                <TextInput
+                  label="Bot Token"
+                  isLabelHidden
                   type="password"
-                  required
                   autoComplete="new-password"
                   value={token}
-                  onChange={(e) => setToken(e.target.value)}
+                  onChange={(e) => setToken(e)}
                 />
-              </label>
-              <label>
+              </VStack>
+              <VStack gap={2}>
                 Chat ID
-                <input
-                  required
+                <TextInput
+                  label="Chat ID"
+                  isLabelHidden
                   value={chatId}
-                  onChange={(e) => setChatId(e.target.value)}
+                  onChange={(e) => setChatId(e)}
                 />
-              </label>
+              </VStack>
             </>
           ) : (
             <>
-              <label>
+              <VStack gap={2}>
                 Webhook URL
-                <input
+                <TextInput
+                  label="Webhook URL"
+                  isLabelHidden
                   type="password"
-                  required
                   autoComplete="new-password"
                   value={webhook}
-                  onChange={(e) => setWebhook(e.target.value)}
+                  onChange={(e) => setWebhook(e)}
                 />
-              </label>
+              </VStack>
               {provider !== "wecom" && (
-                <label>
+                <VStack gap={2}>
                   Signing secret
-                  <input
+                  <TextInput
+                    label="Signing secret"
+                    isLabelHidden
                     type="password"
                     autoComplete="new-password"
                     value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
+                    onChange={(e) => setSecret(e)}
                   />
-                </label>
+                </VStack>
               )}
             </>
           ))}
         {mutation.error && (
-          <p className="error-text" role="alert">
+          <Text as="p" className="error-text text-error" role="alert">
             {mutation.error.message}
-          </p>
+          </Text>
         )}
-        <Button label={t("save")} variant="primary" type="submit" isLoading={mutation.isPending}
-          isDisabled={!events.length} />
+        <Button
+          label={t("save")}
+          variant="primary"
+          type="submit"
+          isLoading={mutation.isPending}
+          isDisabled={!events.length}
+        />
       </form>
     </Modal>
   );

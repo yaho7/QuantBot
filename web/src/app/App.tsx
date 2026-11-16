@@ -1,9 +1,12 @@
+import { Icon as AstryxIcon } from "@astryxdesign/core/Icon";
+import { LayoutEditingProvider } from "../shared/layout-editing";
 import {
   createContext,
   lazy,
   Suspense,
   useCallback,
   useContext,
+  useMemo,
   useEffect,
   useState,
   type ReactNode,
@@ -12,8 +15,25 @@ import { useQuery } from "@tanstack/react-query";
 import { version } from "../../package.json";
 import { Theme as AstryxTheme } from "@astryxdesign/core/theme";
 import { InternationalizationProvider } from "@astryxdesign/core/i18n";
+import { AppShell } from "@astryxdesign/core/AppShell";
+import { TopNav, TopNavItem } from "@astryxdesign/core/TopNav";
+import {
+  SideNav,
+  SideNavHeading,
+  SideNavItem,
+  SideNavSection,
+} from "@astryxdesign/core/SideNav";
+import { LinkProvider } from "@astryxdesign/core/Link";
+import { Button } from "@astryxdesign/core/Button";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Badge } from "@astryxdesign/core/Badge";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { StatusDot } from "@astryxdesign/core/StatusDot";
 import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
 import { VStack } from "@astryxdesign/core/VStack";
+import { Text } from "@astryxdesign/core/Text";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
 import {
   Navigate,
   Outlet,
@@ -22,7 +42,7 @@ import {
   createBrowserRouter,
   useLocation,
 } from "react-router-dom";
-import { Link, NavLink } from "../shared/page-links";
+import { Link } from "../shared/page-links";
 import {
   ArrowLeft,
   Bell,
@@ -30,7 +50,6 @@ import {
   ClipboardList,
   Database,
   LayoutDashboard,
-  Menu,
   Monitor,
   Moon,
   Settings,
@@ -39,7 +58,6 @@ import {
   SlidersHorizontal,
   Sun,
   LogOut,
-  X,
 } from "lucide-react";
 import { Toaster } from "sonner";
 import {
@@ -53,19 +71,15 @@ import {
 import { ErrorView, Loading } from "../shared/ui";
 import { useAttention } from "../components/attention-summary";
 import { BrandIcon } from "../components/brand-icon";
-import "../styles/antquant.css";
-import "../styles/wealthfolio.css";
-import "../styles/alignment.css";
-import "../styles/route-layout.css";
 import { usePalette } from "../shared/preferences";
-import { useLanguage, type Message } from "../shared/i18n";
+import { useLanguage } from "../shared/i18n";
+import { useRealtime } from "./realtime";
+import { activeTheme, ThemeContext } from "../themes/catalog";
+import { ThemeFrame, themeStyle, presentationTheme } from "../themes/host";
+import { appTheme } from "../themes/quantbot-ui";
 const Login = lazy(() =>
   import("./auth").then((module) => ({ default: module.Login })),
 );
-import { useRealtime } from "./realtime";
-import { activeTheme, ThemeContext } from "../themes/catalog";
-import { ThemeFrame, themeStyle } from "../themes/host";
-import { quantbotUI } from "../themes/quantbot-ui";
 
 const monitor = [
   ["/", "workbench", LayoutDashboard],
@@ -76,7 +90,7 @@ const monitor = [
   ["/alerts", "alerts", Bell],
 ] as const;
 const management = [
-  ["", [["dashboard", "dashboard", LayoutDashboard]]],
+  ["总览", [["dashboard", "dashboard", LayoutDashboard]]],
   [
     "管理",
     [
@@ -94,11 +108,14 @@ const management = [
     ],
   ],
 ] as const;
-
 const AppearanceTools = createContext<ReactNode>(null);
+const AppearanceMode = createContext<"system" | "light" | "dark">("system");
 
+function AstryxLink({ href, ...props }: React.ComponentProps<"a">) {
+  return <Link to={href ?? "/"} {...props} />;
+}
 function Root() {
-  usePalette();
+  const palette = usePalette();
   const session = useQuery({
     ...resource<Session>("/auth/session"),
     retry: false,
@@ -125,7 +142,9 @@ function Root() {
   const appearance = mode === "light" || mode === "dark" ? mode : "system";
   const themed = (content: ReactNode) => (
     <InternationalizationProvider locale={lang === "zh" ? "zh-Hans" : "en"}>
-      <AstryxTheme theme={quantbotUI} mode={appearance}>{content}</AstryxTheme>
+      <AstryxTheme theme={appTheme(palette)} mode={appearance}>
+        <LinkProvider component={AstryxLink}>{content}</LinkProvider>
+      </AstryxTheme>
     </InternationalizationProvider>
   );
   if (session.isPending) return themed(<Loading />);
@@ -134,71 +153,82 @@ function Root() {
     !(session.error instanceof ApiError && session.error.status === 401)
   )
     return themed(
-      <ErrorView error={session.error} retry={() => void session.refetch()} />
+      <ErrorView error={session.error} retry={() => void session.refetch()} />,
     );
   if (!session.data)
     return themed(
       <Suspense fallback={<Loading />}>
         <Login />
-      </Suspense>
+      </Suspense>,
     );
   setCSRF(session.data.csrf);
-  const themeIcons = { system: Monitor, light: Sun, dark: Moon } as const;
-  const ThemeIcon = themeIcons[appearance];
+  const ThemeIcon = { system: Monitor, light: Sun, dark: Moon }[appearance];
   const tools = (
-    <div className="floating-tools" aria-label={t("appearance")}>
-      <span
-        className={"connection-dot " + (connected ? "online" : "")}
-        title={t(connected ? "connected" : "reconnecting")}
+    <HStack gap={2} vAlign="center">
+      <StatusDot
+        variant={connected ? "success" : "warning"}
+        label={t(connected ? "connected" : "reconnecting")}
+        tooltip={t(connected ? "connected" : "reconnecting")}
       />
-      <button
-        className="icon-button"
-        aria-label={t("appearance") + ": " + t(appearance)}
-        title={t("appearance") + ": " + t(appearance)}
+      <IconButton
+        label={t("appearance") + ": " + t(appearance)}
+        tooltip={t("appearance") + ": " + t(appearance)}
+        variant="ghost"
+        icon={<AstryxIcon icon={ThemeIcon} size="md" />}
         onClick={() =>
-          setMode(appearance === "system" ? "light" : appearance === "light" ? "dark" : "system")
+          setMode(
+            appearance === "system"
+              ? "light"
+              : appearance === "light"
+                ? "dark"
+                : "system",
+          )
         }
-      >
-        <ThemeIcon size={17} />
-      </button>
-    </div>
+      />
+    </HStack>
   );
   return themed(
-    <AppearanceTools.Provider value={tools}>
-      <Suspense fallback={<Loading />}>
-        <Outlet />
-      </Suspense>
-      <ScrollRestoration />
-      <Toaster position="top-center" richColors />
-    </AppearanceTools.Provider>
+    <AppearanceMode.Provider value={appearance}>
+      <LayoutEditingProvider>
+        <AppearanceTools.Provider value={tools}>
+          <Suspense fallback={<Loading />}>
+            <Outlet />
+          </Suspense>
+          <ScrollRestoration />
+          <Toaster position="top-center" richColors />
+        </AppearanceTools.Provider>
+      </LayoutEditingProvider>
+    </AppearanceMode.Provider>,
   );
 }
 function Brand() {
   return (
-    <Link className="brand" to="/">
+    <HStack gap={2} vAlign="center">
       <BrandIcon />
-      <strong>QuantBot</strong>
-    </Link>
+      <Text weight="semibold">QuantBot</Text>
+    </HStack>
   );
 }
 function Logout() {
   const { t } = useLanguage();
   return (
-    <button
-      className="icon-button"
-      aria-label={t("logout")}
+    <IconButton
+      variant="ghost"
+      label={t("logout")}
+      tooltip={t("logout")}
+      icon={<AstryxIcon icon={LogOut} size="md" />}
       onClick={() =>
         void api("/auth/logout", "POST")
           .then(() => client.clear())
           .then(() => location.reload())
       }
-    >
-      <LogOut size={18} />
-    </button>
+    />
   );
 }
 function Workbench() {
   const { t } = useLanguage();
+  const palette = usePalette();
+  const mode = useContext(AppearanceMode);
   const attention = useAttention();
   const tools = useContext(AppearanceTools);
   const query = useQuery(activeTheme);
@@ -208,177 +238,176 @@ function Workbench() {
   const identity = (theme?.id ?? "") + ":" + (theme?.revision ?? "");
   const fallback = !!query.error || (failed !== "" && failed === identity);
   const selected = fallback ? undefined : theme;
-  const antquant = fallback || !selected || selected.id === "classical";
+  const adaptedTheme = useMemo(
+    () => presentationTheme(appTheme(palette), selected),
+    [palette, selected],
+  );
   const onFailure = useCallback(() => setFailed(identity), [identity]);
   const full =
     location.pathname === "/" &&
     selected?.entryUrl &&
     !new URLSearchParams(location.search).has("classic");
   return (
-    <ThemeContext.Provider
-      value={fallback ? { cardView: "list" } : { ...selected?.presentation, portfolio: antquant }}
-    >
-      <div
-        className={"workbench-shell" + (antquant ? " antquant-workbench" : "")}
-        data-theme={selected?.id ?? "classical"}
-        data-theme-palette={selected && !selected.builtin ? "" : undefined}
-        data-theme-surface={selected?.presentation.surface}
-        style={themeStyle(selected)}
+    <AstryxTheme theme={adaptedTheme} mode={mode}>
+      <ThemeContext.Provider
+        value={
+          fallback
+            ? { cardView: "compact" }
+            : { ...selected?.presentation, portfolio: true }
+        }
       >
-        <header className="topbar">
-          <div className="container topbar-inner">
-            <Brand />
-            <nav aria-label={t("workbench")}>
-              {monitor.map(([path, label, Icon]) => {
-                const hasAlert = label === "alerts" && attention.count > 0;
-                return (
-                  <NavLink end={path === "/"} key={path} to={path}
-                    className={label === "alerts" ? "nav-alert-link" : undefined}
-                    title={t(label)} aria-label={t(label)}
-                    aria-describedby={hasAlert ? "nav-alert-count" : undefined}>
-                    <Icon size={18} />
-                    <span>{t(label)}</span>
-                    {hasAlert && <>
-                      <i className="nav-alert-badge" aria-hidden="true">{attention.count > 99 ? "99+" : attention.count}</i>
-                      <span className="sr-only" id="nav-alert-count">{t("attentionCount")}: {attention.count}</span>
-                    </>}
-                  </NavLink>
-                );
-              })}
-            </nav>
-            <div className="actions">
-              {antquant && tools}
-              <Link
-                className="admin-link"
-                to="/admin/settings"
-                aria-label={t("settings")}
-                title={t("settings")}
-              >
-                <Settings size={17} />
-                <span>{t("admin")}</span>
-              </Link>
-              <Logout />
-            </div>
-          </div>
-        </header>
-        <main className="container">
-          <RouteSurface>
-            {fallback && (
-              <p role="status" className="warning">
-                {t("themeFallback")}
-              </p>
-            )}
-            {full && selected ? (
-              <>
-                <Link className="button" to="/?classic=1">
-                  {t("themeHostView")}
-                </Link>
-                <ThemeFrame
-                  key={identity}
-                  theme={selected}
-                  onFailure={onFailure}
-                />
-              </>
-            ) : <Outlet context={attention} />}
-          </RouteSurface>
-        </main>
-        {!antquant && tools}
-      </div>
-    </ThemeContext.Provider>
+        <VStack
+          className="workbench-shell bg-cover bg-center min-h-screen"
+          data-theme={selected?.id ?? "classical"}
+          data-theme-palette={selected && !selected.builtin ? "" : undefined}
+          data-theme-surface={selected?.presentation.surface}
+          style={themeStyle(selected)}
+        >
+          <AppShell
+            height="auto"
+            variant="section"
+            mobileNav={{ breakpoint: "xl" }}
+            topNav={
+              <TopNav
+                label={t("workbench")}
+                heading={<Brand />}
+                startContent={monitor.map(([path, label, Icon]) => (
+                  <TopNavItem
+                    key={path}
+                    href={path}
+                    label={t(label)}
+                    icon={<AstryxIcon icon={Icon} size="md" />}
+                    isSelected={
+                      path === "/"
+                        ? location.pathname === "/"
+                        : location.pathname.startsWith(path)
+                    }
+                  >
+                    <HStack gap={2} vAlign="center">
+                      <Text type="label">{t(label)}</Text>
+                      {label === "alerts" && attention.count > 0 && (
+                        <Badge label={attention.count} variant="red" />
+                      )}
+                    </HStack>
+                  </TopNavItem>
+                ))}
+                endContent={
+                  <HStack gap={1} vAlign="center">
+                    {tools}
+                    <IconButton
+                      href="/admin/dashboard"
+                      label={t("admin")}
+                      tooltip={t("admin")}
+                      variant="ghost"
+                      icon={<AstryxIcon icon={Settings} size="md" />}
+                    />
+                    <Logout />
+                  </HStack>
+                }
+              />
+            }
+          >
+            <RouteSurface>
+              {fallback && (
+                <Banner status="warning" title={t("themeFallback")} />
+              )}
+              {full && selected ? (
+                <VStack gap={4}>
+                  <Button href="/?classic=1" label={t("themeHostView")} />
+                  <ThemeFrame
+                    key={identity}
+                    theme={selected}
+                    onFailure={onFailure}
+                  />
+                </VStack>
+              ) : (
+                <Outlet context={attention} />
+              )}
+            </RouteSurface>
+          </AppShell>
+        </VStack>
+      </ThemeContext.Provider>
+    </AstryxTheme>
   );
 }
 function AdminShell() {
   const { lang, t } = useLanguage();
   const tools = useContext(AppearanceTools);
-  const [open, setOpen] = useState(false);
   const location = useLocation();
-  useEffect(() => setOpen(false), [location.pathname]);
   return (
-    <div className="admin-shell">
-      <header className="mobile-admin-header">
-        <button
-          aria-label={t("menu")}
-          className="icon-button"
-          onClick={() => setOpen(true)}
+    <AppShell
+      height="auto"
+      variant="wash"
+      mobileNav={{ breakpoint: "md" }}
+      sideNav={
+        <SideNav
+          aria-label={t("admin")}
+          header={
+            <SideNavHeading
+              heading="QuantBot"
+              subheading={t("admin")}
+              icon={<BrandIcon />}
+            />
+          }
+          footer={
+            <VStack gap={3} padding={3}>
+              <Button
+                href="/"
+                label={t("return")}
+                icon={<AstryxIcon icon={ArrowLeft} size="sm" />}
+                variant="ghost"
+              />
+              <HStack hAlign="between" vAlign="center">
+                <Text type="supporting">v{version}</Text>
+                {tools}
+                <Logout />
+              </HStack>
+            </VStack>
+          }
         >
-          <Menu />
-        </button>
-        <Brand />
-        <Logout />
-      </header>
-      {open && (
-        <button
-          className="drawer-backdrop"
-          aria-label={t("close")}
-          onClick={() => setOpen(false)}
-        />
-      )}
-      <aside className={"sidebar " + (open ? "open" : "")}>
-        <div className="sidebar-brand">
-          <Brand />
-          <button
-            className="mobile-close icon-button"
-            aria-label={t("close")}
-            onClick={() => setOpen(false)}
-          >
-            <X />
-          </button>
-        </div>
-        <nav>
           {management.map(([heading, links]) => (
-            <div className="nav-group" key={heading}>
-              {heading && (
-                <small>
-                  {lang === "zh"
-                    ? heading
-                    : {
-                        管理: "Management",
-                        外观: "Appearance",
-                        系统: "System",
-                      }[heading]}
-                </small>
-              )}
+            <SideNavSection
+              key={heading}
+              title={
+                lang === "zh"
+                  ? heading
+                  : { 总览: "Overview", 管理: "Management", 系统: "System" }[
+                      heading
+                    ]
+              }
+            >
               {links.map(([path, label, Icon]) => (
-                <NavLink key={path} to={"/admin/" + path}>
-                  <Icon size={18} />
-                  {t(label as Message)}
-                </NavLink>
+                <SideNavItem
+                  key={path}
+                  href={"/admin/" + path}
+                  label={t(label)}
+                  icon={<AstryxIcon icon={Icon} size="md" />}
+                  isSelected={location.pathname === "/admin/" + path}
+                />
               ))}
-            </div>
+            </SideNavSection>
           ))}
-        </nav>
-        <footer>
-          <Link to="/">
-            <ArrowLeft size={16} />
-            {t("return")}
-          </Link>
-          <span className="muted">QuantBot {version}</span>
-        </footer>
-      </aside>
-      <main className="admin-main">
-        <RouteSurface><Outlet /></RouteSurface>
-      </main>
-      {tools}
-    </div>
+        </SideNav>
+      }
+    >
+      <RouteSurface>
+        <Outlet />
+      </RouteSurface>
+    </AppShell>
   );
 }
 function NotFound() {
   return (
-    <div className="empty-state">
-      <h1>404</h1>
-      <Link to="/">QuantBot</Link>
-    </div>
+    <EmptyState title="404" actions={<Button href="/" label="QuantBot" />} />
   );
 }
 function RouteSurface({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation();
-  return <div className="route-surface">
-    <div className={"route-frame" + (typeof document.startViewTransition === "function" ? "" : " route-fade-fallback")} key={pathname}>
+  return (
+    <VStack className="route-surface   min-w-0">
       <Suspense fallback={<Loading />}>{children}</Suspense>
-    </div>
-  </div>;
+    </VStack>
+  );
 }
-
 export function Page({
   title,
   actions,
@@ -389,12 +418,32 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <VStack className="page-layout">
-      <header className="page-header">
-        <Heading level={1} weight="semibold">{title}</Heading>
-        {actions && <div className="actions">{actions}</div>}
-      </header>
-      <VStack className="page-body">{children}</VStack>
+    <VStack
+      gap={6}
+      width="100%"
+      maxWidth={1560}
+      className="page-layout   mx-auto   min-w-0   px-4   py-6   md:px-8   md:py-8"
+    >
+      <HStack
+        as="header"
+        className="page-header"
+        hAlign="between"
+        vAlign="center"
+        wrap="wrap"
+        gap={4}
+      >
+        <Heading level={1} weight="semibold">
+          {title}
+        </Heading>
+        {actions && (
+          <HStack gap={2} wrap="wrap" vAlign="center">
+            {actions}
+          </HStack>
+        )}
+      </HStack>
+      <VStack gap={6} className="page-body   min-w-0">
+        {children}
+      </VStack>
     </VStack>
   );
 }
@@ -406,14 +455,50 @@ const router = createBrowserRouter([
       {
         element: <Workbench />,
         children: [
-          { index: true, lazy: async () => ({ Component: (await import("./home")).Home }) },
-          { path: "strategies", lazy: async () => ({ Component: (await import("./home")).Home }) },
-          { path: "strategies/:id", lazy: async () => ({ Component: (await import("./strategy")).StrategyDetail }) },
-          { path: "controls", lazy: async () => ({ Component: (await import("./strategy")).AllControls }) },
-          { path: "hosts", lazy: async () => ({ Component: (await import("./hosts")).HostsPage }) },
-          { path: "hosts/:id", lazy: async () => ({ Component: (await import("./hosts")).HostDetailPage }) },
-          { path: "activity", lazy: async () => ({ Component: (await import("./activity")).ActivityPage }) },
-          { path: "alerts", lazy: async () => ({ Component: (await import("./activity")).AlertsPage }) },
+          {
+            index: true,
+            lazy: async () => ({ Component: (await import("./home")).Home }),
+          },
+          {
+            path: "strategies",
+            lazy: async () => ({ Component: (await import("./home")).Home }),
+          },
+          {
+            path: "strategies/:id",
+            lazy: async () => ({
+              Component: (await import("./strategy")).StrategyDetail,
+            }),
+          },
+          {
+            path: "controls",
+            lazy: async () => ({
+              Component: (await import("./strategy")).AllControls,
+            }),
+          },
+          {
+            path: "hosts",
+            lazy: async () => ({
+              Component: (await import("./hosts")).HostsPage,
+            }),
+          },
+          {
+            path: "hosts/:id",
+            lazy: async () => ({
+              Component: (await import("./hosts")).HostDetailPage,
+            }),
+          },
+          {
+            path: "activity",
+            lazy: async () => ({
+              Component: (await import("./activity")).ActivityPage,
+            }),
+          },
+          {
+            path: "alerts",
+            lazy: async () => ({
+              Component: (await import("./activity")).AlertsPage,
+            }),
+          },
         ],
       },
       {
@@ -421,14 +506,52 @@ const router = createBrowserRouter([
         element: <AdminShell />,
         children: [
           { index: true, element: <Navigate to="dashboard" replace /> },
-          { path: "dashboard", lazy: async () => ({ Component: (await import("../admin/pages")).AdminDashboard }) },
-          { path: "notifications", lazy: async () => ({ Component: (await import("../admin/notifications")).default }) },
-          { path: "themes", element: <Navigate to="/admin/settings" replace /> },
-          { path: "strategies", lazy: async () => ({ Component: (await import("../admin/pages")).AdminStrategies }) },
-          { path: "audit", lazy: async () => ({ Component: (await import("../admin/pages")).Audit }) },
-          { path: "security", lazy: async () => ({ Component: (await import("../admin/pages")).Security }) },
-          { path: "storage", lazy: async () => ({ Component: (await import("../admin/system")).Storage }) },
-          { path: "settings", lazy: async () => ({ Component: (await import("../admin/system")).Settings }) },
+          {
+            path: "dashboard",
+            lazy: async () => ({
+              Component: (await import("../admin/pages")).AdminDashboard,
+            }),
+          },
+          {
+            path: "notifications",
+            lazy: async () => ({
+              Component: (await import("../admin/notifications")).default,
+            }),
+          },
+          {
+            path: "themes",
+            element: <Navigate to="/admin/settings" replace />,
+          },
+          {
+            path: "strategies",
+            lazy: async () => ({
+              Component: (await import("../admin/pages")).AdminStrategies,
+            }),
+          },
+          {
+            path: "audit",
+            lazy: async () => ({
+              Component: (await import("../admin/pages")).Audit,
+            }),
+          },
+          {
+            path: "security",
+            lazy: async () => ({
+              Component: (await import("../admin/pages")).Security,
+            }),
+          },
+          {
+            path: "storage",
+            lazy: async () => ({
+              Component: (await import("../admin/system")).Storage,
+            }),
+          },
+          {
+            path: "settings",
+            lazy: async () => ({
+              Component: (await import("../admin/system")).Settings,
+            }),
+          },
         ],
       },
       { path: "*", element: <NotFound /> },

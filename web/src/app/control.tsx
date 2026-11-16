@@ -1,3 +1,13 @@
+import { Icon as AstryxIcon } from "@astryxdesign/core/Icon";
+import { useLayoutEditing } from "../shared/layout-editing";
+import { Selector } from "@astryxdesign/core/Selector";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { MultiSelector } from "@astryxdesign/core/MultiSelector";
+import { Card } from "@astryxdesign/core/Card";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Text } from "@astryxdesign/core/Text";
 import { CommandProgress } from "../components/command-progress";
 import { useEffect, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
@@ -22,8 +32,15 @@ import { useDisplay } from "../shared/display";
 import { useLanguage } from "../shared/i18n";
 
 function submitPendingGuard(command: Command | undefined, control: Control) {
-  const status = control.desired?.commandId === command?.id ? control.desired?.status : command?.status;
-  return status === "unknown" || control.desired?.status === "unknown" || !!(status && activeStates.includes(status));
+  const status =
+    control.desired?.commandId === command?.id
+      ? control.desired?.status
+      : command?.status;
+  return (
+    status === "unknown" ||
+    control.desired?.status === "unknown" ||
+    !!(status && activeStates.includes(status))
+  );
 }
 export function ControlPanel({
   strategyId,
@@ -45,8 +62,18 @@ export function ControlPanel({
     (control) => !exclude?.has(control.id),
   );
   return (
-    <div className="controls-grid">
-      {!controls.length && <p className="empty-inline">{t("noControls")}</p>}
+    <VStack
+      gap={3}
+      className={
+        "controls-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4" +
+        "   grid"
+      }
+    >
+      {!controls.length && (
+        <Text as="p" className="empty-inline text-secondary text-center p-6">
+          {t("noControls")}
+        </Text>
+      )}
       {controls.map((control) => (
         <ControlCard
           key={control.id}
@@ -56,7 +83,7 @@ export function ControlPanel({
           editing={editing}
         />
       ))}
-    </div>
+    </VStack>
   );
 }
 export function ControlCard({
@@ -74,6 +101,7 @@ export function ControlCard({
 }) {
   const { t } = useLanguage();
   const display = useDisplay();
+  const { editing: layoutEditing } = useLayoutEditing();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState<unknown>(
     editValue(control, control.actual?.value),
@@ -86,9 +114,11 @@ export function ControlCard({
     control.kind === "status" ||
     control.kind === "metricDisplay";
   // Render declared parameters in the widget itself; preserve trusted command confirmation.
-  const inlineParameter = embedded && control.capability?.kind === "parameter" && !readOnly;
+  const inlineParameter =
+    embedded && control.capability?.kind === "parameter" && !readOnly;
   const blocked =
     editing ||
+    layoutEditing ||
     submitPendingGuard(command, control) ||
     readOnly ||
     !registry.current ||
@@ -129,126 +159,189 @@ export function ControlCard({
     },
   });
   return (
-    <article className="control-card">
-      {(!embedded || control.risk) && (
-        <header>
-          {!embedded && <h3>{control.title}</h3>}
-          {control.risk && (
-            <Badge
-              tone={
-                ["high", "critical"].includes(control.risk) ? "warning" : ""
-              }
-            >
-              {display.risk(control.risk)}
-            </Badge>
-          )}
-        </header>
-      )}
-      {control.description && <p className="muted">{control.description}</p>}
-      <dl className="control-values">
-        <dt>{t("actual")}</dt>
-        <dd>{display.value(control.actual?.value, control)}</dd>
-        <dt>{t("desired")}</dt>
-        <dd>{display.value(control.desired?.value, control)}</dd>
-      </dl>
-      {control.actual?.reason && (
-        <p className="warning">{control.actual.reason}</p>
-      )}
-      {control.desired && <CommandProgress desired={control.desired} />}
-      {inlineParameter && (
-        <fieldset className="qb-inline-parameter" disabled={blocked}>
-          <ControlInput definition={control} value={value} disabled={blocked} onChange={setValue} />
-        </fieldset>
-      )}
-      {!readOnly && (
-        <button
-          disabled={blocked}
-          onClick={() => {
-            if (!inlineParameter) setValue(
-              editValue(
-                control,
-                control.capability?.kind === "action"
-                  ? undefined
-                  : control.actual?.value,
-              ),
-            );
-            setInputError(false);
-            setKey(crypto.randomUUID());
-            setCommand(undefined);
-            submit.reset();
-            confirm.reset();
-            setOpen(true);
-          }}
-        >
-          {inlineParameter ? t("confirm") : t("execute")}
-          <ArrowUpRight size={15} />
-        </button>
-      )}
-      {!registry.current && <small className="muted">{t("unavailable")}</small>}
-      <Modal
-        title={control.title}
-        purpose="form"
-        open={open}
-        onOpenChange={(value) => {
-          if (!submit.isPending && !confirm.isPending) setOpen(value);
-        }}
-      >
-        {command?.status === "confirmation_required" ? (
-          <>
-            <p className="warning">
-              <AlertTriangle size={18} />
-              {t("confirmationRequired")}
-            </p>
-            <p>{t("confirmHint")}</p>
-            <dl className="compact-dl">
-              <dt>{t("strategy")}</dt>
-              <dd>{strategyId}</dd>
-              <dt>{t("desired")}</dt>
-              <dd>{display.value(command.input, control)}</dd>
-            </dl>
-            <Button label={t("confirm")} variant="primary" isLoading={confirm.isPending} onClick={() => confirm.mutate()} />
-          </>
-        ) : (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (submit.isPending) return;
-              try {
-                const input = submittedValue(control, value);
-                setInputError(false);
-                submit.mutate(input);
-              } catch {
-                setInputError(true);
-              }
-            }}
-          >
-            {control.description && <p>{control.description}</p>}
+    <Card
+      padding={embedded ? 0 : 4}
+      variant={embedded ? "transparent" : "default"}
+    >
+      <VStack as="article" className="control-card h-full" gap={4}>
+        {(!embedded || control.risk) && (
+          <HStack as="header" gap={2} hAlign="between" vAlign="center">
+            {!embedded && <Heading level={3}>{control.title}</Heading>}
+            {control.risk && (
+              <Badge
+                tone={
+                  ["high", "critical"].includes(control.risk) ? "warning" : ""
+                }
+              >
+                {display.risk(control.risk)}
+              </Badge>
+            )}
+          </HStack>
+        )}
+        {control.description && (
+          <Text as="p" className="muted text-secondary">
+            {control.description}
+          </Text>
+        )}
+        <dl className="control-values grid grid-cols-2 gap-x-4 gap-y-2 tabular-nums">
+          <dt>
+            <Text type="supporting">{t("actual")}</Text>
+          </dt>
+          <dd className="m-0">
+            <Text hasTabularNumbers>
+              {display.value(control.actual?.value, control)}
+            </Text>
+          </dd>
+          <dt>
+            <Text type="supporting">{t("desired")}</Text>
+          </dt>
+          <dd className="m-0">
+            <Text hasTabularNumbers>
+              {display.value(control.desired?.value, control)}
+            </Text>
+          </dd>
+        </dl>
+        {control.actual?.reason && (
+          <Text as="p" className="warning text-warning">
+            {control.actual.reason}
+          </Text>
+        )}
+        {control.desired && <CommandProgress desired={control.desired} />}
+        {inlineParameter && (
+          <fieldset className="qb-inline-parameter" disabled={blocked}>
             <ControlInput
               definition={control}
               value={value}
+              disabled={blocked}
               onChange={setValue}
             />
-            {inputError && (
-              <span className="error-text" role="alert">
-                {t("invalidJSON")}
-              </span>
-            )}
-            {control.capability?.unit && (
-              <small className="muted">{control.capability.unit}</small>
-            )}
-            <div className="dialog-actions">
-              <Button label={t("cancel")} isDisabled={submit.isPending} onClick={() => setOpen(false)} />
-              <Button type="submit" label={t("execute")} variant="primary" isLoading={submit.isPending} />
-            </div>
-          </form>
+          </fieldset>
         )}
-        {(submit.error || confirm.error) && (
-          <p className="error-text" role="alert">
-            {(submit.error || confirm.error)?.message}
-          </p>
+        {!readOnly && (
+          <Button
+            label={inlineParameter ? t("confirm") : t("execute")}
+            endContent={<AstryxIcon icon={ArrowUpRight} size="sm" />}
+            isDisabled={blocked}
+            onClick={() => {
+              if (!inlineParameter)
+                setValue(
+                  editValue(
+                    control,
+                    control.capability?.kind === "action"
+                      ? undefined
+                      : control.actual?.value,
+                  ),
+                );
+              setInputError(false);
+              setKey(crypto.randomUUID());
+              setCommand(undefined);
+              submit.reset();
+              confirm.reset();
+              setOpen(true);
+            }}
+          ></Button>
         )}
-      </Modal>
-    </article>
+        {!registry.current && (
+          <Text type="supporting" className="muted text-secondary">
+            {t("unavailable")}
+          </Text>
+        )}
+        <Modal
+          title={control.title}
+          purpose="form"
+          open={open}
+          onOpenChange={(value) => {
+            if (!submit.isPending && !confirm.isPending) setOpen(value);
+          }}
+        >
+          {command?.status === "confirmation_required" ? (
+            <>
+              <Text as="p" className="warning text-warning">
+                <AstryxIcon icon={AlertTriangle} size="md" />
+                {t("confirmationRequired")}
+              </Text>
+              <Text as="p">{t("confirmHint")}</Text>
+              <dl className="compact-dl grid grid-cols-2 gap-x-4 gap-y-2 tabular-nums">
+                <dt>
+                  <Text type="supporting">{t("strategy")}</Text>
+                </dt>
+                <dd className="m-0">
+                  <Text hasTabularNumbers>{strategyId}</Text>
+                </dd>
+                <dt>
+                  <Text type="supporting">{t("desired")}</Text>
+                </dt>
+                <dd className="m-0">
+                  <Text hasTabularNumbers>
+                    {display.value(command.input, control)}
+                  </Text>
+                </dd>
+              </dl>
+              <Button
+                label={t("confirm")}
+                variant="primary"
+                isLoading={confirm.isPending}
+                onClick={() => confirm.mutate()}
+              />
+            </>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (submit.isPending) return;
+                try {
+                  const input = submittedValue(control, value);
+                  setInputError(false);
+                  submit.mutate(input);
+                } catch {
+                  setInputError(true);
+                }
+              }}
+            >
+              {control.description && <Text as="p">{control.description}</Text>}
+              <ControlInput
+                definition={control}
+                value={value}
+                onChange={setValue}
+              />
+              {inputError && (
+                <Text className="error-text text-error" role="alert">
+                  {t("invalidJSON")}
+                </Text>
+              )}
+              {control.capability?.unit && (
+                <Text type="supporting" className="muted text-secondary">
+                  {control.capability.unit}
+                </Text>
+              )}
+              <HStack
+                gap={3}
+                wrap="wrap"
+                vAlign="center"
+                className="dialog-actions flex flex-wrap items-center justify-end gap-2"
+              >
+                <Button
+                  label={t("cancel")}
+                  isDisabled={submit.isPending}
+                  onClick={() => setOpen(false)}
+                />
+                <Button
+                  type="submit"
+                  label={t("execute")}
+                  variant="primary"
+                  isLoading={submit.isPending}
+                />
+              </HStack>
+            </form>
+          )}
+          {(submit.error || confirm.error) && (
+            <Text as="p" className="error-text text-error" role="alert">
+              {(submit.error || confirm.error)?.message}
+            </Text>
+          )}
+        </Modal>
+      </VStack>
+    </Card>
   );
 }
 function usesJSONInput(definition: Definition) {
@@ -328,28 +421,56 @@ function ControlInput({
   if (d.kind === "button") return null;
   if (usesJSONInput(d)) {
     return (
-      <label>
+      <VStack gap={2}>
         {d.capability?.kind === "parameter" ? d.title : t("commandInput")}
-        <textarea
+        <TextArea
+          label={
+            d.capability?.kind === "parameter" ? d.title : t("commandInput")
+          }
+          isDisabled={disabled}
           rows={6}
           value={String(value)}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => onChange(event)}
         />
-      </label>
+      </VStack>
     );
   }
   if (d.kind === "toggle") {
-    return <Switch label={d.title} labelPosition="start" labelSpacing="spread" width="100%"
-      value={value === true} isDisabled={disabled} onChange={onChange} />;
+    return (
+      <Switch
+        label={d.title}
+        labelPosition="start"
+        labelSpacing="spread"
+        width="100%"
+        value={value === true}
+        isDisabled={disabled}
+        onChange={onChange}
+      />
+    );
   }
   if (d.kind === "slider") {
     const min = Number(d.min ?? 0);
     const max = Number(d.max ?? 100);
     const current = value == null || value === "" ? min : Number(value);
-    if (Number.isFinite(min) && Number.isFinite(max) && min < max && Number.isFinite(current)) {
-      return <Slider label={d.title} min={min} max={max} step={Number(d.step ?? 1)} width="100%"
-        value={Math.min(max, Math.max(min, current))} valueDisplay="text" isDisabled={disabled}
-        onChange={(next: number) => onChange(String(next))} />;
+    if (
+      Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      min < max &&
+      Number.isFinite(current)
+    ) {
+      return (
+        <Slider
+          label={d.title}
+          min={min}
+          max={max}
+          step={Number(d.step ?? 1)}
+          width="100%"
+          value={Math.min(max, Math.max(min, current))}
+          valueDisplay="text"
+          isDisabled={disabled}
+          onChange={(next: number) => onChange(String(next))}
+        />
+      );
     }
   }
   if (d.kind === "form")
@@ -371,45 +492,39 @@ function ControlInput({
         ))}
       </VStack>
     );
-  if (d.kind === "select" || d.kind === "multiSelect")
-    return (
-      <label>
-        {d.title}
-        <select
-          multiple={d.kind === "multiSelect"}
-          value={value as string | string[]}
-          onChange={(e) =>
-            onChange(
-              d.kind === "multiSelect"
-                ? Array.from(e.target.selectedOptions, (option) => option.value)
-                : e.target.value,
-            )
-          }
-        >
-          {d.options?.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
+  if (d.kind === "select" || d.kind === "multiSelect") {
+    const options = d.options ?? [];
+    return d.kind === "multiSelect" ? (
+      <MultiSelector
+        label={d.title}
+        options={options}
+        value={Array.isArray(value) ? (value as string[]) : []}
+        onChange={onChange}
+        isDisabled={disabled}
+      />
+    ) : (
+      <Selector
+        label={d.title}
+        options={options}
+        value={String(value ?? "")}
+        onChange={onChange}
+        isDisabled={disabled}
+      />
     );
+  }
   // Keep decimals as strings through the entire control request.
   return (
-    <label>
+    <VStack gap={2}>
       {d.title}
-      <input
-        required
+      <TextInput
+        label={d.title}
+        isDisabled={disabled}
         type="text"
         inputMode={d.kind === "textInput" ? "text" : "decimal"}
-        min={d.min}
-        max={d.max}
-        step={d.step}
-        maxLength={d.maxLength || 4096}
         value={String(value ?? "")}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(e.slice(0, d.maxLength || 4096))}
       />
-    </label>
+    </VStack>
   );
 }
 export function CommandDialog({
@@ -452,42 +567,59 @@ export function CommandDialog({
         <ErrorView error={query.error} />
       ) : (
         <>
-          <p>
-            <strong>{query.data.controlId}</strong>{" "}
+          <Text as="p">
+            <Text weight="semibold">{query.data.controlId}</Text>{" "}
             <Badge>{t(query.data.status as "pending")}</Badge>
-          </p>
-          <dl className="compact-dl">
-            <dt>{t("desired")}</dt>
-            <dd>{display.value(query.data.input)}</dd>
-            <dt>ID</dt>
-            <dd>{query.data.id}</dd>
+          </Text>
+          <dl className="compact-dl grid grid-cols-2 gap-x-4 gap-y-2 tabular-nums">
+            <dt>
+              <Text type="supporting">{t("desired")}</Text>
+            </dt>
+            <dd className="m-0">
+              <Text hasTabularNumbers>{display.value(query.data.input)}</Text>
+            </dd>
+            <dt>
+              <Text type="supporting">ID</Text>
+            </dt>
+            <dd className="m-0">
+              <Text hasTabularNumbers>{query.data.id}</Text>
+            </dd>
           </dl>
           <ol className="timeline">
             {query.data.transitions?.map((entry, i) => (
               <li key={i}>
-                <strong>{t(entry.status as "pending")}</strong>
-                <time>{new Date(entry.at).toLocaleTimeString()}</time>
-                <p>{display.reason(entry.reason)}</p>
+                <Text weight="semibold">{t(entry.status as "pending")}</Text>
+                <time>
+                  <Text type="supporting">
+                    {new Date(entry.at).toLocaleTimeString()}
+                  </Text>
+                </time>
+                <Text as="p">{display.reason(entry.reason)}</Text>
               </li>
             ))}
           </ol>
           {query.data.receipt && (
-            <p>{query.data.receipt.message ?? t(query.data.receipt.status as "succeeded")}</p>
+            <Text as="p">
+              {query.data.receipt.message ??
+                t(query.data.receipt.status as "succeeded")}
+            </Text>
           )}
           {query.data.status === "confirmation_required" && (
-            <button
+            <Button
+              label={t("confirm")}
+              variant="primary"
               className="primary"
               onClick={() => action.mutate("confirm")}
             >
               {t("confirm")}
-            </button>
+            </Button>
           )}
           {["confirmation_required", "pending", "accepted"].includes(
             query.data.status,
           ) && (
-            <button onClick={() => action.mutate("cancel")}>
+            <Button label={t("cancel")} onClick={() => action.mutate("cancel")}>
               {t("cancel")}
-            </button>
+            </Button>
           )}
           {query.data.status === "unknown" && (
             <form
@@ -496,33 +628,46 @@ export function CommandDialog({
                 action.mutate("reconcile");
               }}
             >
-              <label>
+              <VStack gap={2}>
                 {t("reconcile")}
-                <select
-                  value={outcome}
-                  onChange={(e) => setOutcome(e.target.value)}
-                >
-                  <option value="succeeded">{t("succeeded")}</option>
-                  <option value="failed">{t("failed")}</option>
-                </select>
-              </label>
-              <label>
-                {t("note")}
-                <textarea
-                  required
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
+                <Selector
+                  label={t("status")}
+                  isLabelHidden
+                  value={String(outcome)}
+                  onChange={(e) => setOutcome(e)}
+                  options={[
+                    {
+                      value: String("succeeded"),
+                      label: String(t("succeeded")),
+                    },
+                    { value: String("failed"), label: String(t("failed")) },
+                  ]}
                 />
-              </label>
-              <button disabled={action.isPending}>{t("save")}</button>
+              </VStack>
+              <VStack gap={2}>
+                {t("note")}
+                <TextArea
+                  label={t("note")}
+                  isLabelHidden
+                  value={note}
+                  onChange={(e) => setNote(e)}
+                />
+              </VStack>
+              <Button
+                label={t("save")}
+                type="submit"
+                isDisabled={action.isPending}
+              >
+                {t("save")}
+              </Button>
             </form>
           )}
         </>
       )}
       {action.error && (
-        <p role="alert" className="error-text">
+        <Text as="p" role="alert" className="error-text text-error">
           {action.error.message}
-        </p>
+        </Text>
       )}
     </Modal>
   );
