@@ -1,7 +1,3 @@
-import { HStack } from "@astryxdesign/core/HStack";
-import { VStack } from "@astryxdesign/core/VStack";
-import { Text } from "@astryxdesign/core/Text";
-import { Button } from "@astryxdesign/core/Button";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { resource, type CapabilityRecord } from "../shared/api";
@@ -23,15 +19,14 @@ export function RelatedRecords({
       {Object.entries(associations ?? {})
         .filter(([, value]) => typeof value === "string")
         .map(([field, value]) => (
-          <Button
-            label={display.field(field) + " " + value}
+          <button
             type="button"
             className="text-button"
             key={field}
             onClick={() => setSelected([field, value])}
           >
             {display.field(field)} {value}
-          </Button>
+          </button>
         ))}
       {selected && (
         <RelatedDialog
@@ -78,52 +73,33 @@ function RelatedDialog({
         if (!open) close();
       }}
     >
-      <Text as="p">
+      <p>
         <code>
-          <Text type="code">
-            {display.field(field)} {value}
-          </Text>
+          {display.field(field)} {value}
         </code>
-      </Text>
+      </p>
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
         <ErrorView error={query.error} />
       ) : (
-        <VStack
-          gap={3}
-          className="surface bg-surface border border-border rounded-lg"
-        >
+        <div className="surface">
           {query.data.map((row) => (
-            <HStack
-              gap={3}
-              wrap="wrap"
-              vAlign="center"
+            <div
               className="event-line"
               key={[row.capabilityId ?? row.kind, row.id, row.revision].join(
                 ":",
               )}
             >
-              <time>
-                <Text type="supporting">{timestamp(row.observedAt)}</Text>
-              </time>
-              <Text>
-                <Text weight="semibold">
-                  {row.capabilityId ?? display.kind(row.kind ?? "")}
-                </Text>{" "}
-                · {display.value(row.value)}
-              </Text>
-            </HStack>
+              <time>{timestamp(row.observedAt)}</time>
+              <span>
+                <strong>{row.capabilityId ?? display.kind(row.kind ?? "")}</strong> ·{" "}
+                {display.value(row.value)}
+              </span>
+            </div>
           ))}
-          {!query.data.length && (
-            <Text
-              as="p"
-              className="empty-inline text-secondary text-center p-6"
-            >
-              {t("missing")}
-            </Text>
-          )}
-        </VStack>
+          {!query.data.length && <p className="empty-inline">{t("missing")}</p>}
+        </div>
       )}
     </Modal>
   );

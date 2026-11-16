@@ -1,8 +1,3 @@
-import { Icon as AstryxIcon } from "@astryxdesign/core/Icon";
-import { TextInput } from "@astryxdesign/core/TextInput";
-import { Selector } from "@astryxdesign/core/Selector";
-import { Text } from "@astryxdesign/core/Text";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Card } from "@astryxdesign/core/Card";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Grid } from "@astryxdesign/core/Grid";
@@ -18,176 +13,66 @@ import { useLanguage, type Message } from "../shared/i18n";
 import { ErrorView, Loading } from "../shared/ui";
 import { Page } from "./App";
 import {
-  HostMetricsGrid,
-  hostsQuery,
-  ProcessMetricsGrid,
-  ResourceChart,
-  SampleStatus,
-  hostTrendAvailable,
-  useResourceFormat,
-  type Host,
-  type HostMetrics,
-  type HostProcess,
-  type Reading,
-  type Resources,
+  HostMetricsGrid, hostsQuery, ProcessMetricsGrid, ResourceChart, SampleStatus,
+  hostTrendAvailable, useResourceFormat, type Host, type HostMetrics, type HostProcess, type Reading, type Resources,
 } from "../components/host-performance";
 
-type HostDetail = Host & {
-  members: HostProcess[];
-  history: Reading<HostMetrics>[];
-};
+type HostDetail = Host & { members: HostProcess[]; history: Reading<HostMetrics>[] };
 
 export function HostsPage() {
   const { t } = useLanguage();
   const query = useQuery(hostsQuery);
-  return (
-    <Page title={t("hosts")}>
-      {query.isPending ? (
-        <Loading />
-      ) : query.error ? (
-        <ErrorView error={query.error} retry={() => void query.refetch()} />
-      ) : !query.data.length ? (
-        <EmptyState
-          title={t("hosts")}
-          headingLevel={2}
-          description={t("noHosts")}
-          icon={<AstryxIcon icon={Server} size="lg" />}
-        />
-      ) : (
-        <Grid columns={{ minWidth: 249, repeat: "fit" }} gap={4}>
-          {query.data.map((host) => (
-            <Card key={host.id} padding={4}>
-              <VStack as="article" className="performance-host min-w-0" gap={3}>
-                <header className="performance-process-heading">
-                  <Link
-                    className="performance-link text-accent hover:underline"
-                    to={"/hosts/" + host.id}
-                  >
-                    <Heading level={2}>{host.name}</Heading>
-                    <AstryxIcon icon={ArrowUpRight} size="sm" />
-                  </Link>
-                </header>
-                <HostMetricsGrid host={host} compact />
-                <SampleStatus latest={host.latest} stale={host.stale} />
-              </VStack>
-            </Card>
-          ))}
-        </Grid>
-      )}
-    </Page>
-  );
+  return <Page title={t("hosts")}>
+    {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} retry={() => void query.refetch()} /> :
+      !query.data.length ? <EmptyState title={t("hosts")} headingLevel={2} description={t("noHosts")} icon={<Server size={24} />} /> :
+      <Grid columns={{ minWidth: 249, repeat: "fit" }} gap={4}>{query.data.map(host => <Card key={host.id} padding={4}><VStack as="article" className="performance-host" gap={3}>
+        <header className="performance-process-heading">
+          <Link className="performance-link" to={"/hosts/" + host.id}><Heading level={2}>{host.name}</Heading><ArrowUpRight size={16} /></Link>
+        </header>
+        <HostMetricsGrid host={host} compact />
+        <SampleStatus latest={host.latest} stale={host.stale} />
+      </VStack></Card>)}</Grid>}
+  </Page>;
 }
 
 const hostCPU = (m: HostMetrics) => m.cpu_usage_percent;
-const hostMemory = (m: HostMetrics) =>
-  m.memory_available_bytes == null
-    ? undefined
-    : m.memory_available_bytes / 1024 ** 3;
+const hostMemory = (m: HostMetrics) => m.memory_available_bytes == null ? undefined : m.memory_available_bytes / 1024 ** 3;
 const gib = 1024 ** 3;
 
 export function HostDetailPage() {
   const { id = "" } = useParams();
   const { t } = useLanguage();
-  const query = useQuery({
-    ...resource<HostDetail>("/hosts/" + id),
-    refetchInterval: 15_000,
-  });
-  return (
-    <Page
-      title={query.data?.name ?? t("hosts")}
-      actions={
-        <Link
-          className="inline-flex items-center gap-2 rounded-lg bg-muted px-4 py-2"
-          to="/hosts"
-        >
-          <AstryxIcon icon={ArrowLeft} size="sm" />
-          {t("hosts")}
-        </Link>
-      }
-    >
-      {query.isPending ? (
-        <Loading />
-      ) : query.error ? (
-        <ErrorView error={query.error} retry={() => void query.refetch()} />
-      ) : (
-        <>
-          <Card padding={4}>
-            <VStack as="section" className="performance-host min-w-0" gap={3}>
-              <header className="performance-process-heading">
-                <SampleStatus
-                  latest={query.data.latest}
-                  stale={query.data.stale}
-                />
-              </header>
-              <HostMetricsGrid host={query.data} />
-            </VStack>
-          </Card>
-          <CapacityPlanner key={id} host={query.data} />
-          <HostTrends history={query.data.history} />
-          <VStack
-            as="section"
-            gap={4}
-            className="section flex flex-col gap-4 min-w-0"
-          >
-            <HStack
-              gap={3}
-              wrap="wrap"
-              vAlign="center"
-              hAlign="between"
-              className="section-heading"
-            >
-              <Heading level={2}>{t("hostProcesses")}</Heading>
-            </HStack>
-            {!query.data.members.length ? (
-              <Text
-                as="p"
-                className="surface bg-surface border border-border rounded-lg   empty-inline text-secondary text-center p-6"
-              >
-                {t("noHostBinding")}
-              </Text>
-            ) : (
-              <VStack
-                gap={3}
-                className={
-                  "hosts-grid grid grid-cols-1 lg:grid-cols-2 gap-4" + "   grid"
-                }
-              >
-                {query.data.members.map((process) => (
-                  <article
-                    className="surface bg-surface border border-border rounded-lg   padded p-5   performance-process min-w-0"
-                    key={processKey(process)}
-                  >
-                    <HStack
-                      gap={3}
-                      wrap="wrap"
-                      vAlign="center"
-                      className="performance-process-heading"
-                    >
-                      <Link
-                        className="performance-link text-accent hover:underline"
-                        to={"/strategies/" + process.strategyId}
-                      >
-                        {process.strategyName}
-                      </Link>
-                      <Text type="supporting" className="muted text-secondary">
-                        {process.instanceId}
-                      </Text>
-                    </HStack>
-                    <ProcessMetricsGrid process={process} />
-                    <SampleStatus
-                      latest={process.latest}
-                      stale={process.stale}
-                    />
-                  </article>
-                ))}
-              </VStack>
-            )}
-          </VStack>
-          <HostSuggestions host={query.data} />
-        </>
-      )}
-    </Page>
-  );
+  const query = useQuery({ ...resource<HostDetail>("/hosts/" + id), refetchInterval: 15_000 });
+  return <Page title={query.data?.name ?? t("hosts")} actions={
+    <Link className="button" to="/hosts"><ArrowLeft size={16} />{t("hosts")}</Link>
+  }>
+    {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} retry={() => void query.refetch()} /> :
+      <>
+        <Card padding={4}><VStack as="section" className="performance-host" gap={3}>
+          <header className="performance-process-heading">
+            <SampleStatus latest={query.data.latest} stale={query.data.stale} />
+          </header>
+          <HostMetricsGrid host={query.data} />
+        </VStack></Card>
+        <CapacityPlanner key={id} host={query.data} />
+        <HostTrends history={query.data.history} />
+        <section className="section">
+          <div className="section-heading"><Heading level={2}>{t("hostProcesses")}</Heading></div>
+          {!query.data.members.length ? <p className="surface empty-inline">{t("noHostBinding")}</p> :
+            <div className="hosts-grid">{query.data.members.map(process =>
+              <article className="surface padded performance-process" key={processKey(process)}>
+                <div className="performance-process-heading">
+                  <Link className="performance-link" to={"/strategies/" + process.strategyId}>{process.strategyName}</Link>
+                  <small className="muted">{process.instanceId}</small>
+                </div>
+                <ProcessMetricsGrid process={process} />
+                <SampleStatus latest={process.latest} stale={process.stale} />
+              </article>
+            )}</div>}
+        </section>
+        <HostSuggestions host={query.data} />
+      </>}
+  </Page>;
 }
 
 function HostTrends({ history }: { history: Reading<HostMetrics>[] }) {
@@ -196,163 +81,55 @@ function HostTrends({ history }: { history: Reading<HostMetrics>[] }) {
   const cpu = hostTrendAvailable(history, hostCPU);
   const memory = hostTrendAvailable(history, hostMemory);
   if (!cpu && !memory) return null;
-  return (
-    <details
-      className="section flex flex-col gap-4 min-w-0   surface bg-surface border border-border rounded-lg   padded p-5   performance-details text-secondary"
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
-      <summary>{t("hostTrends")}</summary>
-      {open && (
-        <VStack
-          gap={3}
-          className="performance-trends grid grid-cols-1 lg:grid-cols-2 gap-4"
-        >
-          {cpu && (
-            <ResourceChart
-              readings={history}
-              select={hostCPU}
-              label={t("hostCPU") + " · %"}
-            />
-          )}
-          {memory && (
-            <ResourceChart
-              readings={history}
-              select={hostMemory}
-              label={t("availableMemory") + " · GiB"}
-            />
-          )}
-        </VStack>
-      )}
-    </details>
-  );
+  return <details className="section surface padded performance-details" onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>{t("hostTrends")}</summary>
+    {open && <div className="performance-trends">
+      {cpu && <ResourceChart readings={history} select={hostCPU} label={t("hostCPU") + " · %"} />}
+      {memory && <ResourceChart readings={history} select={hostMemory} label={t("availableMemory") + " · GiB"} />}
+    </div>}
+  </details>;
 }
 
-type Estimate = {
-  additional: number | null;
-  reason?: string;
-  bottleneck?: string;
-  budget?: Resources;
-  source?: string;
-};
+type Estimate = { additional: number | null; reason?: string; bottleneck?: string; budget?: Resources; source?: string };
 const reasons: Record<string, Message> = {
-  host_stale: "estimateHostStale",
-  host_metrics_missing: "estimateMissing",
-  swap_pressure: "estimateSwap",
-  process_stale: "estimateProcessStale",
-  process_metrics_missing: "estimateProcessMissing",
+  host_stale: "estimateHostStale", host_metrics_missing: "estimateMissing",
+  swap_pressure: "estimateSwap", process_stale: "estimateProcessStale", process_metrics_missing: "estimateProcessMissing",
 };
-function processKey(process: HostProcess) {
-  return process.strategyId + "/" + process.instanceId;
-}
+function processKey(process: HostProcess) { return process.strategyId + "/" + process.instanceId; }
 
 function CapacityPlanner({ host }: { host: HostDetail }) {
   const { t } = useLanguage();
   const formats = useResourceFormat();
   const [selected, setSelected] = useState("");
   const [reserve, setReserve] = useState(20);
-  const instance =
-    host.members.find((member) => processKey(member) === selected) ??
-    host.members[0];
+  const instance = host.members.find(member => processKey(member) === selected) ?? host.members[0];
   const params = new URLSearchParams({
-    strategyId: instance?.strategyId ?? "",
-    instanceId: instance?.instanceId ?? "",
-    reservePercent: String(reserve),
+    strategyId: instance?.strategyId ?? "", instanceId: instance?.instanceId ?? "", reservePercent: String(reserve),
   });
   const query = useQuery({
     ...resource<Estimate>("/hosts/" + host.id + "/capacity?" + params),
-    enabled: !!instance,
-    refetchInterval: 15_000,
+    enabled: !!instance, refetchInterval: 15_000,
   });
   const result = query.data;
-  return (
-    <VStack
-      as="section"
-      gap={4}
-      className="section flex flex-col gap-4 min-w-0   surface bg-surface border border-border rounded-lg   padded p-5   capacity-panel min-w-0"
-    >
-      <Heading level={2}>{t("capacityPlanner")}</Heading>
-      <Text as="p" className="muted text-secondary">
-        {t("capacityHint")}
-      </Text>
-      {!instance ? (
-        <Text as="p">{t("noHostBinding")}</Text>
-      ) : (
-        <>
-          <VStack gap={3} className="capacity-fields">
-            <VStack gap={2}>
-              {t("similarInstance")}
-              <Selector
-                label={t("similarInstance")}
-                isLabelHidden
-                value={String(processKey(instance))}
-                onChange={(e) => setSelected(e)}
-                options={[
-                  ...host.members.map((member) => ({
-                    value: String(processKey(member)),
-                    label: String(
-                      member.strategyName + "·" + member.instanceId,
-                    ),
-                  })),
-                ]}
-              />
-            </VStack>
-            <VStack gap={2}>
-              {t("resourceReserve")}
-              <TextInput
-                label={t("resourceReserve")}
-                isLabelHidden
-                type="text"
-                inputMode="numeric"
-                value={String(reserve)}
-                onChange={(e) =>
-                  setReserve(Math.min(90, Math.max(0, Math.trunc(Number(e)))))
-                }
-              />
-            </VStack>
-          </VStack>
-          {query.isPending ? (
-            <Loading />
-          ) : query.error ? (
-            <ErrorView error={query.error} />
-          ) : result?.additional == null ? (
-            <Text as="p" className="muted text-secondary" role="status">
-              {t(reasons[result?.reason ?? ""] ?? "estimateMissing")}
-            </Text>
-          ) : (
-            <VStack gap={3} className="capacity-result" role="status">
-              <VStack gap={3}>
-                <Text weight="semibold">
-                  {result.additional.toLocaleString()}
-                </Text>{" "}
-                {t("additionalInstances")}
-              </VStack>
-              <Text type="supporting">
-                {t("limitingResource")}:{" "}
-                {t(
-                  result.bottleneck === "cpu"
-                    ? "hostCPU"
-                    : result.bottleneck === "memory"
-                      ? "availableMemory"
-                      : "cpuAndMemory",
-                )}
-              </Text>
-              {result.budget && (
-                <Text type="supporting">
-                  {t(
-                    result.source === "declared"
-                      ? "declaredBudget"
-                      : "observedBudget",
-                  )}
-                  : {formats.cores(result.budget.cpu_cores)} ·{" "}
-                  {formats.bytes(result.budget.memory_bytes)}
-                </Text>
-              )}
-            </VStack>
-          )}
-        </>
-      )}
-    </VStack>
-  );
+  return <section className="section surface padded capacity-panel">
+    <Heading level={2}>{t("capacityPlanner")}</Heading>
+    <p className="muted">{t("capacityHint")}</p>
+    {!instance ? <p>{t("noHostBinding")}</p> : <>
+      <div className="capacity-fields">
+        <label>{t("similarInstance")}<select value={processKey(instance)} onChange={e => setSelected(e.target.value)}>
+          {host.members.map(member => <option key={processKey(member)} value={processKey(member)}>{member.strategyName} · {member.instanceId}</option>)}
+        </select></label>
+        <label>{t("resourceReserve")}<input type="number" min={0} max={90} value={reserve} onChange={e => setReserve(Math.min(90, Math.max(0, Math.trunc(Number(e.target.value)))))} /></label>
+      </div>
+      {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} /> : result?.additional == null ?
+        <p className="muted" role="status">{t(reasons[result?.reason ?? ""] ?? "estimateMissing")}</p> :
+        <div className="capacity-result" role="status">
+          <div><strong>{result.additional.toLocaleString()}</strong> {t("additionalInstances")}</div>
+          <small>{t("limitingResource")}: {t(result.bottleneck === "cpu" ? "hostCPU" : result.bottleneck === "memory" ? "availableMemory" : "cpuAndMemory")}</small>
+          {result.budget && <small>{t(result.source === "declared" ? "declaredBudget" : "observedBudget")}: {formats.cores(result.budget.cpu_cores)} · {formats.bytes(result.budget.memory_bytes)}</small>}
+        </div>}
+    </>}
+  </section>;
 }
 
 function HostSuggestions({ host }: { host: Host }) {
@@ -361,29 +138,13 @@ function HostSuggestions({ host }: { host: Host }) {
   const suggestions: Message[] = [];
   if (host.stale) suggestions.push("suggestHostStale");
   else if (data) {
-    if ((data.cpu_usage_percent ?? -1) >= 85)
-      suggestions.push("suggestHostCPU");
-    if (
-      (host.capacity?.memory_bytes ?? 0) > 0 &&
-      data.memory_available_bytes != null &&
-      data.memory_available_bytes / (host.capacity?.memory_bytes ?? 1) < 0.15
-    )
-      suggestions.push("suggestHostMemory");
-    if (
-      data.disk_available_bytes != null &&
-      data.disk_available_bytes < 5 * gib
-    )
-      suggestions.push("suggestHostDisk");
+    if ((data.cpu_usage_percent ?? -1) >= 85) suggestions.push("suggestHostCPU");
+    if ((host.capacity?.memory_bytes ?? 0) > 0 && data.memory_available_bytes != null && data.memory_available_bytes / (host.capacity?.memory_bytes ?? 1) < .15) suggestions.push("suggestHostMemory");
+    if (data.disk_available_bytes != null && data.disk_available_bytes < 5 * gib) suggestions.push("suggestHostDisk");
   }
   if (!suggestions.length) return null;
-  return (
-    <aside className="section flex flex-col gap-4 min-w-0   surface bg-surface border border-border rounded-lg   padded p-5">
-      <Heading level={2}>{t("hostSuggestions")}</Heading>
-      <ul>
-        {suggestions.map((key) => (
-          <li key={key}>{t(key)}</li>
-        ))}
-      </ul>
-    </aside>
-  );
+  return <aside className="section surface padded">
+    <h2>{t("hostSuggestions")}</h2>
+    <ul>{suggestions.map(key => <li key={key}>{t(key)}</li>)}</ul>
+  </aside>;
 }

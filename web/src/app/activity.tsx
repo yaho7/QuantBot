@@ -1,19 +1,8 @@
-import { List, ListItem } from "@astryxdesign/core/List";
-import { Section } from "@astryxdesign/core/Section";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { Heading } from "@astryxdesign/core/Heading";
-import { Text } from "@astryxdesign/core/Text";
-import { VStack } from "@astryxdesign/core/VStack";
-import { Selector } from "@astryxdesign/core/Selector";
-import { HStack } from "@astryxdesign/core/HStack";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "../shared/page-links";
 import { useOutletContext, useSearchParams } from "react-router-dom";
-import {
-  alertsQuery,
-  AttentionSummary,
-  type Attention,
-} from "../components/attention-summary";
+import { alertsQuery, AttentionSummary, type Attention } from "../components/attention-summary";
 import { resource, type Command } from "../shared/api";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
 import { useLanguage } from "../shared/i18n";
@@ -25,14 +14,13 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
   const { t } = useLanguage();
   const [embeddedStatus, setEmbeddedStatus] = useState("");
   const [params, setParams] = useSearchParams();
-  const status = strategyId ? embeddedStatus : (params.get("status") ?? "");
+  const status = strategyId ? embeddedStatus : params.get("status") ?? "";
   const setStatus = (value: string) => {
     if (strategyId) {
       setEmbeddedStatus(value);
     } else {
       const next = new URLSearchParams(params);
-      if (value) next.set("status", value);
-      else next.delete("status");
+      if (value) next.set("status", value); else next.delete("status");
       setParams(next, { replace: true, preventScrollReset: true });
     }
   };
@@ -45,56 +33,55 @@ export function ActivityPage({ strategyId }: { strategyId?: string }) {
   );
   const body = (
     <>
-      <HStack gap={3} wrap="wrap" vAlign="center" className="filter-bar">
-        <Selector
-          label={t("status")}
-          isLabelHidden
-          value={String(status)}
-          onChange={(e) => setStatus(e)}
-          options={[
-            { value: String(""), label: String(t("all")) },
-            ...[
-              "confirmation_required",
-              "pending",
-              "executing",
-              "unknown",
-              "succeeded",
-              "failed",
-              "expired",
-              "cancelled",
-            ].map((s) => ({
-              value: String(s),
-              label: String(t(s as "pending")),
-            })),
-          ]}
-        />
-      </HStack>
+      <div className="filter-bar">
+        <select
+          aria-label={t("status")}
+          value={status}
+          onChange={(e) => setStatus(e.target.value)}
+        >
+          <option value="">{t("all")}</option>
+          {[
+            "confirmation_required",
+            "pending",
+            "executing",
+            "unknown",
+            "succeeded",
+            "failed",
+            "expired",
+            "cancelled",
+          ].map((s) => (
+            <option key={s} value={s}>
+              {t(s as "pending")}
+            </option>
+          ))}
+        </select>
+      </div>
       {query.isPending ? (
         <Loading />
       ) : query.error ? (
         <ErrorView error={query.error} />
       ) : (
-        <Section padding={0}>
-          <List hasDividers>
-            {query.data.map((cmd) => (
-              <ListItem
-                key={cmd.id}
-                label={cmd.controlId}
-                description={cmd.strategyId}
-                onClick={() => setSelected(cmd.id)}
-                endContent={
-                  <HStack gap={3} vAlign="center" wrap="wrap">
-                    <Badge tone={cmd.status === "unknown" ? "danger" : ""}>
-                      {t(cmd.status as "pending")}
-                    </Badge>
-                    <Text type="supporting">{timestamp(cmd.updatedAt)}</Text>
-                  </HStack>
-                }
-              />
-            ))}
-          </List>
-          {!query.data.length && <EmptyState isCompact title={t("noEvents")} />}
-        </Section>
+        <div className="surface">
+          {query.data.map((cmd) => (
+            <button
+              className="activity-line"
+              key={cmd.id}
+              onClick={() => setSelected(cmd.id)}
+            >
+              <span>
+                {cmd.controlId}
+                <small className="muted">{cmd.strategyId}</small>
+              </span>
+              <Badge tone={cmd.status === "unknown" ? "danger" : ""}>
+                {t(cmd.status as "pending")}
+              </Badge>
+              <time>{timestamp(cmd.updatedAt)}</time>
+            </button>
+          ))}
+          {!query.data.length && (
+            <p className="empty-inline">{t("noEvents")}</p>
+          )}
+        </div>
       )}
       {selected && (
         <CommandDialog commandId={selected} close={() => setSelected("")} />
@@ -111,58 +98,43 @@ export function AlertsPage() {
   return (
     <Page title={t("alerts")}>
       <AttentionSummary attention={attention} />
-      <VStack
-        as="section"
-        gap={4}
-        className="section flex flex-col gap-4 min-w-0"
-      >
-        <HStack
-          gap={3}
-          wrap="wrap"
-          vAlign="center"
-          hAlign="between"
-          className="section-heading"
-        >
-          <Heading level={2}>{t("alertHistory")}</Heading>
-        </HStack>
+      <section className="section">
+        <div className="section-heading"><h2>{t("alertHistory")}</h2></div>
         {query.isPending ? (
           <Loading />
         ) : query.error ? (
           <ErrorView error={query.error} />
         ) : (
-          <Section padding={0}>
-            <List hasDividers>
-              {query.data.map((row) => (
-                <ListItem
-                  key={row.strategyId + row.id}
-                  href={"/strategies/" + row.strategyId}
-                  label={String(row.data.code)}
-                  description={String(row.data.message)}
-                  endContent={
-                    <HStack gap={3} wrap="wrap" vAlign="center">
-                      <Badge
-                        tone={
-                          ["error", "critical"].includes(
-                            String(row.data.severity),
-                          )
-                            ? "danger"
-                            : "warning"
-                        }
-                      >
-                        {display.severity(String(row.data.severity ?? ""))}
-                      </Badge>
-                      <Text type="supporting">{timestamp(row.observedAt)}</Text>
-                    </HStack>
+          <div className="surface">
+            {query.data.map((row) => (
+              <Link
+                className="activity-line"
+                key={row.strategyId + row.id}
+                to={"/strategies/" + row.strategyId}
+              >
+                <span>
+                  <strong>{String(row.data.code)}</strong>
+                  <small>{String(row.data.message)}</small>
+                </span>
+                <Badge
+                  tone={
+                    row.data.severity === "error" ||
+                    row.data.severity === "critical"
+                      ? "danger"
+                      : "warning"
                   }
-                />
-              ))}
-            </List>
+                >
+                  {display.severity(String(row.data.severity ?? ""))}
+                </Badge>
+                <time>{timestamp(row.observedAt)}</time>
+              </Link>
+            ))}
             {!query.data.length && (
-              <EmptyState isCompact title={t("noEvents")} />
+              <p className="empty-inline">{t("noEvents")}</p>
             )}
-          </Section>
+          </div>
         )}
-      </VStack>
+      </section>
     </Page>
   );
 }
