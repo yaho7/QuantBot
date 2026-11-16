@@ -281,6 +281,9 @@ func (s *Service) agent(w http.ResponseWriter, r *http.Request) {
 		httpapi.Error(w, 413, "body_too_large", "Sandbox request exceeds 64 KiB")
 		return
 	}
+	if r.Method == http.MethodGet && path == "/commands" {
+		active.ensureProbe(ctx)
+	}
 	capture := &statusWriter{ResponseWriter: w, status: 200}
 	active.agent.ServeHTTP(capture, cloned)
 	step := stepFor(r.Method, path)
@@ -288,6 +291,9 @@ func (s *Service) agent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	passed := capture.status >= 200 && capture.status < 300
+	if passed && (step == "state" || step == "capabilities") {
+		active.ensureProbe(ctx)
+	}
 	if step == "result" && passed {
 		commandID := strings.TrimSuffix(strings.TrimPrefix(path, "/commands/"), "/result")
 		cmd, err := controldb.New(active.stores.Control.Read).GetCommand(ctx, commandID)

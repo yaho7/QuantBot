@@ -57,3 +57,10 @@ Playwright flows. Browser coverage includes 390/430/768/1280/1600 widths in ligh
 and dark, setup/login, both shells, four strategy views, controls and receipts,
 layout persistence and keyboard resizing, Sandbox, notifications and settings.
 It also checks that installed theme colors cannot alter administration.
+
+The original user-authored QuantBot favicon artwork is retained in BrandIcon and
+rendered through Astryx Icon. Required-field markers are omitted from the UI;
+server validation remains authoritative. Administrator passwords accept 8–256
+bytes. Notification channels use their provider label without a custom name
+field. Sandbox command validation starts automatically once a null-input action
+and its available state are registered, with one idempotent probe per run.

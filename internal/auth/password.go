@@ -53,5 +53,5 @@ func same(first, second string) bool {
 }
 
 func validPassword(password string) bool {
-	return len(password) >= 12 && len(password) <= 256
+	return len(password) >= 8 && len(password) <= 256
 }

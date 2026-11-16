@@ -22,7 +22,7 @@ Agent routes. Use simulated strategy and broker operations. Sandbox state and cr
 production.
 
 The first connected instance becomes the Sandbox executor. Register a simulated
-button and publish its availability to queue a test command from the dialog.
+no-input button and publish its availability. The server automatically queues a single test command.
 The checklist verifies session, heartbeat, capabilities, state, reports, events,
 resources, polling, claim and a successful result. Afterward, use the production
 prompt and Token to connect the actual strategy.
@@ -141,3 +141,9 @@ See [host performance](HOST_PERFORMANCE.md) to discover Mac and VPS hosts direct
 send measured CPU/memory/disk data, and estimate remaining capacity. Use
 independent schedules. If the same strategy runs on both machines simultaneously,
 set a distinct stable `instance_name` in each machine’s local `quantbot.json`.
+
+The Sandbox automatically queues one simulated action after an available action
+control is registered and its state is reported. The Agent polls, claims and
+returns the receipt normally; no browser click is needed. Repeated reports or
+reconnects do not queue the probe again. This uses only the isolated Sandbox
+store and never creates a production command.

@@ -23,8 +23,8 @@ import (
 func TestAdministratorLifecycle(t *testing.T) {
 	handler := newAuthTestServer(t, config.Config{})
 	const origin = "http://127.0.0.1:23456"
-	const credentials = `{"username":"admin","password":"paper-test-password"}`
-	const newPassword = `{"currentPassword":"paper-test-password","newPassword":"new-paper-test-password"}`
+	const credentials = `{"username":"admin","password":"12345678"}`
+	const newPassword = `{"currentPassword":"12345678","newPassword":"87654321"}`
 
 	result := requestAuth(t, handler, "GET", "/setup", "", "", nil, "", 200)
 	if !strings.Contains(result.Body.String(), `"required":true`) {
@@ -32,6 +32,7 @@ func TestAdministratorLifecycle(t *testing.T) {
 	}
 	requestAuth(t, handler, "POST", "/setup", credentials, "http://wrong.invalid", nil, "", 403)
 	requestAuth(t, handler, "POST", "/setup", `{"username":"admin","Username":"other","password":"paper-test-password"}`, origin, nil, "", 400)
+	requestAuth(t, handler, "POST", "/setup", `{"username":"admin","password":"1234567"}`, origin, nil, "", 400)
 	result = requestAuth(t, handler, "POST", "/setup", credentials, origin, nil, "", 200)
 	first, cookie := parseSession(t, result)
 	if !cookie.HttpOnly || cookie.SameSite != http.SameSiteStrictMode || cookie.Secure || cookie.Path != "/" {
@@ -47,6 +48,7 @@ func TestAdministratorLifecycle(t *testing.T) {
 	if !strings.Contains(list.Body.String(), `"current":true`) || !strings.Contains(list.Body.String(), `"current":false`) {
 		t.Fatalf("expected both sessions and one current flag: %s", list.Body.String())
 	}
+	requestAuth(t, handler, "PUT", "/password", `{"currentPassword":"12345678","newPassword":"1234567"}`, origin, cookie, first.CSRF, 400)
 	latest, current := parseSession(t, requestAuth(t, handler, "PUT", "/password", newPassword, origin, cookie, first.CSRF, 200))
 	requestAuth(t, handler, "GET", "/session", "", "", cookie, "", 401)
 	requestAuth(t, handler, "GET", "/session", "", "", other, "", 401)

@@ -292,7 +292,6 @@ export function AdminStrategies() {
             label={t("name")}
             value={name}
             onChange={setName}
-            isRequired
             hasAutoFocus
             status={
               name.length > 120
@@ -489,7 +488,7 @@ export function Security() {
               e.preventDefault();
               if (
                 currentPassword &&
-                newPassword.length >= 12 &&
+                newPassword.length >= 8 &&
                 newPassword.length <= 256
               )
                 mutation.mutate();
@@ -502,7 +501,6 @@ export function Security() {
                 isLabelHidden
                 autoComplete="current-password"
                 type="password"
-                isRequired
                 value={currentPassword}
                 onChange={(e) => setCurrent(e)}
               />
@@ -514,7 +512,6 @@ export function Security() {
                 isLabelHidden
                 autoComplete="new-password"
                 type="password"
-                isRequired
                 value={newPassword}
                 onChange={(e) => setNew(e)}
               />
@@ -526,7 +523,7 @@ export function Security() {
               isDisabled={
                 mutation.isPending ||
                 !currentPassword ||
-                newPassword.length < 12 ||
+                newPassword.length < 8 ||
                 newPassword.length > 256
               }
               className="primary"

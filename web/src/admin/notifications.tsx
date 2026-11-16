@@ -112,14 +112,14 @@ export default function Notifications() {
                   wrap="wrap"
                 >
                   <AstryxIcon icon={Bell} size="md" />
-                  <Heading level={2}>{channel.name}</Heading>
+                  <Heading level={2}>
+                    {providers.find(([id]) => id === channel.provider)?.[1] ??
+                      channel.provider}
+                  </Heading>
                   <Badge tone={channel.enabled ? "success" : ""}>
                     {channel.enabled ? t("enabled") : t("disabled")}
                   </Badge>
                 </HStack>
-                <Text as="p" className="muted text-secondary">
-                  {providers.find((p) => p[0] === channel.provider)?.[1]}
-                </Text>
                 <HStack gap={2} wrap="wrap" className="channel-events">
                   {channel.events.map((event) => (
                     <Badge key={event}>{display.kind(event)}</Badge>
@@ -238,7 +238,6 @@ function ChannelForm({
 }) {
   const { t } = useLanguage();
   const display = useDisplay();
-  const [name, setName] = useState(channel?.name ?? "");
   const [provider, setProvider] = useState(channel?.provider ?? "telegram");
   const [enabled, setEnabled] = useState(channel?.enabled ?? false);
   const [events, setEvents] = useState(channel?.events ?? ["alert", "risk"]);
@@ -253,7 +252,7 @@ function ChannelForm({
         "/admin/notifications" + (channel ? "/" + channel.id : ""),
         channel ? "PUT" : "POST",
         {
-          name,
+          name: providers.find(([id]) => id === provider)?.[1] ?? provider,
           provider,
           enabled,
           events,
@@ -284,26 +283,9 @@ function ChannelForm({
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (
-            name.trim() &&
-            name.length <= 120 &&
-            events.length &&
-            !mutation.isPending
-          )
-            mutation.mutate();
+          if (events.length && !mutation.isPending) mutation.mutate();
         }}
       >
-        <TextInput
-          label={t("channelName")}
-          value={name}
-          onChange={setName}
-          isRequired
-          status={
-            name.length > 120
-              ? { type: "error", message: t("nameTooLong") }
-              : undefined
-          }
-        />
         <VStack gap={2}>
           {t("provider")}
           <Selector
@@ -368,7 +350,6 @@ function ChannelForm({
                   label="Bot Token"
                   isLabelHidden
                   type="password"
-                  isRequired
                   autoComplete="new-password"
                   value={token}
                   onChange={(e) => setToken(e)}
@@ -379,7 +360,6 @@ function ChannelForm({
                 <TextInput
                   label="Chat ID"
                   isLabelHidden
-                  isRequired
                   value={chatId}
                   onChange={(e) => setChatId(e)}
                 />
@@ -393,7 +373,6 @@ function ChannelForm({
                   label="Webhook URL"
                   isLabelHidden
                   type="password"
-                  isRequired
                   autoComplete="new-password"
                   value={webhook}
                   onChange={(e) => setWebhook(e)}
@@ -424,7 +403,7 @@ function ChannelForm({
           variant="primary"
           type="submit"
           isLoading={mutation.isPending}
-          isDisabled={!name.trim() || name.length > 120 || !events.length}
+          isDisabled={!events.length}
         />
       </form>
     </Modal>

@@ -28,6 +28,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   }
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.getByText("Required", { exact: false })).toHaveCount(0);
   await page.getByLabel(/用户名/).fill("browser-admin");
   await page.getByLabel(/密码/).fill("browser-test-password");
   await page
@@ -562,9 +563,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     },
   });
   expect(ready.status()).toBe(200);
-  await dialog
-    .getByRole("button", { name: "下发模拟命令", exact: true })
-    .click();
+  await expect(dialog.getByText(/控件就绪后自动下发模拟命令/)).toBeVisible();
   await expect
     .poll(
       async () =>
@@ -594,12 +593,12 @@ test("initialization, real reports, command receipt and responsive shells", asyn
 
   await page.goto("/admin/notifications");
   await page.getByRole("button", { name: "添加通知渠道", exact: true }).click();
-  await dialog.getByLabel("渠道名称").fill("测试告警渠道");
+  await expect(dialog.getByLabel("渠道名称")).toHaveCount(0);
   await dialog.getByLabel("Bot Token").fill("123456:local-browser-test-token");
   await dialog.getByLabel("Chat ID").fill("1234567");
   await dialog.getByRole("button", { name: "保存", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(page.locator(".channel-card")).toContainText("测试告警渠道");
+  await expect(page.locator(".channel-card")).toContainText("Telegram");
   await expect(page.locator(".channel-card")).toContainText("已停用");
   const channels = await page.evaluate(async () =>
     (await fetch("/api/admin/notifications")).json(),

@@ -3,6 +3,7 @@ package sandbox
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -22,19 +23,22 @@ import (
 
 type run struct {
 	info
-	ctx      context.Context
-	cancel   context.CancelFunc
-	stores   *storage.Stores
-	reports  *telemetry.Service
-	tokenID  string
-	key      string
-	checked  map[string]bool
-	agent    http.Handler
-	console  http.Handler
-	users    sync.WaitGroup
-	worker   sync.WaitGroup
-	requests window
-	inflight int
+	ctx         context.Context
+	cancel      context.CancelFunc
+	stores      *storage.Stores
+	reports     *telemetry.Service
+	tokenID     string
+	key         string
+	checked     map[string]bool
+	agent       http.Handler
+	console     http.Handler
+	commands    *command.Service
+	probeMu     sync.Mutex
+	probeIssued bool
+	users       sync.WaitGroup
+	worker      sync.WaitGroup
+	requests    window
+	inflight    int
 }
 
 func newRun(ctx, lifetime context.Context, id, strategyID, name, token string, now time.Time) (*run, error) {
@@ -70,6 +74,7 @@ func newRun(ctx, lifetime context.Context, id, strategyID, name, token string, n
 		return nil, errors.Join(err, stores.Close())
 	}
 	commands := command.New(stores.Control, stop, 3*time.Second, nil)
+	r.commands = commands
 	agent := chi.NewRouter()
 	agentapi.Register(agent, strategy.NewSandbox(stores.Control), control.New(stores.Control, nil), commands, reports)
 	r.agent = agent
@@ -96,4 +101,37 @@ func (r *run) close() {
 func (r *run) extend(ctx context.Context, expires int64) error {
 	_, err := r.stores.Control.Write.ExecContext(ctx, "UPDATE agent_tokens SET expires_at=? WHERE id=?", expires, r.tokenID)
 	return err
+}
+
+// Probe creation uses only this run's separate Sandbox databases. The stable
+// request key and run guard prevent reconnects or repeated state reports from
+// generating additional commands, including after a lost result receipt.
+func (r *run) ensureProbe(ctx context.Context) {
+	r.probeMu.Lock()
+	defer r.probeMu.Unlock()
+	if r.probeIssued {
+		return
+	}
+	q := controldb.New(r.stores.Control.Read)
+	registry, err := q.GetControlRegistry(ctx, sandboxStrategy)
+	if err != nil {
+		return
+	}
+	definitions, err := q.ListControlDefinitions(ctx, sandboxStrategy)
+	if err != nil {
+		return
+	}
+	for _, saved := range definitions {
+		var definition control.Definition
+		if json.Unmarshal([]byte(saved.Definition), &definition) != nil || definition.Kind != control.Button || definition.IsReadOnly() || definition.Disabled {
+			continue
+		}
+		if definition.Capability == nil || definition.Capability.Kind != "action" {
+			continue
+		}
+		if err := r.commands.CreateSandboxProbe(ctx, sandboxStrategy, definition.ID, registry.Revision); err == nil {
+			r.probeIssued = true
+			return
+		}
+	}
 }

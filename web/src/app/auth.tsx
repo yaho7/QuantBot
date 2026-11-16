@@ -24,7 +24,7 @@ export function Login() {
     mutationFn: async () => {
       z.string().min(3).max(48).parse(username);
       z.string()
-        .min(setup.data?.required ? 12 : 1)
+        .min(setup.data?.required ? 8 : 1)
         .max(256)
         .parse(password);
       return api<Session>(
@@ -82,7 +82,6 @@ export function Login() {
                 label={t("username")}
                 autoComplete="username"
                 htmlName="username"
-                isRequired
                 hasAutoFocus
                 value={username}
                 onChange={setUsername}
@@ -94,7 +93,6 @@ export function Login() {
                 autoComplete={
                   setup.data.required ? "new-password" : "current-password"
                 }
-                isRequired
                 value={password}
                 onChange={setPassword}
               />

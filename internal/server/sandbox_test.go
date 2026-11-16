@@ -111,10 +111,17 @@ func TestSandboxExercisesAgentContractInIsolation(t *testing.T) {
 	call("POST", agent+"/events", fmt.Sprintf(`{"revision":1,"records":[{"id":"signal","capabilityId":"signal","observedAt":%d,"value":{"symbol":"BTC"}}]}`, now), tok, "", 200)
 	call("PUT", agent+"/resources/positions", fmt.Sprintf(`{"revision":1,"resourceRevision":0,"mode":"snapshot","observedAt":%d,"items":[]}`, now), tok, "snapshot", 200)
 	call("GET", base+"/controls", "", "", "", 200)
-	var cmd struct{ ID string }
-	decodeTest(t, call("POST", base+"/commands", `{"controlId":"pause","revision":1,"input":null}`, "", "sandbox-command", 201), &cmd)
-	if got := call("GET", agent+"/commands?wait=0", "", tok, "", 200); !strings.Contains(got.Body.String(), cmd.ID) {
-		t.Fatal(got.Body)
+	var offered []struct{ ID string }
+	decodeTest(t, call("GET", agent+"/commands?wait=0", "", tok, "", 200), &offered)
+	if len(offered) != 1 {
+		t.Fatalf("expected one automatic Sandbox command, got %d", len(offered))
+	}
+	cmd := offered[0]
+	call("PUT", agent+"/state", fmt.Sprintf(`{"revision":1,"states":[{"id":"pause","value":null,"observedAt":%d}]}`, now), tok, "", 200)
+	var repeated []struct{ ID string }
+	decodeTest(t, call("GET", agent+"/commands?wait=0", "", tok, "", 200), &repeated)
+	if len(repeated) != 1 || repeated[0].ID != cmd.ID {
+		t.Fatal("repeated state created another probe")
 	}
 	var grant struct{ Permit string }
 	decodeTest(t, call("POST", agent+"/commands/"+cmd.ID+"/claim", "", tok, "sandbox-claim", 200), &grant)
@@ -122,6 +129,12 @@ func TestSandboxExercisesAgentContractInIsolation(t *testing.T) {
 	status := call("GET", base, "", "", "", 200)
 	if !strings.Contains(status.Body.String(), `"passed":true`) || strings.Contains(status.Body.String(), tok) || strings.Contains(status.Body.String(), grant.Permit) {
 		t.Fatal(status.Body)
+	}
+	call("PUT", agent+"/state", fmt.Sprintf(`{"revision":1,"states":[{"id":"pause","value":null,"observedAt":%d}]}`, now+1), tok, "", 200)
+	var completed []struct{ ID string }
+	decodeTest(t, call("GET", agent+"/commands?wait=0", "", tok, "", 200), &completed)
+	if len(completed) != 0 {
+		t.Fatal("completed Sandbox probe was automatically repeated")
 	}
 	production := call("GET", "/api/strategies/"+created.Strategy.ID+"/controls", "", "", "", 200)
 	if !strings.Contains(production.Body.String(), `"revision":0`) {

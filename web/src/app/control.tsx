@@ -519,7 +519,6 @@ function ControlInput({
       <TextInput
         label={d.title}
         isDisabled={disabled}
-        isRequired
         type="text"
         inputMode={d.kind === "textInput" ? "text" : "decimal"}
         value={String(value ?? "")}
@@ -650,7 +649,6 @@ export function CommandDialog({
                 <TextArea
                   label={t("note")}
                   isLabelHidden
-                  isRequired
                   value={note}
                   onChange={(e) => setNote(e)}
                 />

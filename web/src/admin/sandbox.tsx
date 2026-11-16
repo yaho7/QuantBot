@@ -1,18 +1,11 @@
 import { Icon as AstryxIcon } from "@astryxdesign/core/Icon";
-import { Selector } from "@astryxdesign/core/Selector";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Button } from "@astryxdesign/core/Button";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Clipboard, FlaskConical } from "lucide-react";
 import { useState } from "react";
-import {
-  api,
-  client,
-  resource,
-  type Registry,
-  type Strategy,
-} from "../shared/api";
+import { api, client, resource, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
 import { agentPrompt } from "./agent-prompt";
@@ -45,7 +38,6 @@ export function SandboxPanel({
   const copy = useCopyText();
   const [secret, setSecret] = useState<SandboxCredential>();
   const [closing, setClosing] = useState(false);
-  const [controlId, setControlId] = useState("");
   const query = useQuery({
     ...resource<SandboxStatus>(path),
     refetchInterval: 2000,
@@ -53,23 +45,8 @@ export function SandboxPanel({
   const current = query.data;
   const active = current?.status === "active";
   const token = active && secret?.id === current.id ? secret?.token : undefined;
-  const commands = useQuery({
-    queryKey: [path + "/controls", current?.id],
-    queryFn: () => api<Registry>(path + "/controls"),
-    enabled: active,
-    refetchInterval: 3000,
-  });
-  const candidates =
-    commands.data?.controls.filter(
-      (item) =>
-        item.kind === "button" && item.actual?.available && !item.readOnly,
-    ) ?? [];
-  const selected =
-    candidates.find((item) => item.id === controlId) ?? candidates[0];
   const mutate = useMutation({
-    mutationFn: async (
-      action: "start" | "stop" | "reveal" | "copy" | "command",
-    ) => {
+    mutationFn: async (action: "start" | "stop" | "reveal" | "copy") => {
       if (action === "start") {
         const status = await api<SandboxStatus>(path, "POST");
         client.setQueryData([path], status);
@@ -77,19 +54,6 @@ export function SandboxPanel({
         await api(path, "DELETE");
         setSecret(undefined);
         setClosing(false);
-      } else if (action === "command") {
-        const command = await api<{ id: string; status: string }>(
-          path + "/commands",
-          "POST",
-          {
-            controlId: selected?.id,
-            revision: commands.data?.revision,
-            input: null,
-          },
-          crypto.randomUUID(),
-        );
-        if (command.status === "confirmation_required")
-          await api(path + "/commands/" + command.id + "/confirm", "POST");
       } else {
         const issued = await api<SandboxCredential>(path + "/reveal", "POST");
         if (action === "reveal") setSecret(issued);
@@ -177,35 +141,9 @@ export function SandboxPanel({
               </Button>
             </VStack>
           )}
-          {selected && (
-            <form
-              className="sandbox-command"
-              onSubmit={(event) => {
-                event.preventDefault();
-                mutate.mutate("command");
-              }}
-            >
-              <Selector
-                label={t("controls")}
-                isLabelHidden
-                value={String(selected.id)}
-                onChange={(event) => setControlId(event)}
-                options={[
-                  ...candidates.map((item) => ({
-                    value: String(item.id),
-                    label: String(item.title),
-                  })),
-                ]}
-              />
-              <Button
-                label={t("sandboxSimulate")}
-                type="submit"
-                isDisabled={mutate.isPending}
-              >
-                {t("sandboxSimulate")}
-              </Button>
-            </form>
-          )}
+          <Text type="supporting" role="status">
+            {t("sandboxAutomatic")}
+          </Text>
           {current.passed && (
             <Text as="p" className="sandbox-passed text-success" role="status">
               {t("sandboxPassed")}

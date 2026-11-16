@@ -144,7 +144,7 @@ func (s *Service) setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !usernamePattern.MatchString(input.Username) || !validPassword(input.Password) {
-		httpapi.Error(w, http.StatusBadRequest, "invalid_credentials", "Use a 3–48 character username and a password of at least 12 bytes")
+		httpapi.Error(w, http.StatusBadRequest, "invalid_credentials", "Use a 3–48 character username and a password of at least 8 bytes")
 		return
 	}
 	exists, err := controldb.New(s.store.Read).AdminExists(r.Context())
@@ -292,7 +292,7 @@ func (s *Service) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validPassword(input.New) || len(input.Current) > 256 {
-		httpapi.Error(w, http.StatusBadRequest, "invalid_password", "Password must be 12–256 bytes")
+		httpapi.Error(w, http.StatusBadRequest, "invalid_password", "Password must be 8–256 bytes")
 		return
 	}
 	if !s.admitHash(w, r) {

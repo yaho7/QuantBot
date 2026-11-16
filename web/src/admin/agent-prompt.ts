@@ -85,7 +85,7 @@ ${production ? "- 主机容量：同一会话 POST /performance，使用操作�
 四、会话、掉线和验收
 - 会话用新的 bootId 启动，同进程用原 Token、相同 instanceId 和 bootId 按 renewAt 后台续期并原子替换凭证。默认 15 秒心跳，45 秒判离线，每次上报不用重发能力定义。
 - 用后台任务处理网络，设置超时，不跟随重定向，遵守 Retry-After 和带抖动的指数退避。session_expired 只刷新一次；Token 撤销、过期或权限不足要分别报告。稳定记录 ID 和观察时间，重要事件和回执先保存再重试。缺少配置或断线时保留本地逻辑和风控，不接收远程指令。
-- ${production ? "先用沙盒或专用模拟策略验收。" : "识别 /api/agent/sandbox/{id}，在连接真实券商之前进入模拟模式。沙盒与正式环境的状态、凭证和命令日志必须隔离。"} 验证会话、心跳、能力登记、实际状态、历史上报、事件、资源同步，以及从沙盒弹窗下发模拟命令后轮询、领取和回执。验证开仓权限、参数约束、重连和幂等。测试不得真实交易。
+- ${production ? "先用沙盒或专用模拟策略验收。" : "识别 /api/agent/sandbox/{id}，在连接真实券商之前进入模拟模式。沙盒与正式环境的状态、凭证和命令日志必须隔离。"} 验证会话、心跳、能力登记、实际状态、历史上报、事件、资源同步，以及登记一个可用的无输入模拟动作（value_type: null），登记一个可用的无输入模拟动作（value_type: null），等待沙盒自动下发模拟命令后轮询、领取和回执。验证开仓权限、参数约束、重连和幂等。测试不得真实交易。
 - 交付时列出改动文件、支持的监控与高级控制、运行方式、如何在 QuantBot 检查接入、哪些能力需要授权或当前程序不支持。正式切换由用户更新 endpoint 和 secret。`;
   }
 
@@ -107,5 +107,5 @@ Advanced control is a priority: support a safe pause/resume for new entries, ref
 ${host}
 Only the designated Executor may GET /commands and POST /commands/{id}/claim. Persist the claim Idempotency-Key before requesting a permit. On a lost response retry with the same key; reconcile without executing on claim_reconciliation_required. Check the one-time permit, deadline and local risk rules before invoking strategy or broker operations. Record execution in a durable command journal and POST /commands/{id}/result with the real outcome; retry the same receipt exactly. Report actual state separately. Never re-execute an unknown outcome or enable live trading for an integration test. Only declare atomic_parameters when the program can apply the entire plan atomically.
 
-${verification}${sandboxDetails ? " The Sandbox credential expires at " + sandboxDetails + ". Production endpoint: " + (connection?.productionEndpoint ?? origin + "/api/agent") + "." : ""} In Sandbox, use the console to queue a simulated action; verify session, heartbeat, registration, state, reports, events, resources, command polling, claim and result. Test reconnect and duplicate delivery without broker effects. Keep trading, heartbeats and performance reporting independent. Report changed files, how to run, enabled advanced controls, where to verify them, and any capability requiring approval.`;
+${verification}${sandboxDetails ? " The Sandbox credential expires at " + sandboxDetails + ". Production endpoint: " + (connection?.productionEndpoint ?? origin + "/api/agent") + "." : ""} In Sandbox, register an available no-input (value_type: null) simulated action and wait for the automatic test command; verify session, heartbeat, registration, state, reports, events, resources, command polling, claim and result. Test reconnect and duplicate delivery without broker effects. Keep trading, heartbeats and performance reporting independent. Report changed files, how to run, enabled advanced controls, where to verify them, and any capability requiring approval.`;
 }

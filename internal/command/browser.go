@@ -19,12 +19,14 @@ import (
 	"github.com/yaho7/QuantBot/internal/storage/controldb"
 )
 
+type commandInput struct {
+	ControlID string          `json:"controlId"`
+	Revision  int64           `json:"revision"`
+	Input     json.RawMessage `json:"input"`
+}
+
 func (s *Service) create(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		ControlID string          `json:"controlId"`
-		Revision  int64           `json:"revision"`
-		Input     json.RawMessage `json:"input"`
-	}
+	var input commandInput
 	if !httpapi.ReadJSON(w, r, &input, 64<<10) {
 		return
 	}
@@ -33,15 +35,33 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		commandError(w, invalid("Idempotency-Key, controlId, revision and input are required"))
 		return
 	}
-	body, err := json.Marshal(input.Input)
+	cmd, createdNew, err := s.createCommand(r.Context(), auth.Current(r).Username, chi.URLParam(r, "id"), key, input, false)
 	if err != nil {
 		commandError(w, err)
 		return
 	}
-	ctx := r.Context()
-	actor, strategyID := auth.Current(r).Username, chi.URLParam(r, "id")
+	status := http.StatusOK
+	if createdNew {
+		status = http.StatusCreated
+	}
+	httpapi.JSON(w, status, present(cmd))
+}
+
+// CreateSandboxProbe queues one idempotent test action in the isolated Sandbox
+// stores. Production browser requests cannot opt into automatic confirmation.
+func (s *Service) CreateSandboxProbe(ctx context.Context, strategyID, controlID string, revision int64) error {
+	_, _, err := s.createCommand(ctx, "sandbox-probe", strategyID, "automatic-sandbox-probe", commandInput{
+		ControlID: controlID, Revision: revision, Input: json.RawMessage("null"),
+	}, true)
+	return err
+}
+func (s *Service) createCommand(ctx context.Context, actor, strategyID, key string, input commandInput, autoConfirm bool) (controldb.Command, bool, error) {
+	body, err := json.Marshal(input.Input)
+	if err != nil {
+		return controldb.Command{}, false, err
+	}
 	var cmd controldb.Command
-	response := http.StatusOK
+	createdNew := false
 	err = storage.WithTx(ctx, s.store.Write, func(tx *sql.Tx) error {
 		q := controldb.New(tx)
 		cmd, err = q.GetCommandByKey(ctx, controldb.GetCommandByKeyParams{
@@ -79,6 +99,9 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return err
 		}
+		if autoConfirm && account.Mode != "paper" {
+			return invalid("Automatic probes require an isolated paper strategy")
+		}
 		now := time.Now()
 		cmd.InstanceID, cmd.BootID = executor.InstanceID, executor.BootID
 		cmd.CreatedAt, cmd.UpdatedAt, cmd.Deadline = now.UnixMilli(), now.UnixMilli(), now.Add(queueTTL).UnixMilli()
@@ -97,19 +120,19 @@ func (s *Service) create(w http.ResponseWriter, r *http.Request) {
 			return err
 		}
 		cmd.Status = created
-		response = http.StatusCreated
-		if definition.RequiresConfirmation() || account.Mode == "live" || definition.Capability != nil &&
-			definition.Capability.Command != "" && definition.Capability.Command != definition.ID {
+		createdNew = true
+		if !autoConfirm && (definition.RequiresConfirmation() || account.Mode == "live" || definition.Capability != nil &&
+			definition.Capability.Command != "" && definition.Capability.Command != definition.ID) {
 			return transition(ctx, q, &cmd, confirmation, actor, "confirmation required by policy", cmd.CreatedAt)
 		}
 		return enqueue(ctx, q, &cmd, actor, cmd.CreatedAt)
 	})
+
 	if err != nil {
-		commandError(w, err)
-		return
+		return cmd, false, err
 	}
 	s.notify.Emit(cmd.StrategyID, realtime.Commands)
-	httpapi.JSON(w, response, present(cmd))
+	return cmd, createdNew, nil
 }
 
 func enqueue(ctx context.Context, q *controldb.Queries, cmd *controldb.Command, actor string, now int64) error {
