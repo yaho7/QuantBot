@@ -1,7 +1,7 @@
 {
   "id": "astryx",
   "name": "Astryx",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "QuantBot",
   "description": "Astryx monitoring dashboard with financial charts and trusted host controls.",
   "engine": "quantbot-theme-v1",
