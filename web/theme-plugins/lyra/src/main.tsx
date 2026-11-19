@@ -323,29 +323,36 @@ function Dashboard() {
             </dl>
           </div>
           <Separator />
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-              <Input
-                aria-label={label("搜索策略", "Search strategies")}
-                placeholder={label("按名称搜索", "Search by name")}
-                className="min-w-28 flex-1 sm:max-w-64"
-                value={search}
-                onChange={event => setSearch(event.target.value)}
-              />
-              <Select value={group ? "group:" + group : "all"}
-                onValueChange={value => setGroup(value?.startsWith("group:") ? value.slice(6) : "")}>
-                <SelectTrigger aria-label={label("分组", "Group")} className="min-w-24">
-                  <SelectValue>{group || label("全部", "All groups")}</SelectValue>
-                </SelectTrigger>
-                <SelectContent alignItemWithTrigger={false}>
-                  <SelectGroup>
-                    <SelectItem value="all">{label("全部", "All groups")}</SelectItem>
-                    {inventory.groups.map(value => <SelectItem key={value} value={"group:" + value}>{value}</SelectItem>)}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-            <SegmentedChoices label={label("显示方式", "View")} options={viewOptions} value={view} onChange={setView} />
+          <div data-slot="strategy-toolbar" className="grid min-w-0 grid-cols-2 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(7rem,11rem)_minmax(6rem,9rem)]">
+            <Input
+              aria-label={label("搜索策略", "Search strategies")}
+              placeholder={label("按名称搜索", "Search by name")}
+              className="col-span-2 min-w-0 sm:col-span-1"
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+            />
+            <Select value={group ? "group:" + group : "all"}
+              onValueChange={value => setGroup(value?.startsWith("group:") ? value.slice(6) : "")}>
+              <SelectTrigger aria-label={label("分组", "Group")} className="w-full min-w-0">
+                <SelectValue className="min-w-0"><span className="truncate">{group || label("全部", "All groups")}</span></SelectValue>
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  <SelectItem value="all">{label("全部", "All groups")}</SelectItem>
+                  {inventory.groups.map(value => <SelectItem key={value} value={"group:" + value}>{value}</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+            <Select value={view} onValueChange={value => { if (value) setView(value); }}>
+              <SelectTrigger aria-label={label("显示方式", "View")} className="w-full min-w-0">
+                <SelectValue>{viewOptions.find(([value]) => value === view)?.[1]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent alignItemWithTrigger={false}>
+                <SelectGroup>
+                  {viewOptions.map(([value, text]) => <SelectItem key={value} value={value}>{text}</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
         </header>
 

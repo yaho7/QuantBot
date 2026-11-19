@@ -12,6 +12,8 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   const { required } = await (await request.get("/api/auth/setup")).json();
   await page.goto("/");
   const signIn = page.getByRole("button", { name: required ? "初始化管理员" : "登录", exact: true });
+  await expect(page.locator(".brand > .brand-mark")).toBeVisible();
+  await expect(page.locator(".brand-icon")).toHaveCount(0);
   const initialViewport = page.viewportSize()!;
   for (const appearance of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: appearance, reducedMotion: "reduce" });

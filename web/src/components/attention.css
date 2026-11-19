@@ -1,3 +1,30 @@
+.admin-alert-anchor {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.admin-alert-badge {
+  block-size: 1rem;
+  min-inline-size: 1rem;
+  padding: 0 0.2rem;
+  border: 1px solid var(--surface);
+  border-radius: 999px;
+  background: var(--warning);
+  color: var(--canvas);
+  font-size: 0.625rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.admin-alert-anchor .admin-alert-badge {
+  position: absolute;
+  inset-block-start: -0.5rem;
+  inset-inline-start: 0.65rem;
+}
+
 .attention-list { list-style: none; margin: 0; padding: 0; }
 .attention-list > li + li { border-top: 1px solid var(--line); }
 .attention-row {

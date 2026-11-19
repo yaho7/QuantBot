@@ -61,21 +61,6 @@
   .workbench-shell .widget .widget-header { padding-inline: 10px; }
   .workbench-shell .widget .widget-body { padding-inline: 10px; }
 }
-@media (max-width: 767px) {
-  .workbench-shell .portfolio-strategies .filter-bar {
-    display: grid; grid-template-columns: minmax(0, 1fr) 110px;
-    width: 100%; gap: 8px;
-  }
-  .workbench-shell .portfolio-strategies .filter-bar .segmented {
-    width: 100%; grid-column: 1;
-  }
-  .workbench-shell .portfolio-strategies .filter-bar .segmented button { flex: 1; padding-inline: 6px; }
-  .workbench-shell .portfolio-strategies .filter-bar .inline-filter { grid-column: 2; width: 100%; }
-  .workbench-shell .portfolio-strategies .filter-bar .inline-filter select { width: 100%; }
-  .workbench-shell .portfolio-strategies .filter-bar .search-field { grid-column: 1; width: 100%; max-width: none; }
-  .workbench-shell .portfolio-strategies .filter-bar > select { grid-column: 2; width: 100%; }
-}
-
 .overview-content { display: grid; gap: 16px; }
 .portfolio-record-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
 .performance-widget-host { display: grid; gap: 8px; border-top: 0; padding: 0 0 10px; border-bottom: 1px solid var(--line); }

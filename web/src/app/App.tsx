@@ -8,7 +8,6 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -18,6 +17,7 @@ import {
   ScrollRestoration,
   createBrowserRouter,
   useLocation,
+  useOutletContext,
 } from "react-router-dom";
 import { Link, NavLink } from "../shared/page-links";
 import {
@@ -40,7 +40,7 @@ import {
   type Session,
 } from "../shared/api";
 import { ErrorView, Loading } from "../shared/ui";
-import { useAttention } from "../components/attention-summary";
+import { RecentAlertBadge, useAttention, useRecentAlertCount } from "../components/attention-summary";
 import { BrandIcon } from "../components/brand-icon";
 import "../styles/workbench.css";
 import "../styles/alignment.css";
@@ -68,6 +68,7 @@ function Root() {
     retry: false,
   });
   useRealtime(!!session.data);
+  const recentAlerts = useRecentAlertCount(!!session.data);
   const appearance = useAppearance();
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -99,7 +100,7 @@ function Root() {
   return (
     <TooltipProvider delay={350}>
       <Suspense fallback={<Loading />}>
-        <Outlet />
+        <Outlet context={recentAlerts} />
       </Suspense>
       <ScrollRestoration />
       <Toaster position="top-center" theme={appearance} />
@@ -146,7 +147,8 @@ function Logout() {
 function Workbench() {
   const { t } = useLanguage();
   const attention = useAttention();
-  const recentAlerts = attention.recentCount ?? 0;
+  const recentCount = useOutletContext<number | undefined>();
+  const recentAlerts = recentCount ?? 0;
   const query = useQuery(activeTheme);
   const location = useLocation();
   const navigation = useRef<HTMLElement>(null);
@@ -157,13 +159,10 @@ function Workbench() {
   const selected = fallback ? undefined : theme;
   // Frontend packages own the iframe, while host navigation and native pages
   // retain the original Classical shell and trusted controls.
-  const hostTheme = selected?.manifest.type === "frontend" || new URLSearchParams(location.search).has("classic") ? undefined : selected;
+  const hostTheme = selected?.manifest.type === "frontend" ? undefined : selected;
   const builtIn = fallback || !hostTheme || hostTheme.id === "classical";
   const onFailure = useCallback(() => setFailed(identity), [identity]);
-  const full =
-    location.pathname === "/" &&
-    selected?.entryUrl &&
-    !new URLSearchParams(location.search).has("classic");
+  const full = location.pathname === "/" && selected?.entryUrl;
   useEffect(() => {
     const nav = navigation.current;
     const active = nav?.querySelector('[aria-current="page"]');
@@ -211,12 +210,11 @@ function Workbench() {
                 aria-describedby={recentAlerts > 0 ? "admin-alert-count" : undefined}
                 title={t("admin")}
               >
-                <span className="admin-link-icon" aria-hidden="true">
-                  <Settings size={18} strokeWidth={1.5} />
-                  {recentAlerts > 0 && <Badge className="admin-alert-badge">{recentAlerts > 99 ? "99+" : recentAlerts}</Badge>}
+                <span className="admin-alert-anchor">
+                  <Settings size={18} strokeWidth={1.5} aria-hidden="true" />
+                  <RecentAlertBadge count={recentAlerts} descriptionId="admin-alert-count" />
                 </span>
                 <span className="nav-label">{t("admin")}</span>
-                {recentAlerts > 0 && <span className="sr-only" id="admin-alert-count">{t("recentWarnings")}: {recentAlerts}</span>}
               </Link>
               <Logout />
             </div>
@@ -230,17 +228,8 @@ function Workbench() {
               </p>
             )}
             {full && selected ? (
-              <>
-                <Link className="button" to="/?classic=1">
-                  {t("themeHostView")}
-                </Link>
-                <ThemeFrame
-                  key={identity}
-                  theme={selected}
-                  onFailure={onFailure}
-                />
-              </>
-            ) : <Outlet context={attention} />}
+              <ThemeFrame key={identity} theme={selected} onFailure={onFailure} />
+            ) : <Outlet context={{ ...attention, recentCount }} />}
           </RouteSurface>
         </main>
       </div>
@@ -248,8 +237,9 @@ function Workbench() {
   );
 }
 function AdminRoute() {
+  const recentAlerts = useOutletContext<number | undefined>() ?? 0;
   return (
-    <AdminShell brand={<Brand />} tools={<AppearanceToggle />} logout={<Logout />}>
+    <AdminShell brand={<Brand />} tools={<AppearanceToggle />} logout={<Logout />} recentAlerts={recentAlerts}>
       <RouteSurface><Outlet /></RouteSurface>
     </AdminShell>
   );

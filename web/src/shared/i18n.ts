@@ -63,7 +63,8 @@ const messages = {
   suggestHostMemory: ["可用内存偏低，可设置可用内存告警。", "Available memory is low. Consider an alert for remaining memory."],
   suggestHostDisk: ["剩余磁盘空间偏低，可设置磁盘余量告警。", "Available disk space is low. Consider a disk space alert."],
   cardsView: ["卡片", "Cards"],
-  tableView: ["表格", "Table"],
+  tableView: ["列表", "List"],
+  allGroups: ["全部分组", "All groups"],
   needsAttention: ["需要处理", "Needs attention"],
   recentWarnings: ["近期告警", "Recent alerts"],
   executionProgress: ["命令执行进度", "Command progress"],
@@ -135,7 +136,6 @@ const messages = {
   themeRollback: ["回滚版本", "Roll back"],
   themeDelete: ["删除主题", "Delete theme"],
   themeDeleteConfirm: ["删除此主题包？", "Delete this theme package?"],
-  themeHostView: ["打开内置工作台", "Open built-in workbench"],
   themeFallback: [
     "主题载入失败，已切换到 Classic。",
     "Theme failed to load. Using Classic.",

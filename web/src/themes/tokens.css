@@ -286,20 +286,12 @@ small {
   letter-spacing: -0.6px;
   font-weight: 700;
 }
-.brand-icon {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 9px;
-  background: var(--accent-soft);
-  color: var(--qb-accent);
-}
 .brand-mark {
-  width: 70%;
-  height: 70%;
-  background: currentColor;
-  mask: url("/favicon.svg") center / contain no-repeat;
+  flex: none;
+  inline-size: 2rem;
+  block-size: 2rem;
+  background-color: currentColor;
+  mask: url("/favicon.svg") center / auto 1.75rem no-repeat;
 }
 .topbar {
   border-bottom: 1px solid var(--line);

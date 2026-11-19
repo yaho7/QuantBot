@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Attention } from "../components/attention-summary";
 import { StrategyTable } from "../components/strategy-table";
 import { lazy, Suspense, memo, useMemo, useState, type ReactNode } from "react";
@@ -17,7 +17,6 @@ import {
   RiAlarmWarningLine as AlarmWarning,
   RiCheckboxCircleLine as CheckboxCircle,
   RiGridLine as LayoutGrid,
-  RiListUnordered as List,
   RiQuestionLine as Question,
   RiEqualizer2Line as SlidersHorizontal,
 } from "@remixicon/react";
@@ -32,16 +31,15 @@ import { Page } from "./App";
 import { History, useTelemetryValues } from "./strategy";
 
 const WidgetBoard = lazy(() => import("../components/widget-board"));
-const views = [
-  ["cardsView", LayoutGrid],
-  ["tableView", List],
-] as const;
+const views = ["cardsView", "tableView"] as const;
+type OverviewAttention = Attention & { recentCount?: number };
+
 export function Home() {
   const { t } = useLanguage();
   const strategies = useQuery(resource<Strategy[]>("/strategies"));
   const directory = useLocation().pathname === "/strategies";
-  const attention = useOutletContext<Attention>();
-  const [view, setView] = useState(localStorage.getItem("qb.strategyView") === "tableView" ? "tableView" : "cardsView");
+  const attention = useOutletContext<OverviewAttention>();
+  const [view, setView] = useState(() => localStorage.getItem("qb.strategyView") === "tableView" ? "tableView" : "cardsView");
   const [filter, setFilter] = useState("all");
   const [group, setGroup] = useState("");
   const [search, setSearch] = useState("");
@@ -106,46 +104,42 @@ export function Home() {
 
   return (
     <Page title={t("strategies")}>
-      <section className="section portfolio-strategies strategy-directory">
-        <div className="filter-bar">
-          <Choices label={t("status")} value={filter}
+      <section className="section strategy-directory">
+        <div className="directory-toolbar">
+          <Input type="search" aria-label={t("search")} placeholder={t("search")} value={search}
+            onChange={event => setSearch(event.target.value)} className="strategy-search" />
+          <Choices label={t("status")} value={filter} fill
             options={(["all", "online", "offline"] as const).map(value => ({ value, label: t(value) }))}
             select={setFilter} />
           {groups.length > 0 && (
-            <label className="inline-filter">
-              <span className="sr-only">{t("group")}</span>
-              <NativeSelect
-                value={group}
-                onChange={(e) => setGroup(e.target.value)}
-              >
-                <NativeSelectOption value="">{t("all")}</NativeSelectOption>
-                {groups.map((g) => (
-                  <NativeSelectOption key={g}>{g}</NativeSelectOption>
-                ))}
-              </NativeSelect>
-            </label>
+            <NativeSelect className="directory-group" aria-label={t("group")} value={group} onChange={e => setGroup(e.target.value)}>
+              <NativeSelectOption value="">{t("allGroups")}</NativeSelectOption>
+              {groups.map(g => <NativeSelectOption key={g}>{g}</NativeSelectOption>)}
+            </NativeSelect>
           )}
-          <div className="filter-spacer" />
           <NativeSelect
             aria-label={t("sort")}
+            className="directory-sort"
             value={sort}
             onChange={(e) => setSort(e.target.value)}
           >
             <NativeSelectOption value="name">{t("name")}</NativeSelectOption>
             <NativeSelectOption value="lastSeen">{t("lastSeen")}</NativeSelectOption>
           </NativeSelect>
-        </div>
-        <div className="directory-toolbar">
-          <Input type="search" aria-label={t("search")} placeholder={t("search")} value={search}
-            onChange={event => setSearch(event.target.value)} className="strategy-search" />
           <div className="directory-view">
-            <span className="muted tabular-nums">{selected.length} / {rows.length}</span>
-            <Choices label={t("view")} value={view} options={views.map(([value, Icon]) => ({
-              value, label: t(value), icon: <Icon size={16} />,
-            }))} select={name => {
-              setView(name);
-              localStorage.setItem("qb.strategyView", name);
-            }} />
+            <span className="directory-count muted tabular-nums">{selected.length} / {rows.length}</span>
+            <Select value={view} items={views.map(value => ({ value, label: t(value) }))} onValueChange={value => {
+              if (!value) return;
+              setView(value);
+              localStorage.setItem("qb.strategyView", value);
+            }}>
+              <SelectTrigger aria-label={t("view")}><SelectValue /></SelectTrigger>
+              <SelectContent alignItemWithTrigger={false} align="end">
+                <SelectGroup>
+                  {views.map(value => <SelectItem key={value} value={value}>{t(value)}</SelectItem>)}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         {strategies.isPending ? <Loading /> : !rows.length ? <EmptyStrategies /> :
@@ -227,7 +221,7 @@ function PortfolioSnapshot({ strategy, picker }: { strategy: Strategy; picker: R
         <div className="portfolio-amount flex flex-col gap-1">
           <h2 id="overview-equity" className="text-lg font-medium">{t("equity")}</h2>
           <div className="overview-figure flex flex-wrap items-baseline gap-2">
-                <span className="text-4xl font-medium tabular-nums md:text-5xl">{decimalText(equity?.data.value)}</span>
+            <span className="text-4xl font-medium tabular-nums md:text-5xl">{decimalText(equity?.data.value)}</span>
             {currency && <span className="muted text-sm">{currency}</span>}
           </div>
           {sameAccount && typeof pnl === "string" && (
@@ -252,7 +246,7 @@ function PortfolioSnapshot({ strategy, picker }: { strategy: Strategy; picker: R
   );
 }
 
-function OperationsQueue({ attention }: { attention: Attention }) {
+function OperationsQueue({ attention }: { attention: OverviewAttention }) {
   const { t } = useLanguage();
   const items = [
     { label: t("confirmation"), count: attention.waitingCount, to: "/admin/activity?status=confirmation_required", Icon: CheckboxCircle },

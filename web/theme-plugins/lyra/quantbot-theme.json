@@ -1,7 +1,7 @@
 {
   "id": "lyra",
   "name": "Lyra",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "QuantBot",
   "description": "Lyra monitoring dashboard with financial charts and trusted host controls.",
   "engine": "quantbot-theme-v1",

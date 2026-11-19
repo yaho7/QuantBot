@@ -38,7 +38,7 @@ test("Lyra is an optional isolated package and Classical stays the default", asy
   await expect(page.getByRole("link", { name: "下载 Lyra 主题包", exact: true })).toHaveAttribute("href", "/lyra-theme.zip");
   await page.getByRole("button", { name: "安装 Lyra 主题", exact: true }).click();
   const card = page.locator("article").filter({ has: page.getByRole("heading", { name: "Lyra", exact: true }) });
-  await expect(card).toContainText("2.0.0");
+  await expect(card).toContainText("2.0.1");
   expect((await (await request.get("/api/theme")).json()).id).toBe("classical");
   await card.getByRole("button", { name: "启用主题", exact: true }).click();
   await expect(card).toContainText("使用中");
@@ -47,6 +47,8 @@ test("Lyra is an optional isolated package and Classical stays the default", asy
   const iframe = page.locator('iframe[title="Lyra"]');
   const frame = iframe.contentFrame();
   await expect(frame.getByRole("heading", { name: "运行总览", exact: true })).toBeVisible();
+  await expect(page.locator('a[href="/?classic=1"]')).toHaveCount(0);
+  await expect(page.getByText("打开内置工作台", { exact: true })).toHaveCount(0);
   const selector = frame.getByRole("combobox", { name: "策略", exact: true });
   await selector.click();
   await frame.getByRole("option", { name: "跨期价差", exact: true }).click();
@@ -80,13 +82,24 @@ test("Lyra is an optional isolated package and Classical stays the default", asy
   await search.clear();
   await directory.getByRole("combobox", { name: "分组", exact: true }).click();
   await frame.getByRole("option", { name: "全部", exact: true }).click();
-  await directory.getByText("列表", { exact: true }).click();
+  const view = directory.getByRole("combobox", { name: "显示方式", exact: true });
+  const viewChoices = frame.getByRole("listbox");
+  const chooseView = async (name: string) => {
+    await view.click();
+    await viewChoices.getByRole("option", { name, exact: true }).click();
+    await expect(view).toHaveText(name);
+  };
+  await expect(view).toHaveText("紧凑");
+  await view.click();
+  await expect(viewChoices.getByRole("option")).toHaveText(["大卡片", "紧凑", "迷你", "列表"]);
+  await viewChoices.getByRole("option", { name: "列表", exact: true }).click();
+  await expect(view).toHaveText("列表");
   await expect(directory.getByRole("row").filter({ hasText: "低波动轮动" })).toContainText("离线");
-  await directory.getByText("迷你", { exact: true }).click();
+  await chooseView("迷你");
   await expect(directory.getByRole("heading", { name: "跨期价差" })).toBeVisible();
-  await directory.getByText("大卡片", { exact: true }).click();
+  await chooseView("大卡片");
   await expect(offlineCard.getByText("最近在线 · —", { exact: true })).toBeVisible();
-  await directory.getByText("紧凑", { exact: true }).click();
+  await chooseView("紧凑");
 
   await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
   const isolation = await frame.locator("body").evaluate(() => {

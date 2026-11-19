@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 
 async function layoutBox(page: Page) {
   await page.locator(".route-surface .page-layout > .page-body").waitFor({ state: "attached" });
@@ -18,6 +18,23 @@ async function layoutBox(page: Page) {
       width: header.width,
     };
   });
+}
+
+async function expectRecentAlertBadge(link: Locator) {
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAccessibleDescription("近期告警: 1");
+  const badge = link.locator(".admin-alert-badge");
+  await expect(badge).toBeVisible();
+  await expect(badge).toHaveText("1");
+}
+
+async function expectBareBrand(brand: Locator) {
+  await expect(brand).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(brand.locator(".brand-icon")).toHaveCount(0);
+  const mark = brand.locator(":scope > .brand-mark");
+  await expect(mark).toBeVisible();
+  await expect(mark).toHaveCSS("border-top-width", "0px");
+  await expect(mark).toHaveCSS("box-shadow", "none");
 }
 
 test("day and night share spacing and page navigation fades only the route", async ({ page }, testInfo) => {
@@ -139,10 +156,10 @@ test("day and night share spacing and page navigation fades only the route", asy
   await expect(appearanceButton).toHaveCount(0);
   await expect(header.locator(".connection-dot")).toHaveCount(0);
   await expect(adminIcon).toHaveAccessibleName("管理后台");
-  await expect(adminIcon).toHaveAccessibleDescription("近期告警: 1");
-  await expect(adminIcon.locator(".admin-alert-badge")).toBeVisible();
-  await expect(adminIcon.locator(".admin-alert-badge")).toHaveText("1");
+  await expectRecentAlertBadge(adminIcon);
   await expect(adminIcon).toHaveAttribute("href", "/admin/dashboard");
+  const workbenchBrand = header.getByRole("link", { name: "QuantBot", exact: true });
+  await expectBareBrand(workbenchBrand);
 
   await pendingLink.click();
   await expect(page).toHaveURL(origin + pendingPath);
@@ -154,12 +171,19 @@ test("day and night share spacing and page navigation fades only the route", asy
   await page.goto("/");
   await adminIcon.click();
   await expect(page).toHaveURL(origin + "/admin/dashboard");
-  await expect(page.locator(".admin-toolbar").getByRole("button", { name: /^外观:/ })).toBeVisible();
+  const adminToolbar = page.locator(".admin-toolbar");
+  await expect(adminToolbar.getByRole("button", { name: /^外观:/ })).toBeVisible();
+  await expectBareBrand(adminToolbar.getByRole("link", { name: "QuantBot", exact: true }));
+  const toolbarAlerts = adminToolbar.getByRole("link", { name: "告警", exact: true });
+  await expect(toolbarAlerts).toBeHidden();
   const desktopAdminNav = page.locator(".admin-sidebar nav");
+  const sidebarAlerts = desktopAdminNav.getByRole("link", { name: "告警", exact: true });
   for (const path of adminPaths) {
     await expect(desktopAdminNav.locator(`a[href="${path}"]`)).toBeVisible();
   }
-  await desktopAdminNav.locator('a[href="/admin/alerts"]').click();
+  await expectRecentAlertBadge(sidebarAlerts);
+  await expect(sidebarAlerts).toHaveAttribute("href", "/admin/alerts");
+  await sidebarAlerts.click();
   await expect(page).toHaveURL(origin + "/admin/alerts");
   await expect(page.getByRole("link", { name: /布局告警验证/ })).toHaveAttribute("href", "/strategies/" + strategyId);
   await expect(page.getByRole("link", { name: /布局信息验证/ })).toBeVisible();
@@ -171,6 +195,7 @@ test("day and night share spacing and page navigation fades only the route", asy
   await hostLink.click();
   await expect(page).toHaveURL(origin + hostDetailPath);
   await expect(page.getByRole("heading", { level: 1, name: "布局主机" })).toBeVisible();
+  await expectRecentAlertBadge(sidebarAlerts);
   const backToHosts = page.getByRole("main").getByRole("link", { name: "主机", exact: true });
   await expect(backToHosts).toHaveAttribute("href", "/admin/hosts");
   await backToHosts.click();
@@ -187,18 +212,15 @@ test("day and night share spacing and page navigation fades only the route", asy
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
-    const brand = header.getByRole("link", { name: "QuantBot", exact: true });
-    const brandPosition = (await brand.boundingBox())!;
+    const brandPosition = (await workbenchBrand.boundingBox())!;
     const firstTab = (await primaryNav.getByRole("link", { name: "工作台", exact: true }).boundingBox())!;
     const brandGap = firstTab.x - brandPosition.x - brandPosition.width;
     expect(brandGap).toBeGreaterThanOrEqual(0);
     expect(brandGap).toBeLessThanOrEqual(24);
     if (width === 390) {
-      await expect(adminIcon).toBeVisible();
-      await expect(adminIcon).toHaveAccessibleDescription("近期告警: 1");
-      await expect(adminIcon.locator(".admin-alert-badge")).toBeVisible();
+      await expectRecentAlertBadge(adminIcon);
       const adminBox = (await adminIcon.boundingBox())!;
-      const sameRow = [brand];
+      const sameRow = [workbenchBrand];
       for (const name of ["工作台", "策略", "控制中心"]) {
         const link = primaryNav.getByRole("link", { name, exact: true });
         await expect(link).toBeVisible();
@@ -244,6 +266,7 @@ test("day and night share spacing and page navigation fades only the route", asy
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/admin/settings");
     const admin = await layoutBox(page);
+    if (width === 1280) await expectRecentAlertBadge(sidebarAlerts);
     for (const path of adminPagePaths) {
       await page.goto(path);
       await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
@@ -266,6 +289,8 @@ test("day and night share spacing and page navigation fades only the route", asy
 
   const menuButton = page.getByRole("button", { name: "打开菜单", exact: true });
   const drawer = page.getByRole("dialog", { name: "管理后台", exact: true });
+  await expectRecentAlertBadge(toolbarAlerts);
+  await expect(toolbarAlerts).toHaveAttribute("href", "/admin/alerts");
   for (const appearance of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: appearance });
     await expect(page.locator("html")).toHaveAttribute("data-appearance", appearance);
@@ -275,6 +300,7 @@ test("day and night share spacing and page navigation fades only the route", asy
     for (const path of adminPaths) {
       await expect(drawer.locator(`a[href="${path}"]`)).toBeVisible();
     }
+    await expectRecentAlertBadge(drawer.getByRole("link", { name: "告警", exact: true }));
     await page.keyboard.press("Tab");
     await expect.poll(() => drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`admin-drawer-390-${appearance}.png`) });
@@ -297,6 +323,11 @@ test("day and night share spacing and page navigation fades only the route", asy
   await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
   await appearanceButton.click();
   await expect(appearanceButton).toHaveAccessibleName("外观: 跟随系统");
+  await expectRecentAlertBadge(toolbarAlerts);
+  await toolbarAlerts.click();
+  await expect(page).toHaveURL(origin + "/admin/alerts");
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole("link", { name: /布局告警验证/ })).toBeVisible();
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
@@ -335,10 +366,23 @@ test("day and night share spacing and page navigation fades only the route", asy
   await expect(page.getByRole("heading", { name: "没有符合筛选条件的策略" })).toBeVisible();
   await page.getByRole("button", { name: "清除筛选" }).click();
   await expect(search).toHaveValue("");
-  await page.getByRole("radio", { name: "表格", exact: true }).click();
+  const view = page.getByRole("combobox", { name: "显示方式", exact: true });
+  await expect(view).toHaveText("卡片");
+  await view.press("ArrowDown");
+  const viewChoices = page.getByRole("listbox");
+  await expect(viewChoices.getByRole("option")).toHaveText(["卡片", "列表"]);
+  await expect(viewChoices.getByRole("option", { name: "卡片", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(viewChoices.getByRole("option", { name: "列表", exact: true })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(view).toHaveText("列表");
+  await expect(view).toBeFocused();
   const directoryPanel = page.locator(".strategy-directory .panel-enter");
   await expect(directoryPanel.locator("table")).toBeVisible();
   await expect(directoryPanel).toHaveCSS("animation-name", "qb-panel-enter");
+  await page.reload();
+  await expect(view).toHaveText("列表");
+  await expect(directoryPanel.getByRole("table").getByRole("link", { name: "布局样本", exact: true })).toBeVisible();
 
   await page.goto("/strategies/" + strategyId);
   await page.locator(".portfolio-records").getByRole("radio", { name: "主机", exact: true }).click();

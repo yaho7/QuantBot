@@ -37,7 +37,8 @@
   gap: var(--section-gap);
   min-width: 0;
 }
-.route-surface .page-body > :is(.section, .surface, .overview-content, .filter-bar, .loading, .empty-state) {
+.route-surface .page-layout > .page-body > :is(.section, .surface, .overview-content, .filter-bar, .loading, .empty-state),
+.route-surface .page-body .overview-content > .widget-section {
   margin-block: 0;
 }
 .route-surface .page-body > .padded,
@@ -109,7 +110,6 @@
 .overview-status-dot.is-online { background: var(--success); }
 .overview-status-label { white-space: nowrap; }
 .host-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr)); }
-.route-surface .overview-content .widget-section,
 .route-surface .strategy-intro .portfolio-hero,
 .route-surface .panel-enter > :first-child { margin-block-start: 0; }
 .strategy-intro {
@@ -190,20 +190,54 @@
   ::view-transition-old(quantbot-page), ::view-transition-new(quantbot-page) { animation: none; }
 }
 
-.strategy-directory .directory-toolbar,
-.strategy-directory .directory-view {
+.directory-toolbar,
+.directory-view {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--spacing-2);
 }
-.strategy-directory .directory-toolbar {
-  justify-content: space-between;
+.directory-toolbar {
+  --directory-control-height: 2.625rem;
+  flex-wrap: wrap;
   border-block-end: 1px solid var(--line);
   margin-block-end: var(--panel-gap);
   padding-block-end: var(--panel-gap);
 }
-.strategy-search { flex: 1 1 16rem; max-inline-size: 24rem; }
-.strategy-directory .filter-bar { align-items: center; }
+.directory-toolbar :is([data-slot="input"], [data-slot="native-select"], [data-slot="select-trigger"]) {
+  min-block-size: var(--directory-control-height);
+}
+.directory-toolbar [data-slot="native-select-wrapper"] {
+  min-inline-size: 7rem;
+  max-inline-size: 12rem;
+}
+.directory-toolbar [data-slot="native-select"] { text-overflow: ellipsis; }
+.directory-toolbar .qb-choices {
+  inline-size: auto;
+  min-block-size: var(--directory-control-height);
+}
+.strategy-search { flex: 1 1 12rem; min-inline-size: 9rem; }
+.directory-view { margin-inline-start: auto; }
+.directory-view [data-slot="select-trigger"] { min-inline-size: 6.25rem; }
+
+@media (max-width: 767px) {
+  .directory-toolbar {
+    --directory-control-height: 2.75rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .directory-toolbar :is(.strategy-search, .qb-choices) {
+    grid-column: 1 / -1;
+    inline-size: 100%;
+  }
+  .directory-toolbar :is([data-slot="native-select-wrapper"], .directory-view, [data-slot="select-trigger"]) {
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: none;
+  }
+  .directory-toolbar:not(:has(.directory-group)) .directory-sort {
+    grid-column: span 2;
+  }
+  .directory-count { display: none; }
+}
 .portfolio-records > .segmented { max-width: 100%; }
 .widget-edit-tools { margin-inline-start: auto; }

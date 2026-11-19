@@ -9,10 +9,9 @@ places runtime status beside equity on desktop and stacks the panels on mobile.
 Administration uses its own command bar and grouped navigation, with a modal
 drawer on mobile.
 
-The optional Lyra theme package can replace the monitoring home. Install and
-enable it from Administration > Themes. Restore Classical to return to the
-default overview. The host handles administration, strategy pages, and command
-confirmation.
+The workbench opens the active theme at `/`. Install, enable, or restore themes
+from Administration > Themes. If the active theme fails, the workbench loads
+Classical. The host handles administration, strategy pages, and command confirmation.
 
 Settings > Appearance supports System, Light, and Dark. The selected mode is
 applied to both the monitoring workspace and administration and synchronized
@@ -41,8 +40,11 @@ Scrollbar tracks are hidden; scrollable card content uses subtle edge shadows.
 
 - The status panel shows online and offline counts. Select a strategy in the
   panel or from the equity chart to change the series. Hosts, Activity, and
-  Alerts are under Monitoring in Administration. The workbench administration
-  icon shows a count when recent alerts need attention.
+  Alerts are under Monitoring in Administration. Recent alert counts appear on
+  the workbench administration icon, the administration Alerts item, and the
+  mobile administration toolbar.
+- The strategy directory uses one display dropdown for cards and list. The
+  built-in directory keeps the selected view when the page reloads.
 - The attention queue links to commands awaiting confirmation, commands with
   unknown execution outcomes, and warning or more severe alerts received in the
   last 15 minutes.

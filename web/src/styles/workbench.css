@@ -26,15 +26,6 @@
   padding: 0 var(--route-gutter);
 }
 
-.workbench-shell.native-workbench .brand-icon,
-.admin-shell .brand-icon,
-.login-page .brand-icon {
-  border: 0;
-  box-shadow: none;
-  background: var(--accent-soft);
-  color: var(--qb-accent);
-}
-
 .workbench-shell .topbar .brand {
   justify-self: start;
   gap: var(--spacing-2);
@@ -100,33 +91,9 @@
   gap: var(--spacing-1);
 }
 
-.admin-link-icon {
-  position: relative;
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-
 .workbench-shell .admin-link .nav-label {
   margin-inline-start: var(--spacing-1);
   white-space: nowrap;
-}
-
-.admin-link-icon .admin-alert-badge {
-  position: absolute;
-  inset-block-start: -0.5rem;
-  inset-inline-start: 0.65rem;
-  block-size: 1rem;
-  min-inline-size: 1rem;
-  padding: 0 0.15rem;
-  border: 1px solid var(--surface);
-  border-radius: 999px;
-  background: var(--warning);
-  color: var(--canvas);
-  font-size: 0.5625rem;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
 }
 
 .workbench-shell.native-workbench[data-theme="classical"] :is(.surface, .summary-card, .control-card),
