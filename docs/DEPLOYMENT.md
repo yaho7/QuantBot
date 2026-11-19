@@ -33,7 +33,7 @@ Use the bridge gateway reported by `docker inspect` for a proxy connecting throu
 
 ## Native Linux
 
-Run `bash install.sh --ref v3.1.4` to install the Linux amd64 or arm64 release into `~/.local/bin`. The installer verifies the published SHA-256 checksum and binary version before replacing the executable.
+Run `bash install.sh --ref v3.1.5` to install the Linux amd64 or arm64 release into `~/.local/bin`. The installer verifies the published SHA-256 checksum and binary version before replacing the executable.
 
 ```bash
 mkdir -p ~/.config/systemd/user ~/.config/quantbot ~/.local/share/quantbot
