@@ -13,9 +13,9 @@ const paletteTokens: Record<keyof Palette, string> = {
   background: "--canvas",
   surface: "--surface",
   foreground: "--text",
-  muted: "--muted",
+  muted: "--qb-muted",
   border: "--line",
-  accent: "--accent",
+  accent: "--qb-accent",
   positive: "--success",
   negative: "--danger",
   chart: "--theme-chart",
@@ -97,12 +97,12 @@ export function ThemeFrame({
     const context = () => ({
       language: language.current,
       appearance: document.documentElement.dataset.appearance === "dark" ? "dark" : "light",
-      palette: document.documentElement.dataset.palette ?? "forest",
+      palette: "neutral",
     });
     const observer = new MutationObserver(() => {
       if (acknowledged) send({ type: "quantbot:context", ...context() });
     });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-appearance", "data-palette", "lang"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-appearance", "lang"] });
     const receive = (event: MessageEvent) => {
       if (
         event.source !== frame.current?.contentWindow ||

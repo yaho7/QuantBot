@@ -1,7 +1,8 @@
-import { Button } from "@astryxdesign/core/Button";
+import { Button } from "@/components/ui/button";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { BookOpen, Clipboard, RotateCw } from "lucide-react";
+import { RiBookOpenLine as BookOpen, RiClipboardLine as Clipboard, RiRestartLine as RotateCw } from "@remixicon/react";
 import { toast } from "sonner";
 import { api, client, resource, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
@@ -65,12 +66,12 @@ export function ConnectionDialog({ strategy, created, onClose }: {
     }}>
     <div className="connection-caption">{strategy.name}</div>
     {confirm ? <>
-      <p className="muted">{t("regenerateTokenWarning")}</p>
+      <p className="text-muted-foreground">{t("regenerateTokenWarning")}</p>
       {regenerate.error && <p className="error-text" role="alert">{regenerate.error.message}</p>}
       <div className="dialog-actions">
-        <button type="button" disabled={regenerate.isPending} onClick={() => setConfirm(false)}>{t("cancel")}</button>
-        <button type="button" className="danger" disabled={regenerate.isPending || !primary}
-          onClick={() => regenerate.mutate()}>{t("regenerateToken")}</button>
+        <Button variant="outline" disabled={regenerate.isPending} onClick={() => setConfirm(false)}>{t("cancel")}</Button>
+        <Button variant="destructive" disabled={!primary || regenerate.isPending} aria-busy={regenerate.isPending}
+          onClick={() => regenerate.mutate()}>{t("regenerateToken")}</Button>
       </div>
     </> : <>
       <Choices label={t("connectionType")} value={view} fill size="lg" select={setView}
@@ -87,20 +88,22 @@ export function ConnectionDialog({ strategy, created, onClose }: {
         {reveal.error && <p className="error-text" role="alert">{reveal.error.message}</p>}
         {regenerate.error && <p className="error-text" role="alert">{regenerate.error.message}</p>}
         <div className="connection-options">
-          {primary && !primary.revealable && <span className="muted">{t("legacyTokenHint")}</span>}
-          <button type="button" className="text-button" disabled={!canGenerate || reveal.isPending || regenerate.isPending}
+          {primary && !primary.revealable && <span className="text-muted-foreground">{t("legacyTokenHint")}</span>}
+          <Button variant="ghost" size="sm" disabled={!canGenerate || reveal.isPending || regenerate.isPending}
             onClick={() => {
               regenerate.reset();
               if (primary) setConfirm(true); else regenerate.mutate();
-            }}><RotateCw size={14} />{t(primary ? "regenerateToken" : "createToken")}</button>
+            }}><RotateCw size={16} aria-hidden="true" />{t(primary ? "regenerateToken" : "createToken")}</Button>
         </div>
         <ExecutorSettings strategy={strategy} path={path} />
         <div className="connection-footer">
           <a href={agentReferences.integration} target="_blank" rel="noreferrer">
             <BookOpen size={15} />{t("integrationExamples")}
           </a>
-          <Button variant="primary" label={t("copyAgentPrompt")} icon={<Clipboard size={16} />}
-            onClick={() => void copy(agentPrompt(location.origin, endpoint, strategy, { key: primary?.id, lang }))} />
+          <Button onClick={() => void copy(agentPrompt(location.origin, endpoint, strategy, { key: primary?.id, lang }))}>
+            <Clipboard size={16} aria-hidden="true" />
+            {t("copyAgentPrompt")}
+          </Button>
         </div>
       </div> : <SandboxPanel strategy={strategy} productionEndpoint={endpoint} />}
     </>}
@@ -128,15 +131,16 @@ function ExecutorSettings({ strategy, path }: { strategy: Strategy; path: string
     <summary>{t("executor")}</summary>
     {open && <div className="connection-detail-body">
       {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} /> : <>
-        <p className="muted">{t("current")} · {current || t("noExecutor")}</p>
+        <p className="text-muted-foreground">{t("current")} · {current || t("noExecutor")}</p>
         <form onSubmit={event => { event.preventDefault(); save.mutate(); }}>
-          <select aria-label={t("executor")} value={selected ?? current} onChange={event => setSelected(event.target.value)}>
-            <option value="">{t("noExecutor")}</option>
-            {query.data.instances?.map(instance => <option key={instance.instanceId} value={instance.instanceId}>
+          <NativeSelect className="w-full" aria-label={t("executor")} value={selected ?? current} onChange={event => setSelected(event.target.value)}>
+            <NativeSelectOption value="">{t("noExecutor")}</NativeSelectOption>
+            {query.data.instances?.map(instance => <NativeSelectOption key={instance.instanceId} value={instance.instanceId}>
               {instance.instanceId} · {t(instance.online ? "online" : "offline")}
-            </option>)}
-          </select>
-          <button disabled={save.isPending || selected === undefined || selected === current}>{t("save")}</button>
+            </NativeSelectOption>)}
+          </NativeSelect>
+          <Button type="submit" variant="outline" aria-busy={save.isPending}
+            disabled={save.isPending || selected === undefined || selected === current}>{t("save")}</Button>
         </form>
         {save.error && <p className="error-text" role="alert">{save.error.message}</p>}
       </>}

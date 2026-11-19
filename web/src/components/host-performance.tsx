@@ -104,7 +104,7 @@ export function ResourceChart<T>({ readings, select, label }: {
   }, [readings, select]);
   return <div className="surface padded resource-trend">
     <h3>{label}</h3>
-    {points.length > 1 ? <Suspense fallback={<Loading />}><Chart points={points} /></Suspense> :
+    {points.length > 1 ? <Suspense fallback={<Loading />}><Chart points={points} valueLabel={label} /></Suspense> :
       <p className="empty-inline">{t("performanceTrendEmpty")}</p>}
   </div>;
 }

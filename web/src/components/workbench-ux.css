@@ -9,7 +9,7 @@
   position: absolute; pointer-events: auto; border: 0;
   width: 28px; height: 28px; min-height: 28px; padding: 0;
   border-radius: 50%; background: color-mix(in srgb, var(--surface) 88%, transparent);
-  color: var(--muted); opacity: .7;
+  color: var(--qb-muted); opacity: .7;
 }
 .scroll-cue.down { bottom: 4px; left: calc(50% - 14px); }
 .scroll-cue.right { right: 4px; top: calc(50% - 14px); }
@@ -26,9 +26,9 @@
 .widget[data-density="compact"] .control-card { padding: 8px; }
 .widget[data-density="compact"] .compact-widget-summary { margin: 0; }
 .command-progress { margin-block: 10px; font-size: 12px; }
-.command-steps { display: flex; flex-wrap: wrap; gap: 5px 12px; padding: 0; list-style: none; color: var(--muted); }
+.command-steps { display: flex; flex-wrap: wrap; gap: 5px 12px; padding: 0; list-style: none; color: var(--qb-muted); }
 .command-steps li::before { content: ""; display: inline-block; width: 5px; height: 5px; margin-right: 5px; border-radius: 50%; background: var(--line); }
-.command-steps li[data-complete="true"]::before { background: var(--accent); }
+.command-steps li[data-complete="true"]::before { background: var(--qb-accent); }
 .command-steps li[aria-current="step"] { color: var(--text); font-weight: 600; }
 .command-progress p { margin: 6px 0; }
 .strategy-table-container { position: relative; }
@@ -40,6 +40,6 @@
 .chart-with-values { min-width: 0; }
 .chart-value-readout {
   display: block; min-height: 24px; padding: 3px 12px;
-  color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--qb-muted); font-size: 12px; font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }

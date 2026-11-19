@@ -1,6 +1,6 @@
-import { Button } from "@astryxdesign/core/Button";
+import { Button } from "@/components/ui/button";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Clipboard, FlaskConical } from "lucide-react";
+import { RiClipboardLine as Clipboard, RiFlaskLine as FlaskConical, RiLoader4Line as LoaderCircle } from "@remixicon/react";
 import { useState } from "react";
 import { api, client, resource, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
@@ -50,6 +50,7 @@ export function SandboxPanel({ strategy, productionEndpoint }: { strategy: Strat
 
   if (query.isPending) return <Loading />;
   if (query.error) return <ErrorView error={query.error} retry={() => void query.refetch()} />;
+  const primaryPending = mutate.isPending && (mutate.variables === "copy" || mutate.variables === "start");
   return <div className="connection-panel">
     <div className="sandbox-state">
       <FlaskConical size={19} aria-hidden="true" />
@@ -66,19 +67,19 @@ export function SandboxPanel({ strategy, productionEndpoint }: { strategy: Strat
           revealing={mutate.isPending} onReveal={() => token ? setSecret(undefined) : mutate.mutate("reveal")} />
       </div>
       <div className="connection-options">
-        <span className="muted">{t("expires")} · {timestamp(current.expiresAt, true)}</span>
-        <button type="button" className="text-button" disabled={mutate.isPending} onClick={() => {
+        <span className="text-muted-foreground">{t("expires")} · {timestamp(current.expiresAt, true)}</span>
+        <Button variant="ghost" size="sm" disabled={mutate.isPending} onClick={() => {
           if (!closing) mutate.reset();
           setClosing(!closing);
-        }}>{t(closing ? "cancel" : "sandboxStop")}</button>
+        }}>{t(closing ? "cancel" : "sandboxStop")}</Button>
       </div>
       {closing && <div className="sandbox-confirm">
         <p>{t("sandboxStopWarning")}</p>
-        <button type="button" className="danger" disabled={mutate.isPending} onClick={() => mutate.mutate("stop")}>
+        <Button variant="destructive" disabled={mutate.isPending} aria-busy={mutate.isPending} onClick={() => mutate.mutate("stop")}>
           {t("sandboxStop")}
-        </button>
+        </Button>
       </div>}
-      <p className="muted" role="status">{t("sandboxAutomatic")}</p>
+      <p className="text-muted-foreground" role="status">{t("sandboxAutomatic")}</p>
       {current.passed && <p className="sandbox-passed" role="status">{t("sandboxPassed")}</p>}
       {!!current.requests.length && <details className="connection-details">
         <summary>{t("sandboxRequests")}</summary>
@@ -91,10 +92,12 @@ export function SandboxPanel({ strategy, productionEndpoint }: { strategy: Strat
     </>}
     {mutate.error && <p className="error-text" role="alert">{mutate.error.message}</p>}
     <div className="connection-footer sandbox-footer">
-      <Button variant="primary" label={t(active ? "copySandboxPrompt" : "sandboxStart")}
-        icon={active ? <Clipboard size={16} /> : <FlaskConical size={16} />}
-        isLoading={mutate.isPending && (mutate.variables === "copy" || mutate.variables === "start")}
-        isDisabled={mutate.isPending || closing} onClick={() => mutate.mutate(active ? "copy" : "start")} />
+      <Button aria-busy={primaryPending} disabled={closing || mutate.isPending}
+        onClick={() => mutate.mutate(active ? "copy" : "start")}>
+        {primaryPending ? <LoaderCircle className="motion-safe:animate-spin" aria-hidden="true" />
+          : active ? <Clipboard size={16} aria-hidden="true" /> : <FlaskConical size={16} aria-hidden="true" />}
+        {t(active ? "copySandboxPrompt" : "sandboxStart")}
+      </Button>
     </div>
   </div>;
 }

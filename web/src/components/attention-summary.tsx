@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
-import { ArrowUpRight } from "lucide-react";
+import { RiArrowRightUpLine as ArrowUpRight } from "@remixicon/react";
 import { resource, type Command, type Datum, type Strategy } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { Badge } from "../shared/ui";

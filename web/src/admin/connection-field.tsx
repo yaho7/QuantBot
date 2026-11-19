@@ -1,6 +1,10 @@
-import { IconButton } from "@astryxdesign/core/IconButton";
-import { useClipboard } from "@astryxdesign/core/hooks";
-import { Check, Copy, Eye, EyeOff } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  RiFileCopyLine as Copy,
+  RiLoader4Line as LoaderCircle,
+  RiEyeLine as Eye,
+  RiEyeOffLine as EyeOff,
+} from "@remixicon/react";
 import { toast } from "sonner";
 import { useLanguage } from "../shared/i18n";
 
@@ -20,21 +24,22 @@ export function ConnectionField({ label, value, field, onReveal, revealing = fal
   label: string; value?: string; field: string; onReveal?: () => void; revealing?: boolean; copyLabel: string;
 }) {
   const { t } = useLanguage();
-  const { copy, isCopied } = useClipboard({ announce: t("copied") });
+  const copy = useCopyText();
+  const visibilityLabel = t(value ? "hideToken" : "viewToken");
   return <div className="connection-field" data-field={field}>
     <div className="connection-field-value">
       <span>{label}</span>
       <code dir="ltr">{value ?? (onReveal ? "••••••••••••••••" : "—")}</code>
     </div>
     <div className="connection-field-actions">
-      {onReveal && <IconButton size="md" variant="ghost"
-        label={t(value ? "hideToken" : "viewToken")} tooltip={t(value ? "hideToken" : "viewToken")}
-        isLoading={revealing} onClick={onReveal}
-        icon={value ? <EyeOff size={16} /> : <Eye size={16} />} />}
-      <IconButton size="md" variant="ghost" label={copyLabel} tooltip={copyLabel} isDisabled={!value}
-        icon={isCopied ? <Check size={16} /> : <Copy size={16} />} onClick={async () => {
-          if (value && !(await copy(value))) toast.error(t("copyFailed"));
-        }} />
+      {onReveal && <Button size="icon" variant="ghost" aria-label={visibilityLabel}
+        disabled={revealing} aria-busy={revealing} onClick={onReveal}>
+        {revealing ? <LoaderCircle className="motion-safe:animate-spin" aria-hidden="true" /> : value ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+      </Button>}
+      <Button size="icon" variant="ghost" aria-label={copyLabel} disabled={!value}
+        onClick={() => { if (value) void copy(value); }}>
+        <Copy size={16} aria-hidden="true" />
+      </Button>
     </div>
   </div>;
 }

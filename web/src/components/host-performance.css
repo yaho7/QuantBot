@@ -10,16 +10,16 @@
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0;
 }
 .performance-process-heading { justify-content: space-between; }
-.performance-link { color: var(--accent); overflow-wrap: anywhere; }
+.performance-link { color: var(--qb-accent); overflow-wrap: anywhere; }
 .performance-link:hover { text-decoration: underline; }
 .performance-sample-status { font-size: 12px; }
 .performance-metrics {
   display: grid; grid-template-columns: repeat(auto-fit,minmax(min(100%, 100px),1fr));
   align-items: start; gap: 10px 16px; margin: 0;
 }
-.performance-metrics dt { color: var(--muted); font-size: 12px; }
+.performance-metrics dt { color: var(--qb-muted); font-size: 12px; }
 .performance-metrics dd { margin: 1px 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.performance-details > summary { cursor: pointer; color: var(--accent); }
+.performance-details > summary { cursor: pointer; color: var(--qb-accent); }
 .performance-details[open] > summary { margin-bottom: 12px; }
 .resource-trend { min-width: 0; }
 .resource-trend h3 { margin: 0 0 8px; }

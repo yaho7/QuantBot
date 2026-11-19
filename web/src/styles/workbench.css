@@ -1,0 +1,348 @@
+/* The native workbench keeps a labeled desktop rail and an edge-to-edge mobile bar. */
+.workbench-shell.native-workbench[data-theme="classical"] {
+  display: grid;
+  grid-template-columns: 13.5rem minmax(0, 1fr);
+  align-items: start;
+  min-height: 100dvh;
+  background: var(--canvas);
+  color: var(--text);
+}
+
+.native-workbench > main.container {
+  width: 100%;
+  max-width: 97.5rem;
+  min-width: 0;
+  padding-block-end: var(--spacing-10);
+}
+
+.workbench-shell.native-workbench .topbar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 25;
+  block-size: 100dvh;
+  background: var(--sidebar);
+  border: 0;
+  border-inline-end: 1px solid var(--line);
+}
+
+.workbench-shell.native-workbench .topbar-inner {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  inline-size: 100%;
+  block-size: 100%;
+  padding: var(--spacing-4);
+  gap: var(--spacing-6);
+  overflow-y: auto;
+}
+
+.workbench-shell.native-workbench .brand-icon,
+.admin-shell .brand-icon,
+.login-page .brand-icon {
+  border: 0;
+  box-shadow: none;
+  background: var(--accent-soft);
+  color: var(--qb-accent);
+}
+
+.workbench-shell.native-workbench .topbar .brand {
+  gap: var(--spacing-2);
+  min-block-size: var(--size-element-md);
+  padding-inline: var(--spacing-2);
+}
+.workbench-shell.native-workbench .topbar .brand strong {
+  font-size: var(--font-size-lg);
+  font-weight: 600;
+}
+
+.workbench-shell.native-workbench .topbar nav {
+  flex: 1 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: start;
+  gap: var(--spacing-1);
+}
+
+.workbench-shell.native-workbench .topbar nav a,
+.workbench-shell.native-workbench .topbar .admin-link {
+  display: flex;
+  gap: var(--spacing-2);
+  min-block-size: var(--size-element-md);
+  padding: var(--spacing-1) var(--spacing-3);
+  align-items: center;
+  border-radius: 0;
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  color: var(--qb-muted);
+}
+
+.workbench-shell.native-workbench .topbar nav a svg {
+  display: block;
+  flex: none;
+}
+
+.workbench-shell.native-workbench .topbar nav a:hover,
+.workbench-shell.native-workbench .topbar .admin-link:hover {
+  background: var(--raised);
+  color: var(--text);
+}
+
+.workbench-shell.native-workbench .topbar nav a.active {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+}
+
+.workbench-shell.native-workbench .topbar .nav-alert-badge {
+  position: static;
+  margin-inline-start: auto;
+}
+
+.workbench-shell.native-workbench .topbar .workbench-actions {
+  flex-wrap: wrap;
+  gap: var(--spacing-1);
+  padding-block-start: var(--spacing-2);
+  border-block-start: 1px solid var(--line);
+}
+.workbench-shell.native-workbench .topbar .admin-link {
+  order: -1;
+  inline-size: 100%;
+}
+
+.workbench-shell.native-workbench .topbar .floating-tools {
+  position: static;
+  flex-direction: row-reverse;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+.workbench-shell.native-workbench .topbar .floating-tools .connection-dot {
+  margin-inline-end: var(--spacing-2);
+}
+
+.workbench-shell.native-workbench[data-theme="classical"] :is(.surface, .summary-card, .control-card),
+.admin-shell .admin-main .surface {
+  background: var(--surface);
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.workbench-shell.native-workbench[data-theme="classical"] .strategy-card:hover {
+  transform: none;
+  border-color: color-mix(in srgb, var(--qb-muted) 45%, var(--line));
+  box-shadow: none;
+}
+
+.workbench-shell.native-workbench[data-theme="classical"] .widget::before {
+  content: none;
+}
+
+.workbench-shell.native-workbench[data-theme="classical"] :is(.summary-card > strong, .card-values strong, .equity-widget > strong) {
+  font-weight: 610;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+
+.workbench-shell.native-workbench[data-theme="classical"] .summary-card > strong {
+  font-size: clamp(26px, 3vw, 35px);
+}
+
+.admin-shell .sidebar nav .nav-group a.active {
+  background: var(--accent-soft);
+  color: var(--text);
+  font-weight: 650;
+}
+
+.portfolio-hero {
+  margin-block: 17px;
+  min-width: 0;
+  padding: clamp(16px, 3vw, 28px);
+}
+.workbench-shell.native-workbench[data-theme="classical"] .portfolio-hero {
+  background: var(--card);
+}
+.portfolio-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.portfolio-toolbar h2 {
+  margin: 0;
+}
+.portfolio-toolbar select {
+  max-width: min(56vw, 260px);
+}
+.portfolio-amount {
+  display: grid;
+  gap: 4px;
+}
+.portfolio-amount strong {
+  font-size: clamp(29px, 4.3vw, 52px);
+  line-height: 1.14;
+  font-weight: 600;
+  letter-spacing: -.04em;
+  overflow-wrap: anywhere;
+}
+.portfolio-amount strong small {
+  color: var(--qb-muted);
+  font-size: .39em;
+  letter-spacing: 0;
+}
+.portfolio-secondary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.portfolio-amount > span,
+.portfolio-secondary {
+  font-size: 13px;
+}
+.portfolio-chart {
+  padding: 12px 0 0;
+}
+.portfolio-chart > .filter-bar:empty {
+  display: none;
+}
+.portfolio-chart .chart.portfolio-plot {
+  height: auto;
+  min-height: 190px;
+}
+.portfolio-periods {
+  width: fit-content;
+  margin: 12px auto 0;
+  max-width: 100%;
+}
+.portfolio-record-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.portfolio-records > .segmented {
+  margin-bottom: 14px;
+}
+#strategy-controls {
+  scroll-margin-top: 68px;
+}
+.portfolio-holding {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px;
+}
+.portfolio-holding + .portfolio-holding {
+  border-top: 1px solid var(--line);
+}
+.portfolio-holding > span {
+  display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.portfolio-holding > span:last-child {
+  text-align: right;
+}
+
+@media (min-width: 768px) and (max-width: 1099px) {
+  .workbench-shell.native-workbench[data-theme="classical"] {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+  }
+  .workbench-shell.native-workbench .topbar-inner {
+    padding-inline: var(--spacing-2);
+    align-items: center;
+  }
+  .workbench-shell.native-workbench .topbar .brand,
+  .workbench-shell.native-workbench .topbar nav a,
+  .workbench-shell.native-workbench .topbar .admin-link {
+    justify-content: center;
+  }
+  .workbench-shell.native-workbench .topbar :is(.brand strong, .nav-label) {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+  }
+  .workbench-shell.native-workbench .topbar .nav-alert-badge {
+    position: absolute;
+    margin: 0;
+  }
+  .workbench-shell.native-workbench .topbar .workbench-actions {
+    flex-direction: column;
+    align-items: center;
+  }
+  .workbench-shell.native-workbench .topbar .floating-tools .connection-dot {
+    display: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .workbench-shell.native-workbench[data-theme="classical"] {
+    display: block;
+  }
+  .workbench-shell.native-workbench .topbar {
+    block-size: auto;
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--line);
+  }
+  .workbench-shell.native-workbench .topbar-inner {
+    block-size: auto;
+    min-block-size: 3.5rem;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    overflow: visible;
+    padding: 0 var(--spacing-3);
+    gap: var(--spacing-2);
+  }
+  .workbench-shell.native-workbench .topbar .brand {
+    flex: 1 1 auto;
+    padding: 0;
+  }
+  .workbench-shell.native-workbench .topbar .workbench-actions {
+    flex-wrap: nowrap;
+    padding: 0;
+    border: 0;
+  }
+  .workbench-shell.native-workbench .topbar :is(.workbench-actions button, .admin-link) {
+    min-block-size: 2.75rem;
+    inline-size: 2.75rem;
+    justify-content: center;
+    padding: 0;
+  }
+  .workbench-shell.native-workbench .topbar :is(.admin-link .nav-label, .floating-tools .connection-dot) {
+    display: none;
+  }
+  .workbench-shell.native-workbench .topbar nav {
+    position: fixed;
+    inset: auto 0 0;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: var(--spacing-1);
+    padding: var(--spacing-1) var(--spacing-2) calc(var(--spacing-1) + env(safe-area-inset-bottom));
+    border-block-start: 1px solid var(--line);
+    background: var(--surface);
+    overflow: visible;
+  }
+  .workbench-shell.native-workbench .topbar nav a {
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--spacing-1);
+    min-inline-size: 0;
+    min-block-size: 3rem;
+    padding: var(--spacing-1) 0;
+    font-size: var(--font-size-xs);
+    line-height: 1.2;
+  }
+  .workbench-shell.native-workbench .topbar .nav-alert-badge {
+    position: absolute;
+    margin: 0;
+  }
+  .native-workbench > main.container {
+    padding-block-end: calc(5rem + env(safe-area-inset-bottom));
+  }
+  .portfolio-record-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

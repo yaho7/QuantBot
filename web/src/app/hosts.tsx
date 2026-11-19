@@ -1,11 +1,7 @@
-import { Card } from "@astryxdesign/core/Card";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { Grid } from "@astryxdesign/core/Grid";
-import { Heading } from "@astryxdesign/core/Heading";
-import { VStack } from "@astryxdesign/core/VStack";
+import { Card } from "@/components/ui/card";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowUpRight, Server } from "lucide-react";
+import { RiArrowLeftLine as ArrowLeft, RiArrowRightUpLine as ArrowUpRight, RiServerLine as Server } from "@remixicon/react";
 import { useParams } from "react-router-dom";
 import { Link } from "../shared/page-links";
 import { resource } from "../shared/api";
@@ -24,14 +20,30 @@ export function HostsPage() {
   const query = useQuery(hostsQuery);
   return <Page title={t("hosts")}>
     {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} retry={() => void query.refetch()} /> :
-      !query.data.length ? <EmptyState title={t("hosts")} headingLevel={2} description={t("noHosts")} icon={<Server size={24} />} /> :
-      <Grid columns={{ minWidth: 249, repeat: "fit" }} gap={4}>{query.data.map(host => <Card key={host.id} padding={4}><VStack as="article" className="performance-host" gap={3}>
-        <header className="performance-process-heading">
-          <Link className="performance-link" to={"/hosts/" + host.id}><Heading level={2}>{host.name}</Heading><ArrowUpRight size={16} /></Link>
-        </header>
-        <HostMetricsGrid host={host} compact />
-        <SampleStatus latest={host.latest} stale={host.stale} />
-      </VStack></Card>)}</Grid>}
+      !query.data.length ? (
+        <section className="empty-state">
+          <Server size={24} strokeWidth={1.5} aria-hidden="true" />
+          <h2>{t("hosts")}</h2>
+          <p>{t("noHosts")}</p>
+        </section>
+      ) : (
+        <div className="host-cards grid gap-4">
+          {query.data.map(host => (
+            <Card className="monitor-panel min-w-0 p-4" key={host.id}>
+              <article className="performance-host grid gap-3">
+                <header className="performance-process-heading">
+                  <Link className="performance-link" to={"/hosts/" + host.id}>
+                    <h2 className="text-lg font-medium">{host.name}</h2>
+                    <ArrowUpRight size={16} strokeWidth={1.5} aria-hidden="true" />
+                  </Link>
+                </header>
+                <HostMetricsGrid host={host} compact />
+                <SampleStatus latest={host.latest} stale={host.stale} />
+              </article>
+            </Card>
+          ))}
+        </div>
+      )}
   </Page>;
 }
 
@@ -48,16 +60,16 @@ export function HostDetailPage() {
   }>
     {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} retry={() => void query.refetch()} /> :
       <>
-        <Card padding={4}><VStack as="section" className="performance-host" gap={3}>
+        <Card className="monitor-panel p-4"><section className="performance-host grid gap-3">
           <header className="performance-process-heading">
             <SampleStatus latest={query.data.latest} stale={query.data.stale} />
           </header>
           <HostMetricsGrid host={query.data} />
-        </VStack></Card>
+        </section></Card>
         <CapacityPlanner key={id} host={query.data} />
         <HostTrends history={query.data.history} />
         <section className="section">
-          <div className="section-heading"><Heading level={2}>{t("hostProcesses")}</Heading></div>
+          <div className="section-heading"><h2>{t("hostProcesses")}</h2></div>
           {!query.data.members.length ? <p className="surface empty-inline">{t("noHostBinding")}</p> :
             <div className="hosts-grid">{query.data.members.map(process =>
               <article className="surface padded performance-process" key={processKey(process)}>
@@ -112,7 +124,7 @@ function CapacityPlanner({ host }: { host: HostDetail }) {
   });
   const result = query.data;
   return <section className="section surface padded capacity-panel">
-    <Heading level={2}>{t("capacityPlanner")}</Heading>
+    <h2 className="text-lg font-medium">{t("capacityPlanner")}</h2>
     <p className="muted">{t("capacityHint")}</p>
     {!instance ? <p>{t("noHostBinding")}</p> : <>
       <div className="capacity-fields">

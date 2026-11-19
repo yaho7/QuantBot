@@ -1,7 +1,7 @@
 .strategy-row-actions { justify-content: end; }
 .strategy-row-actions a { overflow-wrap: anywhere; }
 .connection-caption {
-  color: var(--muted);
+  color: var(--muted-foreground);
   margin: 0 0 18px;
   font-size: 13px;
   overflow-wrap: anywhere;
@@ -10,7 +10,7 @@
 .connection-panel p { margin: 0; }
 .connection-fields {
   display: grid;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0 10px 0 14px;
   min-width: 0;
@@ -23,19 +23,19 @@
   min-height: 63px;
   padding: 8px 0;
 }
-.connection-field + .connection-field { border-top: 1px solid var(--line); }
+.connection-field + .connection-field { border-top: 1px solid var(--border); }
 .connection-field-value { display: grid; gap: 3px; min-width: 0; }
-.connection-field-value span { color: var(--muted); font-size: 11px; font-weight: 600; }
+.connection-field-value span { color: var(--muted-foreground); font-size: 11px; font-weight: 600; }
 .connection-field-value code { font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
 .connection-field-actions { display: flex; align-items: center; gap: 2px; }
 .connection-field-actions button[disabled] { opacity: .35; }
 .connection-options { display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap; font-size: 12px; }
 .connection-options button { margin-inline-start: auto; }
 .connection-details {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border);
   font-size: 13px;
 }
-.connection-details summary { padding-block: 11px 3px; color: var(--muted); cursor: pointer; }
+.connection-details summary { padding-block: 11px 3px; color: var(--muted-foreground); cursor: pointer; }
 .connection-detail-body { display: grid; gap: 8px; margin-top: 8px; }
 .connection-detail-body form, .sandbox-command { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
 .connection-detail-body select, .sandbox-command select { width: 100%; }
@@ -45,11 +45,11 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 10px 16px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--border);
   padding-top: 14px;
 }
-.connection-footer a { display: inline-flex; align-items: center; color: var(--muted); gap: 6px; font-size: 12px; }
-.connection-footer a:hover { color: var(--text); }
+.connection-footer a { display: inline-flex; align-items: center; color: var(--muted-foreground); gap: 6px; font-size: 12px; }
+.connection-footer a:hover { color: var(--foreground); }
 .connection-footer button { margin-inline-start: auto; }
 .sandbox-state {
   display: grid;
@@ -58,10 +58,10 @@
   column-gap: 10px;
   min-width: 0;
 }
-.sandbox-state > svg { color: var(--muted); margin-top: 2px; }
+.sandbox-state > svg { color: var(--muted-foreground); margin-top: 2px; }
 .sandbox-state strong { font-size: 14px; }
-.sandbox-state p { color: var(--muted); font-size: 12px; margin-top: 2px; }
-.sandbox-state .astryx-badge { white-space: nowrap; }
+.sandbox-state p { color: var(--muted-foreground); font-size: 12px; margin-top: 2px; }
+.sandbox-state [data-slot="badge"] { white-space: nowrap; }
 .sandbox-confirm { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; }
 .sandbox-confirm button { flex-shrink: 0; }
 .sandbox-passed { color: var(--success); font-size: 13px; }
@@ -72,7 +72,7 @@
   gap: 8px;
   padding: 5px 0;
 }
-.sandbox-requests time { text-align: end; color: var(--muted); font-size: 11px; }
+.sandbox-requests time { text-align: end; color: var(--muted-foreground); font-size: 11px; }
 
 @media (max-width: 600px) {
   .strategy-row-actions { gap: 2px; }

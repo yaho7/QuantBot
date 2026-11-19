@@ -1,15 +1,18 @@
 # Classical appearance
 
-Classical (`classical`) remains the default and retains the original dashboard
-and administration layouts. Astryx is now an optional frontend theme package.
-Install it from Administration > Themes and explicitly enable it to replace the
-monitoring home. Restore Classical to return to the original view. Administration,
-strategy pages and trusted command flows remain owned by the host.
+Classical (`classical`) is the default interface. The overview pairs an equity
+chart with strategy status and puts the saved widget board below. A labeled rail
+on desktop becomes a bottom bar on phones. Administration has its own navigation
+and uses a modal drawer on mobile.
 
-Settings > Appearance provides Forest, Ocean, Violet, Amber, and Graphite
-palettes. The selected palette is applied to both the monitoring workspace and
-the trusted settings/admin UI, including light and dark mode. Palette choice is
-stored in the current browser (`qb.palette`) and synchronized across its tabs.
+The optional Lyra theme package can replace the monitoring home. Install and
+enable it from Administration > Themes. Restore Classical to return to the
+default overview. The host handles administration, strategy pages, and command
+confirmation.
+
+Settings > Appearance supports System, Light, and Dark. The selected mode is
+applied to both the monitoring workspace and administration and synchronized
+across tabs in the current browser. The Lyra preset uses a neutral palette.
 
 Language selection (Simplified Chinese / English) is in Settings, with a language
 icon. The workbench settings gear opens this page directly. The former language
@@ -33,8 +36,9 @@ Scrollbar tracks are hidden; scrollable card content uses subtle edge shadows.
 
 ## Dashboard interaction
 
-- Attention items precede the portfolio: offline strategies, reported error
-  states, confirmations, and commands whose outcome is unknown.
+- The status panel shows online and offline counts. Select a strategy in the
+  panel or from the equity chart to change the series. The alerts navigation
+  carries the count of items needing attention.
 - Device preview tabs select desktop or mobile without changing browser width.
   While editing, the selection is locked. Mobile editing can copy desktop
   widgets into a single-column layout, with overwrite confirmation and undo.

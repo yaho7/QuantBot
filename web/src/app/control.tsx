@@ -1,11 +1,15 @@
 import { CommandProgress } from "../components/command-progress";
-import { useEffect, useState } from "react";
-import { Button } from "@astryxdesign/core/Button";
-import { Slider } from "@astryxdesign/core/Slider";
-import { Switch } from "@astryxdesign/core/Switch";
-import { VStack } from "@astryxdesign/core/VStack";
+import { useEffect, useId, useState } from "react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Slider } from "@/components/ui/slider";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowUpRight } from "lucide-react";
+import { RiAlertLine as AlertTriangle, RiArrowRightUpLine as ArrowUpRight, RiLoader4Line as LoaderCircle } from "@remixicon/react";
 import { toast } from "sonner";
 import {
   api,
@@ -161,7 +165,9 @@ export function ControlCard({
         </fieldset>
       )}
       {!readOnly && (
-        <button
+        <Button
+          type="button"
+          variant="outline"
           disabled={blocked}
           onClick={() => {
             if (!inlineParameter) setValue(
@@ -181,8 +187,8 @@ export function ControlCard({
           }}
         >
           {inlineParameter ? t("confirm") : t("execute")}
-          <ArrowUpRight size={15} />
-        </button>
+          <ArrowUpRight aria-hidden="true" />
+        </Button>
       )}
       {!registry.current && <small className="muted">{t("unavailable")}</small>}
       <Modal
@@ -195,18 +201,22 @@ export function ControlCard({
       >
         {command?.status === "confirmation_required" ? (
           <>
-            <p className="warning">
-              <AlertTriangle size={18} />
-              {t("confirmationRequired")}
-            </p>
-            <p>{t("confirmHint")}</p>
+            <Alert>
+              <AlertTriangle aria-hidden="true" />
+              <AlertTitle>{t("confirmationRequired")}</AlertTitle>
+              <AlertDescription>{t("confirmHint")}</AlertDescription>
+            </Alert>
             <dl className="compact-dl">
               <dt>{t("strategy")}</dt>
               <dd>{strategyId}</dd>
               <dt>{t("desired")}</dt>
               <dd>{display.value(command.input, control)}</dd>
             </dl>
-            <Button label={t("confirm")} variant="primary" isLoading={confirm.isPending} onClick={() => confirm.mutate()} />
+            <Button type="button" disabled={confirm.isPending} aria-busy={confirm.isPending}
+              onClick={() => confirm.mutate()}>
+              {confirm.isPending && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+              {t("confirm")}
+            </Button>
           </>
         ) : (
           <form
@@ -237,8 +247,13 @@ export function ControlCard({
               <small className="muted">{control.capability.unit}</small>
             )}
             <div className="dialog-actions">
-              <Button label={t("cancel")} isDisabled={submit.isPending} onClick={() => setOpen(false)} />
-              <Button type="submit" label={t("execute")} variant="primary" isLoading={submit.isPending} />
+              <Button type="button" variant="outline" disabled={submit.isPending} onClick={() => setOpen(false)}>
+                {t("cancel")}
+              </Button>
+              <Button type="submit" disabled={submit.isPending} aria-busy={submit.isPending}>
+                {submit.isPending && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+                {t("execute")}
+              </Button>
             </div>
           </form>
         )}
@@ -325,36 +340,56 @@ function ControlInput({
   onChange: (value: unknown) => void;
 }) {
   const { t } = useLanguage();
+  const fieldId = useId();
   if (d.kind === "button") return null;
   if (usesJSONInput(d)) {
     return (
-      <label>
-        {d.capability?.kind === "parameter" ? d.title : t("commandInput")}
-        <textarea
+      <Field>
+        <FieldLabel htmlFor={fieldId}>{d.capability?.kind === "parameter" ? d.title : t("commandInput")}</FieldLabel>
+        <Textarea
+          id={fieldId}
           rows={6}
+          disabled={disabled}
           value={String(value)}
           onChange={(event) => onChange(event.target.value)}
         />
-      </label>
+      </Field>
     );
   }
   if (d.kind === "toggle") {
-    return <Switch label={d.title} labelPosition="start" labelSpacing="spread" width="100%"
-      value={value === true} isDisabled={disabled} onChange={onChange} />;
+    return (
+      <Field orientation="horizontal" className="justify-between">
+        <FieldLabel htmlFor={fieldId}>{d.title}</FieldLabel>
+        <Switch id={fieldId} aria-label={d.title} checked={value === true}
+          disabled={disabled} onCheckedChange={onChange} />
+      </Field>
+    );
   }
   if (d.kind === "slider") {
     const min = Number(d.min ?? 0);
     const max = Number(d.max ?? 100);
+    const step = Number(d.step ?? 1);
     const current = value == null || value === "" ? min : Number(value);
-    if (Number.isFinite(min) && Number.isFinite(max) && min < max && Number.isFinite(current)) {
-      return <Slider label={d.title} min={min} max={max} step={Number(d.step ?? 1)} width="100%"
-        value={Math.min(max, Math.max(min, current))} valueDisplay="text" isDisabled={disabled}
-        onChange={(next: number) => onChange(String(next))} />;
+    if (Number.isFinite(min) && Number.isFinite(max) && min < max && Number.isFinite(current) &&
+      Number.isFinite(step) && step > 0) {
+      const bounded = Math.min(max, Math.max(min, current));
+      return (
+        <Field>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-sm font-medium">{d.title}</span>
+            <output className="text-sm tabular-nums">{bounded}</output>
+          </div>
+          <Slider aria-label={d.title} min={min} max={max} step={step} value={[bounded]}
+            disabled={disabled} onValueChange={(next) => {
+              onChange(String(Array.isArray(next) ? next[0] : next));
+            }} />
+        </Field>
+      );
     }
   }
   if (d.kind === "form")
     return (
-      <VStack className="form-fields" gap={3}>
+      <FieldGroup className="form-fields gap-3">
         {d.fields?.map((field) => (
           <ControlInput
             key={field.id}
@@ -369,13 +404,17 @@ function ControlInput({
             }
           />
         ))}
-      </VStack>
+      </FieldGroup>
     );
   if (d.kind === "select" || d.kind === "multiSelect")
     return (
-      <label>
-        {d.title}
-        <select
+      <Field>
+        <FieldLabel htmlFor={fieldId}>{d.title}</FieldLabel>
+        <NativeSelect className={d.kind === "multiSelect"
+          ? "w-full [&>select]:h-auto [&>select]:min-h-24 [&>select]:pr-2.5 [&>svg]:hidden"
+          : "w-full"}
+          id={fieldId}
+          disabled={disabled}
           multiple={d.kind === "multiSelect"}
           value={value as string | string[]}
           onChange={(e) =>
@@ -387,19 +426,21 @@ function ControlInput({
           }
         >
           {d.options?.map((option) => (
-            <option key={option.value} value={option.value}>
+            <NativeSelectOption key={option.value} value={option.value}>
               {option.label}
-            </option>
+            </NativeSelectOption>
           ))}
-        </select>
-      </label>
+        </NativeSelect>
+      </Field>
     );
   // Keep decimals as strings through the entire control request.
   return (
-    <label>
-      {d.title}
-      <input
+    <Field>
+      <FieldLabel htmlFor={fieldId}>{d.title}</FieldLabel>
+      <Input
+        id={fieldId}
         required
+        disabled={disabled}
         type="text"
         inputMode={d.kind === "textInput" ? "text" : "decimal"}
         min={d.min}
@@ -409,7 +450,7 @@ function ControlInput({
         value={String(value ?? "")}
         onChange={(e) => onChange(e.target.value)}
       />
-    </label>
+    </Field>
   );
 }
 export function CommandDialog({
@@ -475,19 +516,18 @@ export function CommandDialog({
             <p>{query.data.receipt.message ?? t(query.data.receipt.status as "succeeded")}</p>
           )}
           {query.data.status === "confirmation_required" && (
-            <button
-              className="primary"
+            <Button type="button" disabled={action.isPending}
               onClick={() => action.mutate("confirm")}
             >
               {t("confirm")}
-            </button>
+            </Button>
           )}
           {["confirmation_required", "pending", "accepted"].includes(
             query.data.status,
           ) && (
-            <button onClick={() => action.mutate("cancel")}>
+            <Button type="button" variant="outline" disabled={action.isPending} onClick={() => action.mutate("cancel")}>
               {t("cancel")}
-            </button>
+            </Button>
           )}
           {query.data.status === "unknown" && (
             <form
@@ -514,7 +554,7 @@ export function CommandDialog({
                   onChange={(e) => setNote(e.target.value)}
                 />
               </label>
-              <button disabled={action.isPending}>{t("save")}</button>
+              <Button type="submit" disabled={action.isPending}>{t("save")}</Button>
             </form>
           )}
         </>

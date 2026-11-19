@@ -35,12 +35,10 @@ The optional settings file has a `fields` array. Each field declares `key`, `lab
 
 The admin API accepts a request body of `application/zip` at `POST /api/admin/themes`. Select a packaged or built-in theme using `PUT /api/admin/themes/active` with `{"id":"theme-id"}`. Upload a higher version with the same ID to update the package. Settings are preserved when compatible with the new schema. Use `POST /api/admin/themes/{id}/rollback` to restore the previous revision, and `DELETE /api/admin/themes/{id}` to delete a package.
 
-## Bundled Astryx package
+## Bundled Lyra package
 
-The default remains Classical. `npm run build` also builds the isolated Astryx
-monitoring-home package from `web/theme-plugins/astryx`, reusing the existing
-compiled palettes under `web/themes/quantbot-app`. It writes the deterministic
-`web/dist/astryx-theme.zip`, served at `/astryx-theme.zip` and included in releases.
-Administration > Themes can install the bundle, preview it and explicitly enable
-it. Installation does not change the active theme. Its controls open the host's
-trusted dialog; they never dispatch commands directly.
+`npm --prefix web run build` builds the isolated Lyra monitoring home from
+`web/theme-plugins/lyra` using the same shadcn/ui preset as the host. It writes
+`web/dist/lyra-theme.zip`, which is served at `/lyra-theme.zip` and included in
+releases. Install it in Administration > Themes and explicitly enable it to
+replace the workbench home. The default remains Classical.

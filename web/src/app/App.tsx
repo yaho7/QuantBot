@@ -9,11 +9,8 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { version } from "../../package.json";
-import { Theme as AstryxTheme } from "@astryxdesign/core/theme";
-import { InternationalizationProvider } from "@astryxdesign/core/i18n";
-import { Heading } from "@astryxdesign/core/Heading";
-import { VStack } from "@astryxdesign/core/VStack";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Navigate,
   Outlet,
@@ -24,23 +21,18 @@ import {
 } from "react-router-dom";
 import { Link, NavLink } from "../shared/page-links";
 import {
-  ArrowLeft,
-  Bell,
-  ChartNoAxesCombined,
-  ClipboardList,
-  Database,
-  LayoutDashboard,
-  Menu,
-  Monitor,
-  Moon,
-  Settings,
-  Server,
-  Shield,
-  SlidersHorizontal,
-  Sun,
-  LogOut,
-  X,
-} from "lucide-react";
+  RiNotification3Line as Bell,
+  RiLineChartLine as ChartNoAxesCombined,
+  RiFileList3Line as ClipboardList,
+  RiDashboardLine as LayoutDashboard,
+  RiComputerLine as Monitor,
+  RiMoonLine as Moon,
+  RiSettings3Line as Settings,
+  RiServerLine as Server,
+  RiEqualizer2Line as SlidersHorizontal,
+  RiSunLine as Sun,
+  RiLogoutBoxRLine as LogOut,
+} from "@remixicon/react";
 import { Toaster } from "sonner";
 import {
   api,
@@ -53,19 +45,18 @@ import {
 import { ErrorView, Loading } from "../shared/ui";
 import { useAttention } from "../components/attention-summary";
 import { BrandIcon } from "../components/brand-icon";
-import "../styles/antquant.css";
-import "../styles/wealthfolio.css";
+import "../styles/workbench.css";
 import "../styles/alignment.css";
 import "../styles/route-layout.css";
-import { usePalette } from "../shared/preferences";
-import { useLanguage, type Message } from "../shared/i18n";
+import { setAppearance, useAppearance } from "../shared/preferences";
+import { useLanguage } from "../shared/i18n";
+const AdminShell = lazy(() => import("../admin/AdminShell"));
 const Login = lazy(() =>
   import("./auth").then((module) => ({ default: module.Login })),
 );
 import { useRealtime } from "./realtime";
 import { activeTheme, ThemeContext } from "../themes/catalog";
 import { ThemeFrame, themeStyle } from "../themes/host";
-import { quantbotUI } from "../themes/quantbot-ui";
 
 const monitor = [
   ["/", "workbench", LayoutDashboard],
@@ -75,70 +66,39 @@ const monitor = [
   ["/activity", "activity", ClipboardList],
   ["/alerts", "alerts", Bell],
 ] as const;
-const management = [
-  ["", [["dashboard", "dashboard", LayoutDashboard]]],
-  [
-    "管理",
-    [
-      ["strategies", "strategies", ChartNoAxesCombined],
-      ["notifications", "notifications", Bell],
-      ["themes", "themes", Settings],
-    ],
-  ],
-  [
-    "系统",
-    [
-      ["storage", "storage", Database],
-      ["audit", "audit", ClipboardList],
-      ["security", "security", Shield],
-      ["settings", "settings", Settings],
-    ],
-  ],
-] as const;
-
 const AppearanceTools = createContext<ReactNode>(null);
 
 function Root() {
-  usePalette();
   const session = useQuery({
     ...resource<Session>("/auth/session"),
     retry: false,
   });
   const connected = useRealtime(!!session.data);
-  const { t, lang } = useLanguage();
-  const [mode, setMode] = useState(
-    localStorage.getItem("qb.appearance") ?? "system",
-  );
+  const { t } = useLanguage();
+  const mode = useAppearance();
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const sync = () => {
-      document.documentElement.dataset.appearance =
-        mode === "system" ? (media.matches ? "dark" : "light") : mode;
+      const appearance = mode === "light" || mode === "dark" ? mode : media.matches ? "dark" : "light";
+      document.documentElement.dataset.appearance = appearance;
+      document.documentElement.classList.toggle("dark", appearance === "dark");
     };
     sync();
     media.addEventListener("change", sync);
-    localStorage.setItem("qb.appearance", mode);
     return () => media.removeEventListener("change", sync);
   }, [mode]);
   useEffect(() => {
     if (session.data) setCSRF(session.data.csrf);
   }, [session.data]);
   const appearance = mode === "light" || mode === "dark" ? mode : "system";
-  const themed = (content: ReactNode) => (
-    <InternationalizationProvider locale={lang === "zh" ? "zh-Hans" : "en"}>
-      <AstryxTheme theme={quantbotUI} mode={appearance}>{content}</AstryxTheme>
-    </InternationalizationProvider>
-  );
-  if (session.isPending) return themed(<Loading />);
+  if (session.isPending) return <Loading />;
   if (
     session.error &&
     !(session.error instanceof ApiError && session.error.status === 401)
   )
-    return themed(
-      <ErrorView error={session.error} retry={() => void session.refetch()} />
-    );
+    return <ErrorView error={session.error} retry={() => void session.refetch()} />;
   if (!session.data)
-    return themed(
+    return (
       <Suspense fallback={<Loading />}>
         <Login />
       </Suspense>
@@ -146,32 +106,33 @@ function Root() {
   setCSRF(session.data.csrf);
   const themeIcons = { system: Monitor, light: Sun, dark: Moon } as const;
   const ThemeIcon = themeIcons[appearance];
+  const appearanceLabel = t("appearance") + ": " + t(appearance);
   const tools = (
     <div className="floating-tools" aria-label={t("appearance")}>
       <span
         className={"connection-dot " + (connected ? "online" : "")}
         title={t(connected ? "connected" : "reconnecting")}
       />
-      <button
-        className="icon-button"
-        aria-label={t("appearance") + ": " + t(appearance)}
-        title={t("appearance") + ": " + t(appearance)}
-        onClick={() =>
-          setMode(appearance === "system" ? "light" : appearance === "light" ? "dark" : "system")
-        }
-      >
-        <ThemeIcon size={17} />
-      </button>
+      <Tooltip>
+        <TooltipTrigger render={
+          <Button aria-label={appearanceLabel} size="icon" variant="ghost" onClick={() =>
+            setAppearance(appearance === "system" ? "light" : appearance === "light" ? "dark" : "system")
+          } />
+        }><ThemeIcon aria-hidden="true" /></TooltipTrigger>
+        <TooltipContent>{appearanceLabel}</TooltipContent>
+      </Tooltip>
     </div>
   );
-  return themed(
-    <AppearanceTools.Provider value={tools}>
-      <Suspense fallback={<Loading />}>
-        <Outlet />
-      </Suspense>
-      <ScrollRestoration />
-      <Toaster position="top-center" richColors />
-    </AppearanceTools.Provider>
+  return (
+    <TooltipProvider delay={350}>
+      <AppearanceTools.Provider value={tools}>
+        <Suspense fallback={<Loading />}>
+          <Outlet />
+        </Suspense>
+        <ScrollRestoration />
+        <Toaster position="top-center" theme={appearance} />
+      </AppearanceTools.Provider>
+    </TooltipProvider>
   );
 }
 function Brand() {
@@ -185,17 +146,14 @@ function Brand() {
 function Logout() {
   const { t } = useLanguage();
   return (
-    <button
-      className="icon-button"
-      aria-label={t("logout")}
-      onClick={() =>
-        void api("/auth/logout", "POST")
-          .then(() => client.clear())
-          .then(() => location.reload())
-      }
-    >
-      <LogOut size={18} />
-    </button>
+    <Tooltip>
+      <TooltipTrigger render={
+        <Button aria-label={t("logout")} size="icon" variant="ghost" onClick={() =>
+          void api("/auth/logout", "POST").then(() => client.clear()).then(() => location.reload())
+        } />
+      }><LogOut aria-hidden="true" /></TooltipTrigger>
+      <TooltipContent>{t("logout")}</TooltipContent>
+    </Tooltip>
   );
 }
 function Workbench() {
@@ -212,7 +170,7 @@ function Workbench() {
   // Frontend packages own the iframe, while host navigation and native pages
   // retain the original Classical shell and trusted controls.
   const hostTheme = selected?.manifest.type === "frontend" || new URLSearchParams(location.search).has("classic") ? undefined : selected;
-  const antquant = fallback || !hostTheme || hostTheme.id === "classical";
+  const builtIn = fallback || !hostTheme || hostTheme.id === "classical";
   const onFailure = useCallback(() => setFailed(identity), [identity]);
   const full =
     location.pathname === "/" &&
@@ -220,10 +178,10 @@ function Workbench() {
     !new URLSearchParams(location.search).has("classic");
   return (
     <ThemeContext.Provider
-      value={fallback ? { cardView: "list" } : { ...(hostTheme?.presentation ?? { cardView: "list" }), portfolio: antquant }}
+      value={fallback ? { cardView: "list" } : { ...(hostTheme?.presentation ?? { cardView: "list" }), portfolio: builtIn }}
     >
       <div
-        className={"workbench-shell" + (antquant ? " antquant-workbench" : "")}
+        className={"workbench-shell" + (builtIn ? " native-workbench" : "")}
         data-theme={hostTheme?.id ?? "classical"}
         data-theme-palette={hostTheme && !hostTheme.builtin ? "" : undefined}
         data-theme-surface={hostTheme?.presentation.surface}
@@ -240,8 +198,8 @@ function Workbench() {
                     className={label === "alerts" ? "nav-alert-link" : undefined}
                     title={t(label)} aria-label={t(label)}
                     aria-describedby={hasAlert ? "nav-alert-count" : undefined}>
-                    <Icon size={18} />
-                    <span>{t(label)}</span>
+                    <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
+                    <span className="nav-label">{t(label)}</span>
                     {hasAlert && <>
                       <i className="nav-alert-badge" aria-hidden="true">{attention.count > 99 ? "99+" : attention.count}</i>
                       <span className="sr-only" id="nav-alert-count">{t("attentionCount")}: {attention.count}</span>
@@ -250,16 +208,16 @@ function Workbench() {
                 );
               })}
             </nav>
-            <div className="actions">
-              {antquant && tools}
+            <div className="actions workbench-actions">
+              {builtIn && tools}
               <Link
                 className="admin-link"
                 to="/admin/settings"
                 aria-label={t("settings")}
                 title={t("settings")}
               >
-                <Settings size={17} />
-                <span>{t("admin")}</span>
+                <Settings size={18} strokeWidth={1.5} aria-hidden="true" />
+                <span className="nav-label">{t("admin")}</span>
               </Link>
               <Logout />
             </div>
@@ -286,84 +244,17 @@ function Workbench() {
             ) : <Outlet context={attention} />}
           </RouteSurface>
         </main>
-        {!antquant && tools}
+        {!builtIn && tools}
       </div>
     </ThemeContext.Provider>
   );
 }
-function AdminShell() {
-  const { lang, t } = useLanguage();
+function AdminRoute() {
   const tools = useContext(AppearanceTools);
-  const [open, setOpen] = useState(false);
-  const location = useLocation();
-  useEffect(() => setOpen(false), [location.pathname]);
   return (
-    <div className="admin-shell">
-      <header className="mobile-admin-header">
-        <button
-          aria-label={t("menu")}
-          className="icon-button"
-          onClick={() => setOpen(true)}
-        >
-          <Menu />
-        </button>
-        <Brand />
-        <Logout />
-      </header>
-      {open && (
-        <button
-          className="drawer-backdrop"
-          aria-label={t("close")}
-          onClick={() => setOpen(false)}
-        />
-      )}
-      <aside className={"sidebar " + (open ? "open" : "")}>
-        <div className="sidebar-brand">
-          <Brand />
-          <button
-            className="mobile-close icon-button"
-            aria-label={t("close")}
-            onClick={() => setOpen(false)}
-          >
-            <X />
-          </button>
-        </div>
-        <nav>
-          {management.map(([heading, links]) => (
-            <div className="nav-group" key={heading}>
-              {heading && (
-                <small>
-                  {lang === "zh"
-                    ? heading
-                    : {
-                        管理: "Management",
-                        外观: "Appearance",
-                        系统: "System",
-                      }[heading]}
-                </small>
-              )}
-              {links.map(([path, label, Icon]) => (
-                <NavLink key={path} to={"/admin/" + path}>
-                  <Icon size={18} />
-                  {t(label as Message)}
-                </NavLink>
-              ))}
-            </div>
-          ))}
-        </nav>
-        <footer>
-          <Link to="/">
-            <ArrowLeft size={16} />
-            {t("return")}
-          </Link>
-          <span className="muted">QuantBot {version}</span>
-        </footer>
-      </aside>
-      <main className="admin-main">
-        <RouteSurface><Outlet /></RouteSurface>
-      </main>
-      {tools}
-    </div>
+    <AdminShell brand={<Brand />} tools={tools} logout={<Logout />}>
+      <RouteSurface><Outlet /></RouteSurface>
+    </AdminShell>
   );
 }
 function NotFound() {
@@ -393,13 +284,13 @@ export function Page({
   children: ReactNode;
 }) {
   return (
-    <VStack className="page-layout">
+    <div className="page-layout">
       <header className="page-header">
-        <Heading level={1} weight="semibold">{title}</Heading>
+        <h1>{title}</h1>
         {actions && <div className="actions">{actions}</div>}
       </header>
-      <VStack className="page-body">{children}</VStack>
-    </VStack>
+      <div className="page-body">{children}</div>
+    </div>
   );
 }
 
@@ -422,7 +313,7 @@ const router = createBrowserRouter([
       },
       {
         path: "admin",
-        element: <AdminShell />,
+        element: <AdminRoute />,
         children: [
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", lazy: async () => ({ Component: (await import("../admin/pages")).AdminDashboard }) },

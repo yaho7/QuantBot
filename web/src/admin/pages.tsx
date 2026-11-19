@@ -1,18 +1,14 @@
-import { Grid } from "@astryxdesign/core/Grid";
-import { Text } from "@astryxdesign/core/Text";
-import { VStack } from "@astryxdesign/core/VStack";
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { HStack } from "@astryxdesign/core/HStack";
-import { IconButton } from "@astryxdesign/core/IconButton";
-import { TextInput } from "@astryxdesign/core/TextInput";
-import { Table, pixel, proportional, type TableColumn } from "@astryxdesign/core/Table";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ConnectionDialog, type CreatedStrategy } from "./connection-dialog";
 import { useState, useSyncExternalStore } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
-import { ChartNoAxesCombined, Plus, Trash2 } from "lucide-react";
+import { RiLineChartLine as ChartNoAxesCombined, RiAddLine as Plus, RiDeleteBin6Line as Trash2 } from "@remixicon/react";
 import { toast } from "sonner";
 import {
   api,
@@ -36,58 +32,63 @@ import {
 import { Page } from "../app/App";
 
 export function AdminDashboard() {
-  const { t } = useLanguage();
+  const { lang, t } = useLanguage();
   const display = useDisplay();
   const query = useQuery({
     ...resource<Diagnostics>("/admin/diagnostics"),
     refetchInterval: 10_000,
   });
+  const { data, error, isPending, isLoadingError } = query;
+  const locale = lang === "zh" ? "zh-CN" : "en";
+  const numbers = new Intl.NumberFormat(locale);
+  const mib = (bytes: number, digits: number) => `${(bytes / 1048576).toLocaleString(locale, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })} MiB`;
   return (
     <Page title={t("dashboard")}>
-      {query.isPending ? (
+      {isPending ? (
         <Loading />
-      ) : query.error ? (
-        <ErrorView error={query.error} />
+      ) : isLoadingError ? (
+        <ErrorView error={error} retry={() => void query.refetch()} />
       ) : (
         <>
-          <Grid columns={{ minWidth: 162, repeat: "fit" }} gap={4}>
-            {[
-              [t("online"), query.data.onlineAgents],
-              [t("samples"), query.data.samples],
-              [t("sseSubscribers"), query.data.sseSubscribers],
-              [t("queueDepth"), query.data.queueDepth],
-            ].map(([label, value]) => (
-              <Card padding={4} key={label}><VStack gap={1}>
-                <Text type="supporting">{label}</Text>
-                <Text type="large" weight="semibold" hasTabularNumbers>{Number(value).toLocaleString()}</Text>
-              </VStack></Card>
-            ))}
-          </Grid>
-          <section className="section surface padded">
-            <dl className="system-dl">
+          {error && <ErrorView error={error} retry={() => void query.refetch()} />}
+          <Card className="admin-kpi-panel p-0">
+            <dl className="admin-kpis">
               {[
-                [t("uptime"), display.unit(Math.floor(query.data.uptimeSeconds), "second")],
-                [
-                  t("peakMemory"),
-                  (query.data.peakRssBytes / 1048576).toFixed(1) + " MiB",
-                ],
-                [t("heapMemory"), (query.data.heapBytes / 1048576).toFixed(1) + " MiB"],
-                ["CPU", display.unit(query.data.cpuSeconds, "second")],
-                [t("goRoutines"), query.data.goroutines],
-                [t("writeFailures"), query.data.writeFailures],
-                ...Object.entries(query.data.walBytes ?? {}).map(
-                  ([name, value]) => [
-                    name + " WAL",
-                    (value / 1048576).toFixed(2) + " MiB",
-                  ],
-                ),
+                [t("online"), data.onlineAgents],
+                [t("samples"), data.samples],
+                [t("sseSubscribers"), data.sseSubscribers],
+                [t("queueDepth"), data.queueDepth],
               ].map(([label, value]) => (
-                <div key={label}>
-                  <dt>{label}</dt>
-                  <dd>{value}</dd>
+                <div className="grid gap-2 p-4" key={label}>
+                  <dt className="text-muted-foreground text-sm">{label}</dt>
+                  <dd className="text-2xl font-medium tabular-nums">{numbers.format(Number(value))}</dd>
                 </div>
               ))}
             </dl>
+          </Card>
+          <section className="grid gap-3" aria-labelledby="admin-runtime-heading">
+            <h2 className="m-0 text-base font-medium" id="admin-runtime-heading">{t("runtimeMetrics")}</h2>
+            <Card className="admin-runtime-panel p-0">
+              <dl className="admin-runtime">
+                {[
+                  [t("uptime"), display.unit(Math.floor(data.uptimeSeconds), "second")],
+                  [t("peakMemory"), mib(data.peakRssBytes, 1)],
+                  [t("heapMemory"), mib(data.heapBytes, 1)],
+                  ["CPU", display.unit(data.cpuSeconds, "second")],
+                  [t("goRoutines"), numbers.format(data.goroutines)],
+                  [t("writeFailures"), numbers.format(data.writeFailures)],
+                  ...Object.entries(data.walBytes ?? {}).map(([name, value]) => [name + " WAL", mib(value, 2)]),
+                ].map(([label, value]) => (
+                  <div className="flex items-center justify-between gap-3 px-4" key={label}>
+                    <dt className="text-muted-foreground text-sm">{label}</dt>
+                    <dd className="tabular-nums">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </Card>
           </section>
         </>
       )}
@@ -132,36 +133,59 @@ export function AdminStrategies() {
       void client.invalidateQueries();
     },
   });
-  const columns: TableColumn<Strategy>[] = [
-    { key: "name", header: t("name"), width: proportional(2, { minWidth: 100 }),
-      renderCell: strategy => <Link to={"/strategies/" + strategy.id}>{strategy.name}</Link> },
-    ...(!compact ? [{ key: "group", header: t("group"), width: proportional(1, { minWidth: 90 }) }] : []),
-    { key: "mode", header: t("mode"), width: proportional(1, { minWidth: 65 }),
-      renderCell: strategy => strategy.mode === "live" ? <Badge tone="warning">{t("live")}</Badge> : t("paper") },
-    ...(!compact ? [{ key: "lastSeen", header: t("lastSeen"), width: proportional(1, { minWidth: 120 }),
-      renderCell: (strategy: Strategy) => timestamp(strategy.lastSeen, true) }] : []),
-    { key: "id", header: t("action"), width: pixel(compact ? 108 : 124), align: "end", renderCell: strategy =>
-      <HStack className="strategy-row-actions" gap={1} hAlign="end" vAlign="center">
-        <Button label="API" size="sm" onClick={() => setConnection({ strategy })} />
-        <IconButton variant="ghost" size="sm" label={t("deleteStrategy")} tooltip={t("deleteStrategy")}
-          icon={<Trash2 size={16} />} onClick={() => {
-            remove.reset();
-            setDeleting(strategy);
-          }} />
-      </HStack> },
-  ];
   const startCreate = () => {
     setName(""); setGroup(""); setMode("paper"); create.reset(); setOpen(true);
   };
   return (
     <Page
       title={t("strategies")}
-      actions={<Button label={t("create")} variant="primary" icon={<Plus size={16} />} onClick={startCreate} />}
+      actions={<Button onClick={startCreate}><Plus size={16} aria-hidden="true" />{t("create")}</Button>}
     >
       {query.isPending ? <Loading /> : query.error ? <ErrorView retry={() => void query.refetch()} error={query.error} /> :
-        !active.length ? <EmptyState title={t("empty")} description={t("emptyDescription")} headingLevel={2}
-          icon={<ChartNoAxesCombined size={24} />} /> :
-          <Card padding={0}><Table data={active} columns={columns} idKey="id" hasHover /></Card>}
+        !active.length ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon"><ChartNoAxesCombined size={24} aria-hidden="true" /></EmptyMedia>
+              <EmptyTitle role="heading" aria-level={2}>{t("empty")}</EmptyTitle>
+              <EmptyDescription>{t("emptyDescription")}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <Card className="py-0">
+            <Table className="admin-data-table" aria-label={t("strategies")}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("name")}</TableHead>
+                  {!compact && <TableHead>{t("group")}</TableHead>}
+                  <TableHead>{t("mode")}</TableHead>
+                  {!compact && <TableHead>{t("lastSeen")}</TableHead>}
+                  <TableHead className="text-end">{t("action")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {active.map(strategy => (
+                  <TableRow key={strategy.id}>
+                    <TableCell className="admin-strategy-name">
+                      <Link to={"/strategies/" + strategy.id}>{strategy.name}</Link>
+                    </TableCell>
+                    {!compact && <TableCell>{strategy.group}</TableCell>}
+                    <TableCell>{strategy.mode === "live" ? <Badge tone="warning">{t("live")}</Badge> : t("paper")}</TableCell>
+                    {!compact && <TableCell>{timestamp(strategy.lastSeen, true)}</TableCell>}
+                    <TableCell>
+                      <div className="strategy-row-actions flex items-center gap-1">
+                        <Button variant="outline" size="sm" onClick={() => setConnection({ strategy })}>API</Button>
+                        <Button variant="ghost" size="icon-sm" aria-label={t("deleteStrategy")} onClick={() => {
+                          remove.reset();
+                          setDeleting(strategy);
+                        }}><Trash2 size={16} aria-hidden="true" /></Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        )}
       <Modal title={t("create")} purpose="form" open={open} onOpenChange={value => {
         if (!create.isPending) setOpen(value);
       }}>
@@ -169,21 +193,29 @@ export function AdminStrategies() {
           event.preventDefault();
           if (name.trim() && name.length <= 120 && group.length <= 100 && !create.isPending) create.mutate();
         }}>
-          <TextInput label={t("name")} value={name} onChange={setName} hasAutoFocus
-            status={name.length > 120 ? { type: "error", message: t("nameTooLong") } : undefined} />
-          <TextInput label={t("group")} value={group} onChange={setGroup}
-            status={group.length > 100 ? { type: "error", message: t("groupTooLong") } : undefined} />
+          <Field data-invalid={name.length > 120}>
+            <FieldLabel htmlFor="create-strategy-name">{t("name")}</FieldLabel>
+            <Input id="create-strategy-name" autoFocus required value={name} onChange={event => setName(event.target.value)}
+              aria-invalid={name.length > 120 || undefined} aria-describedby={name.length > 120 ? "create-strategy-name-error" : undefined} />
+            {name.length > 120 && <FieldError id="create-strategy-name-error">{t("nameTooLong")}</FieldError>}
+          </Field>
+          <Field data-invalid={group.length > 100}>
+            <FieldLabel htmlFor="create-strategy-group">{t("group")}</FieldLabel>
+            <Input id="create-strategy-group" value={group} onChange={event => setGroup(event.target.value)}
+              aria-invalid={group.length > 100 || undefined} aria-describedby={group.length > 100 ? "create-strategy-group-error" : undefined} />
+            {group.length > 100 && <FieldError id="create-strategy-group-error">{t("groupTooLong")}</FieldError>}
+          </Field>
           <fieldset>
             <legend>{t("mode")}</legend>
             <Choices label={t("mode")} value={mode} select={setMode}
               options={([{ value: "paper", label: t("paper") }, { value: "live", label: t("live") }])} />
           </fieldset>
           {create.error && <ErrorView error={create.error} />}
-          <HStack hAlign="end" gap={2}>
-            <Button label={t("cancel")} isDisabled={create.isPending} onClick={() => setOpen(false)} />
-            <Button label={t("create")} type="submit" variant="primary" isLoading={create.isPending}
-              isDisabled={!name.trim() || name.length > 120 || group.length > 100} />
-          </HStack>
+          <div className="dialog-actions">
+            <Button type="button" variant="outline" disabled={create.isPending} onClick={() => setOpen(false)}>{t("cancel")}</Button>
+            <Button type="submit" aria-busy={create.isPending}
+              disabled={create.isPending || !name.trim() || name.length > 120 || group.length > 100}>{t("create")}</Button>
+          </div>
         </form>
       </Modal>
       {connection && <ConnectionDialog {...connection} onClose={() => {
@@ -196,8 +228,8 @@ export function AdminStrategies() {
         <p>{t("deleteStrategyWarning")}</p>
         {remove.error && <p className="error-text" role="alert">{remove.error.message}</p>}
         <div className="dialog-actions">
-          <Button label={t("cancel")} isDisabled={remove.isPending} onClick={() => setDeleting(undefined)} />
-          <Button label={t("deleteStrategy")} variant="destructive" isLoading={remove.isPending} onClick={() => remove.mutate(deleting.id)} />
+          <Button variant="outline" disabled={remove.isPending} onClick={() => setDeleting(undefined)}>{t("cancel")}</Button>
+          <Button variant="destructive" disabled={remove.isPending} aria-busy={remove.isPending} onClick={() => remove.mutate(deleting.id)}>{t("deleteStrategy")}</Button>
         </div>
       </Modal>}
     </Page>
@@ -226,34 +258,32 @@ export function Audit() {
         <ErrorView error={query.error} />
       ) : (
         <>
-          <div className="surface table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("created")}</th>
-                  <th>{t("actor")}</th>
-                  <th>{t("action")}</th>
-                  <th>{t("details")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {query.data.map((row) => (
-                  <tr key={row.id}>
-                    <td>{timestamp(row.at)}</td>
-                    <td>{row.actor}</td>
-                    <td>{row.action}</td>
-                    <td>
-                      <code>{shown(row.details)}</code>
-                    </td>
-                  </tr>
+          <Card className="py-0">
+            <Table className="admin-data-table" aria-label={t("audit")}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("created")}</TableHead>
+                  <TableHead>{t("actor")}</TableHead>
+                  <TableHead>{t("action")}</TableHead>
+                  <TableHead>{t("details")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {query.data.map(row => (
+                  <TableRow key={row.id}>
+                    <TableCell>{timestamp(row.at)}</TableCell>
+                    <TableCell>{row.actor}</TableCell>
+                    <TableCell>{row.action}</TableCell>
+                    <TableCell><code>{shown(row.details)}</code></TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </Card>
           {query.data.length === 100 && (
-            <button onClick={() => setBefore(String(query.data.at(-1)!.id))}>
+            <Button variant="outline" onClick={() => setBefore(String(query.data.at(-1)!.id))}>
               ↓ 100
-            </button>
+            </Button>
           )}
         </>
       )}
@@ -289,34 +319,20 @@ export function Security() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              mutation.mutate();
+              if (!mutation.isPending) mutation.mutate();
             }}
           >
-            <label>
-              {t("currentPassword")}
-              <input
-                autoComplete="current-password"
-                type="password"
-                required
-                value={currentPassword}
-                onChange={(e) => setCurrent(e.target.value)}
-              />
-            </label>
-            <label>
-              {t("newPassword")}
-              <input
-                autoComplete="new-password"
-                type="password"
-                required
-                minLength={8}
-                maxLength={256}
-                value={newPassword}
-                onChange={(e) => setNew(e.target.value)}
-              />
-            </label>
-            <button disabled={mutation.isPending} className="primary">
-              {t("changePassword")}
-            </button>
+            <Field>
+              <FieldLabel htmlFor="current-password">{t("currentPassword")}</FieldLabel>
+              <Input id="current-password" type="password" autoComplete="current-password"
+                value={currentPassword} onChange={event => setCurrent(event.target.value)} required />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="new-password">{t("newPassword")}</FieldLabel>
+              <Input id="new-password" type="password" autoComplete="new-password" minLength={8} maxLength={256}
+                value={newPassword} onChange={event => setNew(event.target.value)} required />
+            </Field>
+            <Button type="submit" disabled={mutation.isPending} aria-busy={mutation.isPending}>{t("changePassword")}</Button>
             {mutation.error && (
               <p role="alert" className="error-text">
                 {mutation.error.message}

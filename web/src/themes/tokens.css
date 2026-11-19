@@ -1,50 +1,43 @@
-@layer reset, theme, base, qb-legacy, astryx-base, astryx-theme, components, utilities;
-@import "@astryxdesign/core/reset.css";
-@import "tailwindcss" source("../");
-@import "@astryxdesign/core/astryx.css";
+@layer theme, base, qb-legacy, components, utilities;
 
 @layer qb-legacy {
 :root {
-  --qb-font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  font-family: var(--qb-font-family);
-  color: var(--text);
-  background: var(--canvas);
+  --qb-font-family: "Outfit Variable", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   font-synthesis: none;
-  --canvas: #fffcf0;
-  --surface: #faf5e5;
-  --raised: #f2ecdc;
-  --text: #100f0f;
-  --muted: #6f6a5e;
-  --line: #e6dfcc;
-  --accent: #29261d;
-  --accent-soft: #ebe5d3;
-  --accent-ink: #fffcf0;
-  --success: #536517;
-  --success-bg: #e8ecd6;
-  --warning: #845710;
-  --warning-bg: #f4e8c7;
-  --danger: #a52f27;
-  --danger-bg: #f6e1d7;
-  --radius: 12px;
-  --gap: 16px;
+  --canvas: var(--background);
+  --surface: var(--card);
+  --raised: var(--muted);
+  --text: var(--foreground);
+  --qb-muted: var(--muted-foreground);
+  --line: var(--border);
+  --qb-accent: var(--primary);
+  --accent-soft: var(--accent);
+  --accent-ink: var(--primary-foreground);
+  --success: oklch(0.47 0.13 158);
+  --success-bg: oklch(0.95 0.04 158);
+  --warning: oklch(0.49 0.11 74);
+  --warning-bg: oklch(0.96 0.05 86);
+  --danger: var(--destructive);
+  --danger-bg: oklch(0.96 0.03 25);
+  --gap: 1rem;
+  --spacing-1: 0.25rem;
+  --spacing-2: 0.5rem;
+  --spacing-3: 0.75rem;
+  --spacing-4: 1rem;
+  --spacing-6: 1.5rem;
+  --spacing-8: 2rem;
+  --spacing-10: 2.5rem;
+  --radius-2: var(--radius-md);
+  --radius-3: var(--radius-lg);
+  --size-element-md: 2.25rem;
+  --size-element-lg: 2.75rem;
 }
 :root[data-appearance="dark"] {
-  color-scheme: dark;
-  --canvas: #100f0f;
-  --surface: #1c1b1a;
-  --raised: #252421;
-  --text: #ded9cb;
-  --muted: #a8a396;
-  --line: #34322d;
-  --accent: #ded9cb;
-  --accent-soft: #302e27;
-  --accent-ink: #100f0f;
-  --success: #a5b16a;
-  --success-bg: #292f1d;
-  --warning: #d8b05a;
-  --warning-bg: #342a16;
-  --danger: #e79184;
-  --danger-bg: #3a211c;
+  --success: oklch(0.77 0.14 158);
+  --success-bg: oklch(0.26 0.05 158);
+  --warning: oklch(0.8 0.13 79);
+  --warning-bg: oklch(0.27 0.05 79);
+  --danger-bg: oklch(0.26 0.06 25);
 }
 /* Keep scrollbar visibility fixed before any route-specific bundle loads. */
 html, .table-scroll, .topbar-inner, .sidebar nav {
@@ -64,13 +57,13 @@ a {
   color: inherit;
   text-decoration: none;
 }
-button,
-input,
-select,
-textarea {
+button:not([data-slot]),
+input:not([data-slot]),
+select:not([data-slot]),
+textarea:not([data-slot]) {
   font: inherit;
 }
-button,
+button:not([data-slot]),
 .button {
   display: inline-flex;
   gap: 8px;
@@ -87,40 +80,40 @@ button,
     background 120ms,
     border-color 120ms;
 }
-button:hover,
+button:not([data-slot]):hover,
 .button:hover {
   background: var(--raised);
-  border-color: color-mix(in srgb, var(--muted) 50%, transparent);
+  border-color: color-mix(in srgb, var(--qb-muted) 50%, transparent);
 }
-button:active,
+button:not([data-slot]):active,
 .button:active {
   transform: translateY(1px);
 }
-button:disabled {
+button:not([data-slot]):disabled {
   opacity: 0.45;
   cursor: default;
   transform: none;
 }
-button:focus-visible,
+button:not([data-slot]):focus-visible,
 a:focus-visible,
-input:focus-visible,
-select:focus-visible,
-textarea:focus-visible {
-  outline: 2px solid var(--accent);
+input:not([data-slot]):focus-visible,
+select:not([data-slot]):focus-visible,
+textarea:not([data-slot]):focus-visible {
+  outline: 2px solid var(--qb-accent);
   outline-offset: 3px;
 }
 button.primary,
 .button.primary {
   color: var(--accent-ink);
-  background: var(--accent);
-  border-color: var(--accent);
+  background: var(--qb-accent);
+  border-color: var(--qb-accent);
 }
 button.primary:hover {
-  background: color-mix(in srgb, var(--accent) 85%, var(--canvas));
+  background: color-mix(in srgb, var(--qb-accent) 85%, var(--canvas));
 }
-input,
-select,
-textarea {
+input:not([data-slot]),
+select:not([data-slot]),
+textarea:not([data-slot]) {
   min-height: 40px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -129,7 +122,7 @@ textarea {
   padding: 8px 11px;
   max-width: 100%;
 }
-textarea {
+textarea:not([data-slot]) {
   resize: vertical;
   min-height: 90px;
 }
@@ -137,11 +130,11 @@ input[type="checkbox"] {
   min-height: auto;
   width: 16px;
   height: 16px;
-  accent-color: var(--accent);
+  accent-color: var(--qb-accent);
 }
 input[type="range"] {
   padding-inline: 0;
-  accent-color: var(--accent);
+  accent-color: var(--qb-accent);
 }
 form {
   display: grid;
@@ -154,8 +147,8 @@ label {
   font-weight: 500;
   min-width: 0;
 }
-label input,
-label select {
+label input:not([data-slot]),
+label select:not([data-slot]) {
   width: 100%;
 }
 fieldset {
@@ -216,7 +209,7 @@ small {
   font-size: 12px;
 }
 .muted {
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .success {
   color: var(--success);
@@ -300,7 +293,7 @@ small {
   height: 32px;
   border-radius: 9px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--qb-accent);
 }
 .brand-mark {
   width: 70%;
@@ -335,18 +328,18 @@ small {
   white-space: nowrap;
   padding: 9px 13px;
   border-radius: 8px;
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .topbar nav a.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--qb-accent);
 }
 .admin-link {
   display: flex;
   align-items: center;
   gap: 7px;
   font-size: 13px;
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .icon-button {
   padding: 8px;
@@ -398,7 +391,7 @@ small {
 .summary-card strong small {
   font-weight: 400;
   font-size: 14px;
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .connection-dot {
   display: inline-block;
@@ -447,12 +440,12 @@ small {
   min-height: 31px;
   font-size: 12px;
   border-radius: 6px;
-  color: var(--muted);
+  color: var(--qb-muted);
   background: transparent;
 }
 .segmented button[aria-pressed="true"],
 .view-switch button[aria-pressed="true"] {
-  color: var(--accent);
+  color: var(--qb-accent);
   background: var(--accent-soft);
 }
 .view-switch button {
@@ -463,7 +456,7 @@ small {
   position: relative;
   display: flex;
   align-items: center;
-  color: var(--muted);
+  color: var(--qb-muted);
   width: 220px;
 }
 .search-field svg {
@@ -519,7 +512,7 @@ small {
   align-items: center;
   width: fit-content;
   background: var(--raised);
-  color: var(--muted);
+  color: var(--qb-muted);
   padding: 3px 8px;
   border-radius: 5px;
   font-size: 11px;
@@ -549,7 +542,7 @@ small {
 }
 .card-values span {
   font-size: 11px;
-  color: var(--muted);
+  color: var(--qb-muted);
   display: block;
   margin-bottom: 3px;
 }
@@ -579,7 +572,7 @@ small {
   display: flex;
   gap: 6px;
   padding: 6px;
-  color: var(--accent);
+  color: var(--qb-accent);
 }
 .view-large {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 390px), 1fr));
@@ -652,7 +645,7 @@ small {
   margin-top: 3px;
 }
 .activity-line time {
-  color: var(--muted);
+  color: var(--qb-muted);
   font-size: 11px;
 }
 .activity-line:hover {
@@ -670,16 +663,16 @@ small {
 }
 .empty-state p {
   max-width: 440px;
-  color: var(--muted);
+  color: var(--qb-muted);
   font-size: 13px;
 }
 .empty-state svg {
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .empty-inline {
   padding: 28px 18px;
   text-align: center;
-  color: var(--muted);
+  color: var(--qb-muted);
   font-size: 13px;
   margin: 0;
 }
@@ -689,7 +682,7 @@ small {
   gap: 10px;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .spin {
   animation: spin 1s linear infinite;
@@ -752,14 +745,14 @@ small {
   display: block;
   padding: 0 12px 7px;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--qb-muted);
   letter-spacing: 1px;
 }
 .nav-group a {
   display: flex;
   align-items: center;
   gap: 11px;
-  color: var(--muted);
+  color: var(--qb-muted);
   padding: 11px 12px;
   font-size: 13px;
   border-radius: 8px;
@@ -767,7 +760,7 @@ small {
 }
 .nav-group a.active {
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--qb-accent);
   font-weight: 550;
 }
 .nav-group a:hover {
@@ -818,7 +811,7 @@ small {
   padding: 16px 0;
 }
 .system-dl dt {
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .system-dl dd {
   margin: 0;
@@ -836,7 +829,7 @@ table {
 th {
   font-size: 11px;
   font-weight: 500;
-  color: var(--muted);
+  color: var(--qb-muted);
   background: var(--raised);
   padding: 12px 18px;
   white-space: nowrap;
@@ -852,7 +845,7 @@ td > a {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--accent);
+  color: var(--qb-accent);
   white-space: nowrap;
 }
 td button {
@@ -923,7 +916,7 @@ td button {
   font-size: 22px;
 }
 .login-card .brand small {
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .login-card .text-button {
   margin-top: 20px;
@@ -981,7 +974,7 @@ td button {
 }
 .control-values dt,
 .compact-dl dt {
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .control-values dd,
 .compact-dl dd {
@@ -1056,7 +1049,7 @@ td button {
   border-bottom: 1px solid var(--line);
 }
 .event-line time {
-  color: var(--muted);
+  color: var(--qb-muted);
   min-width: 130px;
   font-size: 11px;
 }
@@ -1069,11 +1062,11 @@ td button {
   padding-bottom: 18px;
 }
 .timeline time {
-  color: var(--muted);
+  color: var(--qb-muted);
   float: right;
 }
 .timeline p {
-  color: var(--muted);
+  color: var(--qb-muted);
   font-size: 11px;
   margin: 4px 0 0;
 }
@@ -1476,6 +1469,15 @@ td button {
 }
 
 .workbench-shell[data-theme-palette] {
+  --background: var(--canvas);
+  --card: var(--surface);
+  --foreground: var(--text);
+  --card-foreground: var(--text);
+  --muted-foreground: var(--qb-muted);
+  --border: var(--line);
+  --input: var(--line);
+  --primary: var(--qb-accent);
+  --ring: var(--qb-accent);
   color: var(--text);
   background-color: var(--canvas);
   background-position: center;
@@ -1486,9 +1488,9 @@ td button {
   --canvas: var(--canvas-light, #f5f6f8);
   --surface: var(--surface-light, #fff);
   --text: var(--text-light, #263346);
-  --muted: var(--muted-light, #7b8797);
+  --qb-muted: var(--qb-muted-light, #7b8797);
   --line: var(--line-light, #e6e9ef);
-  --accent: var(--accent-light, #4b76d8);
+  --qb-accent: var(--qb-accent-light, #4b76d8);
   --success: var(--success-light, #269675);
   --danger: var(--danger-light, #c75363);
   --theme-chart: var(--theme-chart-light, #638ded);
@@ -1497,9 +1499,9 @@ td button {
   --canvas: var(--canvas-dark, #1b212a);
   --surface: var(--surface-dark, #242c37);
   --text: var(--text-dark, #d5dce8);
-  --muted: var(--muted-dark, #91a0b4);
+  --qb-muted: var(--qb-muted-dark, #91a0b4);
   --line: var(--line-dark, #374151);
-  --accent: var(--accent-dark, #81a9ff);
+  --qb-accent: var(--qb-accent-dark, #81a9ff);
   --success: var(--success-dark, #6ac9a2);
   --danger: var(--danger-dark, #ee9a9e);
   --theme-chart: var(--theme-chart-dark, #638ded);

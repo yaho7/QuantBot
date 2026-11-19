@@ -30,7 +30,7 @@
   "include": [
     "src",
     "vite.config.ts",
-    "theme-plugins/astryx/src",
-    "theme-plugins/astryx/vite.config.ts"
+    "theme-plugins/lyra/src",
+    "theme-plugins/lyra/vite.config.ts"
   ]
 }

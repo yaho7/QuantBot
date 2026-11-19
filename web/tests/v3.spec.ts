@@ -4,23 +4,38 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   page,
   request,
 }, testInfo) => {
-  // This flow also captures screenshots across five viewport widths and two palettes.
+  // This flow also captures screenshots across five viewport widths in light and dark mode.
   test.setTimeout(120_000);
   page.setDefaultTimeout(8_000);
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   const { required } = await (await request.get("/api/auth/setup")).json();
   await page.goto("/");
+  const signIn = page.getByRole("button", { name: required ? "初始化管理员" : "登录", exact: true });
+  const initialViewport = page.viewportSize()!;
+  for (const appearance of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: appearance, reducedMotion: "reduce" });
+    await expect(page.locator("html")).toHaveAttribute("data-appearance", appearance);
+    for (const width of [390, 1600]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await expect(signIn).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
+      await page.screenshot({ path: testInfo.outputPath(`auth-${width}-${appearance}.png`), fullPage: true });
+    }
+  }
+  await page.setViewportSize(initialViewport);
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
   await page.getByLabel(/用户名/).fill("browser-admin");
   await page.getByLabel(/密码/).fill("browser-test-password");
-  await page.getByRole("button", { name: required ? "初始化管理员" : "登录", exact: true }).click();
+  await signIn.click();
   await expect(
     page.getByRole("heading", { name: "运行总览", exact: true }),
   ).toBeVisible();
   await page.goto("/admin/strategies");
   await page.getByRole("button", { name: "创建策略", exact: true }).click();
   const dialog = page.getByRole("dialog");
-  await dialog.getByLabel("策略名称").fill("动量 · BTC 趋势");
+  const strategyName = "动量 · BTC 趋势";
+  await dialog.getByLabel("策略名称").fill(strategyName);
   await dialog.getByLabel("分组").fill("数字资产");
   await dialog.getByRole("button", { name: "创建策略", exact: true }).click();
   await dialog.getByRole("radio", { name: "正式接入", exact: true }).click();
@@ -231,6 +246,38 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   });
   expect(upload.ok()).toBeTruthy();
   expect((await upload.json()).rejected).toBe(0);
+
+  const picker = page.getByRole("combobox", { name: "策略", exact: true });
+  const selectOverviewStrategy = async (name: string) => {
+    await picker.click();
+    await page.getByRole("option", { name, exact: true }).click();
+  };
+  const emptyStrategyName = "对照样本 · 无净值";
+  const browserSession = await page.request.get("/api/auth/session");
+  expect(browserSession.ok()).toBeTruthy();
+  const emptyStrategy = await page.request.post("/api/admin/strategies", {
+    headers: { Origin: new URL(page.url()).origin, "X-CSRF-Token": (await browserSession.json()).csrf },
+    data: { name: emptyStrategyName, group: "数字资产", mode: "paper" },
+  });
+  expect(emptyStrategy.ok()).toBeTruthy();
+  await page.goto("/");
+  await selectOverviewStrategy(strategyName);
+  const overviewAmount = page.locator(".portfolio-amount");
+  const overviewPlot = page.locator('.portfolio-chart [data-slot="chart"] svg.recharts-surface');
+  const strategyStatus = page.getByRole("region", { name: "策略状态", exact: true });
+  const strategyDetails = page.locator(".overview-picker").getByRole("link", { name: "详情", exact: true });
+  await expect(strategyStatus.getByRole("link")).toHaveAttribute("href", "/strategies");
+  await expect(overviewAmount).toContainText("104,825.37");
+  await expect(overviewPlot).toBeVisible();
+  await expect(strategyDetails).toHaveAttribute("href", "/strategies/" + id);
+  await selectOverviewStrategy(emptyStrategyName);
+  await expect(page.getByText("暂无账户权益上报", { exact: true })).toBeVisible();
+  await expect(overviewAmount).not.toContainText("104,825.37");
+  await expect(overviewPlot).toHaveCount(0);
+  await selectOverviewStrategy(strategyName);
+  await expect(overviewAmount).toContainText("104,825.37");
+  await expect(overviewPlot).toBeVisible();
+
   await page.goto("/strategies/" + id);
   await expect(
     page.getByRole("heading", { name: "允许新开仓", exact: true }),
@@ -238,20 +285,28 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(page.locator(".portfolio-amount")).toContainText(
     "104,825.37",
   );
-  const financialPlot = page.locator(".portfolio-chart .tv-lightweight-charts");
+  const financialPlot = page.locator('.portfolio-chart [data-slot="chart"] svg.recharts-surface');
   await expect(financialPlot).toBeVisible();
   const valueReadout = page.locator(".portfolio-chart .chart-value-readout");
   const latestValue = await valueReadout.textContent();
   await financialPlot.scrollIntoViewIfNeeded();
   const plotBox = (await financialPlot.boundingBox())!;
   expect(plotBox.height).toBeGreaterThan(200);
-  await expect.poll(() => financialPlot.locator("canvas").evaluateAll(
-    canvases => Math.max(...canvases.map(canvas => canvas.getBoundingClientRect().width)),
-  )).toBeGreaterThan(plotBox.width * 0.75);
+  const equityLine = financialPlot.locator(".recharts-area-curve");
+  await expect(equityLine).toBeVisible();
+  await expect.poll(async () => (await equityLine.boundingBox())?.width ?? 0).toBeGreaterThan(plotBox.width * 0.75);
   await page.mouse.move(plotBox.x + plotBox.width * 0.3, plotBox.y + plotBox.height * 0.5);
   await expect(valueReadout).not.toHaveText(latestValue!);
   await page.locator("h1").hover();
   await expect(valueReadout).toHaveText(latestValue!);
+  const rangeHandles = financialPlot.getByRole("slider", { name: "时间范围", exact: true });
+  await expect(rangeHandles).toHaveCount(2);
+  const startHandle = rangeHandles.first();
+  const startPosition = Number(await startHandle.getAttribute("aria-valuenow"));
+  await startHandle.press("ArrowRight");
+  await expect.poll(async () => Number(await startHandle.getAttribute("aria-valuenow"))).toBeGreaterThan(startPosition);
+  await startHandle.press("ArrowLeft");
+  await expect.poll(async () => Number(await startHandle.getAttribute("aria-valuenow"))).toBe(startPosition);
   await page
     .locator(".control-card")
     .filter({ hasText: "允许新开仓" })
@@ -381,7 +436,12 @@ test("initialization, real reports, command receipt and responsive shells", asyn
     widget(title).getByRole("button", { name: "展开组件", exact: true }).click();
   for (const title of ["声明式行情延迟", "声明式 K 线"]) {
     await expand(title);
-    await expect(dialog.locator(".chart canvas").first()).toBeVisible();
+    await expect(dialog.locator("[data-slot=chart] .recharts-surface").first()).toBeVisible();
+    if (title === "声明式 K 线") {
+      const bars = dialog.locator('[data-slot="candle"]');
+      await expect(bars).toHaveCount(2);
+      await expect(dialog.locator(".chart-value-readout")).toContainText("开盘 12 · 最高 20 · 最低 11 · 收盘 17");
+    }
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
   }
@@ -483,7 +543,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(widget("券商连接健康")).toBeVisible();
 
   const openSandbox = async () => {
-    await page.getByRole("row").filter({ hasText: "动量 · BTC 趋势" }).getByRole("button", { name: "API", exact: true }).click();
+    await page.getByRole("row").filter({ hasText: strategyName }).getByRole("button", { name: "API", exact: true }).click();
     await dialog.getByRole("radio", { name: "沙盒测试", exact: true }).click();
     await expect(dialog.getByText("共享测试环境")).toBeVisible();
   };
@@ -559,15 +619,16 @@ test("initialization, real reports, command receipt and responsive shells", asyn
 
   await page.goto("/admin/settings");
   await expect(page).toHaveURL(/\/admin\/settings$/);
-  await expect(page.getByRole("heading", { name: /Classical/ })).toBeVisible();
-  await page.getByRole("button", { name: "海蓝", exact: true }).click();
-  await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
+  await expect(page.locator(".display-preferences").getByRole("heading", { name: "外观", exact: true })).toBeVisible();
+  await page.locator(".display-preferences").getByRole("radio", { name: "深色", exact: true }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
   const themeCatalogue = await page.evaluate(async () => (await fetch("/api/admin/themes")).json());
   expect(themeCatalogue.active).toBe("classical");
   expect(themeCatalogue.themes.filter((theme: { builtin: boolean }) => theme.builtin).map((theme: { id: string }) => theme.id)).toEqual(["classical"]);
   await page.goto("/");
   await expect(page.locator(".workbench-shell")).toHaveAttribute("data-theme", "classical");
-  await expect(page.locator("html")).toHaveAttribute("data-palette", "ocean");
+  await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
   await expect(widget("自定义延迟")).toBeVisible();
 
   await page.goto("/admin/storage");
@@ -578,6 +639,7 @@ test("initialization, real reports, command receipt and responsive shells", asyn
   await expect(page.getByText("3,600秒", { exact: true })).toBeVisible();
   await expect(page.getByText("45秒", { exact: true })).toBeVisible();
 
+  await page.emulateMedia({ reducedMotion: "reduce" });
   for (const appearance of ["light", "dark"]) {
     await page.evaluate((mode) => {
       localStorage.setItem("qb.appearance", mode);
@@ -587,19 +649,29 @@ test("initialization, real reports, command receipt and responsive shells", asyn
       await page.setViewportSize({ width, height: 1000 });
       for (const [label, path] of [
         ["home", "/"],
+        ["strategies", "/strategies"],
         ["detail", "/strategies/" + id],
         ["admin", "/admin/dashboard"],
         ["audit", "/admin/audit"],
         ["notifications", "/admin/notifications"],
         ["storage", "/admin/storage"],
         ["settings", "/admin/settings"],
+        ["themes", "/admin/themes"],
         ["sandbox", "/admin/strategies"],
       ]) {
         await page.goto(path);
         await expect(page.locator("h1")).toBeVisible();
+        if (label === "home") {
+          await selectOverviewStrategy(strategyName);
+          await expect(overviewAmount).toContainText("104,825.37");
+          await expect(overviewPlot).toBeVisible();
+          await expect(page.locator(".widget-grid .widget").first()).toBeVisible();
+        }
+        if (label === "strategies") await expect(page.getByRole("link", { name: strategyName, exact: true })).toBeVisible();
+        if (label === "themes") await expect(page.getByRole("heading", { name: "Classical", exact: true })).toBeVisible();
         if (label === "sandbox") await openSandbox();
         if (label === "detail")
-          await expect(page.locator(".chart canvas").first()).toBeVisible();
+          await expect(page.locator("[data-slot=chart] .recharts-surface").first()).toBeVisible();
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth,

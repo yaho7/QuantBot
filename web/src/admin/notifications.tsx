@@ -1,12 +1,21 @@
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { IconButton } from "@astryxdesign/core/IconButton";
-import { Switch } from "@astryxdesign/core/Switch";
-import { VStack } from "@astryxdesign/core/VStack";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Empty, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldGroup, FieldLabel, FieldLegend, FieldSet } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Bell, Plus, Send, Pencil, Trash2 } from "lucide-react";
+import {
+  RiNotification3Line as Bell,
+  RiAddLine as Plus,
+  RiSendPlaneLine as Send,
+  RiEditLine as Pencil,
+  RiDeleteBin6Line as Trash2,
+} from "@remixicon/react";
 import { toast } from "sonner";
 import { api, client, resource } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
@@ -65,7 +74,7 @@ export default function Notifications() {
   return (
     <Page
       title={t("notifications")}
-      actions={<Button label={t("addChannel")} variant="primary" icon={<Plus size={16} />} onClick={() => setEditing("new")} />}
+      actions={<Button onClick={() => setEditing("new")}><Plus size={16} aria-hidden="true" />{t("addChannel")}</Button>}
     >
       {query.isPending ? (
         <Loading />
@@ -74,35 +83,51 @@ export default function Notifications() {
       ) : (
         <div className="controls-grid">
           {query.data.map((channel) => (
-            <Card padding={4} key={channel.id}><VStack as="article" className="channel-card" gap={3}>
-              <header>
-                <Bell size={18} />
-                <h2>{providers.find(([id]) => id === channel.provider)?.[1] ?? channel.provider}</h2>
-                <Badge tone={channel.enabled ? "success" : ""}>
-                  {channel.enabled ? t("enabled") : t("disabled")}
-                </Badge>
-              </header>
-              <div className="channel-events">
-                {channel.events.map((event) => (
-                  <Badge key={event}>{display.kind(event)}</Badge>
-                ))}
-              </div>
-              <div className="channel-actions">
-                <Button label={t("editChannel")} icon={<Pencil size={16} />} onClick={() => setEditing(channel)} />
-                <Button label={t("testDelivery")} icon={<Send size={16} />} isDisabled={action.isPending}
-                  onClick={() => {
-                    setSelected(channel.id);
-                    action.mutate({ id: channel.id, method: "POST", suffix: "/test" });
-                  }} />
-                <IconButton label={channel.name + " " + t("remove")} tooltip={t("remove")} variant="ghost"
-                  icon={<Trash2 size={16} />} isDisabled={action.isPending}
-                  onClick={() => action.mutate({ id: channel.id, method: "DELETE" })} />
-              </div>
-              <Button label={t("deliveryHistory")} variant="ghost" size="sm" onClick={() => setSelected(channel.id)} />
-            </VStack></Card>
+            <Card key={channel.id}>
+              <CardContent>
+                <article className="channel-card grid gap-3">
+                  <header>
+                    <Bell size={16} aria-hidden="true" />
+                    <h2>{providers.find(([id]) => id === channel.provider)?.[1] ?? channel.provider}</h2>
+                    <Badge tone={channel.enabled ? "success" : ""}>
+                      {channel.enabled ? t("enabled") : t("disabled")}
+                    </Badge>
+                  </header>
+                  <div className="channel-events">
+                    {channel.events.map((event) => (
+                      <Badge key={event}>{display.kind(event)}</Badge>
+                    ))}
+                  </div>
+                  <div className="channel-actions">
+                    <Button variant="outline" onClick={() => setEditing(channel)}>
+                      <Pencil size={16} aria-hidden="true" />{t("editChannel")}
+                    </Button>
+                    <Button variant="outline" disabled={action.isPending}
+                      onClick={() => {
+                        setSelected(channel.id);
+                        action.mutate({ id: channel.id, method: "POST", suffix: "/test" });
+                      }}>
+                      <Send size={16} aria-hidden="true" />{t("testDelivery")}
+                    </Button>
+                    <Button size="icon" aria-label={channel.name + " " + t("remove")} variant="ghost"
+                      disabled={action.isPending} onClick={() => action.mutate({ id: channel.id, method: "DELETE" })}>
+                      <Trash2 size={16} aria-hidden="true" />
+                    </Button>
+                  </div>
+                  <Button className="justify-self-start" variant="ghost" size="sm" onClick={() => setSelected(channel.id)}>
+                    {t("deliveryHistory")}
+                  </Button>
+                </article>
+              </CardContent>
+            </Card>
           ))}
           {!query.data.length && (
-            <EmptyState title={t("noChannels")} headingLevel={2} icon={<Bell size={24} />} />
+            <Empty className="border">
+              <EmptyHeader>
+                <EmptyMedia variant="icon"><Bell size={24} aria-hidden="true" /></EmptyMedia>
+                <EmptyTitle role="heading" aria-level={2}>{t("noChannels")}</EmptyTitle>
+              </EmptyHeader>
+            </Empty>
           )}
         </div>
       )}
@@ -120,31 +145,31 @@ export default function Notifications() {
       {selected && (
         <section className="section">
           <h2>{t("deliveryHistory")}</h2>
-          <div className="surface table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>{t("type")}</th>
-                  <th>{t("status")}</th>
-                  <th>{t("attempts")}</th>
-                  <th>{t("nextAttempt")}</th>
-                  <th>{t("details")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.data?.map((delivery) => (
-                  <tr key={delivery.id}>
-                    <td>{display.kind(delivery.kind)}</td>
-                    <td>{display.delivery(delivery.status)}</td>
-                    <td>{delivery.attempts}</td>
-                    <td>{timestamp(delivery.nextAt)}</td>
-                    <td>{delivery.lastError}</td>
-                  </tr>
+          <Card className="py-0">
+            <Table className="admin-data-table" aria-label={t("deliveryHistory")}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>{t("type")}</TableHead>
+                  <TableHead>{t("status")}</TableHead>
+                  <TableHead>{t("attempts")}</TableHead>
+                  <TableHead>{t("nextAttempt")}</TableHead>
+                  <TableHead>{t("details")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {history.data?.map(delivery => (
+                  <TableRow key={delivery.id}>
+                    <TableCell>{display.kind(delivery.kind)}</TableCell>
+                    <TableCell>{display.delivery(delivery.status)}</TableCell>
+                    <TableCell>{delivery.attempts}</TableCell>
+                    <TableCell>{timestamp(delivery.nextAt)}</TableCell>
+                    <TableCell>{delivery.lastError}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
             {history.error && <ErrorView error={history.error} />}
-          </div>
+          </Card>
         </section>
       )}
     </Page>
@@ -207,106 +232,75 @@ function ChannelForm({
           if (events.length && !mutation.isPending) mutation.mutate();
         }}
       >
-        <label>
-          {t("provider")}
-          <select
-            value={provider}
-            onChange={(e) => {
-              setProvider(e.target.value);
-              setReplace(true);
-            }}
-          >
-            {providers.map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
+        <Field>
+          <FieldLabel htmlFor="notification-provider">{t("provider")}</FieldLabel>
+          <NativeSelect id="notification-provider" value={provider} onChange={(event) => {
+            setProvider(event.target.value);
+            setReplace(true);
+          }}>
+            {providers.map(([value, label]) => <NativeSelectOption key={value} value={value}>{label}</NativeSelectOption>)}
+          </NativeSelect>
+        </Field>
+        <Field orientation="horizontal">
+          <Switch id="notification-enabled" checked={enabled} onCheckedChange={setEnabled} />
+          <FieldLabel htmlFor="notification-enabled">{t("enabled")}</FieldLabel>
+        </Field>
+        <FieldSet>
+          <FieldLegend>{t("events")}</FieldLegend>
+          <FieldGroup className="gap-2">
+            {["alert", "risk", "fill", "command"].map(event => (
+              <Field orientation="horizontal" key={event}>
+                <Checkbox id={"notification-event-" + event} checked={events.includes(event)}
+                  onCheckedChange={checked => setEvents(current => checked ? [...current, event] : current.filter(value => value !== event))} />
+                <FieldLabel htmlFor={"notification-event-" + event}>{display.kind(event)}</FieldLabel>
+              </Field>
             ))}
-          </select>
-        </label>
-        <Switch label={t("enabled")} value={enabled} onChange={setEnabled} />
-        <fieldset>
-          <legend>{t("events")}</legend>
-          {["alert", "risk", "fill", "command"].map((event) => (
-            <label className="check-label" key={event}>
-              <input
-                type="checkbox"
-                checked={events.includes(event)}
-                onChange={(e) =>
-                  setEvents(
-                    e.target.checked
-                      ? [...events, event]
-                      : events.filter((v) => v !== event),
-                  )
-                }
-              />
-              {display.kind(event)}
-            </label>
-          ))}
-        </fieldset>
+          </FieldGroup>
+        </FieldSet>
         {channel && (
-          <label className="check-label">
-            <input
-              type="checkbox"
-              checked={replace}
-              onChange={(e) => setReplace(e.target.checked)}
-            />
-            {t("replaceCredentials")}
-          </label>
+          <Field orientation="horizontal">
+            <Checkbox id="notification-replace" checked={replace} onCheckedChange={setReplace} />
+            <FieldLabel htmlFor="notification-replace">{t("replaceCredentials")}</FieldLabel>
+          </Field>
         )}
-        {replace &&
-          (provider === "telegram" ? (
+        {replace && (
+          provider === "telegram" ? (
             <>
-              <label>
-                Bot Token
-                <input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                />
-              </label>
-              <label>
-                Chat ID
-                <input
-                  required
-                  value={chatId}
-                  onChange={(e) => setChatId(e.target.value)}
-                />
-              </label>
+              <Field>
+                <FieldLabel htmlFor="notification-bot-token">Bot Token</FieldLabel>
+                <Input id="notification-bot-token" type="password" autoComplete="new-password"
+                  value={token} onChange={event => setToken(event.target.value)} required />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="notification-chat-id">Chat ID</FieldLabel>
+                <Input id="notification-chat-id" value={chatId} onChange={event => setChatId(event.target.value)} required />
+              </Field>
             </>
           ) : (
             <>
-              <label>
-                Webhook URL
-                <input
-                  type="password"
-                  required
-                  autoComplete="new-password"
-                  value={webhook}
-                  onChange={(e) => setWebhook(e.target.value)}
-                />
-              </label>
+              <Field>
+                <FieldLabel htmlFor="notification-webhook">Webhook URL</FieldLabel>
+                <Input id="notification-webhook" type="password" autoComplete="new-password"
+                  value={webhook} onChange={event => setWebhook(event.target.value)} required />
+              </Field>
               {provider !== "wecom" && (
-                <label>
-                  Signing secret
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={secret}
-                    onChange={(e) => setSecret(e.target.value)}
-                  />
-                </label>
+                <Field>
+                  <FieldLabel htmlFor="notification-signing-secret">Signing secret</FieldLabel>
+                  <Input id="notification-signing-secret" type="password" autoComplete="new-password"
+                    value={secret} onChange={event => setSecret(event.target.value)} />
+                </Field>
               )}
             </>
-          ))}
+          )
+        )}
         {mutation.error && (
           <p className="error-text" role="alert">
             {mutation.error.message}
           </p>
         )}
-        <Button label={t("save")} variant="primary" type="submit" isLoading={mutation.isPending}
-          isDisabled={!events.length} />
+        <Button type="submit" aria-busy={mutation.isPending} disabled={mutation.isPending || !events.length}>
+          {t("save")}
+        </Button>
       </form>
     </Modal>
   );

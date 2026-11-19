@@ -1,22 +1,33 @@
-import { useSyncExternalStore, useEffect } from "react";
+import { useSyncExternalStore } from "react";
 
-export const palettes = ["forest", "ocean", "violet", "amber", "graphite"] as const;
-export type PaletteName = typeof palettes[number];
+export const appearanceOptions = ["system", "light", "dark"] as const;
+export type Appearance = typeof appearanceOptions[number];
+
+const storageKey = "qb.appearance";
 const listeners = new Set<() => void>();
-const read = (): PaletteName => {
-  const value = localStorage.getItem("qb.palette");
-  return palettes.includes(value as PaletteName) ? value as PaletteName : "forest";
-};
-export function setPalette(value: PaletteName) {
-  localStorage.setItem("qb.palette", value);
+
+function readAppearance(): Appearance {
+  const value = localStorage.getItem(storageKey);
+  return value === "light" || value === "dark" ? value : "system";
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  const sync = (event: StorageEvent) => {
+    if (event.key === storageKey || event.key === null) listener();
+  };
+  window.addEventListener("storage", sync);
+  return () => {
+    listeners.delete(listener);
+    window.removeEventListener("storage", sync);
+  };
+}
+
+export function setAppearance(value: Appearance) {
+  localStorage.setItem(storageKey, value);
   for (const listener of listeners) listener();
 }
-export function usePalette() {
-  const value = useSyncExternalStore((listener) => {
-    listeners.add(listener);
-    window.addEventListener("storage", listener);
-    return () => { listeners.delete(listener); window.removeEventListener("storage", listener); };
-  }, read);
-  useEffect(() => { document.documentElement.dataset.palette = value; }, [value]);
-  return value;
+
+export function useAppearance() {
+  return useSyncExternalStore(subscribe, readAppearance);
 }

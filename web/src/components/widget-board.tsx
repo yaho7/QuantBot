@@ -1,7 +1,8 @@
-import { Button } from "@astryxdesign/core/Button";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { HStack } from "@astryxdesign/core/HStack";
-import { IconButton } from "@astryxdesign/core/IconButton";
+import { Button } from "@/components/ui/button";
+import { Empty, EmptyDescription, EmptyHeader, EmptyMedia } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useState, useEffect, useSyncExternalStore, useRef, createContext, useContext } from "react";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import {
@@ -20,20 +21,21 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Activity,
-  Maximize2,
-  Bell,
-  ChartNoAxesCombined,
-  GripVertical,
-  LayoutGrid as LayoutGridIcon,
-  Pencil,
-  Plus,
-  RotateCcw,
-  Settings2,
-  SlidersHorizontal,
-  Trash2,
-  Undo2,
-} from "lucide-react";
+  RiPulseLine as Activity,
+  RiExpandDiagonalLine as Maximize2,
+  RiNotification3Line as Bell,
+  RiLineChartLine as ChartNoAxesCombined,
+  RiDraggable as GripVertical,
+  RiGridLine as LayoutGridIcon,
+  RiLoader4Line as LoaderCircle,
+  RiEditLine as Pencil,
+  RiAddLine as Plus,
+  RiResetLeftLine as RotateCcw,
+  RiEqualizerLine as Settings2,
+  RiEqualizer2Line as SlidersHorizontal,
+  RiDeleteBin6Line as Trash2,
+  RiArrowGoBackLine as Undo2,
+} from "@remixicon/react";
 import type { ReactNode } from "react";
 import {
   api,
@@ -74,10 +76,10 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
   const [preview, setPreview] = useState<string>();
   const [lockedDevice, setLockedDevice] = useState<string>();
   const device = lockedDevice ?? preview ?? viewport;
-  const deviceTools = <HStack className="layout-device-switch">
+  const deviceTools = <div className="layout-device-switch">
     <Choices label={t("layoutPreview")} value={device} size="sm" disabled={!!lockedDevice} select={setPreview}
       options={["desktop", "mobile"].map(value => ({ value, label: t(value === "mobile" ? "mobileLayout" : "desktopLayout") }))} />
-  </HStack>;
+  </div>;
   return <>
     <div className={device === "mobile" ? "mobile-layout-preview" : ""}>
       <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device} deviceTools={deviceTools}
@@ -177,37 +179,54 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
       <div className="section-heading">
         <h2>{t("widgets")}</h2>
         {deviceTools}
-        <HStack className="widget-edit-tools" gap={2} wrap="wrap" vAlign="center">
+        <div className="widget-edit-tools flex flex-wrap items-center gap-2">
           {editing ? (
             <>
-              <IconButton variant="ghost" label={t("undo")} tooltip={t("undo")} icon={<Undo2 size={16} />}
-                isDisabled={!history.length || save.isPending} onClick={() => {
+              <WidgetTool label={t("undo")} disabled={!history.length || save.isPending} onClick={() => {
                   save.reset();
                   setDraft(history.at(-1)!);
                   setHistory(history.slice(0, -1));
-                }} />
-              <IconButton variant="ghost" label={t("reset")} tooltip={t("reset")} icon={<RotateCcw size={16} />}
-                isDisabled={save.isPending} onClick={() => change(suggestions)} />
-              <Button label={t("add")} icon={<Plus size={16} />} onClick={() => setAdding(true)} isDisabled={save.isPending} />
-              {device === "mobile" && <Button label={t("copyDesktop")} isLoading={copying}
-                isDisabled={save.isPending} onClick={() => void copyDesktop()} />}
-              <Button label={t("done")} variant="primary" isDisabled={save.isPending || dirty || copying}
+                }}>
+                <Undo2 aria-hidden="true" />
+              </WidgetTool>
+              <WidgetTool label={t("reset")} disabled={save.isPending} onClick={() => change(suggestions)}>
+                <RotateCcw aria-hidden="true" />
+              </WidgetTool>
+              <Button type="button" variant="outline" onClick={() => setAdding(true)} disabled={save.isPending}>
+                <Plus aria-hidden="true" />{t("add")}
+              </Button>
+              {device === "mobile" && (
+                <Button type="button" variant="outline" disabled={save.isPending || copying} aria-busy={copying}
+                  onClick={() => void copyDesktop()}>
+                  {copying && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+                  {t("copyDesktop")}
+                </Button>
+              )}
+              <Button type="button" disabled={save.isPending || dirty || copying}
                 onClick={() => {
                   setEditing(false);
                   onEditing(false);
                   setSettings("");
                   setAdding(false);
-                }} />
+                }}>
+                {t("done")}
+              </Button>
               <span className="muted layout-save-status" role="status" aria-live="polite">
                 {save.isError ? t("saveFailed") : save.isPending || dirty ? t("savingLayout") : t("savedLayout")}
               </span>
-              {save.isError && <Button label={t("retrySave")} onClick={() => save.mutate({ revision, widgets: draft })} />}
+              {save.isError && (
+                <Button type="button" variant="outline" onClick={() => save.mutate({ revision, widgets: draft })}>
+                  {t("retrySave")}
+                </Button>
+              )}
             </>
           ) : (
-            <Button label={t("edit")} icon={<Pencil size={16} />} onClick={beginEdit}
-              isDisabled={saved.isPending || !!saved.error || catalogs.some(catalog => catalog.isPending)} />
+            <Button type="button" variant="outline" onClick={beginEdit}
+              disabled={saved.isPending || !!saved.error || catalogs.some(catalog => catalog.isPending)}>
+              <Pencil aria-hidden="true" />{t("edit")}
+            </Button>
           )}
-        </HStack>
+        </div>
       </div>
       {saved.isPending ? (
         <Loading />
@@ -269,18 +288,23 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
                 </SortableWidget>
               ))}
               {editing && !widgets.length && (
-                <button className="widget-add" onClick={() => setAdding(true)}>
-                  <Plus />
+                <Button type="button" variant="outline" className="widget-add" onClick={() => setAdding(true)}>
+                  <Plus aria-hidden="true" />
                   {t("add")}
-                </button>
+                </Button>
               )}
             </div>
           </SortableContext>
         </DndContext>
       )}
-      {!editing && !widgets.length && !saved.isPending && (
-        <EmptyState isCompact headingLevel={3} title={t("widgets")} description={t("widgetsHint")}
-          icon={<LayoutGridIcon size={20} />} />
+      {!editing && !widgets.length && !saved.isPending && !saved.error && (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><LayoutGridIcon aria-hidden="true" /></EmptyMedia>
+            <h3 className="font-medium">{t("widgets")}</h3>
+            <EmptyDescription>{t("widgetsHint")}</EmptyDescription>
+          </EmptyHeader>
+        </Empty>
       )}
       {copyError && <ErrorView error={copyError} />}
       {save.error && (
@@ -330,7 +354,7 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
               >
                 <label>
                   {t("displayName")}
-                  <input
+                  <Input
                     maxLength={160}
                     value={widget.label ?? ""}
                     onChange={(e) =>
@@ -340,7 +364,7 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
                 </label>
                 <label>
                   {t("size")}
-                  <select
+                  <NativeSelect className="w-full"
                     value={widget.size}
                     onChange={(e) =>
                       update(widget.id, {
@@ -350,13 +374,13 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
                     }
                   >
                     {["small", "medium", "large", "full"].map((size) => (
-                      <option key={size}>{size}</option>
+                      <NativeSelectOption key={size}>{size}</NativeSelectOption>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label>
                   {t("color")}
-                  <input
+                  <Input
                     type="color"
                     value={widget.color ?? "#4b76d8"}
                     onChange={(e) =>
@@ -366,16 +390,16 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
                 </label>
                 <label>
                   {t("icon")}
-                  <select
+                  <NativeSelect className="w-full"
                     value={widget.icon ?? "Activity"}
                     onChange={(e) =>
                       update(widget.id, { icon: e.target.value })
                     }
                   >
                     {Object.keys(icons).map((icon) => (
-                      <option key={icon}>{icon}</option>
+                      <NativeSelectOption key={icon}>{icon}</NativeSelectOption>
                     ))}
-                  </select>
+                  </NativeSelect>
                 </label>
                 <label className="check-label">
                   <input
@@ -397,7 +421,7 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
                   />
                   {t("detailed")}
                 </label>
-                <button>{t("close")}</button>
+                <Button type="submit" variant="outline">{t("close")}</Button>
               </form>
             ))}
         </Modal>
@@ -405,6 +429,24 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
     </section>
   );
 }
+
+function WidgetTool({ label, disabled, onClick, children }: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<Button type="button" size="icon-sm" variant="ghost" aria-label={label}
+        disabled={disabled} onClick={onClick} />}>
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function SortableWidget({
   widget,
   editing,
@@ -477,21 +519,30 @@ function SortableWidget({
                         : widget.type === "performance" ? "hostPerformance" : "activity",
             )}
         </h3>
-        {!editing && <IconButton size="sm" label={t("expandWidget")} tooltip={t("expandWidget")} variant="ghost" icon={<Maximize2 size={16} />} onClick={() => setExpanded(true)} />}
+        {!editing && (
+          <WidgetTool label={t("expandWidget")} onClick={() => setExpanded(true)}>
+            <Maximize2 aria-hidden="true" />
+          </WidgetTool>
+        )}
         {editing && (
           <>
-            <button
-              className="icon-button drag-handle"
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className="drag-handle"
               aria-label={t("dragWidget")}
               {...sortable.attributes}
               {...sortable.listeners}
             >
-              <GripVertical size={17} />
-            </button>
-            <IconButton size="sm" label={t("widgetSettings")} tooltip={t("widgetSettings")} variant="ghost"
-              icon={<Settings2 size={16} />} onClick={configure} />
-            <IconButton size="sm" label={t("remove")} tooltip={t("remove")} variant="ghost"
-              icon={<Trash2 size={16} />} onClick={remove} />
+              <GripVertical aria-hidden="true" />
+            </Button>
+            <WidgetTool label={t("widgetSettings")} onClick={configure}>
+              <Settings2 aria-hidden="true" />
+            </WidgetTool>
+            <WidgetTool label={t("remove")} onClick={remove}>
+              <Trash2 aria-hidden="true" />
+            </WidgetTool>
           </>
         )}
       </header>
@@ -691,7 +742,7 @@ function AddWidget({
       >
         <label>
           {t("strategies")}
-          <select
+          <NativeSelect className="w-full"
             required
             value={strategyId}
             onChange={(e) => {
@@ -700,15 +751,15 @@ function AddWidget({
             }}
           >
             {strategies.map((s) => (
-              <option key={s.id} value={s.id}>
+              <NativeSelectOption key={s.id} value={s.id}>
                 {s.name}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label>
           {t("widgetType")}
-          <select
+          <NativeSelect className="w-full"
             value={type}
             onChange={(e) => setType(e.target.value as Widget["type"])}
           >
@@ -721,34 +772,34 @@ function AddWidget({
               ["activity", t("activity")],
               ["performance", t("hostPerformance")],
             ].map(([value, label]) => (
-              <option key={value} value={value}>
+              <NativeSelectOption key={value} value={value}>
                 {label}
-              </option>
+              </NativeSelectOption>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         {hasSource && (
           <label>
             {t(type === "capability" ? "capability" : "controls")}
-            <select
+            <NativeSelect className="w-full"
               required
               value={selected}
               onChange={(e) => setControlId(e.target.value)}
             >
               {sources?.map((c) => (
-                <option key={c.id} value={c.id}>
+                <NativeSelectOption key={c.id} value={c.id}>
                   {c.title}
-                </option>
+                </NativeSelectOption>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         )}
-        <button
-          className="primary"
+        <Button
+          type="submit"
           disabled={!strategyId || (hasSource && !selected)}
         >
           {t("add")}
-        </button>
+        </Button>
       </form>
     </Modal>
   );

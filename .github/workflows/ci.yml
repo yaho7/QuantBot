@@ -110,10 +110,10 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           zip -q artifacts/quantbot-licenses.zip LICENSE docs/licenses/*
-          cp web/dist/astryx-theme.zip artifacts/astryx-theme.zip
+          cp web/dist/lyra-theme.zip artifacts/lyra-theme.zip
           (
             cd artifacts
-            sha256sum astryx-theme.zip > astryx-theme.zip.sha256
+            sha256sum lyra-theme.zip > lyra-theme.zip.sha256
           )
           notes=()
           if [[ -f "docs/releases/$TAG.md" ]]; then

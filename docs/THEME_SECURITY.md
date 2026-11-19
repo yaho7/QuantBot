@@ -6,7 +6,7 @@ Published assets are resolved from an immutable revision in the theme database a
 
 Frontend theme HTML is served with a CSP sandbox allowing scripts in an opaque origin and no privileged browser permissions. Scripts can load only from that revision. Network connections, nested frames, objects and forms are disabled. QuantBot embeds the theme in a sandboxed iframe and retains management, authentication and command workflows in the host. Theme authors should treat display data as ephemeral and use the versioned Host Bridge supplied by the workbench.
 
-The optional Astryx package receives only strategy summaries, a bounded equity
+The optional Lyra package receives only strategy summaries, a bounded equity
 history projection and control display metadata. Bridge reads require an ID from
 the authenticated host's strategy list and one of four fixed history ranges.
 The bridge accepts no arbitrary URL, API method, administrator route or command

@@ -1,8 +1,6 @@
-import { Button } from "@astryxdesign/core/Button";
-import { Card } from "@astryxdesign/core/Card";
-import { Heading } from "@astryxdesign/core/Heading";
-import { Table } from "@astryxdesign/core/Table";
-import { VStack } from "@astryxdesign/core/VStack";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DisplayPreferences } from "../components/display-preferences";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -50,29 +48,46 @@ export function Storage() {
       ) : query.error ? (
         <ErrorView error={query.error} retry={() => void query.refetch()} />
       ) : (
-        <Card padding={0}><Table
-          data={["control", "metrics"].map(name => ({
-            name: name + ".db", size: size(query.data.databaseBytes[name]), wal: size(query.data.walBytes[name]),
-          }))}
-          columns={[{ key: "name", header: "SQLite" }, { key: "size", header: t("databaseSize"), align: "end" },
-            { key: "wal", header: "WAL", align: "end" }]}
-          idKey="name" /></Card>
+        <Card className="py-0">
+          <Table className="admin-data-table" aria-label={t("storage")}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>SQLite</TableHead>
+                <TableHead className="text-end">{t("databaseSize")}</TableHead>
+                <TableHead className="text-end">WAL</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {["control", "metrics"].map(name => (
+                <TableRow key={name}>
+                  <TableCell>{name}.db</TableCell>
+                  <TableCell className="text-end">{size(query.data.databaseBytes[name])}</TableCell>
+                  <TableCell className="text-end">{size(query.data.walBytes[name])}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Card>
       )}
-      <Card padding={4}><VStack as="section" gap={4}>
-        <Heading level={2}>{t("backupRestore")}</Heading>
-        <p className="muted">{t("backupHint")}</p>
-        <p className="muted">{t("restoreHint")}</p>
-        {Object.entries(commands).map(([name, snippet]) => (
-          <VStack key={name} gap={2} hAlign="start">
-            <Heading level={3}>{name}</Heading>
-            <pre>{snippet}</pre>
-            <Button label={t("copy") + " " + name} onClick={async () => {
-              try { await navigator.clipboard.writeText(snippet); toast.success(t("copied")); }
-              catch { toast.error(t("copyFailed")); }
-            }} />
-          </VStack>
-        ))}
-      </VStack></Card>
+      <Card>
+        <CardHeader>
+          <h2 className="text-base font-medium">{t("backupRestore")}</h2>
+          <CardDescription>{t("backupHint")}</CardDescription>
+          <CardDescription>{t("restoreHint")}</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {Object.entries(commands).map(([name, snippet]) => (
+            <div key={name} className="grid min-w-0 justify-items-start gap-2">
+              <h3>{name}</h3>
+              <pre className="max-w-full">{snippet}</pre>
+              <Button variant="outline" onClick={async () => {
+                try { await navigator.clipboard.writeText(snippet); toast.success(t("copied")); }
+                catch { toast.error(t("copyFailed")); }
+              }}>{t("copy") + " " + name}</Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
     </Page>
   );
 }
@@ -91,28 +106,32 @@ export function Settings() {
       ) : query.error ? (
         <ErrorView error={query.error} retry={() => void query.refetch()} />
       ) : settings ? (
-        <Card padding={4}><VStack as="section" gap={3}>
-          <Heading level={2}>{t("runtimeSettings")}</Heading>
-          <p className="muted">{t("runtimeHint")}</p>
-          <dl className="system-dl">
-            {[
-              [t("hostVersion"), query.data.version],
-              [t("sessionLifetime"), unit(settings.sessionSeconds, "second")],
-              [t("renewBefore"), unit(settings.renewBeforeSeconds, "second")],
-              [t("heartbeatInterval"), unit(settings.heartbeatSeconds, "second")],
-              [t("offlineAfter"), unit(settings.offlineSeconds, "second")],
-              [t("maxPoll"), unit(settings.commandPollSeconds, "second")],
-              [t("metricsQueue"), settings.metricsQueue],
-              [t("metricsBatch"), settings.metricsBatch],
-              [t("metricsFlush"), unit(settings.metricsFlushMilliseconds, "millisecond")],
-            ].map(([label, value]) => (
-              <div key={label}>
-                <dt>{label}</dt>
-                <dd>{value}</dd>
-              </div>
-            ))}
-          </dl>
-        </VStack></Card>
+        <Card>
+          <CardHeader>
+            <h2 className="text-base font-medium">{t("runtimeSettings")}</h2>
+            <CardDescription>{t("runtimeHint")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <dl className="system-dl">
+              {[
+                [t("hostVersion"), query.data.version],
+                [t("sessionLifetime"), unit(settings.sessionSeconds, "second")],
+                [t("renewBefore"), unit(settings.renewBeforeSeconds, "second")],
+                [t("heartbeatInterval"), unit(settings.heartbeatSeconds, "second")],
+                [t("offlineAfter"), unit(settings.offlineSeconds, "second")],
+                [t("maxPoll"), unit(settings.commandPollSeconds, "second")],
+                [t("metricsQueue"), settings.metricsQueue],
+                [t("metricsBatch"), settings.metricsBatch],
+                [t("metricsFlush"), unit(settings.metricsFlushMilliseconds, "millisecond")],
+              ].map(([label, value]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd>{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </CardContent>
+        </Card>
       ) : null}
     </Page>
   );

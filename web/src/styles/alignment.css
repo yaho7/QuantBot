@@ -1,32 +1,32 @@
 /* Shared alignment rules for the trusted Classical interface. */
-.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-hero {
+.workbench-shell.native-workbench[data-theme="classical"] .portfolio-hero {
   margin-inline: 0;
 }
-.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar,
-.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-amount {
+.workbench-shell.native-workbench[data-theme="classical"] .portfolio-toolbar,
+.workbench-shell.native-workbench[data-theme="classical"] .portfolio-amount {
   padding-inline: 0;
 }
-.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar { min-height: 40px; gap: 12px; }
-.workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar > .actions { margin-left: auto; }
-.workbench-shell.antquant-workbench[data-theme="classical"] .chart-value-readout { padding-inline: 0; }
-.workbench-shell.antquant-workbench[data-theme="classical"] .section-heading {
+.workbench-shell.native-workbench[data-theme="classical"] .portfolio-toolbar { min-height: 40px; gap: 12px; }
+.workbench-shell.native-workbench[data-theme="classical"] .portfolio-toolbar > .actions { margin-left: auto; }
+.workbench-shell.native-workbench[data-theme="classical"] .chart-value-readout { padding-inline: 0; }
+.workbench-shell.native-workbench[data-theme="classical"] .section-heading {
   min-height: 40px;
   margin-bottom: 12px;
   align-items: center;
 }
-.workbench-shell.antquant-workbench[data-theme="classical"] .section-heading h2 {
+.workbench-shell.native-workbench[data-theme="classical"] .section-heading h2 {
   display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px; line-height: 1.4;
 }
-.workbench-shell.antquant-workbench[data-theme="classical"] .section-heading h2 .count { margin-left: 0; }
+.workbench-shell.native-workbench[data-theme="classical"] .section-heading h2 .count { margin-left: 0; }
 .workbench-shell .view-switch button {
   width: auto; min-width: 76px; min-height: 32px; padding: 6px 12px; white-space: nowrap;
 }
 .workbench-shell .filter-bar { gap: 8px; align-items: center; }
-.workbench-shell.antquant-workbench[data-theme="classical"] .filter-bar :is(select, input) {
+.workbench-shell.native-workbench[data-theme="classical"] .filter-bar :is(select, input) {
   height: 36px; min-height: 36px; margin: 0; padding-block: 6px;
 }
-.workbench-shell.antquant-workbench[data-theme="classical"] .filter-bar .segmented { height: 36px; padding: 3px; }
-.workbench-shell.antquant-workbench[data-theme="classical"] .filter-bar .segmented button { height: 28px; min-height: 28px; }
+.workbench-shell.native-workbench[data-theme="classical"] .filter-bar .segmented { height: 36px; padding: 3px; }
+.workbench-shell.native-workbench[data-theme="classical"] .filter-bar .segmented button { height: 28px; min-height: 28px; }
 .workbench-shell .filter-bar label { margin: 0; }
 .workbench-shell .filter-bar .search-field input { width: 100%; }
 .workbench-shell .actions { align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -50,20 +50,13 @@
 .strategy-table-container :is(th, td):nth-child(4),
 .strategy-table-container :is(th, td):nth-child(5) { text-align: right; }
 .strategy-table-container :is(th, td):last-child { text-align: right; }
-.display-preferences .palette-options {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); max-width: 680px; gap: 12px;
-}
-.display-preferences .palette-option { width: 100%; justify-content: flex-start; padding: 10px 12px; }
-.display-preferences .palette-option[aria-pressed="true"] { outline-offset: -2px; }
-.display-preferences .preference-language { margin: 0; max-width: 360px; }
-.display-preferences .preference-language > span { min-height: 24px; }
-.display-preferences legend { padding: 0; min-height: 24px; }
+
 .admin-shell .system-dl > div { align-items: baseline; gap: 16px; min-height: 48px; }
 .admin-shell .system-dl dd { font-variant-numeric: tabular-nums; white-space: nowrap; }
 @media (max-width: 767px) {
-  .workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar { align-items: flex-start; }
-  .workbench-shell.antquant-workbench[data-theme="classical"] .portfolio-toolbar > .actions { width: 100%; justify-content: space-between; }
-  .workbench-shell.antquant-workbench[data-theme="classical"] .page-header { flex-wrap: wrap; gap: 12px; }
+  .workbench-shell.native-workbench[data-theme="classical"] .portfolio-toolbar { align-items: flex-start; }
+  .workbench-shell.native-workbench[data-theme="classical"] .portfolio-toolbar > .actions { width: 100%; justify-content: space-between; }
+  .workbench-shell.native-workbench[data-theme="classical"] .page-header { flex-wrap: wrap; gap: 12px; }
   .workbench-shell .filter-spacer { display: none; }
   .workbench-shell .filter-bar .search-field { flex: 1 1 140px; max-width: none; }
   .widget-section > .section-heading > .actions { width: 100%; justify-content: flex-end; }
@@ -86,10 +79,7 @@
   .workbench-shell .portfolio-strategies .filter-bar > select { grid-column: 2; width: 100%; }
 }
 
-/* The overview only contains the strategy snapshot and the saved board. */
 .overview-content { display: grid; gap: 16px; }
-.overview-content .portfolio-hero { margin-block: 0; }
-.overview-content .portfolio-hero .portfolio-periods { margin-bottom: 4px; }
 .portfolio-record-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
 .performance-widget-host { display: grid; gap: 8px; border-top: 0; padding: 0 0 10px; border-bottom: 1px solid var(--line); }
 @media (max-width: 767px) {

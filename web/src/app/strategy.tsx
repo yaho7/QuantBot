@@ -213,6 +213,7 @@ export function History({
   strategyId,
   embedded = false,
   featured = false,
+  rangeBeforePlot = false,
   seriesKind,
   seriesKey,
   instanceId,
@@ -220,6 +221,7 @@ export function History({
   strategyId: string;
   embedded?: boolean;
   featured?: boolean;
+  rangeBeforePlot?: boolean;
   seriesKind?: string;
   seriesKey?: string;
   instanceId?: string;
@@ -260,6 +262,28 @@ export function History({
     ...resource<{ resolutionMs: number; points: Point[] }>(path),
     enabled: !!series,
   });
+  const periodsControl = featured && (
+    <Choices label={t("choosePeriod")} value={String(range)} size="sm"
+      options={periods.map(period => ({ value: String(period), label: periodLabel(period) }))}
+      select={period => setRange(Number(period))} />
+  );
+  const failure = query.error || history.error;
+  const plot = failure ? (
+    <ErrorView error={failure} />
+  ) : query.isPending || (series && history.isPending) ? (
+    <Loading />
+  ) : history.data?.points.length ? (
+    <Suspense fallback={<Loading />}>
+      <Chart
+        key={seriesIdentity}
+        points={history.data.points}
+        candle={series?.kind === "ohlcv"}
+        featured={featured}
+      />
+    </Suspense>
+  ) : (
+    <p className="empty-inline chart-empty">{t("missing")}</p>
+  );
   return (
     <div className={(embedded ? "" : "surface ") + "chart-card" + (featured ? " portfolio-chart" : "")}>
       <div className="filter-bar">
@@ -282,27 +306,9 @@ export function History({
           {periods.map((period) => <option value={period} key={period}>{periodLabel(period)}</option>)}
         </select>}
       </div>
-      {query.error || history.error ? (
-        <ErrorView error={(query.error || history.error)!} />
-      ) : query.isPending || history.isFetching ? (
-        <Loading />
-      ) : history.data?.points.length ? (
-        <Suspense fallback={<Loading />}>
-          {" "}
-          <Chart
-            points={history.data.points}
-            candle={series?.kind === "ohlcv"}
-            featured={featured}
-          />{" "}
-        </Suspense>
-      ) : (
-        <p className="empty-inline chart-empty">{t("missing")}</p>
-      )}
-      {featured && (
-        <Choices label={t("choosePeriod")} value={String(range)} size="sm"
-          options={periods.map(period => ({ value: String(period), label: periodLabel(period) }))}
-          select={period => setRange(Number(period))} />
-      )}
+      {rangeBeforePlot && periodsControl}
+      {rangeBeforePlot ? <div className="overview-plot-stage grid content-center">{plot}</div> : plot}
+      {!rangeBeforePlot && periodsControl}
       {history.data && history.data.resolutionMs > 0 && (
         <small className="muted">
           {display.unit(history.data.resolutionMs / 60000, "minute")} · {t("samples")} {history.data.points.length}

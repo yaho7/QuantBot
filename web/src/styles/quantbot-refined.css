@@ -1,84 +1,7 @@
 /* QuantBot UI refinement — designed to layer on the existing 3.0 styles.
    Scoped theme treatments preserve custom theme and control security boundaries. */
 
-/* 1. The built-in Lumina is a distinct, polished monitoring surface. */
-.workbench-shell[data-theme="classical"] {
-  --canvas: #f2f5fa;
-  --surface: #ffffff;
-  --raised: #f6f8fc;
-  --text: #1c2b41;
-  --muted: #71809a;
-  --line: #e3e8f1;
-  --accent: #4b70d7;
-  --accent-soft: #eaf0ff;
-  --success: #148e77;
-  --success-bg: #e0f5ed;
-  --warning: #a46a1a;
-  --warning-bg: #fff1d8;
-  --danger: #c34b60;
-  --danger-bg: #fff0f2;
-  --radius: 17px;
-  --gap: 16px;
-  min-height: 100dvh;
-  background: radial-gradient(ellipse 85% 35% at 75% 0%, #e5edff 0%, transparent 72%), var(--canvas);
-  color: var(--text);
-  padding-bottom: 4px;
-}
-:root[data-appearance="dark"] .workbench-shell[data-theme="classical"] {
-  --canvas: #101823;
-  --surface: #1c2838;
-  --raised: #243347;
-  --text: #e6ecf6;
-  --muted: #a0aec1;
-  --line: #344459;
-  --accent: #96b3ff;
-  --accent-soft: #283e65;
-  --success: #70d8ba;
-  --success-bg: #24473d;
-  --warning: #efc483;
-  --warning-bg: #51412f;
-  --danger: #f3a0aa;
-  --danger-bg: #52323c;
-  background: radial-gradient(ellipse 75% 40% at 75% -5%, #1e3456 0%, transparent 75%), var(--canvas);
-}
-.workbench-shell[data-theme="classical"] .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 25;
-  background: color-mix(in srgb, var(--surface) 90%, transparent);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border-bottom-color: color-mix(in srgb, var(--line) 85%, transparent);
-}
-.workbench-shell[data-theme="classical"] .topbar-inner {
-  min-height: 66px;
-  gap: clamp(14px, 3vw, 40px);
-}
-.workbench-shell[data-theme="classical"] .brand-icon {
-  width: 38px;
-  height: 38px;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
-  background: linear-gradient(140deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), var(--accent-soft));
-  border-radius: 13px;
-  box-shadow: inset 0 1px color-mix(in srgb, var(--surface) 70%, transparent);
-}
-.workbench-shell[data-theme="classical"] .brand strong {
-  font-weight: 750;
-  font-size: 19px;
-  letter-spacing: -0.7px;
-}
-.workbench-shell[data-theme="classical"] .topbar nav a {
-  border: 1px solid transparent;
-  transition: background 160ms, color 160ms;
-  font-weight: 520;
-}
-.workbench-shell[data-theme="classical"] .topbar nav a:hover {
-  background: var(--raised);
-  color: var(--text);
-}
-.workbench-shell[data-theme="classical"] .topbar nav a.active {
-  border-color: color-mix(in srgb, var(--accent) 12%, transparent);
-}
+/* Classical content surfaces. The workbench navigation lives in workbench.css. */
 .workbench-shell[data-theme="classical"] .surface,
 .workbench-shell[data-theme="classical"] .summary-card,
 .workbench-shell[data-theme="classical"] .control-card {
@@ -87,14 +10,9 @@
   border-radius: var(--radius);
   box-shadow: 0 2px 5px rgba(14, 34, 65, 0.025), 0 10px 32px rgba(14, 34, 65, 0.035);
 }
-.workbench-shell[data-theme="classical"] .page-header {
-  margin-top: 32px;
-  margin-bottom: 22px;
-}
 .workbench-shell[data-theme="classical"] .page-header h1 {
   font-size: clamp(22px, 2.2vw, 30px);
-  font-weight: 720;
-  letter-spacing: -0.9px;
+  font-weight: 600;
 }
 .workbench-shell[data-theme="classical"] .section {
   margin-top: 28px;
@@ -137,7 +55,7 @@
 @media (hover: hover) {
   .workbench-shell[data-theme="classical"] .strategy-card:hover {
     transform: translateY(-2px);
-    border-color: color-mix(in srgb, var(--accent) 27%, var(--line));
+    border-color: color-mix(in srgb, var(--qb-accent) 27%, var(--line));
     box-shadow: 0 7px 20px rgba(20, 42, 79, .055), 0 18px 50px rgba(20, 42, 79, .065);
   }
 }
@@ -164,12 +82,12 @@
 }
 .workbench-shell[data-theme="classical"] .card-values span {
   margin-bottom: 5px;
-  color: var(--muted);
+  color: var(--qb-muted);
   font-size: 11px;
 }
 .workbench-shell[data-theme="classical"] .strategy-card footer {
   margin-top: auto;
-  color: var(--muted);
+  color: var(--qb-muted);
   padding-top: 11px;
   border-top: 1px solid var(--line);
 }
@@ -221,7 +139,7 @@
   left: 17px;
   top: 0;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--qb-accent);
   opacity: .7;
 }
 .workbench-shell[data-theme="classical"] .widget-header {
@@ -245,7 +163,7 @@
 }
 .workbench-shell[data-theme="classical"] .widget.editing,
 .workbench-shell[data-theme="classical"] .widget-grid.editing .widget {
-  outline: 1px dashed color-mix(in srgb, var(--accent) 35%, var(--line));
+  outline: 1px dashed color-mix(in srgb, var(--qb-accent) 35%, var(--line));
   outline-offset: 2px;
 }
 .workbench-shell[data-theme="classical"] .floating-tools {
@@ -290,7 +208,7 @@
 }
 .qb-detail-disclosure > summary::after {
   content: "+";
-  color: var(--muted);
+  color: var(--qb-muted);
   font-size: 23px;
   font-weight: 350;
   line-height: 1;
@@ -302,7 +220,7 @@
   background: var(--raised);
 }
 .qb-detail-disclosure > summary:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--qb-accent);
   outline-offset: -3px;
 }
 .qb-detail-content {
@@ -338,7 +256,7 @@
 .qb-inline-parameter label {
   font-weight: 520;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 .qb-inline-parameter .switch-label {
   display: flex;
@@ -373,13 +291,13 @@
   min-height: 38px;
   align-self: stretch;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--qb-accent);
   font-weight: 600;
-  border-color: color-mix(in srgb, var(--accent) 15%, var(--line));
+  border-color: color-mix(in srgb, var(--qb-accent) 15%, var(--line));
 }
 .workbench-shell .widget-body .control-card > button:disabled {
   background: var(--raised);
-  color: var(--muted);
+  color: var(--qb-muted);
 }
 
 /* 4. Admin: Komari-like compact, consistent page hierarchy. */
@@ -410,8 +328,7 @@
   min-width: 0;
 }
 .admin-shell .page-header h1 {
-  letter-spacing: -.55px;
-  font-weight: 680;
+  font-weight: 600;
 }
 .admin-shell .surface {
   box-shadow: 0 3px 18px rgba(26, 46, 77, .028);
@@ -434,7 +351,7 @@
 .admin-shell input:focus-visible,
 .admin-shell select:focus-visible,
 .admin-shell textarea:focus-visible {
-  outline-color: var(--accent);
+  outline-color: var(--qb-accent);
 }
 
 /* 5. Responsive: preserve key information and avoid screen-wide horizontal scroll. */
@@ -454,9 +371,6 @@
   min-width: 0;
 }
 @media (max-width: 1100px) {
-  .workbench-shell[data-theme="classical"] .topbar-inner {
-    gap: 14px;
-  }
   .workbench-shell[data-theme="classical"] .summary-card {
     padding: 16px;
   }
@@ -476,32 +390,6 @@
   }
 }
 @media (max-width: 540px) {
-  .workbench-shell[data-theme="classical"] .topbar-inner {
-    min-height: 60px;
-    padding-top: 9px;
-    padding-bottom: 7px;
-    row-gap: 6px;
-  }
-  .workbench-shell[data-theme="classical"] .brand strong {
-    font-size: 17px;
-  }
-  .workbench-shell[data-theme="classical"] .topbar nav {
-    overflow-x: auto;
-    overflow-y: hidden;
-    justify-content: flex-start;
-    width: 100%;
-    scrollbar-width: none;
-    gap: 3px;
-  }
-  .workbench-shell[data-theme="classical"] .topbar nav::-webkit-scrollbar {
-    display: none;
-  }
-  .workbench-shell[data-theme="classical"] .topbar nav a {
-    font-size: 11px;
-    padding: 8px 11px;
-    min-height: 40px;
-    flex-shrink: 0;
-  }
   .workbench-shell[data-theme="classical"] .summary-grid {
     gap: 10px;
   }
@@ -587,7 +475,7 @@
   align-items: center;
   gap: 10px;
   margin-bottom: 13px;
-  color: var(--muted);
+  color: var(--qb-muted);
   font-size: 12px;
   border: 1px dashed var(--line);
   padding: 12px;

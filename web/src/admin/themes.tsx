@@ -1,3 +1,9 @@
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardFooter, CardHeader } from "@/components/ui/card";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Switch } from "@/components/ui/switch";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Page } from "../app/App";
@@ -24,10 +30,10 @@ export default function ThemeAdmin() {
       path: string;
       body?: unknown;
     }) => {
-      if (body === "bundled-astryx") {
-        const response = await fetch("/astryx-theme.zip");
+      if (body === "bundled-lyra") {
+        const response = await fetch("/lyra-theme.zip");
         if (!response.ok) throw new Error(t("unavailable"));
-        body = new File([await response.blob()], "astryx-theme.zip", { type: "application/zip" });
+        body = new File([await response.blob()], "lyra-theme.zip", { type: "application/zip" });
       }
       if (body instanceof File) {
         const session = await api<{ csrf: string }>("/auth/session");
@@ -76,29 +82,26 @@ export default function ThemeAdmin() {
             });
         }}
       >
-        <button type="button" disabled={mutation.isPending || !!list.data?.themes.some(theme => theme.id === "astryx")}
-          onClick={() => mutation.mutate({ method: "POST", path: "/admin/themes", body: "bundled-astryx" })}>
-          {t("installAstryx")}
-        </button>
-        <a href="/astryx-theme.zip" download>{t("themeDownload")}</a>
-        <label>
-          {t("themeZip")}{" "}
-          <input
-            type="file"
-            accept=".zip,application/zip"
-            onChange={(event) => setFile(event.target.files?.[0])}
-          />
-        </label>
-        <button className="primary" disabled={!file || mutation.isPending}>
+        <Button type="button" variant="outline" disabled={mutation.isPending || !!list.data?.themes.some(theme => theme.id === "lyra")}
+          onClick={() => mutation.mutate({ method: "POST", path: "/admin/themes", body: "bundled-lyra" })}>
+          {t("installLyra")}
+        </Button>
+        <a className={buttonVariants({ variant: "outline" })} href="/lyra-theme.zip" download>{t("themeDownload")}</a>
+        <Field className="min-w-0 flex-1">
+          <FieldLabel htmlFor="theme-zip">{t("themeZip")}</FieldLabel>
+          <Input id="theme-zip" type="file" accept=".zip,application/zip"
+            onChange={event => setFile(event.target.files?.[0])} />
+        </Field>
+        <Button type="submit" disabled={!file || mutation.isPending}>
           {t("themeUpload")}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          type="button" variant="outline"
           onClick={() => activate("classical")}
           disabled={mutation.isPending}
         >
           {t("themeRestore")}
-        </button>
+        </Button>
       </form>
       {mutation.error && (
         <p className="error-text" role="alert">
@@ -112,76 +115,79 @@ export default function ThemeAdmin() {
       ) : (
         <div className="two-columns">
           {list.data?.themes.map((theme) => (
-            <article className="surface padded" key={theme.id}>
-              <header className="section-heading">
-                <h2>{theme.manifest.name}</h2>
-                {theme.id === list.data.active && (
-                  <Badge tone="success">{t("themeActive")}</Badge>
-                )}
-              </header>
-              {theme.manifest.description && (
-                <p>{theme.manifest.description}</p>
-              )}
-              {theme.manifest.version && (
-                <p className="muted">
-                  {[theme.manifest.author, theme.manifest.version]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </p>
-              )}
-              {!theme.available && (
-                <p className="warning">{t("unavailable")}</p>
-              )}
-              <div className="actions">
-                <button
-                  disabled={
-                    !theme.available ||
-                    theme.id === list.data.active ||
-                    mutation.isPending
-                  }
-                  onClick={() => activate(theme.id)}
-                >
-                  {t("themeActivate")}
-                </button>
-                {theme.previewUrl && (
-                  <button onClick={() => setPreview(theme)}>
-                    {t("themePreview")}
-                  </button>
-                )}
-                {!!theme.fields?.length && (
-                  <button onClick={() => setSettings(theme)}>
-                    {t("themeSettings")}
-                  </button>
-                )}
-                {theme.previousRevision && (
-                  <button
-                    disabled={mutation.isPending}
-                    onClick={() =>
-                      mutation.mutate({
-                        method: "POST",
-                        path: "/admin/themes/" + theme.id + "/rollback",
-                      })
+            <article key={theme.id}>
+              <Card>
+                <CardHeader>
+                  <h2 className="text-base font-medium">{theme.manifest.name}</h2>
+                  {theme.id === list.data.active && (
+                    <CardAction><Badge tone="success">{t("themeActive")}</Badge></CardAction>
+                  )}
+                </CardHeader>
+                <CardContent className="grid gap-2">
+                  {theme.manifest.description && (
+                    <p>{theme.manifest.description}</p>
+                  )}
+                  {theme.manifest.version && (
+                    <p className="text-muted-foreground">
+                      {[theme.manifest.author, theme.manifest.version]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
+                  {!theme.available && (
+                    <p className="warning">{t("unavailable")}</p>
+                  )}
+                </CardContent>
+                <CardFooter className="flex-wrap gap-2">
+                  <Button variant="outline"
+                    disabled={
+                      !theme.available ||
+                      theme.id === list.data.active ||
+                      mutation.isPending
                     }
+                    onClick={() => activate(theme.id)}
                   >
-                    {t("themeRollback")}
-                  </button>
-                )}
-                {!theme.builtin && (
-                  <button
-                    className="danger"
-                    disabled={mutation.isPending}
-                    onClick={() => {
-                      if (window.confirm(t("themeDeleteConfirm")))
+                    {t("themeActivate")}
+                  </Button>
+                  {theme.previewUrl && (
+                    <Button variant="outline" onClick={() => setPreview(theme)}>
+                      {t("themePreview")}
+                    </Button>
+                  )}
+                  {!!theme.fields?.length && (
+                    <Button variant="outline" onClick={() => setSettings(theme)}>
+                      {t("themeSettings")}
+                    </Button>
+                  )}
+                  {theme.previousRevision && (
+                    <Button variant="outline"
+                      disabled={mutation.isPending}
+                      onClick={() =>
                         mutation.mutate({
-                          method: "DELETE",
-                          path: "/admin/themes/" + theme.id,
-                        });
-                    }}
-                  >
-                    {t("themeDelete")}
-                  </button>
-                )}
-              </div>
+                          method: "POST",
+                          path: "/admin/themes/" + theme.id + "/rollback",
+                        })
+                      }
+                    >
+                      {t("themeRollback")}
+                    </Button>
+                  )}
+                  {!theme.builtin && (
+                    <Button variant="destructive"
+                      disabled={mutation.isPending}
+                      onClick={() => {
+                        if (window.confirm(t("themeDeleteConfirm")))
+                          mutation.mutate({
+                            method: "DELETE",
+                            path: "/admin/themes/" + theme.id,
+                          });
+                      }}
+                    >
+                      {t("themeDelete")}
+                    </Button>
+                  )}
+                </CardFooter>
+              </Card>
             </article>
           ))}
         </div>
@@ -252,43 +258,37 @@ function ThemeSettings({
             setValues({ ...values, [field.key]: next });
           const asset = field.type === "image" || field.type === "background";
           const numeric = field.type === "number" || field.type === "slider";
+          const id = "theme-setting-" + field.key;
           return (
-            <label key={field.key}>
-              {field.label}
+            <Field key={field.key} orientation={field.type === "switch" ? "horizontal" : "vertical"}>
+              <FieldLabel htmlFor={id}>{field.label}</FieldLabel>
               {field.type === "switch" ? (
-                <input
-                  type="checkbox"
-                  checked={value === true}
-                  onChange={(e) => set(e.target.checked)}
-                />
+                <Switch id={id} checked={value === true} onCheckedChange={set} />
               ) : asset || field.type === "select" ? (
-                <select
-                  value={String(value)}
-                  onChange={(e) => set(e.target.value)}
-                >
-                  {asset && <option value="">{t("empty")}</option>}
-                  {(asset ? theme.assets : field.options)?.map((option) => (
-                    <option key={option}>{option}</option>
+                <NativeSelect id={id} value={String(value)} onChange={event => set(event.target.value)}>
+                  {asset && <NativeSelectOption value="">{t("empty")}</NativeSelectOption>}
+                  {(asset ? theme.assets : field.options)?.map(option => (
+                    <NativeSelectOption key={option}>{option}</NativeSelectOption>
                   ))}
-                </select>
+                </NativeSelect>
               ) : (
-                <input
+                <Input
+                  id={id}
                   type={field.type === "slider" ? "range" : field.type}
+                  className={field.type === "slider" ? "accent-primary" : undefined}
                   value={String(value)}
                   min={field.min}
                   max={field.max}
                   step={numeric ? "any" : undefined}
-                  onChange={(e) =>
-                    set(numeric ? e.target.valueAsNumber : e.target.value)
-                  }
+                  onChange={event => set(numeric ? event.target.valueAsNumber : event.target.value)}
                 />
               )}
-            </label>
+            </Field>
           );
         })}
-        <button className="primary" disabled={pending}>
+        <Button type="submit" disabled={pending}>
           {t("save")}
-        </button>
+        </Button>
       </form>
     </Modal>
   );

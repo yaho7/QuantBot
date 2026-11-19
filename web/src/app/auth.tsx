@@ -1,9 +1,11 @@
-import { Button } from "@astryxdesign/core/Button";
-import { Heading } from "@astryxdesign/core/Heading";
-import { Text } from "@astryxdesign/core/Text";
-import { TextInput } from "@astryxdesign/core/TextInput";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { RiLoader4Line as LoaderCircle } from "@remixicon/react";
 import { version } from "../../package.json";
 import { BrandIcon } from "../components/brand-icon";
 import { z } from "zod";
@@ -34,48 +36,67 @@ export function Login() {
       client.setQueryData(["/auth/session"], session);
     },
   });
+  const title = setup.data?.required ? t("setup") : t("login");
   return (
-    <main className="login-page">
-      <section className="login-card">
-        <div className="brand">
-          <BrandIcon />
-          <strong>QuantBot</strong>
-          <small>{version}</small>
-        </div>
-        {setup.isPending ? (
-          <Loading />
-        ) : setup.error ? (
-          <ErrorView error={setup.error} retry={() => void setup.refetch()} />
-        ) : (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (username && password && !mutation.isPending) mutation.mutate();
-            }}
-          >
-            <Heading level={1}>{setup.data.required ? t("setup") : t("login")}</Heading>
-            <Text as="p" type="supporting">{setup.data.required ? t("setupHint") : t("loginHint")}</Text>
-            <TextInput label={t("username")} autoComplete="username" htmlName="username"
-              hasAutoFocus value={username} onChange={setUsername} />
-            <TextInput label={t("password")} type="password" htmlName="password"
-              autoComplete={setup.data.required ? "new-password" : "current-password"}
-              value={password} onChange={setPassword} />
-            {mutation.error && (
-              <p role="alert" className="error-text">
-                {mutation.error.message}
-              </p>
-            )}
-            <Button variant="primary" type="submit" label={setup.data.required ? t("setup") : t("login")}
-              isLoading={mutation.isPending} isDisabled={!username || !password} />
-          </form>
-        )}
-        <button
-          className="text-button"
-          onClick={() => setLanguage(lang === "zh" ? "en" : "zh")}
-        >
-          {lang === "zh" ? "English" : "简体中文"}
-        </button>
-      </section>
+    <main className="flex min-h-svh w-full items-center justify-center bg-background p-6 md:p-10">
+      <Card className="w-full max-w-sm">
+        <CardHeader>
+          <div className="brand mb-3">
+            <BrandIcon />
+            <strong>QuantBot</strong>
+            <small className="text-muted-foreground tabular-nums">{version}</small>
+          </div>
+          {setup.data && (
+            <>
+              <h1 className="text-xl font-semibold">{title}</h1>
+              <CardDescription>{setup.data.required ? t("setupHint") : t("loginHint")}</CardDescription>
+            </>
+          )}
+        </CardHeader>
+        <CardContent>
+          {setup.isPending ? (
+            <Loading />
+          ) : setup.error ? (
+            <ErrorView error={setup.error} retry={() => void setup.refetch()} />
+          ) : (
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (username && password && !mutation.isPending) mutation.mutate();
+              }}
+            >
+              <FieldGroup className="gap-4">
+                <Field>
+                  <FieldLabel htmlFor="login-username">{t("username")}</FieldLabel>
+                  <Input id="login-username" name="username" autoComplete="username"
+                    autoFocus required value={username} onChange={(event) => setUsername(event.target.value)} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="login-password">{t("password")}</FieldLabel>
+                  <Input id="login-password" name="password" type="password" required
+                    autoComplete={setup.data.required ? "new-password" : "current-password"}
+                    value={password} onChange={(event) => setPassword(event.target.value)} />
+                </Field>
+                {mutation.error && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{mutation.error.message}</AlertDescription>
+                  </Alert>
+                )}
+                <Button type="submit" disabled={mutation.isPending || !username || !password}
+                  aria-busy={mutation.isPending} className="w-full">
+                  {mutation.isPending && <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
+                  {title}
+                </Button>
+              </FieldGroup>
+            </form>
+          )}
+        </CardContent>
+        <CardFooter>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setLanguage(lang === "zh" ? "en" : "zh")}>
+            {lang === "zh" ? "English" : "简体中文"}
+          </Button>
+        </CardFooter>
+      </Card>
     </main>
   );
 }

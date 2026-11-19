@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { RiArrowDownSLine as ChevronDown, RiArrowRightSLine as ChevronRight } from "@remixicon/react";
 import { useLanguage } from "../shared/i18n";
 
 export function ScrollHints({ target }: { target: RefObject<HTMLDivElement | null> }) {

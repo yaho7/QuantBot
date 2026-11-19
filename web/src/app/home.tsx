@@ -1,18 +1,22 @@
-import { Button } from "@astryxdesign/core/Button";
-import { EmptyState } from "@astryxdesign/core/EmptyState";
-import { TextInput } from "@astryxdesign/core/TextInput";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Attention } from "../components/attention-summary";
 import { StrategyTable } from "../components/strategy-table";
-import { lazy, Suspense, memo, useMemo, useState } from "react";
+import { lazy, Suspense, memo, useMemo, useState, type ReactNode } from "react";
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { useLocation } from "react-router-dom";
+import { useLocation, useOutletContext } from "react-router-dom";
 import { Link } from "../shared/page-links";
 import {
-  ArrowUpRight,
-  ChevronDown,
-  LayoutGrid,
-  List,
-  SlidersHorizontal,
-} from "lucide-react";
+  RiArrowRightUpLine as ArrowUpRight,
+  RiArrowDownSLine as ChevronDown,
+  RiGridLine as LayoutGrid,
+  RiListUnordered as List,
+  RiEqualizer2Line as SlidersHorizontal,
+} from "@remixicon/react";
 import {
   resource,
   type Datum,
@@ -32,6 +36,7 @@ export function Home() {
   const { t } = useLanguage();
   const strategies = useQuery(resource<Strategy[]>("/strategies"));
   const directory = useLocation().pathname === "/strategies";
+  const attention = useOutletContext<Attention>();
   const [view, setView] = useState(localStorage.getItem("qb.strategyView") === "tableView" ? "tableView" : "cardsView");
   const [filter, setFilter] = useState("all");
   const [group, setGroup] = useState("");
@@ -77,15 +82,19 @@ export function Home() {
       />
     );
   if (!directory) return (
-    <Page title={t("overview")} actions={featured && (
-      <PortfolioPicker strategies={rows} selected={featured} select={setFeaturedId} />
-    )}>
-      <div className="overview-content">
+    <Page title={t("overview")}>
+      <div className="overview-content grid">
         {strategies.isPending ? <Loading /> : featured ? (
-          <section className="portfolio-hero surface">
-            <PortfolioSnapshot key={featured.id} strategyId={featured.id} />
-          </section>
-        ) : <EmptyStrategies />}
+          <>
+            <OverviewStats strategies={rows} waiting={attention.waitingCount} />
+            <div className="overview-grid grid gap-4">
+              <PortfolioSnapshot key={featured.id} strategy={featured} picker={(
+                <PortfolioPicker strategies={rows} selected={featured} select={setFeaturedId} />
+              )} />
+              <StrategyStatus strategies={rows} selected={featured.id} select={setFeaturedId} />
+            </div>
+          </>
+        ) : <Card><EmptyStrategies /></Card>}
         {!!featured && <Suspense fallback={<Loading />}><WidgetBoard /></Suspense>}
       </div>
     </Page>
@@ -110,34 +119,39 @@ export function Home() {
           {groups.length > 0 && (
             <label className="inline-filter">
               <span className="sr-only">{t("group")}</span>
-              <select
+              <NativeSelect
                 value={group}
                 onChange={(e) => setGroup(e.target.value)}
               >
-                <option value="">{t("all")}</option>
+                <NativeSelectOption value="">{t("all")}</NativeSelectOption>
                 {groups.map((g) => (
-                  <option key={g}>{g}</option>
+                  <NativeSelectOption key={g}>{g}</NativeSelectOption>
                 ))}
-              </select>
+              </NativeSelect>
             </label>
           )}
           <div className="filter-spacer" />
-          <TextInput label={t("search")} placeholder={t("search")} isLabelHidden hasClear
-            type="search" startIcon="search" value={search} onChange={setSearch} containerClassName="strategy-search" />
-          <select
+          <Input type="search" aria-label={t("search")} placeholder={t("search")} value={search}
+            onChange={event => setSearch(event.target.value)} className="strategy-search" />
+          <NativeSelect
             aria-label={t("sort")}
             value={sort}
             onChange={(e) => setSort(e.target.value)}
           >
-            <option value="name">{t("name")}</option>
-            <option value="lastSeen">{t("lastSeen")}</option>
-          </select>
+            <NativeSelectOption value="name">{t("name")}</NativeSelectOption>
+            <NativeSelectOption value="lastSeen">{t("lastSeen")}</NativeSelectOption>
+          </NativeSelect>
         </div>
         {strategies.isPending ? <Loading /> : !rows.length ? <EmptyStrategies /> :
-         !selected.length ? <EmptyState isCompact headingLevel={2} title={t("noMatchingStrategies")}
-            description={t("noMatchingStrategiesHint")} actions={<Button label={t("clearFilters")} onClick={() => {
+         !selected.length ? (
+          <div className="empty-state">
+            <h2>{t("noMatchingStrategies")}</h2>
+            <p>{t("noMatchingStrategiesHint")}</p>
+            <Button variant="secondary" onClick={() => {
               setFilter("all"); setGroup(""); setSearch("");
-            }} />} /> :
+            }}>{t("clearFilters")}</Button>
+          </div>
+         ) :
          <div className="panel-enter" key={view}>
           {view === "tableView" ? (
             <StrategyTable strategies={selected.slice(0, limit)} />
@@ -160,8 +174,16 @@ export function Home() {
 
 function EmptyStrategies() {
   const { t } = useLanguage();
-  return <EmptyState headingLevel={2} title={t("empty")} description={t("emptyDescription")}
-    icon={<LayoutGrid size={24} />} actions={<Link className="button primary" to="/admin/strategies">{t("create")}</Link>} />;
+  return (
+    <Empty>
+      <EmptyHeader>
+        <EmptyMedia variant="icon"><LayoutGrid aria-hidden="true" /></EmptyMedia>
+        <EmptyTitle role="heading" aria-level={2}>{t("empty")}</EmptyTitle>
+        <EmptyDescription>{t("emptyDescription")}</EmptyDescription>
+      </EmptyHeader>
+      <EmptyContent><Link className={buttonVariants()} to="/admin/strategies">{t("create")}</Link></EmptyContent>
+    </Empty>
+  );
 }
 
 function PortfolioPicker({ strategies, selected, select }: {
@@ -171,44 +193,113 @@ function PortfolioPicker({ strategies, selected, select }: {
 }) {
   const { t } = useLanguage();
   return (
-    <>
-      <select aria-label={t("strategy")} value={selected.id} onChange={event => select(event.target.value)}>
-        {strategies.map(strategy => (
-          <option key={strategy.id} value={strategy.id}>{strategy.name}</option>
-        ))}
-      </select>
-      <Link className="icon-button button" to={"/strategies/" + selected.id}
-        aria-label={t("details")} title={t("details")}>
-        <ArrowUpRight size={16} />
+    <div className="overview-picker flex items-center gap-2">
+      <Select value={selected.id} items={strategies.map(row => ({ value: row.id, label: row.name }))}
+        onValueChange={id => { if (id) select(id); }}>
+        <SelectTrigger aria-label={t("strategy")} className="min-w-0 flex-1"><SelectValue /></SelectTrigger>
+        <SelectContent alignItemWithTrigger={false}>
+          {strategies.map(row => <SelectItem key={row.id} value={row.id}>{row.name}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <Link className={buttonVariants({ variant: "outline" })} to={"/strategies/" + selected.id}>
+        {t("details")} <ArrowUpRight aria-hidden="true" />
       </Link>
-    </>
+    </div>
   );
 }
 
-function PortfolioSnapshot({ strategyId }: { strategyId: string }) {
+function PortfolioSnapshot({ strategy, picker }: { strategy: Strategy; picker: ReactNode }) {
   const { t } = useLanguage();
-  const { equity, performance } = useTelemetryValues(strategyId);
+  const { equity, performance, query: recordsQuery } = useTelemetryValues(strategy.id);
   const currency = typeof equity?.data.currency === "string" ? equity.data.currency : "";
   const pnl = performance?.data.dailyPnl;
   const sameAccount = !!equity && performance?.data.accountId === equity.data.accountId &&
     performance?.data.currency === equity.data.currency;
   return (
-    <>
-      <div className="portfolio-amount">
-        <span className="muted">{t("equity")}</span>
-        <strong>{decimalText(equity?.data.value)} <small>{currency}</small></strong>
-        {sameAccount && typeof pnl === "string" && (
-          <span className={pnl.startsWith("-") ? "danger" : "success"}>
-            {t("dailyPnl")} {decimalText(pnl)}
-          </span>
-        )}
-      </div>
-      {equity && (
-        <History strategyId={strategyId} embedded featured seriesKind="equity"
+    <Card aria-labelledby="overview-equity" role="region" className="overview-equity min-w-0">
+      <CardHeader className="flex flex-wrap items-start justify-between gap-3">
+        <div className="portfolio-amount flex flex-col gap-1">
+          <h2 id="overview-equity" className="text-lg font-medium">{t("equity")}</h2>
+          <div className="overview-figure flex flex-wrap items-baseline gap-2">
+            <span className="text-3xl font-medium tabular-nums md:text-4xl">{decimalText(equity?.data.value)}</span>
+            {currency && <span className="muted text-sm">{currency}</span>}
+          </div>
+          {sameAccount && typeof pnl === "string" && (
+            <p className={`text-sm tabular-nums ${pnl.startsWith("-") ? "danger" : "success"}`}>
+              {t("dailyPnl")} {decimalText(pnl)}
+            </p>
+          )}
+        </div>
+        {picker}
+      </CardHeader>
+      <CardContent className="min-w-0">{equity ? (
+        <History strategyId={strategy.id} embedded featured rangeBeforePlot seriesKind="equity"
           seriesKey={JSON.stringify([equity.data.accountId, currency])}
           instanceId={equity.instanceId} />
-      )}
-    </>
+      ) : (
+        <div className="overview-chart-empty grid place-items-center" aria-live="polite">
+          {recordsQuery.isPending ? <Loading /> : recordsQuery.error ? <ErrorView error={recordsQuery.error} />
+            : <p className="muted text-sm">{t("noEquityHistory")}</p>}
+        </div>
+      )}</CardContent>
+    </Card>
+  );
+}
+
+function OverviewStats({ strategies, waiting }: { strategies: Strategy[]; waiting: number }) {
+  const { t } = useLanguage();
+  const online = strategies.filter(row => row.online).length;
+  const totals = [
+    [t("strategyTotal"), strategies.length],
+    [t("online"), online],
+    [t("offline"), strategies.length - online],
+    [t("confirmation"), waiting],
+  ] as const;
+  return (
+    <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      {totals.map(([label, value]) => (
+        <Card size="sm" key={label} className="grid gap-1 px-3">
+          <dt className="text-sm text-muted-foreground">{label}</dt>
+          <dd className="text-2xl font-semibold tabular-nums">{value}</dd>
+        </Card>
+      ))}
+    </dl>
+  );
+}
+
+function StrategyStatus({ strategies, selected, select }: {
+  strategies: Strategy[];
+  selected: string;
+  select: (strategyId: string) => void;
+}) {
+  const { t } = useLanguage();
+  return (
+    <Card role="region" aria-labelledby="overview-strategy-status" className="min-w-0">
+      <CardHeader><h2 id="overview-strategy-status" className="text-lg font-medium">{t("strategyStatus")}</h2></CardHeader>
+      <CardContent className="grid gap-3">
+        <ul className="divide-y divide-border">
+          {strategies.slice(0, 5).map(row => {
+            const status = t(row.online ? "online" : "offline");
+            return (
+              <li key={row.id}><Button variant="ghost" aria-pressed={row.id === selected} onClick={() => select(row.id)}
+                className="h-auto min-h-11 w-full justify-between gap-2 py-2 text-left aria-pressed:bg-muted">
+                <span className="grid min-w-0">
+                  <span className="truncate font-medium">{row.name}</span>
+                  <span className="muted truncate text-xs">{[t(row.mode), row.group].filter(Boolean).join(" · ")}</span>
+                </span>
+                <span className="overview-status-label flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                  <span className={"overview-status-dot" + (row.online ? " is-online" : "")} aria-hidden="true" />
+                  {status}
+                </span>
+              </Button></li>
+            );
+          })}
+        </ul>
+        <Link className={buttonVariants({ variant: "outline", className: "justify-between" })} to="/strategies">
+          {t("allStrategies")} <ArrowUpRight aria-hidden="true" />
+        </Link>
+      </CardContent>
+    </Card>
   );
 }
 const StrategyCard = memo(function StrategyCard({ strategy }: { strategy: Strategy }) {

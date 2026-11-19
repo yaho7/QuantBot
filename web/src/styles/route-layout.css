@@ -1,6 +1,6 @@
 /* Shared Classical rhythm; dark mode changes only the color tokens. */
 :root { --route-gutter: 32px; }
-.workbench-shell.antquant-workbench[data-theme="classical"] > main.container,
+.workbench-shell.native-workbench[data-theme="classical"] > main.container,
 .admin-shell > main.admin-main {
   padding-block-start: 0;
   padding-inline: var(--route-gutter);
@@ -17,11 +17,12 @@
   view-transition-name: quantbot-page;
 }
 .page-layout { display: grid; gap: var(--page-gap); min-width: 0; }
-/* Center native Astryx dialogs after the app's form/reset layers have loaded. */
-dialog.astryx-dialog[data-variant="standard"] { inset: 0; margin: auto; }
-dialog.astryx-dialog .astryx-layout-header > :has(> .astryx-dialog-header) { padding: 0; }
-dialog.astryx-dialog .astryx-dialog-header { padding-block: 0 var(--spacing-3); padding-inline: 0; }
-dialog.astryx-dialog .astryx-dialog-header h2 { margin: 0; }
+.quantbot-dialog {
+  inline-size: min(32rem, calc(100dvw - 2rem));
+  max-inline-size: none;
+  grid-template-columns: minmax(0, 1fr);
+  transition-property: none;
+}
 .route-surface .page-layout > .page-header {
   margin: 0;
   align-items: flex-start;
@@ -45,6 +46,51 @@ dialog.astryx-dialog .astryx-dialog-header h2 { margin: 0; }
 }
 .route-surface .page-body .section-heading { margin-block: 0 12px; }
 .route-surface .overview-content { gap: var(--section-gap); }
+.overview-content { container-type: inline-size; }
+.monitor-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: none;
+}
+.overview-grid {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+@container (min-width: 56rem) {
+  .overview-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(17rem, .4fr);
+  }
+}
+.overview-equity { min-inline-size: 0; }
+.overview-picker { flex: 0 1 19rem; min-inline-size: min(100%, 14rem); }
+.overview-equity .portfolio-chart {
+  padding: 0;
+  margin: 0;
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  gap: var(--spacing-2);
+}
+.overview-equity .portfolio-chart > .filter-bar:empty { display: none; }
+.overview-plot-stage, .overview-chart-empty {
+  min-inline-size: 0;
+  inline-size: 100%;
+  min-block-size: calc(clamp(16rem, 28vw, 20rem) + var(--spacing-8));
+}
+.overview-chart-empty {
+  border-radius: var(--radius-2);
+  background: var(--raised);
+}
+.overview-status-dot {
+  inline-size: var(--spacing-2);
+  block-size: var(--spacing-2);
+  border-radius: 50%;
+  background: var(--qb-muted);
+}
+.overview-status-dot.is-online { background: var(--success); }
+.overview-status-label { white-space: nowrap; }
+.host-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr)); }
 .route-surface .overview-content .widget-section,
 .route-surface .strategy-intro :is(.portfolio-hero, .detail-meta),
 .route-surface .panel-enter > :first-child { margin-block-start: 0; }
@@ -59,6 +105,7 @@ dialog.astryx-dialog .astryx-dialog-header h2 { margin: 0; }
   :root { --route-gutter: 16px; }
   .route-surface { --page-top: 20px; --page-gap: 14px; --section-gap: 20px; --panel-gap: 12px; --panel-padding: 16px; }
   .route-surface .page-layout > .page-header { flex-wrap: wrap; gap: 8px 12px; }
+  .overview-picker { flex-basis: 100%; }
 }
 
 /* Selection and panel feedback should not change dimensions. */
@@ -100,5 +147,5 @@ dialog.astryx-dialog .astryx-dialog-header h2 { margin: 0; }
 
 .strategy-search { flex: 1; min-inline-size: min(100%, 12rem); }
 .strategy-directory .filter-bar { align-items: center; }
-.portfolio-records > .astryx-segmented-control { max-width: 100%; }
+.portfolio-records > .segmented { max-width: 100%; }
 .widget-edit-tools { margin-inline-start: auto; }

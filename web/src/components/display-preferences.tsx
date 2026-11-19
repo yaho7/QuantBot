@@ -1,31 +1,32 @@
-import { Card } from "@astryxdesign/core/Card";
-import { Heading } from "@astryxdesign/core/Heading";
-import { VStack } from "@astryxdesign/core/VStack";
-import { Choices } from "../shared/ui";
-import { Languages, Palette } from "lucide-react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { RiContrast2Line, RiTranslate2 } from "@remixicon/react";
 import { setLanguage, useLanguage } from "../shared/i18n";
-import { palettes, setPalette, usePalette } from "../shared/preferences";
-import "./display-preferences.css";
+import { appearanceOptions, setAppearance, useAppearance } from "../shared/preferences";
+import { Choices } from "../shared/ui";
 
 export function DisplayPreferences() {
   const { lang, t } = useLanguage();
-  const palette = usePalette();
-  return <Card padding={4}><VStack as="section" className="display-preferences" gap={4}>
-    <Heading level={2}>{t("appearance")} · Classical</Heading>
-    <fieldset>
-      <legend><Languages size={16} />{t("language")}</legend>
-      <Choices label={t("language")} value={lang} select={setLanguage}
-        options={[{ value: "zh", label: "简体中文" }, { value: "en", label: "English" }]} />
-    </fieldset>
-    <fieldset>
-      <legend><Palette size={18} />{t("palette")}</legend>
-      <div className="palette-options">
-        {palettes.map(name => <button key={name} type="button"
-          className={"palette-option palette-" + name} aria-pressed={palette === name}
-          onClick={() => setPalette(name)}>
-          <span className="palette-swatch" aria-hidden="true" />{t(name)}
-        </button>)}
-      </div>
-    </fieldset>
-  </VStack></Card>;
+  const appearance = useAppearance();
+
+  return (
+    <Card className="display-preferences">
+      <CardHeader><h2 className="text-base font-semibold">{t("appearance")}</h2></CardHeader>
+      <CardContent className="grid gap-5">
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
+            <RiTranslate2 size={16} aria-hidden="true" />{t("language")}
+          </legend>
+          <Choices label={t("language")} value={lang} select={setLanguage}
+            options={[{ value: "zh", label: "简体中文" }, { value: "en", label: "English" }]} />
+        </fieldset>
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 flex items-center gap-2 text-sm font-medium">
+            <RiContrast2Line size={16} aria-hidden="true" />{t("appearance")}
+          </legend>
+          <Choices label={t("appearance")} value={appearance} select={setAppearance}
+            options={appearanceOptions.map(value => ({ value, label: t(value) }))} />
+        </fieldset>
+      </CardContent>
+    </Card>
+  );
 }

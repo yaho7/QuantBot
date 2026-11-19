@@ -20,7 +20,7 @@ async function layoutBox(page: Page) {
   });
 }
 
-test("day and night share spacing and page navigation fades only the route", async ({ page }) => {
+test("day and night share spacing and page navigation fades only the route", async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   const origin = "http://127.0.0.1:42357";
@@ -85,6 +85,17 @@ test("day and night share spacing and page navigation fades only the route", asy
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
+    if (width === 390) {
+      await expect(bell).toHaveAccessibleDescription(/待关注事项/);
+      expect(await bell.evaluate(link => {
+        const descriptionId = link.getAttribute("aria-describedby");
+        if (!descriptionId) return true;
+        const description = document.getElementById(descriptionId);
+        if (!description) return false;
+        const { width, height } = description.getBoundingClientRect();
+        return width <= 1 && height <= 1;
+      })).toBeTruthy();
+    }
     const box = await layoutBox(page);
     const spacing = await page.locator(".page-body").evaluate(body => ({
       gutter: getComputedStyle(body.closest("main")!).paddingInlineStart,
@@ -125,8 +136,31 @@ test("day and night share spacing and page navigation fades only the route", asy
     }
   }
 
+  const menuButton = page.getByRole("button", { name: "打开菜单", exact: true });
+  const drawer = page.getByRole("dialog", { name: "管理后台", exact: true });
+  for (const appearance of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme: appearance });
+    await expect(page.locator("html")).toHaveAttribute("data-appearance", appearance);
+    await menuButton.focus();
+    await menuButton.press("Enter");
+    await expect(drawer).toBeVisible();
+    await page.keyboard.press("Tab");
+    await expect.poll(() => drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`admin-drawer-390-${appearance}.png`) });
+    await page.keyboard.press("Escape");
+    await expect(drawer).toBeHidden();
+    await expect(menuButton).toBeFocused();
+  }
+  await menuButton.click();
+  await drawer.getByRole("button", { name: "关闭", exact: true }).click();
+  await expect(drawer).toBeHidden();
+  await menuButton.click();
+  await drawer.getByRole("link", { name: "主题管理", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/themes$/);
+  await expect(drawer).toBeHidden();
+
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
   await page.goto("/");
   const supported = await page.evaluate(() => typeof document.startViewTransition === "function");
   const menu = page.locator(".topbar-inner");
@@ -286,7 +320,7 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   expect(agent.status()).toBe(401);
 });
 
-test("Astryx parameter controls preserve the command confirmation boundary", async ({ page }) => {
+test("parameter controls preserve the command confirmation boundary", async ({ page }) => {
   const origin = "http://127.0.0.1:42357";
   const init = (await (await page.request.get("/api/auth/setup")).json()).required;
   const session = await page.request.post(init ? "/api/auth/setup" : "/api/auth/login", {
