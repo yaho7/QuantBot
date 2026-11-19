@@ -53,16 +53,34 @@
   border-radius: var(--radius);
   box-shadow: none;
 }
-.overview-grid {
+.overview-operations {
+  display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-items: stretch;
+  gap: var(--panel-gap);
+  align-items: start;
 }
-@container (min-width: 56rem) {
-  .overview-grid {
-    grid-template-columns: minmax(0, 1fr) minmax(17rem, .4fr);
-  }
+@container (min-width: 44rem) {
+  .overview-operations { grid-template-columns: minmax(0, 3fr) minmax(15rem, 2fr); }
 }
-.overview-equity { min-inline-size: 0; }
+.overview-equity {
+  --portfolio-plot-height: clamp(13rem, 24vw, 18rem);
+  min-inline-size: 0;
+}
+:is(.overview-content, .strategy-intro) [data-slot="card-header"] :is(h2, p),
+.strategy-intro .portfolio-amount h2 { margin: 0; }
+.overview-queue-link {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--spacing-3);
+  min-block-size: 2.75rem;
+  padding-inline: var(--spacing-2);
+  font-size: var(--font-size-base);
+  font-variant-numeric: tabular-nums;
+}
+.overview-queue-link > svg { color: var(--qb-muted); }
+.overview-queue-link:is(:hover, :focus-visible) { background: var(--raised); }
+.overview-queue-link:focus-visible { outline-offset: -2px; }
 .overview-picker { flex: 0 1 19rem; min-inline-size: min(100%, 14rem); }
 .overview-equity .portfolio-chart {
   padding: 0;
@@ -76,7 +94,7 @@
 .overview-plot-stage, .overview-chart-empty {
   min-inline-size: 0;
   inline-size: 100%;
-  min-block-size: calc(clamp(16rem, 28vw, 20rem) + var(--spacing-8));
+  min-block-size: calc(var(--portfolio-plot-height) + var(--spacing-8));
 }
 .overview-chart-empty {
   border-radius: var(--radius-2);
@@ -92,10 +110,37 @@
 .overview-status-label { white-space: nowrap; }
 .host-cards { grid-template-columns: repeat(auto-fit, minmax(min(100%, 15.5rem), 1fr)); }
 .route-surface .overview-content .widget-section,
-.route-surface .strategy-intro :is(.portfolio-hero, .detail-meta),
+.route-surface .strategy-intro .portfolio-hero,
 .route-surface .panel-enter > :first-child { margin-block-start: 0; }
-.route-surface .strategy-intro { display: grid; gap: var(--panel-gap); min-width: 0; }
-.route-surface .strategy-intro :is(.portfolio-hero, .detail-meta) { margin-block-end: 0; }
+.strategy-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: var(--panel-gap);
+  min-width: 0;
+}
+.route-surface .strategy-intro .portfolio-hero { margin-block-end: 0; }
+.strategy-runtime { font-size: var(--font-size-base); }
+.strategy-runtime > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+  align-items: start;
+  gap: var(--spacing-2);
+  padding-block: var(--spacing-3);
+}
+.strategy-runtime > div + div { border-block-start: 1px solid var(--line); }
+.strategy-runtime dt { color: var(--qb-muted); }
+.strategy-runtime dd {
+  display: grid;
+  justify-items: end;
+  gap: var(--spacing-1);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 900px) {
+  .strategy-intro { grid-template-columns: minmax(0, 1fr) minmax(17rem, 25%); }
+}
 
 @media (max-width: 1099px) {
   :root { --route-gutter: 24px; }
@@ -109,7 +154,7 @@
 }
 
 /* Selection and panel feedback should not change dimensions. */
-.topbar nav a, .sidebar nav a,
+.topbar nav a, .admin-nav a,
 .route-surface :is(.segmented, .view-switch) button {
   transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
 }
@@ -140,12 +185,25 @@
 .route-fade-fallback { animation: qb-page-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both; }
 @media (prefers-reduced-motion: reduce) {
   .route-fade-fallback, .panel-enter { animation: none; }
-  .topbar nav a, .sidebar nav a,
+  .topbar nav a, .admin-nav a,
   .route-surface :is(.segmented, .view-switch) button { transition: none; }
   ::view-transition-old(quantbot-page), ::view-transition-new(quantbot-page) { animation: none; }
 }
 
-.strategy-search { flex: 1; min-inline-size: min(100%, 12rem); }
+.strategy-directory .directory-toolbar,
+.strategy-directory .directory-view {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+.strategy-directory .directory-toolbar {
+  justify-content: space-between;
+  border-block-end: 1px solid var(--line);
+  margin-block-end: var(--panel-gap);
+  padding-block-end: var(--panel-gap);
+}
+.strategy-search { flex: 1 1 16rem; max-inline-size: 24rem; }
 .strategy-directory .filter-bar { align-items: center; }
 .portfolio-records > .segmented { max-width: 100%; }
 .widget-edit-tools { margin-inline-start: auto; }

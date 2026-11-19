@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -162,6 +163,7 @@ function Workbench() {
   const tools = useContext(AppearanceTools);
   const query = useQuery(activeTheme);
   const location = useLocation();
+  const navigation = useRef<HTMLElement>(null);
   const [failed, setFailed] = useState("");
   const theme = query.data;
   const identity = (theme?.id ?? "") + ":" + (theme?.revision ?? "");
@@ -176,6 +178,23 @@ function Workbench() {
     location.pathname === "/" &&
     selected?.entryUrl &&
     !new URLSearchParams(location.search).has("classic");
+  useEffect(() => {
+    const nav = navigation.current;
+    const active = nav?.querySelector('[aria-current="page"]');
+    if (!nav || !active) return;
+    const reveal = () => {
+      if (nav.scrollWidth <= nav.clientWidth) return;
+      const viewport = nav.getBoundingClientRect();
+      const link = active.getBoundingClientRect();
+      const offset = Math.min(0, link.left - viewport.left) + Math.max(0, link.right - viewport.right);
+      if (offset) nav.scrollBy({ left: offset });
+    };
+    reveal();
+    const observer = new ResizeObserver(reveal);
+    observer.observe(nav);
+    observer.observe(active);
+    return () => observer.disconnect();
+  }, [location.pathname]);
   return (
     <ThemeContext.Provider
       value={fallback ? { cardView: "list" } : { ...(hostTheme?.presentation ?? { cardView: "list" }), portfolio: builtIn }}
@@ -190,7 +209,7 @@ function Workbench() {
         <header className="topbar">
           <div className="container topbar-inner">
             <Brand />
-            <nav aria-label={t("workbench")}>
+            <nav ref={navigation} aria-label={t("workbench")}>
               {monitor.map(([path, label, Icon]) => {
                 const hasAlert = label === "alerts" && attention.count > 0;
                 return (

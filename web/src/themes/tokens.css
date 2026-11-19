@@ -925,14 +925,6 @@ td button {
   font-weight: 400;
   font-size: 13px;
 }
-.detail-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 18px;
-  font-size: 12px;
-  margin-top: -12px;
-  margin-bottom: 24px;
-}
 .detail-summary {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }

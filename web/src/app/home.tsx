@@ -12,9 +12,13 @@ import { useLocation, useOutletContext } from "react-router-dom";
 import { Link } from "../shared/page-links";
 import {
   RiArrowRightUpLine as ArrowUpRight,
+  RiArrowRightSLine as ChevronRight,
   RiArrowDownSLine as ChevronDown,
+  RiAlarmWarningLine as AlarmWarning,
+  RiCheckboxCircleLine as CheckboxCircle,
   RiGridLine as LayoutGrid,
   RiListUnordered as List,
+  RiQuestionLine as Question,
   RiEqualizer2Line as SlidersHorizontal,
 } from "@remixicon/react";
 import {
@@ -85,16 +89,16 @@ export function Home() {
     <Page title={t("overview")}>
       <div className="overview-content grid">
         {strategies.isPending ? <Loading /> : featured ? (
-          <>
-            <OverviewStats strategies={rows} waiting={attention.waitingCount} />
-            <div className="overview-grid grid gap-4">
-              <PortfolioSnapshot key={featured.id} strategy={featured} picker={(
-                <PortfolioPicker strategies={rows} selected={featured} select={setFeaturedId} />
-              )} />
-              <StrategyStatus strategies={rows} selected={featured.id} select={setFeaturedId} />
-            </div>
-          </>
+          <PortfolioSnapshot key={featured.id} strategy={featured} picker={(
+            <PortfolioPicker strategies={rows} selected={featured} select={setFeaturedId} />
+          )} />
         ) : <Card><EmptyStrategies /></Card>}
+        {strategies.isSuccess && (
+          <div className="overview-operations">
+            <StrategyStatus strategies={rows} selected={featured?.id ?? ""} select={setFeaturedId} />
+            <OperationsQueue attention={attention} />
+          </div>
+        )}
         {!!featured && <Suspense fallback={<Loading />}><WidgetBoard /></Suspense>}
       </div>
     </Page>
@@ -103,15 +107,6 @@ export function Home() {
   return (
     <Page title={t("strategies")}>
       <section className="section portfolio-strategies strategy-directory">
-        <div className="section-heading">
-          <span className="muted">{rows.length} · {t("strategies")}</span>
-          <Choices label={t("view")} value={view} options={views.map(([value, Icon]) => ({
-            value, label: t(value), icon: <Icon size={16} />,
-          }))} select={name => {
-            setView(name);
-            localStorage.setItem("qb.strategyView", name);
-          }} />
-        </div>
         <div className="filter-bar">
           <Choices label={t("status")} value={filter}
             options={(["all", "online", "offline"] as const).map(value => ({ value, label: t(value) }))}
@@ -131,8 +126,6 @@ export function Home() {
             </label>
           )}
           <div className="filter-spacer" />
-          <Input type="search" aria-label={t("search")} placeholder={t("search")} value={search}
-            onChange={event => setSearch(event.target.value)} className="strategy-search" />
           <NativeSelect
             aria-label={t("sort")}
             value={sort}
@@ -141,6 +134,19 @@ export function Home() {
             <NativeSelectOption value="name">{t("name")}</NativeSelectOption>
             <NativeSelectOption value="lastSeen">{t("lastSeen")}</NativeSelectOption>
           </NativeSelect>
+        </div>
+        <div className="directory-toolbar">
+          <Input type="search" aria-label={t("search")} placeholder={t("search")} value={search}
+            onChange={event => setSearch(event.target.value)} className="strategy-search" />
+          <div className="directory-view">
+            <span className="muted tabular-nums">{selected.length} / {rows.length}</span>
+            <Choices label={t("view")} value={view} options={views.map(([value, Icon]) => ({
+              value, label: t(value), icon: <Icon size={16} />,
+            }))} select={name => {
+              setView(name);
+              localStorage.setItem("qb.strategyView", name);
+            }} />
+          </div>
         </div>
         {strategies.isPending ? <Loading /> : !rows.length ? <EmptyStrategies /> :
          !selected.length ? (
@@ -221,7 +227,7 @@ function PortfolioSnapshot({ strategy, picker }: { strategy: Strategy; picker: R
         <div className="portfolio-amount flex flex-col gap-1">
           <h2 id="overview-equity" className="text-lg font-medium">{t("equity")}</h2>
           <div className="overview-figure flex flex-wrap items-baseline gap-2">
-            <span className="text-3xl font-medium tabular-nums md:text-4xl">{decimalText(equity?.data.value)}</span>
+                <span className="text-4xl font-medium tabular-nums md:text-5xl">{decimalText(equity?.data.value)}</span>
             {currency && <span className="muted text-sm">{currency}</span>}
           </div>
           {sameAccount && typeof pnl === "string" && (
@@ -246,24 +252,31 @@ function PortfolioSnapshot({ strategy, picker }: { strategy: Strategy; picker: R
   );
 }
 
-function OverviewStats({ strategies, waiting }: { strategies: Strategy[]; waiting: number }) {
+function OperationsQueue({ attention }: { attention: Attention }) {
   const { t } = useLanguage();
-  const online = strategies.filter(row => row.online).length;
-  const totals = [
-    [t("strategyTotal"), strategies.length],
-    [t("online"), online],
-    [t("offline"), strategies.length - online],
-    [t("confirmation"), waiting],
+  const items = [
+    { label: t("confirmation"), count: attention.waitingCount, to: "/activity?status=confirmation_required", Icon: CheckboxCircle },
+    { label: t("unknown"), count: attention.unknownCount, to: "/activity?status=unknown", Icon: Question },
+    { label: t("recentWarnings"), count: attention.recentCount, to: "/alerts", Icon: AlarmWarning },
   ] as const;
   return (
-    <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {totals.map(([label, value]) => (
-        <Card size="sm" key={label} className="grid gap-1 px-3">
-          <dt className="text-sm text-muted-foreground">{label}</dt>
-          <dd className="text-2xl font-semibold tabular-nums">{value}</dd>
-        </Card>
-      ))}
-    </dl>
+    <Card role="region" aria-labelledby="overview-queue" className="overview-queue min-w-0">
+      <CardHeader><h2 id="overview-queue" className="text-lg font-medium">{t("needsAttention")}</h2></CardHeader>
+      <CardContent>
+        <ul className="divide-y divide-border">
+          {items.map(({ label, count, to, Icon }) => (
+            <li key={to}>
+              <Link to={to} className="overview-queue-link">
+                <Icon size={17} aria-hidden="true" />
+                <span>{label}</span>
+                <Badge tone={count ? "warning" : "neutral"}>{count ?? "–"}</Badge>
+                <ChevronRight size={16} aria-hidden="true" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -273,9 +286,21 @@ function StrategyStatus({ strategies, selected, select }: {
   select: (strategyId: string) => void;
 }) {
   const { t } = useLanguage();
+  const online = strategies.filter(row => row.online).length;
   return (
     <Card role="region" aria-labelledby="overview-strategy-status" className="min-w-0">
-      <CardHeader><h2 id="overview-strategy-status" className="text-lg font-medium">{t("strategyStatus")}</h2></CardHeader>
+      <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+        <div className="grid gap-1">
+          <h2 id="overview-strategy-status" className="text-lg font-medium">{t("strategyStatus")}</h2>
+          <p className="muted flex flex-wrap gap-x-3 tabular-nums">
+            <span>{online} {t("online")}</span>
+            <span>{strategies.length - online} {t("offline")}</span>
+          </p>
+        </div>
+        <Link className={buttonVariants({ variant: "ghost" })} to="/strategies">
+          {t("allStrategies")} <ArrowUpRight aria-hidden="true" />
+        </Link>
+      </CardHeader>
       <CardContent className="grid gap-3">
         <ul className="divide-y divide-border">
           {strategies.slice(0, 5).map(row => {
@@ -295,9 +320,6 @@ function StrategyStatus({ strategies, selected, select }: {
             );
           })}
         </ul>
-        <Link className={buttonVariants({ variant: "outline", className: "justify-between" })} to="/strategies">
-          {t("allStrategies")} <ArrowUpRight aria-hidden="true" />
-        </Link>
       </CardContent>
     </Card>
   );

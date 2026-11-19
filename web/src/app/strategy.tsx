@@ -2,6 +2,8 @@ import { lazy, Suspense, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { Link } from "../shared/page-links";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import {
   resource,
   layoutResource,
@@ -94,45 +96,12 @@ export function StrategyDetail() {
   return (
     <Page
       title={strategy.name}
-      actions={
-        <>
-          <Badge tone={strategy.online ? "success" : ""}>
-            {t(strategy.online ? "online" : "offline")}
-          </Badge>
-          <Badge tone={strategy.mode === "live" ? "warning" : ""}>
-            {t(strategy.mode)}
-          </Badge>
-          <a className="button" href="#strategy-controls">{t("controls")}</a>
-        </>
-      }
+      actions={<a className={buttonVariants({ variant: "outline" })} href="#strategy-controls">{t("controls")}</a>}
     >
       <div className="strategy-intro">
-        <div className="detail-meta muted">
-          {strategy.group && <span>{strategy.group}</span>}
-          <span>
-            {t("lastSeen")} · {timestamp(strategy.lastSeen, true)}
-          </span>
-          {runtime && (
-            <span>
-              {t("uptime")} · {display.unit(Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)), "minute")}
-            </span>
-          )}
-          {strategy.online && health && health.status !== "healthy" &&
-            catalog.data?.capabilities.some(
-              (entry) => entry.kind === "state" && entry.group === "health",
-            ) && (
-              <span role="status">
-                {t("health")}{" "}
-                <Badge tone="warning">
-                  {t(health.status)}
-                </Badge>
-                {!!healthIssues?.length && " · " + healthIssues.join(", ")}
-              </span>
-            )}
-        </div>
-        <section className="portfolio-hero surface">
+        <section className="portfolio-hero surface" aria-labelledby="strategy-equity">
           <div className="portfolio-amount">
-            <span className="muted">{t("equity")}</span>
+            <h2 id="strategy-equity" className="text-lg font-medium">{t("equity")}</h2>
             <strong>{decimalText(equity?.data.value)} <small>{display.value(equity?.data.currency ?? "")}</small></strong>
             <div className="portfolio-secondary">
               {equity && performance?.data.accountId === equity.data.accountId &&
@@ -148,6 +117,42 @@ export function StrategyDetail() {
           </div>
           <History strategyId={id} embedded featured />
         </section>
+        <Card role="region" aria-labelledby="strategy-runtime" className="min-w-0">
+          <CardHeader><h2 id="strategy-runtime" className="text-lg font-medium">{t("strategyStatus")}</h2></CardHeader>
+          <CardContent>
+            <dl className="strategy-runtime">
+              <div>
+                <dt>{t("status")}</dt>
+                <dd><Badge tone={strategy.online ? "success" : ""}>{t(strategy.online ? "online" : "offline")}</Badge></dd>
+              </div>
+              <div>
+                <dt>{t("mode")}</dt>
+                <dd><Badge tone={strategy.mode === "live" ? "warning" : ""}>{t(strategy.mode)}</Badge></dd>
+              </div>
+              {strategy.group && <div><dt>{t("group")}</dt><dd>{strategy.group}</dd></div>}
+              <div><dt>{t("lastSeen")}</dt><dd>{timestamp(strategy.lastSeen, true)}</dd></div>
+              {runtime && (
+                <div>
+                  <dt>{t("uptime")}</dt>
+                  <dd>{display.unit(Math.max(0, Math.floor((Date.now() / 1000 - runtime) / 60)), "minute")}</dd>
+                </div>
+              )}
+              {strategy.online && health && health.status !== "healthy" &&
+                catalog.data?.capabilities.some((entry) => entry.kind === "state" && entry.group === "health") && (
+                  <div>
+                    <dt>{t("health")}</dt>
+                    <dd>
+                      <span role="status">
+                        <span className="sr-only">{t("health")} </span>
+                        <Badge tone="warning">{t(health.status)}</Badge>
+                      </span>
+                      {!!healthIssues?.length && <span>{healthIssues.join(", ")}</span>}
+                    </dd>
+                  </div>
+                )}
+            </dl>
+          </CardContent>
+        </Card>
       </div>
       <section className="section qb-quick-controls" id="strategy-controls">
         <div className="section-heading"><h2>{t("controls")}</h2></div>

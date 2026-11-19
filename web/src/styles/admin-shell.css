@@ -1,16 +1,42 @@
 .admin-shell {
-  --admin-rail-width: 15rem;
+  --admin-rail-width: 14rem;
+  --admin-toolbar-height: calc(var(--spacing) * 14);
+  display: grid;
+  grid-template-columns: var(--admin-rail-width) minmax(0, 1fr);
+  grid-template-rows: var(--admin-toolbar-height) 1fr;
+  align-items: start;
   min-block-size: 100dvh;
 }
 
+.admin-toolbar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 35;
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 2);
+  min-inline-size: 0;
+  block-size: var(--admin-toolbar-height);
+  padding-inline: var(--route-gutter);
+  border-block-end: 1px solid var(--border);
+  background: var(--background);
+}
+
+.admin-toolbar .admin-toolbar-separator {
+  block-size: 1rem;
+  align-self: center;
+}
+
+.admin-toolbar .admin-menu-trigger { display: none; }
+
 .admin-shell .admin-sidebar {
-  position: fixed;
-  inset-block: 0;
-  inset-inline-start: 0;
-  z-index: 40;
+  position: sticky;
+  inset-block-start: var(--admin-toolbar-height);
   display: flex;
   flex-direction: column;
-  inline-size: var(--admin-rail-width);
+  block-size: calc(100dvh - var(--admin-toolbar-height));
   background: var(--sidebar);
   color: var(--sidebar-foreground);
   border-inline-end: 1px solid var(--sidebar-border);
@@ -18,18 +44,12 @@
 
 .admin-shell > .admin-main {
   min-inline-size: 0;
-  margin-inline-start: var(--admin-rail-width);
-}
-
-.admin-shell .mobile-admin-header { display: none; }
-
-.admin-nav-brand {
-  padding: calc(var(--spacing) * 6) calc(var(--spacing) * 4) calc(var(--spacing) * 4);
+  margin: 0;
 }
 
 .admin-shell .admin-sidebar .admin-nav,
 .admin-drawer .admin-nav {
-  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  padding: calc(var(--spacing) * 4) calc(var(--spacing) * 3);
 }
 
 .admin-sidebar .admin-nav {
@@ -63,7 +83,6 @@
   gap: calc(var(--spacing) * 2);
   min-block-size: calc(var(--spacing) * 8);
   padding-inline: calc(var(--spacing) * 3);
-  border-radius: 0.5rem;
   color: var(--muted-foreground);
   font-size: 0.875rem;
   font-weight: 500;
@@ -141,26 +160,24 @@
   box-shadow: none;
 }
 
-.admin-shell .admin-kpi-panel,
-.admin-shell .admin-runtime-panel {
-  background: var(--card);
-  border-color: var(--border);
-}
-
-.admin-kpis, .admin-runtime {
+.admin-overview {
   display: grid;
-  margin: 0;
+  gap: var(--section-gap);
+  container-type: inline-size;
 }
 
-.admin-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.admin-runtime { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.admin-kpis dd, .admin-runtime dd { margin: 0; }
-.admin-kpis > :not(:first-child) { border-inline-start: 1px solid var(--border); }
+.admin-kpis, .admin-diagnostics {
+  display: grid;
+  gap: var(--panel-gap);
+}
 
-.admin-runtime > * { min-block-size: calc(var(--spacing) * 10); }
-.admin-runtime > :nth-child(even) { border-inline-start: 1px solid var(--border); }
-.admin-runtime > :nth-child(n + 3) { border-block-start: 1px solid var(--border); }
-.admin-runtime dd { text-align: end; }
+.admin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.admin-diagnostics { grid-template-columns: minmax(0, 1fr); }
+
+@container (min-width: 44rem) {
+  .admin-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .admin-diagnostics { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+}
 
 .admin-data-table .admin-strategy-name {
   inline-size: 42%;
@@ -178,32 +195,11 @@
 }
 
 @media (max-width: 800px) {
+  .admin-shell { grid-template-columns: minmax(0, 1fr); }
   .admin-shell .admin-sidebar { display: none; }
-  .admin-shell > .admin-main { margin-inline-start: 0; }
-
-  .admin-shell .mobile-admin-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: calc(var(--spacing) * 2);
-    background: var(--sidebar);
-    border-block-end: 1px solid var(--sidebar-border);
-    min-block-size: calc(var(--spacing) * 16);
-    padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
-  }
-
-  .admin-shell .mobile-admin-header .icon-button {
+  .admin-toolbar .admin-menu-trigger { display: inline-flex; }
+  .admin-toolbar [data-slot="button"] {
     min-block-size: calc(var(--spacing) * 11);
     min-inline-size: calc(var(--spacing) * 11);
   }
-}
-
-@media (max-width: 600px) {
-  .admin-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .admin-kpis > :nth-child(odd) { border-inline-start: 0; }
-  .admin-kpis > :nth-child(n + 3) { border-block-start: 1px solid var(--border); }
-
-  .admin-runtime { grid-template-columns: minmax(0, 1fr); }
-  .admin-runtime > :nth-child(even) { border-inline-start: 0; }
-  .admin-runtime > :not(:first-child) { border-block-start: 1px solid var(--border); }
 }

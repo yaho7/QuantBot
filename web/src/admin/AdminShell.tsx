@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import { Sheet, SheetClose, SheetContent, SheetFooter, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import {
   RiArrowLeftLine as ArrowLeft,
@@ -66,7 +67,7 @@ function AdminNavigation({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function AdminNavFooter({ actions, onNavigate }: { actions?: ReactNode; onNavigate?: () => void }) {
+function AdminNavFooter({ onNavigate }: { onNavigate?: () => void }) {
   const { t } = useLanguage();
   return (
     <footer className="admin-nav-footer">
@@ -74,10 +75,7 @@ function AdminNavFooter({ actions, onNavigate }: { actions?: ReactNode; onNaviga
         <ArrowLeft size={16} strokeWidth={1.5} aria-hidden="true" />
         {t("return")}
       </Link>
-      <div className="flex items-center justify-between gap-2">
-        <small className="text-muted-foreground tabular-nums">QuantBot {version}</small>
-        {actions}
-      </div>
+      <small className="text-muted-foreground tabular-nums">QuantBot {version}</small>
     </footer>
   );
 }
@@ -87,7 +85,6 @@ export default function AdminShell({ children, brand, tools, logout }: AdminChro
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
   const close = () => setOpen(false);
-  const utilities = <div className="admin-utility-actions flex items-center gap-1">{tools}{logout}</div>;
 
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
@@ -100,11 +97,11 @@ export default function AdminShell({ children, brand, tools, logout }: AdminChro
 
   return (
     <div className="admin-shell">
-      <header className="mobile-admin-header">
-        <div className="flex items-center gap-2">
+      <header className="admin-toolbar">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
           <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger render={<Button variant="ghost" size="icon-lg" className="size-11" aria-label={t("menu")} />}>
-              <Menu size={18} strokeWidth={1.5} aria-hidden="true" />
+            <SheetTrigger render={<Button variant="ghost" size="icon-lg" className="admin-menu-trigger size-11" aria-label={t("menu")} />}>
+              <Menu aria-hidden="true" />
             </SheetTrigger>
             <SheetContent side="left" className="admin-drawer" showCloseButton={false} aria-describedby={undefined}>
               <SheetHeader className="admin-drawer-header">
@@ -120,13 +117,14 @@ export default function AdminShell({ children, brand, tools, logout }: AdminChro
             </SheetContent>
           </Sheet>
           {brand}
+          <Separator orientation="vertical" className="admin-toolbar-separator" aria-hidden="true" />
+          <span className="truncate text-sm text-muted-foreground">{t("admin")}</span>
         </div>
-        {utilities}
+        <div className="admin-utility-actions flex shrink-0 items-center gap-1">{tools}{logout}</div>
       </header>
-      <aside className="sidebar admin-sidebar">
-        <div className="admin-nav-brand">{brand}</div>
+      <aside className="admin-sidebar">
         <AdminNavigation />
-        <AdminNavFooter actions={utilities} />
+        <AdminNavFooter />
       </aside>
       <main className="admin-main">{children}</main>
     </div>

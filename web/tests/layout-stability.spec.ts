@@ -59,6 +59,32 @@ test("day and night share spacing and page navigation fades only the route", asy
     } }] },
   });
   expect(alert.ok()).toBeTruthy();
+  const executor = await page.request.put("/api/admin/strategies/" + strategyId + "/executor", {
+    headers, data: { instanceId: "layout-test" },
+  });
+  expect(executor.ok()).toBeTruthy();
+  const capability = await page.request.put("/api/agent/capabilities", {
+    headers: agentHeaders,
+    data: { revision: 0, capabilities: [{
+      id: "layout-review", kind: "action", value_type: "null", title: "布局确认测试", writable: true, confirm: true,
+    }] },
+  });
+  expect(capability.ok()).toBeTruthy();
+  const { revision } = await capability.json();
+  const actual = await page.request.put("/api/agent/state", {
+    headers: agentHeaders,
+    data: { revision, states: [{ id: "layout-review", value: null, available: true, observedAt: Date.now() }] },
+  });
+  expect(actual.ok()).toBeTruthy();
+  const proposal = await page.request.post("/api/strategies/" + strategyId + "/commands", {
+    headers: { ...headers, "Idempotency-Key": "layout-review-command" },
+    data: { controlId: "layout-review", revision, input: null },
+  });
+  expect(proposal.status()).toBe(201);
+  const { id: proposalId, status: proposalStatus } = await proposal.json();
+  expect(proposalStatus).toBe("confirmation_required");
+  const offered = await page.request.get("/api/agent/commands?wait=0", { headers: agentHeaders });
+  expect(await offered.json()).toEqual([]);
 
   await page.addInitScript(() => {
     localStorage.setItem("qb.appearance", "system");
@@ -72,7 +98,26 @@ test("day and night share spacing and page navigation fades only the route", asy
   });
 
   await page.goto("/");
-  await expect(page.locator("main .attention-section")).toHaveCount(0);
+  const equity = page.getByRole("region", { name: "账户权益", exact: true });
+  const strategies = page.getByRole("region", { name: "策略状态", exact: true });
+  const attention = page.getByRole("region", { name: "需要处理", exact: true });
+  const widgets = page.locator(".widget-section");
+  await expect(equity).toBeVisible();
+  await expect(strategies).toBeVisible();
+  await expect(attention).toBeVisible();
+  await expect(widgets).toBeVisible();
+  const [equityBox, strategiesBox, attentionBox, widgetsBox] = await Promise.all([
+    equity.boundingBox(), strategies.boundingBox(), attention.boundingBox(), widgets.boundingBox(),
+  ]);
+  expect(equityBox!.y + equityBox!.height).toBeLessThanOrEqual(Math.min(strategiesBox!.y, attentionBox!.y));
+  expect(widgetsBox!.y).toBeGreaterThanOrEqual(Math.max(
+    strategiesBox!.y + strategiesBox!.height, attentionBox!.y + attentionBox!.height,
+  ));
+  const pendingLink = attention.locator('a[href="/activity?status=confirmation_required"]');
+  await expect(pendingLink.getByText("1", { exact: true })).toBeVisible();
+  await expect(attention.locator('a[href="/alerts"]').getByText("1", { exact: true })).toBeVisible();
+  const cancelled = await page.request.post("/api/commands/" + proposalId + "/cancel", { headers });
+  expect(cancelled.ok()).toBeTruthy();
   const bell = page.locator('.topbar nav a[href="/alerts"]');
   await expect(bell.locator(".nav-alert-badge")).toBeVisible();
   await expect(bell).toHaveAccessibleDescription(/待关注事项/);
@@ -87,6 +132,7 @@ test("day and night share spacing and page navigation fades only the route", asy
     await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
     if (width === 390) {
       await expect(bell).toHaveAccessibleDescription(/待关注事项/);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(await bell.evaluate(link => {
         const descriptionId = link.getAttribute("aria-describedby");
         if (!descriptionId) return true;
@@ -104,8 +150,10 @@ test("day and night share spacing and page navigation fades only the route", asy
     const expected = width < 768 ? [16, 20] : width < 1100 ? [24, 24] : [32, 28];
     expect(spacing).toEqual({ gutter: expected[0] + "px", sections: expected[1] + "px" });
     for (const path of ["/strategies", "/hosts", "/activity", "/controls", "/alerts", "/"]) {
-      await page.locator(`.topbar nav a[href="${path}"]`).click();
+      const destination = page.locator(`.topbar nav a[href="${path}"]`);
+      await destination.click();
       await expect(page).toHaveURL(new RegExp(path === "/" ? ":42357/$" : path + "$"));
+      await expect(destination).toHaveAttribute("aria-current", "page");
       expect(await layoutBox(page)).toEqual(box);
       expect(await page.locator("html").getAttribute("data-transition-count")).toBeNull();
       await page.emulateMedia({ colorScheme: "dark" });
@@ -135,6 +183,15 @@ test("day and night share spacing and page navigation fades only the route", asy
       await page.emulateMedia({ colorScheme: "light" });
     }
   }
+
+  await page.goto("/alerts");
+  await expect(bell).toHaveAttribute("aria-current", "page");
+  await expect.poll(() => bell.evaluate(link => {
+    const entry = link.getBoundingClientRect();
+    const viewport = link.closest("nav")!.getBoundingClientRect();
+    return entry.left >= viewport.left - 1 && entry.right <= viewport.right + 1;
+  })).toBe(true);
+  await page.goto("/admin/settings");
 
   const menuButton = page.getByRole("button", { name: "打开菜单", exact: true });
   const drawer = page.getByRole("dialog", { name: "管理后台", exact: true });
@@ -178,6 +235,18 @@ test("day and night share spacing and page navigation fades only the route", asy
     await expect(page.locator(".route-frame")).toHaveClass(/route-fade-fallback/);
   }
   expect(await menu.boundingBox()).toEqual(position);
+
+  await page.setViewportSize({ width: 1280, height: 560 });
+  await page.goto("/");
+  await expect(widgets).toBeVisible();
+  const header = page.locator(".topbar");
+  const brandBox = (await header.locator(".brand").boundingBox())!;
+  const navigationBox = (await header.locator("nav").boundingBox())!;
+  expect(navigationBox.x).toBeGreaterThanOrEqual(brandBox.x + brandBox.width);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await expect.poll(() => header.evaluate(element => Math.abs(element.getBoundingClientRect().top))).toBeLessThan(2);
+  await page.setViewportSize({ width: 1280, height: 800 });
 
   await page.goto("/strategies");
   const search = page.getByRole("searchbox", { name: "搜索策略", exact: true });

@@ -51,7 +51,7 @@ import {
 } from "../shared/api";
 import { useLanguage } from "../shared/i18n";
 import { effectiveWidgets, suggestedWidgets } from "../shared/layout-defaults";
-import { Choices, decimalText, ErrorView, Loading, Modal, Badge } from "../shared/ui";
+import { decimalText, ErrorView, Loading, Modal, Badge } from "../shared/ui";
 import { ControlCard } from "../app/control";
 import { DataTable, History, useTelemetryValues } from "../app/strategy";
 import { capabilityCatalog, CapabilityWidget } from "./capability-widget";
@@ -72,23 +72,12 @@ export default function WidgetBoard({ strategyId }: { strategyId?: string }) {
     (listener) => { mobileLayout.addEventListener("change", listener); return () => mobileLayout.removeEventListener("change", listener); },
     () => mobileLayout.matches ? "mobile" : "desktop",
   );
-  const { t } = useLanguage();
-  const [preview, setPreview] = useState<string>();
   const [lockedDevice, setLockedDevice] = useState<string>();
-  const device = lockedDevice ?? preview ?? viewport;
-  const deviceTools = <div className="layout-device-switch">
-    <Choices label={t("layoutPreview")} value={device} size="sm" disabled={!!lockedDevice} select={setPreview}
-      options={["desktop", "mobile"].map(value => ({ value, label: t(value === "mobile" ? "mobileLayout" : "desktopLayout") }))} />
-  </div>;
-  return <>
-    <div className={device === "mobile" ? "mobile-layout-preview" : ""}>
-      <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device} deviceTools={deviceTools}
-        onEditing={(active) => setLockedDevice(active ? device : undefined)} />
-    </div>
-  </>;
-
+  const device = lockedDevice ?? viewport;
+  return <DeviceWidgetBoard key={(strategyId ?? "overview") + device} strategyId={strategyId} device={device}
+    onEditing={(active) => setLockedDevice(active ? device : undefined)} />;
 }
-function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { strategyId?: string; device: string; deviceTools: ReactNode; onEditing: (active: boolean) => void }) {
+function DeviceWidgetBoard({ strategyId, device, onEditing }: { strategyId?: string; device: string; onEditing: (active: boolean) => void }) {
   const { t } = useLanguage();
   const surface = strategyId ? "strategy" : "overview";
   const layout = layoutResource(strategyId, device);
@@ -178,7 +167,6 @@ function DeviceWidgetBoard({ strategyId, device, deviceTools, onEditing }: { str
     <section className="section widget-section">
       <div className="section-heading">
         <h2>{t("widgets")}</h2>
-        {deviceTools}
         <div className="widget-edit-tools flex flex-wrap items-center gap-2">
           {editing ? (
             <>

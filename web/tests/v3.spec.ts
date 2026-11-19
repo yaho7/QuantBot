@@ -659,9 +659,15 @@ test("initialization, real reports, command receipt and responsive shells", asyn
         ["themes", "/admin/themes"],
         ["sandbox", "/admin/strategies"],
       ]) {
+        const layoutPath = width <= 600 ? "/api/layouts/workbench-mobile" : "/api/layouts/workbench";
+        const layoutResponse = label === "home" ? page.waitForResponse(response =>
+          new URL(response.url()).pathname === layoutPath && response.request().method() === "GET",
+        ) : undefined;
         await page.goto(path);
         await expect(page.locator("h1")).toBeVisible();
         if (label === "home") {
+          expect((await layoutResponse)?.ok()).toBe(true);
+          await expect(page.getByRole("radiogroup", { name: "布局预览", exact: true })).toHaveCount(0);
           await selectOverviewStrategy(strategyName);
           await expect(overviewAmount).toContainText("104,825.37");
           await expect(overviewPlot).toBeVisible();

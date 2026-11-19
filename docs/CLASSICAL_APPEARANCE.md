@@ -1,9 +1,12 @@
 # Classical appearance
 
-Classical (`classical`) is the default interface. The overview pairs an equity
-chart with strategy status and puts the saved widget board below. A labeled rail
-on desktop becomes a bottom bar on phones. Administration has its own navigation
-and uses a modal drawer on mobile.
+Classical (`classical`) is the default interface. The overview opens with a
+full-width equity chart. Strategy status and the attention queue sit below it,
+followed by the saved widget board. The workbench uses sticky top navigation
+with a horizontally scrollable second row on narrow screens. Strategy detail
+places runtime status beside equity on desktop and stacks the panels on mobile.
+Administration uses its own command bar and grouped navigation, with a modal
+drawer on mobile.
 
 The optional Lyra theme package can replace the monitoring home. Install and
 enable it from Administration > Themes. Restore Classical to return to the
@@ -15,8 +18,7 @@ applied to both the monitoring workspace and administration and synchronized
 across tabs in the current browser. The Lyra preset uses a neutral palette.
 
 Language selection (Simplified Chinese / English) is in Settings, with a language
-icon. The workbench settings gear opens this page directly. The former language
-text toggle is removed from the navigation rail. Saved widget layouts are unaffected.
+icon. The workbench settings gear opens this page directly.
 
 ## Widget editing
 
@@ -39,9 +41,11 @@ Scrollbar tracks are hidden; scrollable card content uses subtle edge shadows.
 - The status panel shows online and offline counts. Select a strategy in the
   panel or from the equity chart to change the series. The alerts navigation
   carries the count of items needing attention.
-- Device preview tabs select desktop or mobile without changing browser width.
-  While editing, the selection is locked. Mobile editing can copy desktop
-  widgets into a single-column layout, with overwrite confirmation and undo.
+- The attention queue links to commands awaiting confirmation, commands with
+  unknown execution outcomes, and warning or more severe alerts received in the
+  last 15 minutes.
+- Mobile editing can copy desktop widgets into a single-column layout, with
+  overwrite confirmation and undo.
 - A saved indicator replaces the former save-status button; failures expose
   Retry. The primary Done action waits for persistence.
 - Widget density follows actual measured width and height. Secondary descriptions

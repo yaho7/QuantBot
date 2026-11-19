@@ -4,7 +4,7 @@
   min-height: 160px;
 }
 :is(.portfolio-chart, .widget) .chart-recharts.portfolio-plot {
-  height: clamp(16rem, 28vw, 20rem);
+  height: var(--portfolio-plot-height, clamp(16rem, 28vw, 20rem));
 }
 .chart-recharts .recharts-brush-texts {
   fill: var(--muted-foreground);

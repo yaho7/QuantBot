@@ -1,11 +1,15 @@
 import "./styles.css";
+import { Toggle } from "@base-ui/react/toggle";
+import { ToggleGroup } from "@base-ui/react/toggle-group";
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import EquityChart, { formatDecimal } from "./equity-chart";
 import type { ThemeStrategyData } from "../../../src/themes/bridge-data";
@@ -30,20 +34,22 @@ function SegmentedChoices({ label, options, value, onChange }: {
   onChange: (value: string) => void;
 }) {
   return (
-    <div role="group" aria-label={label} className="flex max-w-full flex-wrap gap-1 rounded-lg bg-muted p-1">
+    <ToggleGroup
+      aria-label={label}
+      value={[value]}
+      className="flex max-w-full flex-wrap gap-1 bg-muted p-1"
+      onValueChange={([choice]) => { if (choice) onChange(choice); }}
+    >
       {options.map(([id, text]) => (
-        <Button
+        <Toggle
           key={id}
-          size="sm"
-          variant="ghost"
-          aria-pressed={id === value}
-          className="aria-pressed:bg-background aria-pressed:shadow-xs"
-          onClick={() => onChange(id)}
+          value={id}
+          className={buttonVariants({ size: "sm", variant: "ghost", className: "aria-pressed:bg-background aria-pressed:shadow-xs" })}
         >
           {text}
-        </Button>
+        </Toggle>
       ))}
-    </div>
+    </ToggleGroup>
   );
 }
 
@@ -198,96 +204,159 @@ function Dashboard() {
           <AlertDescription role="status">{label("暂时无法更新数据，正在重试", "Could not refresh data. Retrying shortly")}</AlertDescription>
         </Alert>
       )}
-      <Card className="py-0">
-        <dl className="grid grid-cols-3 divide-x divide-border">
-          {summary.map(([title, value]) => (
-            <div key={title} className="min-w-0 space-y-1 px-3 py-3 sm:px-5 sm:py-4">
-              <dt className="text-xs text-muted-foreground sm:text-sm">{title}</dt>
-              <dd className="text-2xl font-semibold tabular-nums">{value ?? "—"}</dd>
-            </div>
-          ))}
-        </dl>
-      </Card>
-
-      <Card role="region" aria-labelledby="equity-heading" className="min-w-0">
-        <CardHeader className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-1">
-            <h2 id="equity-heading" className="text-sm font-medium text-muted-foreground">{label("账户权益", "Account equity")}</h2>
-            <p className="flex flex-wrap items-baseline gap-2">
-              <span className="text-3xl font-semibold tabular-nums">{formatDecimal(current?.equity?.value)}</span>
-              {current?.equity?.currency && <span className="text-sm text-muted-foreground">{current.equity.currency}</span>}
-            </p>
-            {current?.dailyPnl !== undefined && (
-              <p className="text-sm text-muted-foreground">
-                {label("当日盈亏", "Daily P&L")} <span className="font-medium text-foreground tabular-nums">{formatDecimal(current.dailyPnl)}</span>
+      <div data-slot="analysis-layout" className="grid min-w-0 items-start gap-4 min-[58rem]:grid-cols-[minmax(0,1fr)_minmax(16rem,24rem)]">
+        <Card role="region" aria-labelledby="equity-heading" className="min-w-0">
+          <CardHeader className="flex flex-wrap items-start justify-between gap-4">
+            <div className="grid min-w-0 gap-1">
+              <h2 id="equity-heading" className="text-sm font-medium text-muted-foreground">{label("账户权益", "Account equity")}</h2>
+              <p className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="wrap-anywhere text-3xl font-semibold tabular-nums">{formatDecimal(current?.equity?.value)}</span>
+                {current?.equity?.currency && <span className="text-sm text-muted-foreground">{current.equity.currency}</span>}
               </p>
+              {current?.dailyPnl !== undefined && (
+                <p className="text-sm text-muted-foreground">
+                  {label("当日盈亏", "Daily P&L")} <span className="font-medium text-foreground tabular-nums">{formatDecimal(current.dailyPnl)}</span>
+                </p>
+              )}
+            </div>
+            <SegmentedChoices label={label("选择时间范围", "Choose period")} options={periodOptions} value={hours} onChange={selectHours} />
+          </CardHeader>
+          <CardContent className="min-w-0">
+            {points?.length ? (
+              <EquityChart key={selected + ":" + hours} points={points} lang={context.language}
+                valueLabel={label("权益", "Equity")} periodLabel={label("选择时间范围", "Choose period")} />
+            ) : (
+              <Empty className="min-h-64 border">
+                <EmptyHeader><EmptyDescription role="status">
+                  {equityFailed || (!strategies && listError) ? label("暂时无法读取净值", "Equity history unavailable")
+                    : !strategies || (selected && !points) ? label("正在加载净值", "Loading equity history")
+                    : !selected ? label("接入策略后显示净值", "Equity history appears when a strategy connects")
+                    : label("该时段暂无净值数据", "No equity history for this period")}
+                </EmptyDescription></EmptyHeader>
+              </Empty>
             )}
-          </div>
-          <div className="grid w-full gap-3 sm:w-auto sm:justify-items-end">
-            <div className="flex w-full items-center gap-2 sm:w-auto">
-              <Select
-                value={selected || null}
-                disabled={!inventory.options.length}
-                onValueChange={value => { if (value) selectStrategy(value); }}
-              >
-                <SelectTrigger aria-label={label("策略", "Strategy")} className="min-w-0 flex-1 sm:min-w-40">
+          </CardContent>
+        </Card>
+
+        <Card role="region" aria-labelledby="selected-strategy-heading" className="min-w-0">
+          <CardHeader className="gap-3">
+            <h2 id="selected-strategy-heading" className="font-heading text-sm font-medium">{label("当前策略", "Selected strategy")}</h2>
+            <div className="flex min-w-0 items-center gap-2">
+              <Select value={selected || null} disabled={!inventory.options.length}
+                onValueChange={value => { if (value) selectStrategy(value); }}>
+                <SelectTrigger aria-label={label("策略", "Strategy")} className="min-w-0 flex-1">
                   <SelectValue placeholder={label("选择策略", "Select strategy")}>{active?.name}</SelectValue>
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  {inventory.options.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  <SelectGroup>
+                    {inventory.options.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
               <Button variant="outline" disabled={!selected} onClick={() => openStrategy(selected)}>{label("详情", "Details")}</Button>
             </div>
-            <SegmentedChoices label={label("选择时间范围", "Choose period")} options={periodOptions} value={hours} onChange={selectHours} />
-          </div>
-        </CardHeader>
-        <CardContent className="min-w-0">
-          {points?.length ? (
-            <EquityChart key={selected + ":" + hours} points={points} lang={context.language}
-              valueLabel={label("权益", "Equity")} periodLabel={label("选择时间范围", "Choose period")} />
-          ) : (
-            <div className="grid min-h-64 place-items-center rounded-lg bg-muted px-3 text-center text-sm text-muted-foreground">
-              {equityFailed || (!strategies && listError) ? label("暂时无法读取净值", "Equity history unavailable")
-                : !strategies || (selected && !points) ? label("正在加载净值", "Loading equity history")
-                : !selected ? label("接入策略后显示净值", "Equity history appears when a strategy connects")
-                : label("该时段暂无净值数据", "No equity history for this period")}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            {active && (
+              <dl className="grid min-w-0 gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-x-2">
+                  <dt className="text-muted-foreground">{label("状态", "Status")}</dt>
+                  <dd><ConnectionStatus online={active.online} label={label} /></dd>
+                </div>
+                <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                  <dt className="text-muted-foreground">{label("交易模式", "Trading mode")}</dt>
+                  <dd className="font-medium">{mode(active)}</dd>
+                </div>
+              </dl>
+            )}
+            <Separator />
+            <section className="grid min-w-0 gap-2" aria-labelledby="controls-heading">
+              <h3 id="controls-heading" className="font-heading text-sm font-medium">{label("控制中心", "Controls")}</h3>
+              {selected && controlError === selected && (
+                <Alert variant="destructive">
+                  <AlertDescription role="alert">{label("暂时无法打开控制窗口", "Could not open the control dialog")}</AlertDescription>
+                </Alert>
+              )}
+              {current?.controls.length ? (
+                <ul className="divide-y divide-border">
+                  {current.controls.map(control => (
+                    <li key={control.id} className="flex flex-wrap items-center justify-between gap-2 py-3 first:pt-0 last:pb-0">
+                      <div className="grid min-w-0 flex-1 basis-24 gap-1">
+                        <h4 className="wrap-anywhere text-sm font-medium">{control.title}</h4>
+                        <p className="line-clamp-2 text-muted-foreground wrap-anywhere">
+                          {label("实际状态", "Actual state")} · {
+                            control.value == null ? "—"
+                              : typeof control.value === "boolean" ? (control.value ? label("是", "Yes") : label("否", "No"))
+                              : typeof control.value === "object" ? JSON.stringify(control.value) : String(control.value)
+                          }
+                        </p>
+                      </div>
+                      <Button variant="outline" disabled={openingControl} onClick={() => void openControl(control.id)}>
+                        {label("打开控制", "Open control")}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-muted-foreground" role="status">
+                  {equityFailed || (!strategies && listError) ? label("暂时无法读取控制", "Controls unavailable")
+                    : !strategies || (selected && !current) ? label("正在加载控制", "Loading controls")
+                    : label("暂无可用控制", "No controls available")}
+                </p>
+              )}
+            </section>
+          </CardContent>
+        </Card>
+      </div>
 
       <section className="grid min-w-0 gap-4" aria-labelledby="strategies-heading">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="strategies-heading" className="text-lg font-semibold">{label("策略", "Strategies")}</h2>
-          <SegmentedChoices label={label("显示方式", "View")} options={viewOptions} value={view} onChange={setView} />
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <Input
-            aria-label={label("搜索策略", "Search strategies")}
-            placeholder={label("按名称搜索", "Search by name")}
-            className="min-w-32 flex-1 sm:max-w-64"
-            value={search}
-            onChange={event => setSearch(event.target.value)}
-          />
-          <Select value={group ? "group:" + group : "all"}
-            onValueChange={value => setGroup(value?.startsWith("group:") ? value.slice(6) : "")}>
-            <SelectTrigger aria-label={label("分组", "Group")} className="min-w-28">
-              <SelectValue>{group || label("全部", "All groups")}</SelectValue>
-            </SelectTrigger>
-            <SelectContent alignItemWithTrigger={false}>
-              <SelectItem value="all">{label("全部", "All groups")}</SelectItem>
-              {inventory.groups.map(value => <SelectItem key={value} value={"group:" + value}>{value}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        <header className="grid min-w-0 gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="strategies-heading" className="font-heading text-lg font-semibold">{label("策略", "Strategies")}</h2>
+            <dl data-slot="strategy-summary" className="grid min-w-0 grid-cols-3 divide-x divide-border">
+              {summary.map(([title, value]) => (
+                <div key={title} className="flex min-w-0 flex-wrap items-baseline gap-x-2 px-2.5 first:pl-0 last:pr-0">
+                  <dt className="text-xs text-muted-foreground">{title}</dt>
+                  <dd className="text-sm font-semibold tabular-nums">{value ?? "—"}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+          <Separator />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+              <Input
+                aria-label={label("搜索策略", "Search strategies")}
+                placeholder={label("按名称搜索", "Search by name")}
+                className="min-w-28 flex-1 sm:max-w-64"
+                value={search}
+                onChange={event => setSearch(event.target.value)}
+              />
+              <Select value={group ? "group:" + group : "all"}
+                onValueChange={value => setGroup(value?.startsWith("group:") ? value.slice(6) : "")}>
+                <SelectTrigger aria-label={label("分组", "Group")} className="min-w-24">
+                  <SelectValue>{group || label("全部", "All groups")}</SelectValue>
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  <SelectGroup>
+                    <SelectItem value="all">{label("全部", "All groups")}</SelectItem>
+                    {inventory.groups.map(value => <SelectItem key={value} value={"group:" + value}>{value}</SelectItem>)}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </div>
+            <SegmentedChoices label={label("显示方式", "View")} options={viewOptions} value={view} onChange={setView} />
+          </div>
+        </header>
 
         {!rows.length ? (
-          <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-            {!strategies ? (listError ? label("暂时无法读取策略", "Strategies unavailable") : label("正在加载策略", "Loading strategies"))
-              : !strategies.length ? label("接入后，策略会显示在此处", "Connected strategies will appear here")
-              : label("暂无符合筛选条件的策略", "No matching strategies")}
-          </p>
+          <Empty className="border">
+            <EmptyHeader><EmptyDescription role="status">
+              {!strategies ? (listError ? label("暂时无法读取策略", "Strategies unavailable") : label("正在加载策略", "Loading strategies"))
+                : !strategies.length ? label("接入后，策略会显示在此处", "Connected strategies will appear here")
+                : label("暂无符合筛选条件的策略", "No matching strategies")}
+            </EmptyDescription></EmptyHeader>
+          </Empty>
         ) : view === "list" ? (
           <div className="min-w-0 rounded-lg border">
             <Table>
@@ -341,38 +410,6 @@ function Dashboard() {
         )}
       </section>
 
-      {!!current?.controls.length && (
-        <section className="grid gap-3" aria-labelledby="controls-heading">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 id="controls-heading" className="text-lg font-semibold">{label("控制中心", "Controls")}</h2>
-            {active && <p className="min-w-0 truncate text-sm text-muted-foreground">{active.name} · {mode(active)}</p>}
-          </div>
-          {controlError === selected && <Alert variant="destructive">
-            <AlertDescription role="alert">{label("暂时无法打开控制窗口", "Could not open the control dialog")}</AlertDescription>
-          </Alert>}
-          <Card className="py-0">
-            <ul className="divide-y divide-border">
-              {current.controls.map(control => (
-                <li key={control.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                  <div className="min-w-0 space-y-1">
-                    <h3 className="text-sm font-medium">{control.title}</h3>
-                    <p className="line-clamp-2 text-sm text-muted-foreground wrap-anywhere">
-                      {label("实际状态", "Actual state")} · {
-                        control.value == null ? "—"
-                          : typeof control.value === "boolean" ? (control.value ? label("是", "Yes") : label("否", "No"))
-                          : typeof control.value === "object" ? JSON.stringify(control.value) : String(control.value)
-                      }
-                    </p>
-                  </div>
-                  <Button variant="outline" disabled={openingControl} onClick={() => void openControl(control.id)}>
-                    {label("打开控制", "Open control")}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </Card>
-        </section>
-      )}
     </main>
   );
 }

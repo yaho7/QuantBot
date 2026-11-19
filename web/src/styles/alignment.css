@@ -33,7 +33,6 @@
 .workbench-shell .actions svg, .admin-shell button svg { flex-shrink: 0; }
 .widget-section > .section-heading { flex-wrap: wrap; gap: 12px; }
 .widget-section > .section-heading > h2 { margin-right: auto; }
-.widget-section .layout-device-switch { margin: 0; flex-shrink: 0; }
 .workbench-shell .widget-section .widget-grid { width: calc(100% + 12px); margin-inline: -6px; }
 .workbench-shell .widget .widget-header {
   min-height: 48px; padding: 10px 14px; align-items: center; gap: 8px; flex-wrap: wrap;
@@ -59,8 +58,6 @@
   .workbench-shell.native-workbench[data-theme="classical"] .page-header { flex-wrap: wrap; gap: 12px; }
   .workbench-shell .filter-spacer { display: none; }
   .workbench-shell .filter-bar .search-field { flex: 1 1 140px; max-width: none; }
-  .widget-section > .section-heading > .actions { width: 100%; justify-content: flex-end; }
-  .widget-section > .section-heading > h2 { flex-basis: 100%; }
   .workbench-shell .widget .widget-header { padding-inline: 10px; }
   .workbench-shell .widget .widget-body { padding-inline: 10px; }
 }

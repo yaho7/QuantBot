@@ -33,11 +33,11 @@ export function useAttention() {
   const latest = Math.max(now, alerts.dataUpdatedAt);
   const recent = (alerts.data ?? []).filter(record => record.observedAt > latest - recentWindow &&
     ["warning", "error", "critical"].includes(String(record.data.severity)));
-  const waitingCount = waiting.data?.length ?? 0;
-  const unknownCount = unknown.data?.length ?? 0;
+  const waitingCount = waiting.data?.length;
+  const unknownCount = unknown.data?.length;
   return {
-    issues, waitingCount, unknownCount, recentCount: recent.length,
-    count: issues.length + waitingCount + unknownCount + recent.length,
+    issues, waitingCount, unknownCount, recentCount: alerts.data ? recent.length : undefined,
+    count: issues.length + (waitingCount ?? 0) + (unknownCount ?? 0) + recent.length,
   };
 }
 export type Attention = ReturnType<typeof useAttention>;
@@ -49,10 +49,10 @@ export function AttentionSummary({ attention }: { attention: Attention }) {
   return <section className="section attention-section" aria-label={t("needsAttention")}>
     <div className="section-heading"><h2>{t("needsAttention")}</h2></div>
     <ul className="surface attention-list">
-      {unknownCount > 0 && <li><Link className="attention-row" to="/activity?status=unknown">
+      {!!unknownCount && <li><Link className="attention-row" to="/activity?status=unknown">
         <strong>{t("unknown")}</strong><Badge tone="danger">{unknownCount}</Badge><ArrowUpRight size={16} />
       </Link></li>}
-      {waitingCount > 0 && <li><Link className="attention-row" to="/activity?status=confirmation_required">
+      {!!waitingCount && <li><Link className="attention-row" to="/activity?status=confirmation_required">
         <strong>{t("confirmation")}</strong><Badge tone="warning">{waitingCount}</Badge><ArrowUpRight size={16} />
       </Link></li>}
       {issues.map(strategy => <li key={strategy.id}><Link className="attention-row" to={"/strategies/" + strategy.id}>

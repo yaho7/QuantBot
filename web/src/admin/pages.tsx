@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,15 @@ import { ConnectionDialog, type CreatedStrategy } from "./connection-dialog";
 import { useState, useSyncExternalStore } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
-import { RiLineChartLine as ChartNoAxesCombined, RiAddLine as Plus, RiDeleteBin6Line as Trash2 } from "@remixicon/react";
+import {
+  RiAddLine as Plus,
+  RiDatabase2Line as Database,
+  RiDeleteBin6Line as Trash2,
+  RiLineChartLine as ChartNoAxesCombined,
+  RiListCheck2 as Queue,
+  RiPulseLine as Pulse,
+  RiRadioLine as Broadcast,
+} from "@remixicon/react";
 import { toast } from "sonner";
 import {
   api,
@@ -45,6 +53,12 @@ export function AdminDashboard() {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })} MiB`;
+  const metrics = data ? [
+    { label: t("online"), value: data.onlineAgents, Icon: Pulse },
+    { label: t("samples"), value: data.samples, Icon: Database },
+    { label: t("sseSubscribers"), value: data.sseSubscribers, Icon: Broadcast },
+    { label: t("queueDepth"), value: data.queueDepth, Icon: Queue },
+  ] : [];
   return (
     <Page title={t("dashboard")}>
       {isPending ? (
@@ -54,47 +68,62 @@ export function AdminDashboard() {
       ) : (
         <>
           {error && <ErrorView error={error} retry={() => void query.refetch()} />}
-          <Card className="admin-kpi-panel p-0">
-            <dl className="admin-kpis">
-              {[
-                [t("online"), data.onlineAgents],
-                [t("samples"), data.samples],
-                [t("sseSubscribers"), data.sseSubscribers],
-                [t("queueDepth"), data.queueDepth],
-              ].map(([label, value]) => (
-                <div className="grid gap-2 p-4" key={label}>
-                  <dt className="text-muted-foreground text-sm">{label}</dt>
-                  <dd className="text-2xl font-medium tabular-nums">{numbers.format(Number(value))}</dd>
-                </div>
+          <div className="admin-overview">
+            <div className="admin-kpis">
+              {metrics.map(({ label, value, Icon }) => (
+                <Card key={label}>
+                  <CardContent className="flex grow flex-col">
+                    <dl className="flex grow flex-col justify-between gap-2">
+                      <dt className="flex items-start justify-between gap-2 text-sm text-muted-foreground">
+                        <span>{label}</span>
+                        <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                      </dt>
+                      <dd className="m-0 text-2xl font-medium tabular-nums">{numbers.format(value)}</dd>
+                    </dl>
+                  </CardContent>
+                </Card>
               ))}
-            </dl>
-          </Card>
-          <section className="grid gap-3" aria-labelledby="admin-runtime-heading">
-            <h2 className="m-0 text-base font-medium" id="admin-runtime-heading">{t("runtimeMetrics")}</h2>
-            <Card className="admin-runtime-panel p-0">
-              <dl className="admin-runtime">
-                {[
-                  [t("uptime"), display.unit(Math.floor(data.uptimeSeconds), "second")],
-                  [t("peakMemory"), mib(data.peakRssBytes, 1)],
-                  [t("heapMemory"), mib(data.heapBytes, 1)],
-                  ["CPU", display.unit(data.cpuSeconds, "second")],
-                  [t("goRoutines"), numbers.format(data.goroutines)],
-                  [t("writeFailures"), numbers.format(data.writeFailures)],
-                  ...Object.entries(data.walBytes ?? {}).map(([name, value]) => [name + " WAL", mib(value, 2)]),
-                ].map(([label, value]) => (
-                  <div className="flex items-center justify-between gap-3 px-4" key={label}>
-                    <dt className="text-muted-foreground text-sm">{label}</dt>
-                    <dd className="tabular-nums">{value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </Card>
-          </section>
+            </div>
+            <div className="admin-diagnostics">
+              <DiagnosticPanel title={t("runtimeMetrics")} rows={[
+                [t("uptime"), display.unit(Math.floor(data.uptimeSeconds), "second")],
+                [t("peakMemory"), mib(data.peakRssBytes, 1)],
+                [t("heapMemory"), mib(data.heapBytes, 1)],
+                ["CPU", display.unit(data.cpuSeconds, "second")],
+                [t("goRoutines"), numbers.format(data.goroutines)],
+              ]} />
+              <DiagnosticPanel title={t("storage")} rows={[
+                [t("writeFailures"), numbers.format(data.writeFailures)],
+                ...Object.entries(data.walBytes ?? {}).map(([name, value]): [string, string] => [`${name} WAL`, mib(value, 2)]),
+              ]} />
+            </div>
+          </div>
         </>
       )}
     </Page>
   );
 }
+
+function DiagnosticPanel({ title, rows }: { title: string; rows: [string, string][] }) {
+  return (
+    <Card className="min-w-0 gap-0 pb-0">
+      <CardHeader className="border-b">
+        <CardTitle role="heading" aria-level={2}>{title}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <dl className="divide-y divide-border">
+          {rows.map(([label, value]) => (
+            <div className="flex min-h-11 items-baseline justify-between gap-3 py-3" key={label}>
+              <dt className="text-sm text-muted-foreground">{label}</dt>
+              <dd className="m-0 text-end text-sm tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </CardContent>
+    </Card>
+  );
+}
+
 const compactTable = matchMedia("(max-width: 600px)");
 function watchTableWidth(callback: () => void) {
   compactTable.addEventListener("change", callback);

@@ -59,6 +59,8 @@ test("Lyra is an optional isolated package and Classical stays the default", asy
   await expect(panel.getByText("103,900", { exact: true })).toBeVisible();
 
   const directory = frame.getByRole("region", { name: "策略", exact: true });
+  const selectedStrategy = frame.getByRole("region", { name: "当前策略", exact: true });
+  const summary = directory.locator('[data-slot="strategy-summary"]');
   const onlineCard = directory.locator('[data-slot="card"]').filter({ hasText: "跨期价差" });
   const offlineCard = directory.locator('[data-slot="card"]').filter({ hasText: "低波动轮动" });
   await expect(onlineCard.getByText("在线", { exact: true })).toBeVisible();
@@ -116,10 +118,24 @@ test("Lyra is an optional isolated package and Classical stays the default", asy
     else await expect(document).not.toHaveClass(/\bdark\b/);
     for (const width of [390, 430, 768, 1280, 1600]) {
       await page.setViewportSize({ width, height: 1000 });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await frame.locator("body").evaluate(() => window.scrollTo(0, 0));
       expect(await frame.locator("body").evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
-      const summaryTop = await frame.getByText("策略总数", { exact: true }).evaluate(el => el.getBoundingClientRect().top);
+      const [equityBox, strategyBox, directoryBox] = await Promise.all([
+        panel.boundingBox(), selectedStrategy.boundingBox(), directory.boundingBox(),
+      ]);
+      expect(directoryBox!.y).toBeGreaterThanOrEqual(Math.max(
+        equityBox!.y + equityBox!.height, strategyBox!.y + strategyBox!.height,
+      ));
+      if (width >= 1280) {
+        expect(strategyBox!.y).toBe(equityBox!.y);
+        expect(strategyBox!.x).toBeGreaterThan(equityBox!.x + equityBox!.width);
+      } else {
+        expect(strategyBox!.y).toBeGreaterThan(equityBox!.y + equityBox!.height);
+      }
+      const summaryTop = await summary.getByText("策略总数", { exact: true }).evaluate(el => el.getBoundingClientRect().top);
       for (const status of ["在线", "离线"]) {
-        const top = await frame.getByText(status, { exact: true }).first().evaluate(el => el.getBoundingClientRect().top);
+        const top = await summary.getByText(status, { exact: true }).evaluate(el => el.getBoundingClientRect().top);
         expect(top).toBe(summaryTop);
       }
       await page.screenshot({ path: testInfo.outputPath(`lyra-${width}-${appearance}.png`), fullPage: true });
