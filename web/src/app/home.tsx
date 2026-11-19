@@ -255,9 +255,9 @@ function PortfolioSnapshot({ strategy, picker }: { strategy: Strategy; picker: R
 function OperationsQueue({ attention }: { attention: Attention }) {
   const { t } = useLanguage();
   const items = [
-    { label: t("confirmation"), count: attention.waitingCount, to: "/activity?status=confirmation_required", Icon: CheckboxCircle },
-    { label: t("unknown"), count: attention.unknownCount, to: "/activity?status=unknown", Icon: Question },
-    { label: t("recentWarnings"), count: attention.recentCount, to: "/alerts", Icon: AlarmWarning },
+    { label: t("confirmation"), count: attention.waitingCount, to: "/admin/activity?status=confirmation_required", Icon: CheckboxCircle },
+    { label: t("unknown"), count: attention.unknownCount, to: "/admin/activity?status=unknown", Icon: Question },
+    { label: t("recentWarnings"), count: attention.recentCount, to: "/admin/alerts", Icon: AlarmWarning },
   ] as const;
   return (
     <Card role="region" aria-labelledby="overview-queue" className="overview-queue min-w-0">

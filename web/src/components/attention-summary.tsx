@@ -37,7 +37,6 @@ export function useAttention() {
   const unknownCount = unknown.data?.length;
   return {
     issues, waitingCount, unknownCount, recentCount: alerts.data ? recent.length : undefined,
-    count: issues.length + (waitingCount ?? 0) + (unknownCount ?? 0) + recent.length,
   };
 }
 export type Attention = ReturnType<typeof useAttention>;
@@ -49,10 +48,10 @@ export function AttentionSummary({ attention }: { attention: Attention }) {
   return <section className="section attention-section" aria-label={t("needsAttention")}>
     <div className="section-heading"><h2>{t("needsAttention")}</h2></div>
     <ul className="surface attention-list">
-      {!!unknownCount && <li><Link className="attention-row" to="/activity?status=unknown">
+      {!!unknownCount && <li><Link className="attention-row" to="/admin/activity?status=unknown">
         <strong>{t("unknown")}</strong><Badge tone="danger">{unknownCount}</Badge><ArrowUpRight size={16} />
       </Link></li>}
-      {!!waitingCount && <li><Link className="attention-row" to="/activity?status=confirmation_required">
+      {!!waitingCount && <li><Link className="attention-row" to="/admin/activity?status=confirmation_required">
         <strong>{t("confirmation")}</strong><Badge tone="warning">{waitingCount}</Badge><ArrowUpRight size={16} />
       </Link></li>}
       {issues.map(strategy => <li key={strategy.id}><Link className="attention-row" to={"/strategies/" + strategy.id}>

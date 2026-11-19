@@ -305,42 +305,6 @@ small {
   border-bottom: 1px solid var(--line);
   background: var(--surface);
 }
-.topbar-inner {
-  min-height: 74px;
-  display: flex;
-  align-items: center;
-  gap: 40px;
-}
-.topbar nav {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  flex: 1;
-  order: 1;
-}
-.topbar .actions {
-  order: 2;
-}
-.topbar nav a {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  white-space: nowrap;
-  padding: 9px 13px;
-  border-radius: 8px;
-  color: var(--qb-muted);
-}
-.topbar nav a.active {
-  background: var(--accent-soft);
-  color: var(--qb-accent);
-}
-.admin-link {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
-  color: var(--qb-muted);
-}
 .icon-button {
   padding: 8px;
   width: 38px;
@@ -703,20 +667,6 @@ small {
   margin-top: 20px;
   width: 100%;
 }
-.floating-tools {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  border-radius: 12px;
-  padding: 4px 9px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: 0 4px 15px #0000000c;
-  z-index: 30;
-}
 .sidebar {
   width: 240px;
   position: fixed;
@@ -1078,15 +1028,6 @@ td button {
   }
 }
 @media (max-width: 1100px) {
-  .topbar-inner {
-    gap: 20px;
-  }
-  .topbar nav a {
-    padding: 9px;
-  }
-  .topbar nav a span {
-    display: none;
-  }
   .view-list .strategy-card {
     grid-template-columns: 1.3fr 1.5fr 1fr;
   }
@@ -1159,40 +1100,6 @@ td button {
   .page-header .actions {
     gap: 6px;
   }
-  .topbar-inner {
-    min-height: 112px;
-    flex-wrap: wrap;
-    column-gap: 10px;
-    row-gap: 0;
-    padding-top: 12px;
-    padding-bottom: 6px;
-  }
-  .topbar .brand {
-    flex: 1;
-  }
-  .topbar .actions {
-    order: 1;
-  }
-  .topbar nav {
-    order: 2;
-    flex-basis: 100%;
-    justify-content: space-between;
-  }
-  .topbar nav a {
-    padding: 9px 10px;
-    min-height: 44px;
-    gap: 6px;
-  }
-  .topbar nav a span {
-    display: inline;
-    font-size: 11px;
-  }
-  .topbar nav a svg {
-    display: none;
-  }
-  .admin-link span {
-    display: none;
-  }
   .summary-grid,
   .detail-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1257,10 +1164,6 @@ td button {
   }
   .activity-line time {
     width: 100%;
-  }
-  .floating-tools {
-    bottom: 12px;
-    right: 12px;
   }
   .admin-main {
     padding-inline: 14px;

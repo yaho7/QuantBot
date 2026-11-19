@@ -1,15 +1,14 @@
 import {
-  createContext,
   lazy,
   Suspense,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
@@ -22,14 +21,11 @@ import {
 } from "react-router-dom";
 import { Link, NavLink } from "../shared/page-links";
 import {
-  RiNotification3Line as Bell,
   RiLineChartLine as ChartNoAxesCombined,
-  RiFileList3Line as ClipboardList,
   RiDashboardLine as LayoutDashboard,
   RiComputerLine as Monitor,
   RiMoonLine as Moon,
   RiSettings3Line as Settings,
-  RiServerLine as Server,
   RiEqualizer2Line as SlidersHorizontal,
   RiSunLine as Sun,
   RiLogoutBoxRLine as LogOut,
@@ -63,35 +59,30 @@ const monitor = [
   ["/", "workbench", LayoutDashboard],
   ["/strategies", "strategies", ChartNoAxesCombined],
   ["/controls", "controls", SlidersHorizontal],
-  ["/hosts", "hosts", Server],
-  ["/activity", "activity", ClipboardList],
-  ["/alerts", "alerts", Bell],
 ] as const;
-const AppearanceTools = createContext<ReactNode>(null);
+const appearanceIcons = { system: Monitor, light: Sun, dark: Moon } as const;
 
 function Root() {
   const session = useQuery({
     ...resource<Session>("/auth/session"),
     retry: false,
   });
-  const connected = useRealtime(!!session.data);
-  const { t } = useLanguage();
-  const mode = useAppearance();
+  useRealtime(!!session.data);
+  const appearance = useAppearance();
   useEffect(() => {
     const media = matchMedia("(prefers-color-scheme: dark)");
     const sync = () => {
-      const appearance = mode === "light" || mode === "dark" ? mode : media.matches ? "dark" : "light";
-      document.documentElement.dataset.appearance = appearance;
-      document.documentElement.classList.toggle("dark", appearance === "dark");
+      const theme = appearance === "system" ? (media.matches ? "dark" : "light") : appearance;
+      document.documentElement.dataset.appearance = theme;
+      document.documentElement.classList.toggle("dark", theme === "dark");
     };
     sync();
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
-  }, [mode]);
+  }, [appearance]);
   useEffect(() => {
     if (session.data) setCSRF(session.data.csrf);
   }, [session.data]);
-  const appearance = mode === "light" || mode === "dark" ? mode : "system";
   if (session.isPending) return <Loading />;
   if (
     session.error &&
@@ -105,40 +96,35 @@ function Root() {
       </Suspense>
     );
   setCSRF(session.data.csrf);
-  const themeIcons = { system: Monitor, light: Sun, dark: Moon } as const;
-  const ThemeIcon = themeIcons[appearance];
-  const appearanceLabel = t("appearance") + ": " + t(appearance);
-  const tools = (
-    <div className="floating-tools" aria-label={t("appearance")}>
-      <span
-        className={"connection-dot " + (connected ? "online" : "")}
-        title={t(connected ? "connected" : "reconnecting")}
-      />
-      <Tooltip>
-        <TooltipTrigger render={
-          <Button aria-label={appearanceLabel} size="icon" variant="ghost" onClick={() =>
-            setAppearance(appearance === "system" ? "light" : appearance === "light" ? "dark" : "system")
-          } />
-        }><ThemeIcon aria-hidden="true" /></TooltipTrigger>
-        <TooltipContent>{appearanceLabel}</TooltipContent>
-      </Tooltip>
-    </div>
-  );
   return (
     <TooltipProvider delay={350}>
-      <AppearanceTools.Provider value={tools}>
-        <Suspense fallback={<Loading />}>
-          <Outlet />
-        </Suspense>
-        <ScrollRestoration />
-        <Toaster position="top-center" theme={appearance} />
-      </AppearanceTools.Provider>
+      <Suspense fallback={<Loading />}>
+        <Outlet />
+      </Suspense>
+      <ScrollRestoration />
+      <Toaster position="top-center" theme={appearance} />
     </TooltipProvider>
+  );
+}
+function AppearanceToggle() {
+  const { t } = useLanguage();
+  const appearance = useAppearance();
+  const ThemeIcon = appearanceIcons[appearance];
+  const appearanceLabel = t("appearance") + ": " + t(appearance);
+  return (
+    <Tooltip>
+      <TooltipTrigger render={
+        <Button aria-label={appearanceLabel} size="icon" variant="ghost" onClick={() =>
+          setAppearance(appearance === "system" ? "light" : appearance === "light" ? "dark" : "system")
+        } />
+      }><ThemeIcon aria-hidden="true" /></TooltipTrigger>
+      <TooltipContent>{appearanceLabel}</TooltipContent>
+    </Tooltip>
   );
 }
 function Brand() {
   return (
-    <Link className="brand" to="/">
+    <Link className="brand" to="/" aria-label="QuantBot">
       <BrandIcon />
       <strong>QuantBot</strong>
     </Link>
@@ -160,7 +146,7 @@ function Logout() {
 function Workbench() {
   const { t } = useLanguage();
   const attention = useAttention();
-  const tools = useContext(AppearanceTools);
+  const recentAlerts = attention.recentCount ?? 0;
   const query = useQuery(activeTheme);
   const location = useLocation();
   const navigation = useRef<HTMLElement>(null);
@@ -210,33 +196,27 @@ function Workbench() {
           <div className="container topbar-inner">
             <Brand />
             <nav ref={navigation} aria-label={t("workbench")}>
-              {monitor.map(([path, label, Icon]) => {
-                const hasAlert = label === "alerts" && attention.count > 0;
-                return (
-                  <NavLink end={path === "/"} key={path} to={path}
-                    className={label === "alerts" ? "nav-alert-link" : undefined}
-                    title={t(label)} aria-label={t(label)}
-                    aria-describedby={hasAlert ? "nav-alert-count" : undefined}>
-                    <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
-                    <span className="nav-label">{t(label)}</span>
-                    {hasAlert && <>
-                      <i className="nav-alert-badge" aria-hidden="true">{attention.count > 99 ? "99+" : attention.count}</i>
-                      <span className="sr-only" id="nav-alert-count">{t("attentionCount")}: {attention.count}</span>
-                    </>}
-                  </NavLink>
-                );
-              })}
+              {monitor.map(([path, label, Icon]) => (
+                <NavLink end={path === "/"} key={path} to={path} title={t(label)} aria-label={t(label)}>
+                  <Icon size={18} strokeWidth={1.5} aria-hidden="true" />
+                  <span className="nav-label">{t(label)}</span>
+                </NavLink>
+              ))}
             </nav>
             <div className="actions workbench-actions">
-              {builtIn && tools}
               <Link
                 className="admin-link"
-                to="/admin/settings"
-                aria-label={t("settings")}
-                title={t("settings")}
+                to="/admin/dashboard"
+                aria-label={t("admin")}
+                aria-describedby={recentAlerts > 0 ? "admin-alert-count" : undefined}
+                title={t("admin")}
               >
-                <Settings size={18} strokeWidth={1.5} aria-hidden="true" />
+                <span className="admin-link-icon" aria-hidden="true">
+                  <Settings size={18} strokeWidth={1.5} />
+                  {recentAlerts > 0 && <Badge className="admin-alert-badge">{recentAlerts > 99 ? "99+" : recentAlerts}</Badge>}
+                </span>
                 <span className="nav-label">{t("admin")}</span>
+                {recentAlerts > 0 && <span className="sr-only" id="admin-alert-count">{t("recentWarnings")}: {recentAlerts}</span>}
               </Link>
               <Logout />
             </div>
@@ -263,18 +243,20 @@ function Workbench() {
             ) : <Outlet context={attention} />}
           </RouteSurface>
         </main>
-        {!builtIn && tools}
       </div>
     </ThemeContext.Provider>
   );
 }
 function AdminRoute() {
-  const tools = useContext(AppearanceTools);
   return (
-    <AdminShell brand={<Brand />} tools={tools} logout={<Logout />}>
+    <AdminShell brand={<Brand />} tools={<AppearanceToggle />} logout={<Logout />}>
       <RouteSurface><Outlet /></RouteSurface>
     </AdminShell>
   );
+}
+function AdminRedirect() {
+  const { pathname, search, hash } = useLocation();
+  return <Navigate to={{ pathname: "/admin" + pathname, search, hash }} replace />;
 }
 function NotFound() {
   return (
@@ -324,18 +306,19 @@ const router = createBrowserRouter([
           { path: "strategies", lazy: async () => ({ Component: (await import("./home")).Home }) },
           { path: "strategies/:id", lazy: async () => ({ Component: (await import("./strategy")).StrategyDetail }) },
           { path: "controls", lazy: async () => ({ Component: (await import("./strategy")).AllControls }) },
-          { path: "hosts", lazy: async () => ({ Component: (await import("./hosts")).HostsPage }) },
-          { path: "hosts/:id", lazy: async () => ({ Component: (await import("./hosts")).HostDetailPage }) },
-          { path: "activity", lazy: async () => ({ Component: (await import("./activity")).ActivityPage }) },
-          { path: "alerts", lazy: async () => ({ Component: (await import("./activity")).AlertsPage }) },
         ],
       },
+      ...["hosts", "hosts/:id", "activity", "alerts"].map(path => ({ path, element: <AdminRedirect /> })),
       {
         path: "admin",
         element: <AdminRoute />,
         children: [
           { index: true, element: <Navigate to="dashboard" replace /> },
           { path: "dashboard", lazy: async () => ({ Component: (await import("../admin/pages")).AdminDashboard }) },
+          { path: "hosts", lazy: async () => ({ Component: (await import("./hosts")).HostsPage }) },
+          { path: "hosts/:id", lazy: async () => ({ Component: (await import("./hosts")).HostDetailPage }) },
+          { path: "activity", lazy: async () => ({ Component: (await import("./activity")).ActivityPage }) },
+          { path: "alerts", lazy: async () => ({ Component: (await import("./activity")).AlertsPage }) },
           { path: "notifications", lazy: async () => ({ Component: (await import("../admin/notifications")).default }) },
           { path: "themes", lazy: async () => ({ Component: (await import("../admin/themes")).default }) },
           { path: "strategies", lazy: async () => ({ Component: (await import("../admin/pages")).AdminStrategies }) },

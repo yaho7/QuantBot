@@ -166,13 +166,6 @@
   outline: 1px dashed color-mix(in srgb, var(--qb-accent) 35%, var(--line));
   outline-offset: 2px;
 }
-.workbench-shell[data-theme="classical"] .floating-tools {
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(12px);
-  border-radius: 14px;
-  box-shadow: 0 8px 34px #101f3b14;
-}
-
 /* 2. Keep only relevant data visible at the top of strategy detail. */
 .qb-quick-controls:has(.controls-grid > .empty-inline) {
   display: none;

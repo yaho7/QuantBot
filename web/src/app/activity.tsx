@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "../shared/page-links";
-import { useOutletContext, useSearchParams } from "react-router-dom";
-import { alertsQuery, AttentionSummary, type Attention } from "../components/attention-summary";
+import { useSearchParams } from "react-router-dom";
+import { alertsQuery, AttentionSummary, useAttention } from "../components/attention-summary";
 import { resource, type Command } from "../shared/api";
 import { Badge, ErrorView, Loading, timestamp } from "../shared/ui";
 import { useLanguage } from "../shared/i18n";
@@ -94,7 +94,7 @@ export function AlertsPage() {
   const { t } = useLanguage();
   const display = useDisplay();
   const query = useQuery(alertsQuery);
-  const attention = useOutletContext<Attention>();
+  const attention = useAttention();
   return (
     <Page title={t("alerts")}>
       <AttentionSummary attention={attention} />

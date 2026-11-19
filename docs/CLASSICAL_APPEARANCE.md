@@ -2,8 +2,9 @@
 
 Classical (`classical`) is the default interface. The overview opens with a
 full-width equity chart. Strategy status and the attention queue sit below it,
-followed by the saved widget board. The workbench uses sticky top navigation
-with a horizontally scrollable second row on narrow screens. Strategy detail
+followed by the saved widget board. The workbench uses a single sticky top bar
+with navigation aligned beside the brand. Links display icons only when there
+is insufficient room for their labels. Strategy detail
 places runtime status beside equity on desktop and stacks the panels on mobile.
 Administration uses its own command bar and grouped navigation, with a modal
 drawer on mobile.
@@ -17,8 +18,8 @@ Settings > Appearance supports System, Light, and Dark. The selected mode is
 applied to both the monitoring workspace and administration and synchronized
 across tabs in the current browser. The Lyra preset uses a neutral palette.
 
-Language selection (Simplified Chinese / English) is in Settings, with a language
-icon. The workbench settings gear opens this page directly.
+Language selection (Simplified Chinese / English) is in Administration >
+Settings. The appearance toggle is in the administration toolbar.
 
 ## Widget editing
 
@@ -39,8 +40,9 @@ Scrollbar tracks are hidden; scrollable card content uses subtle edge shadows.
 ## Dashboard interaction
 
 - The status panel shows online and offline counts. Select a strategy in the
-  panel or from the equity chart to change the series. The alerts navigation
-  carries the count of items needing attention.
+  panel or from the equity chart to change the series. Hosts, Activity, and
+  Alerts are under Monitoring in Administration. The workbench administration
+  icon shows a count when recent alerts need attention.
 - The attention queue links to commands awaiting confirmation, commands with
   unknown execution outcomes, and warning or more severe alerts received in the
   last 15 minutes.

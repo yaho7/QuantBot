@@ -1,4 +1,4 @@
-/* Native routes share a full-width navigation bar and the same content gutter. */
+/* The workbench header holds all navigation in one row. */
 .workbench-shell.native-workbench[data-theme="classical"] {
   min-height: 100dvh;
   background: var(--canvas);
@@ -11,15 +11,15 @@
   padding-block-end: var(--spacing-10);
 }
 
-.workbench-shell.native-workbench .topbar {
+.workbench-shell .topbar {
   position: sticky;
   inset-block-start: 0;
   z-index: 25;
 }
 
-.workbench-shell.native-workbench .topbar-inner {
+.workbench-shell .topbar-inner {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   min-block-size: 3.75rem;
   gap: var(--spacing-4);
@@ -35,25 +35,26 @@
   color: var(--qb-accent);
 }
 
-.workbench-shell.native-workbench .topbar .brand {
+.workbench-shell .topbar .brand {
   justify-self: start;
   gap: var(--spacing-2);
   min-block-size: var(--size-element-md);
 }
-.workbench-shell.native-workbench .topbar .brand strong {
+.workbench-shell .topbar .brand strong {
   font-size: var(--font-size-lg);
   font-weight: 600;
 }
 
-.workbench-shell.native-workbench .topbar nav {
+.workbench-shell .topbar nav {
+  display: flex;
   align-self: stretch;
   align-items: stretch;
   min-inline-size: 0;
   gap: var(--spacing-1);
 }
 
-.workbench-shell.native-workbench .topbar nav a,
-.workbench-shell.native-workbench .topbar .admin-link {
+.workbench-shell .topbar nav a,
+.workbench-shell .topbar .admin-link {
   display: flex;
   gap: var(--spacing-2);
   align-items: center;
@@ -65,55 +66,67 @@
   color: var(--qb-muted);
 }
 
-.workbench-shell.native-workbench .topbar nav a {
+.workbench-shell .topbar nav a {
   border-block-end: 2px solid transparent;
+  white-space: nowrap;
 }
 
-.workbench-shell.native-workbench .topbar nav a:is(:hover, :focus-visible),
-.workbench-shell.native-workbench .topbar .admin-link:is(:hover, :focus-visible) {
+.workbench-shell .topbar nav a:is(:hover, :focus-visible),
+.workbench-shell .topbar .admin-link:is(:hover, :focus-visible) {
   background: var(--raised);
   color: var(--text);
 }
-.workbench-shell.native-workbench .topbar nav a:focus-visible {
+.workbench-shell .topbar nav a:focus-visible {
   outline-offset: -3px;
 }
 
-.workbench-shell.native-workbench .topbar nav a.active {
+.workbench-shell .topbar nav a.active {
   background: var(--raised);
   border-block-end-color: var(--primary);
   color: var(--text);
 }
 
-.workbench-shell.native-workbench .topbar nav a svg {
+.workbench-shell .topbar nav a svg {
   display: block;
   flex: none;
 }
-.workbench-shell.native-workbench .topbar nav .nav-label {
+.workbench-shell .topbar nav .nav-label {
   display: inline;
   font-size: inherit;
 }
-.workbench-shell.native-workbench .topbar .nav-alert-badge {
-  position: static;
-  margin-inline-start: calc(-1 * var(--spacing-1));
-  border: 0;
-}
-
-.workbench-shell.native-workbench .topbar .workbench-actions {
+.workbench-shell .topbar .workbench-actions {
   justify-self: end;
   flex-wrap: nowrap;
   gap: var(--spacing-1);
 }
 
-.workbench-shell.native-workbench .topbar .floating-tools {
-  position: static;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  backdrop-filter: none;
+.admin-link-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex: none;
 }
-.workbench-shell.native-workbench .topbar .floating-tools .connection-dot {
-  margin-inline-end: var(--spacing-1);
+
+.workbench-shell .admin-link .nav-label {
+  margin-inline-start: var(--spacing-1);
+  white-space: nowrap;
+}
+
+.admin-link-icon .admin-alert-badge {
+  position: absolute;
+  inset-block-start: -0.5rem;
+  inset-inline-start: 0.65rem;
+  block-size: 1rem;
+  min-inline-size: 1rem;
+  padding: 0 0.15rem;
+  border: 1px solid var(--surface);
+  border-radius: 999px;
+  background: var(--warning);
+  color: var(--canvas);
+  font-size: 0.5625rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .workbench-shell.native-workbench[data-theme="classical"] :is(.surface, .summary-card, .control-card),
@@ -234,43 +247,46 @@
   text-align: right;
 }
 
-@media (max-width: 1023px) {
-  .workbench-shell.native-workbench .topbar-inner {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 0 var(--spacing-2);
+@media (max-width: 767px) {
+  .workbench-shell .topbar-inner {
+    min-block-size: 3.5rem;
+    gap: var(--spacing-2);
   }
-  .workbench-shell.native-workbench .topbar nav {
-    grid-column: 1 / -1;
-    order: 3;
-    justify-content: start;
-    margin-inline: calc(-1 * var(--route-gutter));
-    padding-inline: var(--route-gutter);
-    border-block-start: 1px solid var(--line);
+  .workbench-shell .topbar nav {
+    container: workbench-navigation / inline-size;
     overflow-x: auto;
     scrollbar-width: none;
   }
-  .workbench-shell.native-workbench .topbar nav a {
+  .workbench-shell .topbar nav a {
     flex: none;
   }
-  .workbench-shell.native-workbench .topbar .workbench-actions {
-    min-block-size: 3.25rem;
-  }
-  .native-workbench #strategy-controls {
-    scroll-margin-top: 7.25rem;
-  }
-}
-
-@media (max-width: 767px) {
-  .workbench-shell.native-workbench .topbar :is(.workbench-actions button, .admin-link) {
+  .workbench-shell .topbar :is(.workbench-actions button, .admin-link) {
     min-block-size: 2.75rem;
     inline-size: 2.75rem;
     justify-content: center;
     padding: 0;
   }
-  .workbench-shell.native-workbench .topbar :is(.admin-link .nav-label, .floating-tools .connection-dot) {
+  .workbench-shell .topbar .admin-link .nav-label {
     display: none;
   }
   .portfolio-record-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@container workbench-navigation (max-width: 22rem) {
+  .workbench-shell .topbar nav a {
+    inline-size: 2.75rem;
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .workbench-shell .topbar nav .nav-label {
+    display: none;
+  }
+}
+
+@media (max-width: 540px) {
+  .workbench-shell .topbar .brand strong {
+    display: none;
   }
 }

@@ -138,7 +138,7 @@ export function StrategyPerformance({ strategyId, compact = false, widget = fals
     <div className="performance-process-list">
       {widget && !compact && hosts.data?.filter(host => linkedHosts.has(host.id)).map(host =>
         <div className="performance-widget-host" key={host.id}>
-          <Link className="performance-link" to={"/hosts/" + host.id}>{host.name}</Link>
+          <Link className="performance-link" to={"/admin/hosts/" + host.id}>{host.name}</Link>
           <HostMetricsGrid host={host} compact />
           <SampleStatus latest={host.latest} stale={host.stale} />
         </div>
@@ -147,7 +147,7 @@ export function StrategyPerformance({ strategyId, compact = false, widget = fals
         <div key={process.instanceId} className={widget ? "performance-process" : "surface padded performance-process"}>
           <div className="performance-process-heading">
             <strong>{process.instanceId}</strong>
-            <Link className="performance-link" to={"/hosts/" + process.hostId}>{process.hostName}</Link>
+            <Link className="performance-link" to={"/admin/hosts/" + process.hostId}>{process.hostName}</Link>
           </div>
           <ProcessMetricsGrid process={process} />
           <SampleStatus latest={process.latest} stale={process.stale} />

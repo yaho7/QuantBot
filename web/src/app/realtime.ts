@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { client } from "../shared/api";
 
 export function useRealtime(enabled: boolean) {
-  const [connected, setConnected] = useState(false);
   useEffect(() => {
     if (!enabled) return;
     const source = new EventSource("/api/events");
-    source.onopen = () => setConnected(true);
-    source.onerror = () => setConnected(false);
     source.addEventListener("change", (event) => {
       const batch = JSON.parse((event as MessageEvent).data) as {
         reset?: boolean;
@@ -51,10 +48,6 @@ export function useRealtime(enabled: boolean) {
         },
       });
     });
-    return () => {
-      source.close();
-      setConnected(false);
-    };
+    return () => source.close();
   }, [enabled]);
-  return connected;
 }

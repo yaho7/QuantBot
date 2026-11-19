@@ -152,14 +152,6 @@
   min-block-size: calc(var(--spacing) * 11);
 }
 
-.admin-shell .admin-utility-actions .floating-tools {
-  position: static;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
 .admin-overview {
   display: grid;
   gap: var(--section-gap);

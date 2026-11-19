@@ -52,11 +52,20 @@ test("day and night share spacing and page navigation fades only the route", asy
   });
   expect(host.ok()).toBeTruthy();
   const { hostId } = await host.json();
+  const now = Date.now();
   const alert = await page.request.post("/api/agent/events", {
     headers: agentHeaders,
-    data: { records: [{ id: "layout-alert", kind: "alert", observedAt: Date.now(), data: {
-      code: "layout-warning", severity: "warning", message: "布局告警验证",
-    } }] },
+    data: { records: [
+      { id: "layout-alert", kind: "alert", observedAt: now, data: {
+        code: "layout-warning", severity: "warning", message: "布局告警验证",
+      } },
+      { id: "layout-info", kind: "alert", observedAt: now, data: {
+        code: "layout-info", severity: "info", message: "布局信息验证",
+      } },
+      { id: "layout-old-alert", kind: "alert", observedAt: now - 60 * 60_000, data: {
+        code: "layout-old-alert", severity: "critical", message: "布局历史告警验证",
+      } },
+    ] },
   });
   expect(alert.ok()).toBeTruthy();
   const executor = await page.request.put("/api/admin/strategies/" + strategyId + "/executor", {
@@ -113,34 +122,98 @@ test("day and night share spacing and page navigation fades only the route", asy
   expect(widgetsBox!.y).toBeGreaterThanOrEqual(Math.max(
     strategiesBox!.y + strategiesBox!.height, attentionBox!.y + attentionBox!.height,
   ));
-  const pendingLink = attention.locator('a[href="/activity?status=confirmation_required"]');
+  const header = page.locator(".topbar");
+  const primaryNav = header.getByRole("navigation", { name: "工作台" });
+  const primaryPaths = ["/", "/strategies", "/controls"];
+  const adminPaths = ["/admin/hosts", "/admin/activity", "/admin/alerts"];
+  const adminPagePaths = ["dashboard", "strategies", "notifications", "storage", "audit", "security", "settings"]
+    .map(path => "/admin/" + path).concat(adminPaths);
+  const adminIcon = header.locator(".admin-link");
+  const appearanceButton = page.getByRole("button", { name: /^外观:/ });
+  const hostDetailPath = "/admin/hosts/" + hostId;
+  const pendingPath = "/admin/activity?status=confirmation_required";
+  const pendingLink = attention.locator(`a[href="${pendingPath}"]`);
   await expect(pendingLink.getByText("1", { exact: true })).toBeVisible();
-  await expect(attention.locator('a[href="/alerts"]').getByText("1", { exact: true })).toBeVisible();
+  await expect(attention.locator('a[href="/admin/alerts"]').getByText("1", { exact: true })).toBeVisible();
+  expect(await primaryNav.getByRole("link").evaluateAll(links => links.map(link => link.getAttribute("href")))).toEqual(primaryPaths);
+  await expect(appearanceButton).toHaveCount(0);
+  await expect(header.locator(".connection-dot")).toHaveCount(0);
+  await expect(adminIcon).toHaveAccessibleName("管理后台");
+  await expect(adminIcon).toHaveAccessibleDescription("近期告警: 1");
+  await expect(adminIcon.locator(".admin-alert-badge")).toBeVisible();
+  await expect(adminIcon.locator(".admin-alert-badge")).toHaveText("1");
+  await expect(adminIcon).toHaveAttribute("href", "/admin/dashboard");
+
+  await pendingLink.click();
+  await expect(page).toHaveURL(origin + pendingPath);
+  await expect(page.getByRole("combobox", { name: "状态", exact: true })).toHaveValue("confirmation_required");
+  await expect(page.getByRole("button", { name: /layout-review/ })).toBeVisible();
   const cancelled = await page.request.post("/api/commands/" + proposalId + "/cancel", { headers });
   expect(cancelled.ok()).toBeTruthy();
-  const bell = page.locator('.topbar nav a[href="/alerts"]');
-  await expect(bell.locator(".nav-alert-badge")).toBeVisible();
-  await expect(bell).toHaveAccessibleDescription(/待关注事项/);
-  await bell.click();
-  await expect(page).toHaveURL(/\/alerts$/);
+
+  await page.goto("/");
+  await adminIcon.click();
+  await expect(page).toHaveURL(origin + "/admin/dashboard");
+  await expect(page.locator(".admin-toolbar").getByRole("button", { name: /^外观:/ })).toBeVisible();
+  const desktopAdminNav = page.locator(".admin-sidebar nav");
+  for (const path of adminPaths) {
+    await expect(desktopAdminNav.locator(`a[href="${path}"]`)).toBeVisible();
+  }
+  await desktopAdminNav.locator('a[href="/admin/alerts"]').click();
+  await expect(page).toHaveURL(origin + "/admin/alerts");
   await expect(page.getByRole("link", { name: /布局告警验证/ })).toHaveAttribute("href", "/strategies/" + strategyId);
+  await expect(page.getByRole("link", { name: /布局信息验证/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /布局历史告警验证/ })).toBeVisible();
+  await desktopAdminNav.locator('a[href="/admin/hosts"]').click();
+  await expect(page).toHaveURL(origin + "/admin/hosts");
+  const hostLink = page.getByRole("link", { name: "布局主机", exact: true });
+  await expect(hostLink).toHaveAttribute("href", hostDetailPath);
+  await hostLink.click();
+  await expect(page).toHaveURL(origin + hostDetailPath);
+  await expect(page.getByRole("heading", { level: 1, name: "布局主机" })).toBeVisible();
+  const backToHosts = page.getByRole("main").getByRole("link", { name: "主机", exact: true });
+  await expect(backToHosts).toHaveAttribute("href", "/admin/hosts");
+  await backToHosts.click();
+  await expect(page).toHaveURL(origin + "/admin/hosts");
+
+  for (const path of ["/hosts", "/hosts/" + hostId, "/activity", "/alerts"]) {
+    const queryAndHash = "?status=confirmation_required#recent";
+    await page.goto(path + queryAndHash);
+    await expect(page).toHaveURL(origin + "/admin" + path + queryAndHash);
+  }
 
   for (const width of [1280, 820, 390]) {
     await page.setViewportSize({ width, height: 800 });
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
+    const brand = header.getByRole("link", { name: "QuantBot", exact: true });
+    const brandPosition = (await brand.boundingBox())!;
+    const firstTab = (await primaryNav.getByRole("link", { name: "工作台", exact: true }).boundingBox())!;
+    const brandGap = firstTab.x - brandPosition.x - brandPosition.width;
+    expect(brandGap).toBeGreaterThanOrEqual(0);
+    expect(brandGap).toBeLessThanOrEqual(24);
     if (width === 390) {
-      await expect(bell).toHaveAccessibleDescription(/待关注事项/);
+      await expect(adminIcon).toBeVisible();
+      await expect(adminIcon).toHaveAccessibleDescription("近期告警: 1");
+      await expect(adminIcon.locator(".admin-alert-badge")).toBeVisible();
+      const adminBox = (await adminIcon.boundingBox())!;
+      const sameRow = [brand];
+      for (const name of ["工作台", "策略", "控制中心"]) {
+        const link = primaryNav.getByRole("link", { name, exact: true });
+        await expect(link).toBeVisible();
+        await expect(link.locator(".nav-label")).toBeHidden();
+        sameRow.push(link);
+      }
+      for (const link of sameRow) {
+        const box = (await link.boundingBox())!;
+        expect(Math.abs(box.y + box.height / 2 - adminBox.y - adminBox.height / 2)).toBeLessThan(2);
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
-      expect(await bell.evaluate(link => {
-        const descriptionId = link.getAttribute("aria-describedby");
-        if (!descriptionId) return true;
-        const description = document.getElementById(descriptionId);
-        if (!description) return false;
-        const { width, height } = description.getBoundingClientRect();
-        return width <= 1 && height <= 1;
-      })).toBeTruthy();
+    } else if (width === 1280) {
+      for (const name of ["工作台", "策略", "控制中心"]) {
+        await expect(primaryNav.getByRole("link", { name, exact: true }).locator(".nav-label")).toBeVisible();
+      }
     }
     const box = await layoutBox(page);
     const spacing = await page.locator(".page-body").evaluate(body => ({
@@ -149,10 +222,10 @@ test("day and night share spacing and page navigation fades only the route", asy
     }));
     const expected = width < 768 ? [16, 20] : width < 1100 ? [24, 24] : [32, 28];
     expect(spacing).toEqual({ gutter: expected[0] + "px", sections: expected[1] + "px" });
-    for (const path of ["/strategies", "/hosts", "/activity", "/controls", "/alerts", "/"]) {
-      const destination = page.locator(`.topbar nav a[href="${path}"]`);
+    for (const path of [...primaryPaths.slice(1), primaryPaths[0]]) {
+      const destination = primaryNav.locator(`a[href="${path}"]`);
       await destination.click();
-      await expect(page).toHaveURL(new RegExp(path === "/" ? ":42357/$" : path + "$"));
+      await expect(page).toHaveURL(origin + path);
       await expect(destination).toHaveAttribute("aria-current", "page");
       expect(await layoutBox(page)).toEqual(box);
       expect(await page.locator("html").getAttribute("data-transition-count")).toBeNull();
@@ -162,19 +235,17 @@ test("day and night share spacing and page navigation fades only the route", asy
       await page.emulateMedia({ colorScheme: "light" });
       await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
     }
-    for (const path of ["/strategies/" + strategyId, "/hosts/" + hostId]) {
-      await page.goto(path);
-      const detail = await layoutBox(page);
-      expect({ left: detail.left, top: detail.top, width: detail.width }).toEqual({ left: box.left, top: box.top, width: box.width });
-      await page.emulateMedia({ colorScheme: "dark" });
-      await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
-      expect(await layoutBox(page)).toEqual(detail);
-      await page.emulateMedia({ colorScheme: "light" });
-    }
+    await page.goto("/strategies/" + strategyId);
+    const detail = await layoutBox(page);
+    expect({ left: detail.left, top: detail.top, width: detail.width }).toEqual({ left: box.left, top: box.top, width: box.width });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
+    expect(await layoutBox(page)).toEqual(detail);
+    await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/admin/settings");
     const admin = await layoutBox(page);
-    for (const path of ["dashboard", "strategies", "notifications", "storage", "audit", "security", "settings"]) {
-      await page.goto("/admin/" + path);
+    for (const path of adminPagePaths) {
+      await page.goto(path);
       await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
       expect(await layoutBox(page)).toEqual(admin);
       await page.emulateMedia({ colorScheme: "dark" });
@@ -182,15 +253,15 @@ test("day and night share spacing and page navigation fades only the route", asy
       expect(await layoutBox(page)).toEqual(admin);
       await page.emulateMedia({ colorScheme: "light" });
     }
+    await page.goto(hostDetailPath);
+    await expect(page.getByRole("heading", { level: 1, name: "布局主机" })).toBeVisible();
+    const hostDetail = await layoutBox(page);
+    expect({ left: hostDetail.left, top: hostDetail.top, width: hostDetail.width }).toEqual({ left: admin.left, top: admin.top, width: admin.width });
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
+    expect(await layoutBox(page)).toEqual(hostDetail);
   }
 
-  await page.goto("/alerts");
-  await expect(bell).toHaveAttribute("aria-current", "page");
-  await expect.poll(() => bell.evaluate(link => {
-    const entry = link.getBoundingClientRect();
-    const viewport = link.closest("nav")!.getBoundingClientRect();
-    return entry.left >= viewport.left - 1 && entry.right <= viewport.right + 1;
-  })).toBe(true);
   await page.goto("/admin/settings");
 
   const menuButton = page.getByRole("button", { name: "打开菜单", exact: true });
@@ -201,6 +272,9 @@ test("day and night share spacing and page navigation fades only the route", asy
     await menuButton.focus();
     await menuButton.press("Enter");
     await expect(drawer).toBeVisible();
+    for (const path of adminPaths) {
+      await expect(drawer.locator(`a[href="${path}"]`)).toBeVisible();
+    }
     await page.keyboard.press("Tab");
     await expect.poll(() => drawer.evaluate(element => element.contains(document.activeElement))).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`admin-drawer-390-${appearance}.png`) });
@@ -212,9 +286,17 @@ test("day and night share spacing and page navigation fades only the route", asy
   await drawer.getByRole("button", { name: "关闭", exact: true }).click();
   await expect(drawer).toBeHidden();
   await menuButton.click();
-  await drawer.getByRole("link", { name: "主题管理", exact: true }).click();
-  await expect(page).toHaveURL(/\/admin\/themes$/);
+  await drawer.getByRole("link", { name: "主机", exact: true }).click();
+  await expect(page).toHaveURL(origin + "/admin/hosts");
   await expect(drawer).toBeHidden();
+  await expect(hostLink).toBeVisible();
+  await expect(appearanceButton).toHaveAccessibleName("外观: 跟随系统");
+  await appearanceButton.click();
+  await expect(page.locator("html")).toHaveAttribute("data-appearance", "light");
+  await appearanceButton.click();
+  await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
+  await appearanceButton.click();
+  await expect(appearanceButton).toHaveAccessibleName("外观: 跟随系统");
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "no-preference" });
@@ -222,8 +304,8 @@ test("day and night share spacing and page navigation fades only the route", asy
   const supported = await page.evaluate(() => typeof document.startViewTransition === "function");
   const menu = page.locator(".topbar-inner");
   const position = await menu.boundingBox();
-  await page.locator('.topbar nav a[href="/hosts"]').click();
-  await expect(page).toHaveURL(/\/hosts$/);
+  await primaryNav.locator('a[href="/strategies"]').click();
+  await expect(page).toHaveURL(origin + "/strategies");
   if (supported) {
     await expect(page.locator("html")).toHaveAttribute("data-transition-count", "1");
     const names = await page.evaluate(() => ({
@@ -239,7 +321,6 @@ test("day and night share spacing and page navigation fades only the route", asy
   await page.setViewportSize({ width: 1280, height: 560 });
   await page.goto("/");
   await expect(widgets).toBeVisible();
-  const header = page.locator(".topbar");
   const brandBox = (await header.locator(".brand").boundingBox())!;
   const navigationBox = (await header.locator("nav").boundingBox())!;
   expect(navigationBox.x).toBeGreaterThanOrEqual(brandBox.x + brandBox.width);

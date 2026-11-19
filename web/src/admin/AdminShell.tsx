@@ -7,10 +7,12 @@ import {
   RiNotification3Line as Bell,
   RiLineChartLine as ChartNoAxesCombined,
   RiFileList3Line as ClipboardList,
+  RiHistoryLine as History,
   RiDatabase2Line as Database,
   RiDashboardLine as LayoutDashboard,
   RiMenuLine as Menu,
   RiPaletteLine as Palette,
+  RiServerLine as Server,
   RiSettings3Line as Settings,
   RiShieldLine as Shield,
 } from "@remixicon/react";
@@ -22,6 +24,14 @@ import "../styles/admin-shell.css";
 
 const management = [
   ["", [["dashboard", "dashboard", LayoutDashboard]]],
+  [
+    "监控",
+    [
+      ["hosts", "hosts", Server],
+      ["activity", "activity", History],
+      ["alerts", "alerts", Bell],
+    ],
+  ],
   [
     "管理",
     [
@@ -41,7 +51,7 @@ const management = [
   ],
 ] as const;
 
-const localizedGroup = { 管理: "Management", 外观: "Appearance", 系统: "System" };
+const localizedGroup = { 监控: "Monitoring", 管理: "Management", 外观: "Appearance", 系统: "System" };
 type AdminChrome = { brand: ReactNode; tools: ReactNode; logout: ReactNode };
 
 function AdminNavigation({ onNavigate }: { onNavigate?: () => void }) {
@@ -54,7 +64,7 @@ function AdminNavigation({ onNavigate }: { onNavigate?: () => void }) {
           <ul>
             {links.map(([path, label, Icon]) => (
               <li key={path}>
-                <NavLink to={"/admin/" + path} end onClick={onNavigate}>
+                <NavLink to={"/admin/" + path} end={path !== "hosts"} onClick={onNavigate}>
                   <Icon size={16} strokeWidth={1.5} aria-hidden="true" />
                   {t(label)}
                 </NavLink>

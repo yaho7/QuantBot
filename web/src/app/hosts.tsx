@@ -32,7 +32,7 @@ export function HostsPage() {
             <Card className="monitor-panel min-w-0 p-4" key={host.id}>
               <article className="performance-host grid gap-3">
                 <header className="performance-process-heading">
-                  <Link className="performance-link" to={"/hosts/" + host.id}>
+                  <Link className="performance-link" to={"/admin/hosts/" + host.id}>
                     <h2 className="text-lg font-medium">{host.name}</h2>
                     <ArrowUpRight size={16} strokeWidth={1.5} aria-hidden="true" />
                   </Link>
@@ -56,7 +56,7 @@ export function HostDetailPage() {
   const { t } = useLanguage();
   const query = useQuery({ ...resource<HostDetail>("/hosts/" + id), refetchInterval: 15_000 });
   return <Page title={query.data?.name ?? t("hosts")} actions={
-    <Link className="button" to="/hosts"><ArrowLeft size={16} />{t("hosts")}</Link>
+    <Link className="button" to="/admin/hosts"><ArrowLeft size={16} />{t("hosts")}</Link>
   }>
     {query.isPending ? <Loading /> : query.error ? <ErrorView error={query.error} retry={() => void query.refetch()} /> :
       <>
