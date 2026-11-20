@@ -33,7 +33,7 @@ var fixture []byte
 
 type localConfig struct {
 	Endpoint   string `json:"endpoint"`
-	Secret     string `json:"secret"`
+	Token      string `json:"-"`
 	Instance   string `json:"instance_name"`
 	StrategyID string `json:"strategy_id"`
 	Heartbeat  int    `json:"heartbeat_seconds"`
@@ -42,8 +42,13 @@ type localConfig struct {
 
 func loadConfig() (localConfig, error) {
 	cfg := localConfig{Heartbeat: 15, Policy: "continue"}
+	file := struct {
+		*localConfig
+		Token       *string `json:"token"`
+		LegacyToken string  `json:"secret"`
+	}{localConfig: &cfg}
 	body, err := os.ReadFile("quantbot.json")
-	if err != nil || json.Unmarshal(body, &cfg) != nil {
+	if err != nil || json.Unmarshal(body, &file) != nil {
 		return cfg, errors.New("create a valid local quantbot.json using quantbot.example.json")
 	}
 	u, err := url.Parse(cfg.Endpoint)
@@ -59,8 +64,12 @@ func loadConfig() (localConfig, error) {
 		return cfg, errors.New("set endpoint to a QuantBot origin, Agent or Sandbox URL")
 	}
 	cfg.Endpoint = u.Scheme + "://" + u.Host + path
-	if !regexp.MustCompile("^qbt_[A-Za-z0-9_-]+$").MatchString(cfg.Secret) {
-		return cfg, errors.New("paste the Agent Token into secret in quantbot.json")
+	cfg.Token = file.LegacyToken
+	if file.Token != nil {
+		cfg.Token = *file.Token
+	}
+	if !regexp.MustCompile("^qbt_[A-Za-z0-9_-]+$").MatchString(cfg.Token) {
+		return cfg, errors.New("paste the Agent Token into token in quantbot.json")
 	}
 	if !regexp.MustCompile("^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$").MatchString(cfg.Instance) {
 		return cfg, errors.New("set a stable instance_name in quantbot.json")
@@ -86,7 +95,7 @@ func run(control bool) error {
 	boot := hex.EncodeToString(entropy[:])
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	client := agent.NewClient(cfg.Endpoint, cfg.Secret, cfg.Instance, boot, nil)
+	client := agent.NewClient(cfg.Endpoint, cfg.Token, cfg.Instance, boot, nil)
 	session, err := client.Connect(ctx)
 	if err != nil {
 		return err

@@ -22,17 +22,17 @@ type StrategyContext = { id: string; name: string; mode: "paper" | "live" };
 export function agentPrompt(origin: string, endpoint: string, strategy?: StrategyContext,
   connection?: { key?: string; sandboxToken?: string; lang?: string; expiresAt?: number; productionEndpoint?: string }) {
   const production = connection?.sandboxToken === undefined;
-  const credential = production ? "Paste the production Token from the strategy's API dialog into secret locally." :
-    "The secret below is a temporary Sandbox Token. Use a separate local working directory so it cannot overwrite production configuration.";
-  const configuration = JSON.stringify({
+  const credential = production ? "Paste the production Token from the strategy's API dialog into the token field locally." :
+    "The token below is a temporary Sandbox Token. Use a separate local working directory so it cannot overwrite production configuration.";
+  const configuration = "```json\n" + JSON.stringify({
     endpoint,
     key: connection?.key ?? "",
-    secret: connection?.sandboxToken ?? "",
+    token: connection?.sandboxToken ?? "",
     instance_name: production && strategy ? "agent-" + strategy.id.slice(0, 8) + "-01" : "sandbox-test-01",
     strategy_id: production ? strategy?.id ?? "" : "",
     heartbeat_seconds: 15,
     disconnect_policy: "continue",
-  }, null, 2);
+  }, null, 2) + "\n```";
   const sandboxDetails = !production && connection?.expiresAt ? new Date(connection.expiresAt * 1000).toISOString() : "";
   const executor = production ? "Once the administrator appoints this instance as Executor" : "Once the Sandbox designates its first connected instance as Executor";
   const reports = production ? "Send real telemetry" : "Send simulated telemetry";
@@ -58,15 +58,15 @@ Host discovery is automatic from POST /performance with the same report session;
     return `请直接修改当前量化程序，完整接入 QuantBot 的监控、分析和安全远程控制。先检查语言、主程序生命周期、行情和券商缓存、策略状态、开仓判断及本地风控入口。复用现有 HTTP 客户端，不改交易算法、下单参数或启动方式。不要只做心跳和基础上报。
 
 ${strategy ? "目标策略：" + JSON.stringify({ id: strategy.id, name: strategy.name, mode: strategy.mode }) + "\n" : ""}${production
-  ? "正式接入：请用户在策略 API 弹窗复制 Token，在本机填写 secret。用沙盒或模拟策略先验证，再切换正式配置。"
+  ? "正式接入：请用户在策略 API 弹窗复制 Token，在本机填写 token。用沙盒或模拟策略先验证，再切换正式配置。"
   : "沙盒测试：下方是临时配置，有效期至 " + sandboxDetails + "。正式地址：" + (connection?.productionEndpoint ?? origin + "/api/agent") + "。不要覆盖已有正式配置。" }
 
 一、本地配置和接入资料
-在策略工作目录读取 quantbot.json。另建 secret 为空的 quantbot.example.json，把实际文件加入 .gitignore。不要从环境变量读取凭证，禁止把 Token 写进源码、日志或 Git。
+在策略工作目录读取 quantbot.json。另建 token 为空的 quantbot.example.json，把实际文件加入 .gitignore。不要从环境变量读取凭证，禁止把 Token 写进源码、日志或 Git。
 
 ${configuration}
 
-secret 用于 POST /session 的 Bearer；key 只是凭证 ID。instance_name 映射为稳定的 instanceId，多台机器同时运行时名称要不同；如果填写了 strategy_id，验证它与会话返回值一致。endpoint 只有域名时追加 /api/agent；完整的 Agent 或沙盒地址直接追加 /session 等相对路径。使用策略程序可访问的 HTTP 或 HTTPS 地址，公网优先用 HTTPS。
+token 用于 POST /session 的 Bearer；key 是凭证 ID。endpoint 填写纯 URL。instance_name 映射为稳定的 instanceId，多台机器同时运行时名称要不同；如果填写了 strategy_id，验证它与会话返回值一致。endpoint 只有域名时追加 /api/agent；完整的 Agent 或沙盒地址直接追加 /session 等相对路径。使用策略程序可访问的 HTTP 或 HTTPS 地址，公网优先用 HTTPS。
 
 ${references}
 
@@ -86,7 +86,7 @@ ${production ? "- 主机容量：同一会话 POST /performance，使用操作�
 - 会话用新的 bootId 启动，同进程用原 Token、相同 instanceId 和 bootId 按 renewAt 后台续期并原子替换凭证。默认 15 秒心跳，45 秒判离线，每次上报不用重发能力定义。
 - 用后台任务处理网络，设置超时，不跟随重定向，遵守 Retry-After 和带抖动的指数退避。session_expired 只刷新一次；Token 撤销、过期或权限不足要分别报告。稳定记录 ID 和观察时间，重要事件和回执先保存再重试。缺少配置或断线时保留本地逻辑和风控，不接收远程指令。
 - ${production ? "先用沙盒或专用模拟策略验收。" : "识别 /api/agent/sandbox/{id}，在连接真实券商之前进入模拟模式。沙盒与正式环境的状态、凭证和命令日志必须隔离。"} 验证会话、心跳、能力登记、实际状态、历史上报、事件、资源同步，以及登记一个可用的无输入模拟动作（value_type: null），登记一个可用的无输入模拟动作（value_type: null），等待沙盒自动下发模拟命令后轮询、领取和回执。验证开仓权限、参数约束、重连和幂等。测试不得真实交易。
-- 交付时列出改动文件、支持的监控与高级控制、运行方式、如何在 QuantBot 检查接入、哪些能力需要授权或当前程序不支持。正式切换由用户更新 endpoint 和 secret。`;
+- 交付时列出改动文件、支持的监控与高级控制、运行方式、如何在 QuantBot 检查接入、哪些能力需要授权或当前程序不支持。正式切换由用户更新 endpoint、key 和 token。`;
   }
 
   return `Integrate the existing trading program fully with QuantBot monitoring, analysis and remote control. Inspect its lifecycle, cached market and broker data, entry gate, local risk rules, and execution entry points first. Reuse its HTTP client and keep its trading logic and launch command.
@@ -94,7 +94,7 @@ ${target}Read quantbot.json from the strategy's local working directory at start
 
 ${configuration}
 
-Use secret as the Bearer Token for POST /session; key is a credential identifier, not an authentication header. Map instance_name to a stable API instanceId; choose a different name for each concurrently running instance. If strategy_id is set, verify it against the session response before sending data. An endpoint containing only the origin gets /api/agent appended. Preserve a full Agent or Sandbox endpoint and append relative routes (such as /session). Use an HTTP or HTTPS origin reachable by the strategy. Prefer HTTPS over public networks.
+Use token as the Bearer credential for POST /session. The key field stores the credential ID for reference. Keep endpoint as a plain URL. Map instance_name to a stable API instanceId and choose a different name for each concurrently running instance. If strategy_id is set, verify it against the session response before sending data. An endpoint containing only the origin gets /api/agent appended. Preserve a full Agent or Sandbox endpoint and append relative routes (such as /session). Use an HTTP or HTTPS origin reachable by the strategy. Prefer HTTPS over public networks.
 The default heartbeat_seconds is 15. disconnect_policy "continue" keeps the local strategy, risk checks and exits on their existing schedule while QuantBot is disconnected. Do not accept remote commands during a disconnect or replay outcomes already executed.
 
 ${references}

@@ -35,14 +35,14 @@ Honor `Retry-After` on HTTP 429.
 ## Local Agent configuration
 
 Save [`examples/v3/quantbot.example.json`](../examples/v3/quantbot.example.json) as
-`quantbot.json` in the strategy process's working directory. Fill in the Endpoint,
-Key, and Token shown in the strategy's API dialog:
+`quantbot.json` in the strategy process's working directory. Fill in `endpoint`,
+`key`, and `token` with the corresponding values from the strategy's API dialog.
 
 ```json
 {
-  "endpoint": "https://quantbot.example.com",
+  "endpoint": "https://quantbot.example.com/api/agent",
   "key": "",
-  "secret": "",
+  "token": "",
   "instance_name": "paper-example-001",
   "strategy_id": "",
   "heartbeat_seconds": 15,
@@ -50,9 +50,9 @@ Key, and Token shown in the strategy's API dialog:
 }
 ```
 
-- `endpoint`: an origin gets `/api/agent` appended. A complete Agent or Sandbox
-  endpoint is used as written. Both HTTP and HTTPS are supported.
-- `key`: optional credential ID for reference. `secret`: required Agent Token,
+- `endpoint` is a plain HTTP or HTTPS URL. An origin gets `/api/agent` appended.
+  A complete Agent or Sandbox endpoint is used as written.
+- `key` stores the optional credential ID. `token` holds the required Agent Token
   used as Bearer for the session exchange. Keep the returned session in memory.
 - `instance_name`: stable process identity mapped to `instanceId`. Give concurrently
   running instances different names. `strategy_id`: optional check against the
@@ -64,8 +64,9 @@ Key, and Token shown in the strategy's API dialog:
   valid session. The demos do not connect to a broker.
 
 Read the file at startup. For a regenerated Token, update the local `key` and
-`secret`, and reload them or restart the Agent client. Restrict file permissions
-to the strategy user, and exclude `quantbot.json` from Git and Docker build contexts.
+`token`, and reload them or restart the Agent client. The examples also accept
+`secret` from earlier configurations when `token` is absent. Restrict file
+permissions to the strategy user, and exclude `quantbot.json` from Git and Docker build contexts.
 
 ## Try the protocol on a paper strategy
 
@@ -95,7 +96,8 @@ show idempotent receipt handling. Run one example at a time per strategy.
 
 ```text
 Integrate this trading program with QuantBot using a local quantbot.json file.
-Read endpoint, secret, and instance_name at startup. Use key only as a credential ID.
+Read endpoint, key, token, and instance_name at startup. Use token as the Bearer
+credential and keep key as a credential ID for reference. Use a plain URL for endpoint.
 Add quantbot.json to .gitignore. Preserve the strategy's local operation on disconnect.
 Read /api/agent/schemas/agent.json and /api/agent/schemas/report.json on that host.
 Use the existing HTTP client and startup lifecycle with bounded I/O and retries.

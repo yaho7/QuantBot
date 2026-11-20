@@ -1,7 +1,7 @@
 {
-  "endpoint": "http://127.0.0.1:23456",
+  "endpoint": "http://127.0.0.1:23456/api/agent",
   "key": "",
-  "secret": "",
+  "token": "",
   "instance_name": "paper-example-001",
   "strategy_id": "",
   "heartbeat_seconds": 15,

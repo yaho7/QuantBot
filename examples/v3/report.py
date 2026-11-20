@@ -34,10 +34,12 @@ def load_config():
             raise ValueError()
     except (ValueError, TypeError):
         raise SystemExit("Set endpoint to a QuantBot HTTP or HTTPS URL in quantbot.json") from None
-    secret, instance = config.get("secret"), config.get("instance_name")
+    token, instance = config.get("token"), config.get("instance_name")
+    if token is None:
+        token = config.get("secret")
     heartbeat = config.get("heartbeat_seconds", 15)
-    if not isinstance(secret, str) or not re.fullmatch(r"qbt_[A-Za-z0-9_-]+", secret):
-        raise SystemExit("Paste the Agent Token into secret in quantbot.json")
+    if not isinstance(token, str) or not re.fullmatch(r"qbt_[A-Za-z0-9_-]+", token):
+        raise SystemExit("Paste the Agent Token into token in quantbot.json")
     if not isinstance(instance, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,95}", instance):
         raise SystemExit("Set a stable instance_name in quantbot.json")
     if type(heartbeat) is not int or not 1 <= heartbeat <= 15:
@@ -46,7 +48,7 @@ def load_config():
         raise SystemExit("The demo supports only disconnect_policy 'continue'")
     if not isinstance(config.get("strategy_id", ""), str):
         raise SystemExit("strategy_id must be a string")
-    return config, f"{url.scheme}://{url.netloc}{path}", secret, instance, heartbeat
+    return config, f"{url.scheme}://{url.netloc}{path}", token, instance, heartbeat
 
 
 def main():

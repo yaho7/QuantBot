@@ -18,7 +18,9 @@ endpoint="$(read_config '
   select(test("^https?://[^/?#@\\s]+(/api/agent(/sandbox/[A-Za-z0-9_-]+)?)?$")) |
   if test("^https?://[^/]+$") then . + "/api/agent" else . end
 ' 'Set endpoint to a QuantBot HTTP or HTTPS URL in quantbot.json')"
-token="$(read_config '.secret | strings | select(test("^qbt_[A-Za-z0-9_-]+$"))' 'Paste the Agent Token into secret in quantbot.json')"
+token="$(read_config '
+  (if .token == null then .secret else .token end) | strings | select(test("^qbt_[A-Za-z0-9_-]+$"))
+' 'Paste the Agent Token into token in quantbot.json')"
 instance="$(read_config '.instance_name | strings | select(test("^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"))' 'Set a stable instance_name in quantbot.json')"
 strategy="$(read_config '(.strategy_id // "") | strings' 'strategy_id must be a string')"
 interval="$(read_config '

@@ -21,16 +21,17 @@ async function loadConfig() {
   } catch {
     throw new Error("Set endpoint to a QuantBot HTTP or HTTPS URL in quantbot.json");
   }
-  const { secret, instance_name: instance, strategy_id: strategy, heartbeat_seconds: heartbeat = 15 } = config;
-  if (typeof secret !== "string" || !/^qbt_[A-Za-z0-9_-]+$/.test(secret)) throw new Error("Paste the Agent Token into secret in quantbot.json");
+  const { instance_name: instance, strategy_id: strategy, heartbeat_seconds: heartbeat = 15 } = config;
+  const token = config.token ?? config.secret;
+  if (typeof token !== "string" || !/^qbt_[A-Za-z0-9_-]+$/.test(token)) throw new Error("Paste the Agent Token into token in quantbot.json");
   if (typeof instance !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/.test(instance)) throw new Error("Set a stable instance_name in quantbot.json");
   if (!Number.isInteger(heartbeat) || heartbeat < 1 || heartbeat > 15) throw new Error("heartbeat_seconds must be an integer from 1 to 15");
   if (config.disconnect_policy !== undefined && config.disconnect_policy !== "continue") throw new Error("The demo supports only disconnect_policy 'continue'");
   if (strategy !== undefined && typeof strategy !== "string") throw new Error("strategy_id must be a string");
-  return { endpoint, secret, instance, strategy, heartbeat };
+  return { endpoint, token, instance, strategy, heartbeat };
 }
 
-const { endpoint, secret, instance, strategy, heartbeat: heartbeatSeconds } = await loadConfig();
+const { endpoint, token, instance, strategy, heartbeat: heartbeatSeconds } = await loadConfig();
 const boot = randomUUID();
 const control = process.argv.includes("--demo-control");
 const capabilities = JSON.parse(await readFile(new URL("./capabilities.json", import.meta.url)));
@@ -55,7 +56,7 @@ async function call(method, path, bearer, payload, key) {
 
 const identity = { instanceId: instance, bootId: boot };
 async function connect() {
-  const session = await call("POST", "/session", secret, identity);
+  const session = await call("POST", "/session", token, identity);
   if (strategy && session.strategyId !== strategy) throw Object.assign(
     new Error("Session strategy does not match strategy_id in quantbot.json"), { status: 400 },
   );
