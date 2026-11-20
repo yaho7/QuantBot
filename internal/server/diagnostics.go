@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yaho7/QuantBot/agent"
 	"github.com/yaho7/QuantBot/internal/buildinfo"
 	"github.com/yaho7/QuantBot/internal/config"
 	"github.com/yaho7/QuantBot/internal/httpapi"
@@ -69,7 +70,7 @@ func diagnostics(stores *storage.Stores, reports *telemetry.Service, events *rea
 			"goroutines": runtime.NumGoroutine(), "walBytes": wal, "databaseBytes": databases,
 			"settings": map[string]any{
 				"sessionSeconds": ttl.Seconds(), "renewBeforeSeconds": strategy.SessionRenewalLead(ttl).Seconds(),
-				"heartbeatSeconds": 15, "offlineSeconds": strategy.PresenceTTL.Seconds(),
+				"heartbeatSeconds": agent.DefaultHeartbeatInterval.Seconds(), "offlineSeconds": strategy.PresenceTTL.Seconds(),
 				"commandPollSeconds": cfg.CommandPoll.Seconds(), "metricsQueue": cfg.MetricsQueue,
 				"metricsBatch": cfg.MetricsBatch, "metricsFlushMilliseconds": cfg.MetricsFlush.Milliseconds(),
 			},

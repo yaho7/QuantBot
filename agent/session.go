@@ -17,6 +17,9 @@ import (
 	"time"
 )
 
+// DefaultHeartbeatInterval is the recommended cadence for Agent heartbeats.
+const DefaultHeartbeatInterval = 3 * time.Second
+
 type Error struct {
 	Status  int    `json:"-"`
 	Code    string `json:"code"`
@@ -103,11 +106,11 @@ func (c *Client) Connect(ctx context.Context) (Session, error) {
 // Run blocks until cancellation or permanent credential failure. Run it in a
 // background task. A transient renewal failure keeps the currently valid session.
 func (c *Client) Run(ctx context.Context) error {
-	return c.RunWithHeartbeat(ctx, 15*time.Second)
+	return c.RunWithHeartbeat(ctx, DefaultHeartbeatInterval)
 }
 
 // RunWithHeartbeat maintains the session with a caller-configured heartbeat.
-// Use 15 seconds unless the local Agent configuration asks for a shorter interval.
+// Use DefaultHeartbeatInterval when no interval is configured.
 func (c *Client) RunWithHeartbeat(ctx context.Context, interval time.Duration) error {
 	if interval <= 0 || interval > 15*time.Second {
 		return errors.New("QuantBot heartbeat interval must be greater than zero and at most 15 seconds")

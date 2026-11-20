@@ -37,7 +37,7 @@ def load_config():
     token, instance = config.get("token"), config.get("instance_name")
     if token is None:
         token = config.get("secret")
-    heartbeat = config.get("heartbeat_seconds", 15)
+    heartbeat = config.get("heartbeat_seconds", 3)
     if not isinstance(token, str) or not re.fullmatch(r"qbt_[A-Za-z0-9_-]+", token):
         raise SystemExit("Paste the Agent Token into token in quantbot.json")
     if not isinstance(instance, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,95}", instance):

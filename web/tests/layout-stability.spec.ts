@@ -445,9 +445,12 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   const readConfig = (text: string | undefined) => JSON.parse(text?.match(/\n```json\n([\s\S]+?)\n```/)?.[1] ?? "{}");
   expect(readConfig(prompt)).toMatchObject({
     endpoint: await endpoint.innerText(), key: keyBefore, token: "",
-    heartbeat_seconds: 15, disconnect_policy: "continue",
+    heartbeat_seconds: 3, disconnect_policy: "continue",
   });
   expect(readConfig(prompt)).not.toHaveProperty("secret");
+  const diagnostics = await page.request.get("/api/admin/diagnostics");
+  await expect(diagnostics).toBeOK();
+  expect(await diagnostics.json()).toMatchObject({ settings: { heartbeatSeconds: 3, offlineSeconds: 45 } });
   await expect(page).toHaveURL(/\/admin\/strategies$/);
   await page.keyboard.press("Escape");
   const row = page.getByRole("row").filter({ hasText: testName });
@@ -499,7 +502,9 @@ test("strategy API dialog creates, reveals and replaces tokens and opens the sha
   const readSandboxConfig = async () => readConfig(await page.evaluate(() =>
     (window as Window & { qbTestCopy?: string }).qbTestCopy,
   ));
-  await expect.poll(readSandboxConfig).toMatchObject({ endpoint: firstEndpoint, token: await testToken.innerText(), strategy_id: "" });
+  await expect.poll(readSandboxConfig).toMatchObject({
+    endpoint: firstEndpoint, token: await testToken.innerText(), strategy_id: "", heartbeat_seconds: 3,
+  });
   expect(await readSandboxConfig()).not.toHaveProperty("secret");
   await dialog.getByRole("button", { name: "结束测试", exact: true }).click();
   await dialog.getByRole("button", { name: "结束测试", exact: true }).click();

@@ -45,7 +45,7 @@ Save [`examples/v3/quantbot.example.json`](../examples/v3/quantbot.example.json)
   "token": "",
   "instance_name": "paper-example-001",
   "strategy_id": "",
-  "heartbeat_seconds": 15,
+  "heartbeat_seconds": 3,
   "disconnect_policy": "continue"
 }
 ```
@@ -57,8 +57,8 @@ Save [`examples/v3/quantbot.example.json`](../examples/v3/quantbot.example.json)
 - `instance_name`: stable process identity mapped to `instanceId`. Give concurrently
   running instances different names. `strategy_id`: optional check against the
   session's strategy ID; leave it empty for the shared Sandbox.
-- `heartbeat_seconds`: defaults to 15. The examples accept shorter intervals
-  from 1 to 15 seconds. The server still marks an instance offline after 45 seconds.
+- `heartbeat_seconds` defaults to 3. The examples accept intervals from 1 to 15
+  seconds. The server marks an instance offline after 45 seconds without a heartbeat.
 - `disconnect_policy: "continue"`: the strategy keeps its local logic, risk
   checks and exits running while disconnected. Remote control waits for a
   valid session. The demos do not connect to a broker.
@@ -103,7 +103,7 @@ Read /api/agent/schemas/agent.json and /api/agent/schemas/report.json on that ho
 Use the existing HTTP client and startup lifecycle with bounded I/O and retries.
 
 Use POST /api/agent/session with a stable instanceId and a new bootId per process.
-Use its short-lived session Bearer and PUT /api/agent/heartbeat every 15 seconds.
+Use its short-lived session Bearer and PUT /api/agent/heartbeat every 3 seconds by default.
 The offline threshold is 45 seconds. Use renewAt to renew in the background,
 normally ten minutes before the one-hour session expires. Use the original
 Agent token, same instanceId and same bootId. Serialize refreshes, then atomically

@@ -4,6 +4,6 @@
   "token": "",
   "instance_name": "paper-example-001",
   "strategy_id": "",
-  "heartbeat_seconds": 15,
+  "heartbeat_seconds": 3,
   "disconnect_policy": "continue"
 }

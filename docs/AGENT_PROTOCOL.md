@@ -30,7 +30,7 @@ Retry transient network failures, HTTP 429 and 5xx with bounded exponential back
 
 ## Heartbeat
 
-Call `PUT /api/agent/heartbeat` with the session Bearer token and no body. The response contains the effective identity, executor assignment, session expiry and last-seen time. Use a heartbeat interval shorter than the 45-second presence window, such as 15 seconds. HTTP 401 includes a code that distinguishes session recovery from credential failure. An archived strategy cannot reconnect.
+Call `PUT /api/agent/heartbeat` with the session Bearer token and no body. The response contains the effective identity, executor assignment, session expiry and last-seen time. QuantBot recommends sending a heartbeat every 3 seconds. The server marks an instance offline after 45 seconds without a heartbeat. HTTP 401 includes a code that distinguishes session recovery from credential failure. An archived strategy cannot reconnect.
 
 ## Capability registration
 

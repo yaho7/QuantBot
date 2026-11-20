@@ -41,7 +41,7 @@ type localConfig struct {
 }
 
 func loadConfig() (localConfig, error) {
-	cfg := localConfig{Heartbeat: 15, Policy: "continue"}
+	cfg := localConfig{Heartbeat: int(agent.DefaultHeartbeatInterval / time.Second), Policy: "continue"}
 	file := struct {
 		*localConfig
 		Token       *string `json:"token"`

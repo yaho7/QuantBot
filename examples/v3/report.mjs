@@ -21,7 +21,7 @@ async function loadConfig() {
   } catch {
     throw new Error("Set endpoint to a QuantBot HTTP or HTTPS URL in quantbot.json");
   }
-  const { instance_name: instance, strategy_id: strategy, heartbeat_seconds: heartbeat = 15 } = config;
+  const { instance_name: instance, strategy_id: strategy, heartbeat_seconds: heartbeat = 3 } = config;
   const token = config.token ?? config.secret;
   if (typeof token !== "string" || !/^qbt_[A-Za-z0-9_-]+$/.test(token)) throw new Error("Paste the Agent Token into token in quantbot.json");
   if (typeof instance !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$/.test(instance)) throw new Error("Set a stable instance_name in quantbot.json");

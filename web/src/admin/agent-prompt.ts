@@ -1,5 +1,6 @@
 const repo = "https://github.com/yaho7/QuantBot";
 const main = repo + "/blob/main";
+const defaultHeartbeatSeconds = 3;
 
 export const agentReferences = {
   repository: repo,
@@ -30,7 +31,7 @@ export function agentPrompt(origin: string, endpoint: string, strategy?: Strateg
     token: connection?.sandboxToken ?? "",
     instance_name: production && strategy ? "agent-" + strategy.id.slice(0, 8) + "-01" : "sandbox-test-01",
     strategy_id: production ? strategy?.id ?? "" : "",
-    heartbeat_seconds: 15,
+    heartbeat_seconds: defaultHeartbeatSeconds,
     disconnect_policy: "continue",
   }, null, 2) + "\n```";
   const sandboxDetails = !production && connection?.expiresAt ? new Date(connection.expiresAt * 1000).toISOString() : "";
@@ -83,7 +84,7 @@ ${production ? "- 主机容量：同一会话 POST /performance，使用操作�
 4. 只有指定执行器可 GET /commands 和 POST /commands/{id}/claim。先持久化命令 ID 和 Idempotency-Key；收到唯一 permit、未超时且通过本地风控再执行。丢包只能用同键重试，claim_reconciliation_required 或结果未知时先核对记录。真实结果用 POST /commands/{id}/result 回报，重传沿用同一回执。PUT /state 只上报实际，不直接执行参数变更。
 
 四、会话、掉线和验收
-- 会话用新的 bootId 启动，同进程用原 Token、相同 instanceId 和 bootId 按 renewAt 后台续期并原子替换凭证。默认 15 秒心跳，45 秒判离线，每次上报不用重发能力定义。
+- 会话用新的 bootId 启动，同进程用原 Token、相同 instanceId 和 bootId 按 renewAt 后台续期并原子替换凭证。默认 ${defaultHeartbeatSeconds} 秒心跳，45 秒判离线，每次上报不用重发能力定义。
 - 用后台任务处理网络，设置超时，不跟随重定向，遵守 Retry-After 和带抖动的指数退避。session_expired 只刷新一次；Token 撤销、过期或权限不足要分别报告。稳定记录 ID 和观察时间，重要事件和回执先保存再重试。缺少配置或断线时保留本地逻辑和风控，不接收远程指令。
 - ${production ? "先用沙盒或专用模拟策略验收。" : "识别 /api/agent/sandbox/{id}，在连接真实券商之前进入模拟模式。沙盒与正式环境的状态、凭证和命令日志必须隔离。"} 验证会话、心跳、能力登记、实际状态、历史上报、事件、资源同步，以及登记一个可用的无输入模拟动作（value_type: null），登记一个可用的无输入模拟动作（value_type: null），等待沙盒自动下发模拟命令后轮询、领取和回执。验证开仓权限、参数约束、重连和幂等。测试不得真实交易。
 - 交付时列出改动文件、支持的监控与高级控制、运行方式、如何在 QuantBot 检查接入、哪些能力需要授权或当前程序不支持。正式切换由用户更新 endpoint、key 和 token。`;
@@ -95,7 +96,7 @@ ${target}Read quantbot.json from the strategy's local working directory at start
 ${configuration}
 
 Use token as the Bearer credential for POST /session. The key field stores the credential ID for reference. Keep endpoint as a plain URL. Map instance_name to a stable API instanceId and choose a different name for each concurrently running instance. If strategy_id is set, verify it against the session response before sending data. An endpoint containing only the origin gets /api/agent appended. Preserve a full Agent or Sandbox endpoint and append relative routes (such as /session). Use an HTTP or HTTPS origin reachable by the strategy. Prefer HTTPS over public networks.
-The default heartbeat_seconds is 15. disconnect_policy "continue" keeps the local strategy, risk checks and exits on their existing schedule while QuantBot is disconnected. Do not accept remote commands during a disconnect or replay outcomes already executed.
+The default heartbeat_seconds is ${defaultHeartbeatSeconds}. disconnect_policy "continue" keeps the local strategy, risk checks and exits on their existing schedule while QuantBot is disconnected. Do not accept remote commands during a disconnect or replay outcomes already executed.
 
 ${references}
 

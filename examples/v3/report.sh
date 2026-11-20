@@ -24,7 +24,7 @@ token="$(read_config '
 instance="$(read_config '.instance_name | strings | select(test("^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$"))' 'Set a stable instance_name in quantbot.json')"
 strategy="$(read_config '(.strategy_id // "") | strings' 'strategy_id must be a string')"
 interval="$(read_config '
-  (if has("heartbeat_seconds") then .heartbeat_seconds else 15 end) |
+  (if has("heartbeat_seconds") then .heartbeat_seconds else 3 end) |
   numbers | select(. == floor and . >= 1 and . <= 15)
 ' 'heartbeat_seconds must be an integer from 1 to 15')"
 read_config 'select((has("disconnect_policy") | not) or .disconnect_policy == "continue")' \
